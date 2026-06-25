@@ -96,7 +96,7 @@ export default function ProjectDetail() {
                 heading={project.intro_heading || project.name}
                 subheading={project.intro_subheading}
                 orientation={project.orientation}
-                clipDuration={project.clip_duration || (slideshowPhotos.length <= 5 ? 5 : slideshowPhotos.length <= 10 ? 4 : slideshowPhotos.length <= 15 ? 3.5 : 3)}
+                clipDuration={project.clip_duration || 5}
               />
 
               <div className="flex gap-3 mt-4 justify-center flex-wrap">

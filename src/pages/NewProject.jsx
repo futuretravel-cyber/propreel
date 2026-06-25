@@ -11,13 +11,9 @@ import VoiceoverSelector from "@/components/studio/VoiceoverSelector";
 
 const stepLabels = ["Create", "Upload Photos", "Edit Photos", "Select Photos", "Video Settings", "Branding"];
 
-// Auto-scale clip duration based on photo count so total video feels right
-// 1-5 photos → 5s each | 6-10 → 4s | 11-15 → 3.5s | 16-20 → 3s
+// Each photo gets at least 5 seconds — real estate viewers need time to absorb each scene
 function getClipDuration(count) {
-  if (count <= 5) return 5;
-  if (count <= 10) return 4;
-  if (count <= 15) return 3.5;
-  return 3;
+  return 5;
 }
 
 export default function NewProject() {
