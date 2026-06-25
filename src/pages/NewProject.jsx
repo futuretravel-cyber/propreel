@@ -1,0 +1,602 @@
+import React, { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowRight, ArrowLeft, Check, Upload, Link as LinkIcon, Cloud, X, GripVertical, Monitor, Smartphone, Wand2, Sparkles, Music, Mic, Play, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { base44 } from "@/api/base44Client";
+import { useToast } from "@/components/ui/use-toast";
+
+const stepLabels = ["Create", "Upload Photos", "Edit Photos", "Select Photos", "Video Settings", "Branding"];
+
+export default function NewProject() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectId, setProjectId] = useState(null);
+  const [photos, setPhotos] = useState([]);
+  const [selectedPhotos, setSelectedPhotos] = useState([]);
+  const [orientation, setOrientation] = useState("landscape");
+  const [resolution, setResolution] = useState("1080p");
+  const [aiEngine, setAiEngine] = useState("v25");
+  const [importUrl, setImportUrl] = useState("");
+  const [uploadTab, setUploadTab] = useState("device");
+
+  const handleCreateProject = async () => {
+    if (!projectName.trim()) return;
+    setLoading(true);
+    try {
+      const p = await base44.entities.Project.create({ name: projectName, status: "draft" });
+      setProjectId(p.id);
+      setStep(1);
+    } catch {
+      toast({ title: "Failed to create project", variant: "destructive" });
+    }
+    setLoading(false);
+  };
+
+  const handleFileUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    setLoading(true);
+    try {
+      const uploaded = [];
+      for (const file of files) {
+        const res = await base44.integrations.Core.UploadFile({ file });
+        uploaded.push(res.file_url);
+      }
+      setPhotos((prev) => [...prev, ...uploaded]);
+    } catch {
+      toast({ title: "Upload failed", variant: "destructive" });
+    }
+    setLoading(false);
+  };
+
+  const removePhoto = (idx) => setPhotos((prev) => prev.filter((_, i) => i !== idx));
+
+  const togglePhotoSelection = (url) => {
+    setSelectedPhotos((prev) =>
+      prev.includes(url) ? prev.filter((p) => p !== url) : prev.length < 20 ? [...prev, url] : prev
+    );
+  };
+
+  const handleSaveAndRender = async () => {
+    setLoading(true);
+    try {
+      await base44.entities.Project.update(projectId, {
+        photos,
+        selected_photo_ids: selectedPhotos,
+        orientation,
+        resolution,
+        ai_engine: aiEngine,
+        status: "processing",
+        current_step: 6,
+      });
+      toast({ title: "Video rendering started!", description: "We'll notify you when it's ready." });
+      navigate("/projects");
+    } catch {
+      toast({ title: "Failed to start render", variant: "destructive" });
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      {/* Progress bar */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-3">
+          {stepLabels.map((label, i) => (
+            <div key={label} className="flex items-center gap-2">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                i <= step ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-gray-400"
+              }`}>
+                {i < step ? <Check className="w-4 h-4" /> : i + 1}
+              </div>
+              <span className={`hidden sm:block text-xs font-medium ${i <= step ? "text-[#0F082B]" : "text-gray-400"}`}>{label}</span>
+              {i < stepLabels.length - 1 && (
+                <div className={`hidden sm:block w-8 lg:w-16 h-0.5 ${i < step ? "bg-[#21ABB5]" : "bg-gray-200"}`} />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Step 1: Create */}
+      {step === 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-8">
+          <h2 className="text-xl font-bold text-[#0F082B] mb-2">Create a Project</h2>
+          <p className="text-sm text-[#606060] mb-6">Enter the property address or a name for your project.</p>
+          <div className="max-w-md">
+            <label className="text-sm font-medium text-[#0F082B] mb-1.5 block">Project name</label>
+            <Input
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="e.g. 12 Clifton Road, Cape Town"
+              className="rounded-xl h-11 mb-4"
+            />
+            <Button
+              onClick={handleCreateProject}
+              disabled={!projectName.trim() || loading}
+              className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl h-11 px-6 gap-2"
+            >
+              {loading ? "Creating..." : <>Create project <ArrowRight className="w-4 h-4" /></>}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Upload Photos */}
+      {step === 1 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-8">
+          <h2 className="text-xl font-bold text-[#0F082B] mb-2">Upload Photos</h2>
+          <p className="text-sm text-[#606060] mb-6">Add listing photos for your property video.</p>
+
+          <div className="flex gap-2 mb-6">
+            {[
+              { key: "device", label: "From device", icon: Upload },
+              { key: "property24", label: "Property24", icon: LinkIcon },
+              { key: "dropbox", label: "Dropbox", icon: Cloud },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setUploadTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  uploadTab === tab.key ? "bg-[#DEF5F7] text-[#21ABB5]" : "bg-gray-50 text-[#606060] hover:bg-gray-100"
+                }`}
+              >
+                <tab.icon className="w-4 h-4" /> {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {uploadTab === "device" && (
+            <label className="block border-2 border-dashed border-[#21ABB5]/30 rounded-2xl p-10 text-center cursor-pointer hover:bg-[#DEF5F7]/20 transition-colors">
+              <Upload className="w-10 h-10 text-[#21ABB5] mx-auto mb-3" />
+              <p className="text-sm font-medium text-[#0F082B] mb-1">Drag & drop listing photos here, or click to browse</p>
+              <p className="text-xs text-[#606060]">JPG, PNG up to 25MB</p>
+              <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" />
+            </label>
+          )}
+
+          {uploadTab === "property24" && (
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Input
+                  value={importUrl}
+                  onChange={(e) => setImportUrl(e.target.value)}
+                  placeholder="Paste your Property24 listing URL"
+                  className="rounded-xl h-11 flex-1"
+                />
+                <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl h-11 px-6">Import</Button>
+              </div>
+              <p className="text-xs text-[#606060]">e.g. https://www.property24.com/for-sale/sandton/12345</p>
+            </div>
+          )}
+
+          {uploadTab === "dropbox" && (
+            <div className="text-center py-8">
+              <Cloud className="w-10 h-10 text-[#606060] mx-auto mb-3" />
+              <Button variant="outline" className="rounded-xl">Connect Dropbox</Button>
+            </div>
+          )}
+
+          {loading && (
+            <div className="flex items-center justify-center py-6">
+              <div className="w-6 h-6 border-3 border-gray-200 border-t-[#21ABB5] rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-[#606060]">Uploading...</span>
+            </div>
+          )}
+
+          {photos.length > 0 && (
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-[#0F082B]">{photos.length} / 20 photos uploaded</span>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+                {photos.map((url, i) => (
+                  <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group">
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => removePhoto(i)}
+                      className="absolute top-1.5 right-1.5 w-6 h-6 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                    <div className="absolute bottom-1.5 left-1.5 bg-black/50 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
+                      {i + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-between mt-8">
+            <Button variant="outline" onClick={() => setStep(0)} className="rounded-xl gap-2">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </Button>
+            <Button
+              onClick={() => { setSelectedPhotos([...photos]); setStep(2); }}
+              disabled={photos.length === 0}
+              className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2"
+            >
+              Next <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Photo Editing */}
+      {step === 2 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-8">
+          <h2 className="text-xl font-bold text-[#0F082B] mb-2">Photo Editing & Virtual Staging</h2>
+          <p className="text-sm text-[#606060] mb-6">Enhance your photos with AI. This step is optional.</p>
+
+          <div className="flex gap-4 mb-6">
+            <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-[#DEF5F7] text-[#21ABB5]">
+              <Wand2 className="w-4 h-4" /> AI Photo Edits
+            </button>
+            <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-gray-50 text-[#606060] hover:bg-gray-100">
+              <Sparkles className="w-4 h-4" /> Virtual Staging
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+            {photos.map((url, i) => (
+              <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group cursor-pointer hover:ring-2 hover:ring-[#21ABB5] transition-all">
+                <img src={url} alt="" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                  <Button
+                    size="sm"
+                    className="bg-[#21ABB5] text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                  >
+                    <Wand2 className="w-3 h-3 mr-1" /> AI Edit
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-[#DEF5F7]/50 rounded-xl p-4 mt-6">
+            <p className="text-sm text-[#606060]">
+              <strong className="text-[#0F082B]">Pro Tip:</strong> AI photo edits include sky replacement, twilight conversion, lawn greening, and furniture removal. Virtual staging lets you furnish empty rooms with SA furniture styles.
+            </p>
+          </div>
+
+          <div className="flex justify-between mt-8">
+            <Button variant="outline" onClick={() => setStep(1)} className="rounded-xl gap-2">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </Button>
+            <Button onClick={() => setStep(3)} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2">
+              Next <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 4: Select Photos for Video */}
+      {step === 3 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-8">
+          <h2 className="text-xl font-bold text-[#0F082B] mb-2">Select Photos for Video</h2>
+          <p className="text-sm text-[#606060] mb-6">Choose and order the photos for your video. Each photo becomes a ~3-second clip.</p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-sm font-semibold text-[#0F082B] mb-3">All Photos</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {photos.map((url, i) => {
+                  const selected = selectedPhotos.includes(url);
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => togglePhotoSelection(url)}
+                      className={`relative aspect-square rounded-xl overflow-hidden ${selected ? "ring-2 ring-[#21ABB5]" : "hover:ring-2 hover:ring-gray-300"} transition-all`}
+                    >
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      {selected && (
+                        <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-[#21ABB5] rounded-full flex items-center justify-center">
+                          <Check className="w-3 h-3 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-[#0F082B] mb-3">
+                Selected for video ({selectedPhotos.length} photos ≈ {selectedPhotos.length * 3}s)
+              </h3>
+              {selectedPhotos.length === 0 ? (
+                <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center text-sm text-[#606060]">
+                  Click photos to add them to your video
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {selectedPhotos.map((url, i) => (
+                    <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2">
+                      <GripVertical className="w-4 h-4 text-gray-400 cursor-grab" />
+                      <img src={url} alt="" className="w-12 h-12 rounded-lg object-cover" />
+                      <span className="text-xs text-[#606060] flex-1">Clip {i + 1}</span>
+                      <button onClick={() => togglePhotoSelection(url)} className="p-1">
+                        <X className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-between mt-8">
+            <Button variant="outline" onClick={() => setStep(2)} className="rounded-xl gap-2">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </Button>
+            <Button
+              onClick={() => setStep(4)}
+              disabled={selectedPhotos.length === 0}
+              className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2"
+            >
+              Next <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 5: Video Settings */}
+      {step === 4 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-8">
+          <h2 className="text-xl font-bold text-[#0F082B] mb-2">Video Settings</h2>
+          <p className="text-sm text-[#606060] mb-6">Configure your video orientation, effects, and render settings.</p>
+
+          <div className="space-y-8">
+            {/* Orientation */}
+            <div>
+              <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Orientation</h3>
+              <div className="grid grid-cols-2 gap-4 max-w-md">
+                {[
+                  { key: "landscape", label: "Landscape (16:9)", icon: Monitor, desc: "Best for Property24, YouTube, Facebook, LinkedIn" },
+                  { key: "portrait", label: "Portrait (9:16)", icon: Smartphone, desc: "Best for Instagram Reels, TikTok" },
+                ].map((o) => (
+                  <button
+                    key={o.key}
+                    onClick={() => setOrientation(o.key)}
+                    className={`p-4 rounded-xl border-2 text-left transition-all ${
+                      orientation === o.key ? "border-[#21ABB5] bg-[#DEF5F7]/30" : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <o.icon className={`w-6 h-6 mb-2 ${orientation === o.key ? "text-[#21ABB5]" : "text-gray-400"}`} />
+                    <p className="text-sm font-semibold text-[#0F082B]">{o.label}</p>
+                    <p className="text-xs text-[#606060] mt-1">{o.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Camera Motion */}
+            <div>
+              <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Camera Motion</h3>
+              <p className="text-xs text-[#606060] mb-3">Default: Auto (AI picks the best motion for each clip)</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-w-md">
+                {["Auto", "Push In", "Push Out", "Orbit Left", "Orbit Right"].map((m) => (
+                  <span key={m} className="text-xs text-center bg-gray-50 border border-gray-100 rounded-lg py-2 px-3">{m}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* Render Settings */}
+            <div>
+              <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Render Settings</h3>
+              <div className="flex flex-wrap gap-4">
+                <div>
+                  <label className="text-xs text-[#606060] mb-1 block">AI Engine</label>
+                  <select
+                    value={aiEngine}
+                    onChange={(e) => setAiEngine(e.target.value)}
+                    className="bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 text-sm outline-none"
+                  >
+                    <option value="v25">v25 (Latest)</option>
+                    <option value="v24">v24</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-[#606060] mb-1 block">Resolution</label>
+                  <select
+                    value={resolution}
+                    onChange={(e) => setResolution(e.target.value)}
+                    className="bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 text-sm outline-none"
+                  >
+                    <option value="1080p">1080p (HD)</option>
+                    <option value="720p">720p (Faster)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* VFX */}
+            <div>
+              <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Visual Effects (VFX)</h3>
+              <p className="text-xs text-[#606060] mb-3">Apply up to 3 VFX effects to your video clips.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
+                {[
+                  { name: "Day to Dusk", desc: "Transforms daytime shot into twilight timelapse" },
+                  { name: "Catch the Sunshine", desc: "Morning to daytime timelapse" },
+                  { name: "Virtual Staging", desc: "Animates empty room to furnished" },
+                  { name: "Lifestyle", desc: "Adds warm lived-in feel" },
+                  { name: "Pencil Sketch", desc: "Artistic illustrated look" },
+                ].map((vfx) => (
+                  <div key={vfx.name} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <Sparkles className="w-4 h-4 text-[#21ABB5] flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-[#0F082B]">{vfx.name}</p>
+                      <p className="text-xs text-[#606060]">{vfx.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Credit Warning */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+              <span className="text-lg">⚠️</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-900">Rendering will use 1 video credit. This cannot be undone.</p>
+                <p className="text-xs text-amber-700 mt-1">Current balance: 10 credits</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-between mt-8">
+            <Button variant="outline" onClick={() => setStep(3)} className="rounded-xl gap-2">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </Button>
+            <Button onClick={() => setStep(5)} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2">
+              Next <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 6: Branding */}
+      {step === 5 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-8">
+          <h2 className="text-xl font-bold text-[#0F082B] mb-2">Add Branding</h2>
+          <p className="text-sm text-[#606060] mb-6">Customise your video with templates, music, voiceovers, and branding.</p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Left: Controls */}
+            <div className="space-y-6">
+              {/* Tabs */}
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { label: "Templates", icon: Sparkles },
+                  { label: "Music", icon: Music },
+                  { label: "Voiceovers", icon: Mic },
+                ].map((tab, i) => (
+                  <button
+                    key={tab.label}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium ${
+                      i === 0 ? "bg-[#DEF5F7] text-[#21ABB5]" : "bg-gray-50 text-[#606060]"
+                    }`}
+                  >
+                    <tab.icon className="w-3.5 h-3.5" /> {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Intro templates */}
+              <div>
+                <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Intro Template</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {["Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"].map((t, i) => (
+                    <button
+                      key={t}
+                      className={`aspect-video rounded-lg border-2 text-xs font-medium flex items-center justify-center transition-all ${
+                        i === 0 ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Outro templates */}
+              <div>
+                <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Outro Template</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {["Agent Card", "Contact Block", "Agency Logo"].map((t, i) => (
+                    <button
+                      key={t}
+                      className={`aspect-video rounded-lg border-2 text-xs font-medium flex items-center justify-center transition-all ${
+                        i === 0 ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Heading fields */}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-[#0F082B] mb-1 block">Main heading</label>
+                  <Input placeholder={projectName} className="rounded-xl h-10" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[#0F082B] mb-1 block">Sub heading</label>
+                  <Input placeholder="Beautiful family home in a prime location" className="rounded-xl h-10" />
+                </div>
+              </div>
+
+              {/* Music preview */}
+              <div>
+                <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Music</h3>
+                <div className="space-y-2">
+                  {[
+                    { name: "Uplifting Morning", duration: "2:34", genre: "Upbeat" },
+                    { name: "Cinematic Elegance", duration: "3:12", genre: "Cinematic" },
+                    { name: "SA Sunset Vibes", duration: "2:48", genre: "SA Vibes" },
+                  ].map((track) => (
+                    <div key={track.name} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
+                      <button className="w-8 h-8 rounded-full bg-[#21ABB5] flex items-center justify-center flex-shrink-0">
+                        <Play className="w-3.5 h-3.5 text-white fill-white ml-0.5" />
+                      </button>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-[#0F082B]">{track.name}</p>
+                        <p className="text-xs text-[#606060]">{track.duration} · {track.genre}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Preview */}
+            <div>
+              <div className="sticky top-24">
+                <div className={`bg-gray-900 rounded-2xl overflow-hidden ${orientation === "portrait" ? "aspect-[9/16] max-w-[240px] mx-auto" : "aspect-video"}`}>
+                  <div className="w-full h-full flex flex-col items-center justify-center text-white">
+                    <Play className="w-12 h-12 mb-3 opacity-50" />
+                    <p className="text-sm font-medium opacity-70">Video Preview</p>
+                    <p className="text-xs opacity-50 mt-1">{projectName}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-center mt-4">
+                  <button
+                    onClick={() => setOrientation("landscape")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium ${orientation === "landscape" ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-[#606060]"}`}
+                  >
+                    Landscape
+                  </button>
+                  <button
+                    onClick={() => setOrientation("portrait")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium ${orientation === "portrait" ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-[#606060]"}`}
+                  >
+                    Portrait
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-between mt-8">
+            <Button variant="outline" onClick={() => setStep(4)} className="rounded-xl gap-2">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </Button>
+            <Button
+              onClick={handleSaveAndRender}
+              disabled={loading}
+              className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2"
+            >
+              {loading ? "Rendering..." : <><Download className="w-4 h-4" /> Render video</>}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

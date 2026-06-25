@@ -1,0 +1,55 @@
+{
+  "name": "PhotoEdit",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "description": "Project ID"
+    },
+    "photo_index": {
+      "type": "number",
+      "description": "Index of the photo in project photos array"
+    },
+    "edit_type": {
+      "type": "string",
+      "enum": [
+        "ai_edit",
+        "virtual_staging"
+      ]
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Edit prompt or settings"
+    },
+    "result_url": {
+      "type": "string",
+      "description": "URL of edited photo"
+    },
+    "original_url": {
+      "type": "string",
+      "description": "URL of original photo"
+    },
+    "disclaimer_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "room_type": {
+      "type": "string",
+      "enum": [
+        "living_room",
+        "bedroom",
+        "kitchen",
+        "dining_room",
+        "study",
+        "outdoor"
+      ]
+    },
+    "furniture_style": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "project_id",
+    "edit_type"
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "name": "Project",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Property address or project name"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "processing",
+        "ready"
+      ],
+      "default": "draft"
+    },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Array of photo URLs"
+    },
+    "selected_photo_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Photo indices selected for video"
+    },
+    "orientation": {
+      "type": "string",
+      "enum": [
+        "landscape",
+        "portrait"
+      ],
+      "default": "landscape"
+    },
+    "resolution": {
+      "type": "string",
+      "enum": [
+        "1080p",
+        "720p"
+      ],
+      "default": "1080p"
+    },
+    "ai_engine": {
+      "type": "string",
+      "enum": [
+        "v25",
+        "v24"
+      ],
+      "default": "v25"
+    },
+    "camera_motions": {
+      "type": "object",
+      "default": {},
+      "description": "Per-photo camera motion settings"
+    },
+    "vfx_effects": {
+      "type": "object",
+      "default": {},
+      "description": "Per-photo VFX effects"
+    },
+    "music_track": {
+      "type": "string",
+      "description": "Selected music track name"
+    },
+    "voiceover_script": {
+      "type": "string",
+      "description": "Voiceover script text"
+    },
+    "voiceover_voice": {
+      "type": "string",
+      "description": "Selected voice ID"
+    },
+    "avatar_id": {
+      "type": "string",
+      "description": "Selected avatar ID"
+    },
+    "brand_kit_id": {
+      "type": "string",
+      "description": "Applied brand kit ID"
+    },
+    "intro_template": {
+      "type": "string",
+      "description": "Selected intro template"
+    },
+    "outro_template": {
+      "type": "string",
+      "description": "Selected outro template"
+    },
+    "intro_heading": {
+      "type": "string"
+    },
+    "intro_subheading": {
+      "type": "string"
+    },
+    "thumbnail_url": {
+      "type": "string",
+      "description": "Video thumbnail URL"
+    },
+    "video_url": {
+      "type": "string",
+      "description": "Generated video URL"
+    },
+    "credits_used": {
+      "type": "number",
+      "default": 0
+    },
+    "current_step": {
+      "type": "number",
+      "default": 1
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

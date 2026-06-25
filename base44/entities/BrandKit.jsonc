@@ -1,0 +1,38 @@
+{
+  "name": "BrandKit",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Brand kit name"
+    },
+    "agent_name": {
+      "type": "string",
+      "description": "Agent full name"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Phone in SA format +27"
+    },
+    "profile_photo_url": {
+      "type": "string",
+      "description": "Profile photo URL"
+    },
+    "logo_url": {
+      "type": "string",
+      "description": "Brand logo URL"
+    },
+    "is_default": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "name",
+    "agent_name"
+  ]
+}

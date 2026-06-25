@@ -62,9 +62,9 @@ module.exports = {
   			}
   		},
   		fontFamily: {
-  			heading: ['var(--font-heading)'],
-  			body: ['var(--font-body)'],
-  			display: ['var(--font-display)'],
+  			heading: ['Inter', 'var(--font-heading)'],
+  			body: ['Inter', 'var(--font-body)'],
+  			display: ['Inter', 'var(--font-display)'],
   			mono: ['var(--font-mono)']
   		},
   		keyframes: {
