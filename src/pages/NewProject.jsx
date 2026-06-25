@@ -837,6 +837,10 @@ South African luxury real estate aesthetic.`;
                   setScript={setVoiceoverScript}
                   selectedVoice={voiceoverVoice}
                   setSelectedVoice={setVoiceoverVoice}
+                  projectName={projectName}
+                  heading={heading}
+                  subheading={subheading}
+                  photoCount={selectedPhotos.length}
                 />
               )}
             </div>
