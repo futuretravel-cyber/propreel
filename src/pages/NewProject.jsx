@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft, Check, Upload, Link as LinkIcon, Cloud, X, GripVertical, Monitor, Smartphone, Wand2, Sparkles, Music, Mic, Play, Download, Loader2 } from "lucide-react";
+import { ArrowRight, ArrowLeft, Check, Upload, Link as LinkIcon, Cloud, X, GripVertical, Monitor, Smartphone, Wand2, Sparkles, Music, Mic, Play, Download, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { base44 } from "@/api/base44Client";
@@ -41,6 +41,34 @@ export default function NewProject() {
   const [previewMode, setPreviewMode] = useState("intro");
   const [brandKits, setBrandKits] = useState([]);
   const [selectedBrandKitId, setSelectedBrandKitId] = useState(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const dragItem = useRef(null);
+  const dragOver = useRef(null);
+
+  // Resume a draft project if ?resume=id is in the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const resumeId = params.get("resume");
+    if (resumeId) {
+      base44.entities.Project.get(resumeId).then((p) => {
+        setProjectId(p.id);
+        setProjectName(p.name || "");
+        setPhotos(p.photos || []);
+        setSelectedPhotos(p.selected_photo_ids || []);
+        setOrientation(p.orientation || "landscape");
+        setResolution(p.resolution || "1080p");
+        setAiEngine(p.ai_engine || "v25");
+        setHeading(p.intro_heading || "");
+        setSubheading(p.intro_subheading || "");
+        setVoiceoverScript(p.voiceover_script || "");
+        setVoiceoverVoice(p.voiceover_voice || "alloy");
+        setIntroTemplate(p.intro_template || "Address Reveal");
+        setOutroTemplate(p.outro_template || "Agent Card");
+        setSelectedBrandKitId(p.brand_kit_id || null);
+        setStep(1); // resume from upload step
+      }).catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     base44.entities.BrandKit.filter({ is_default: true }).then((kits) => {
@@ -91,6 +119,49 @@ export default function NewProject() {
     setSelectedPhotos((prev) =>
       prev.includes(url) ? prev.filter((p) => p !== url) : prev.length < 20 ? [...prev, url] : prev
     );
+  };
+
+  const handleSaveDraft = async () => {
+    if (!projectId) return;
+    setSavingDraft(true);
+    try {
+      await base44.entities.Project.update(projectId, {
+        photos,
+        selected_photo_ids: selectedPhotos,
+        orientation,
+        resolution,
+        ai_engine: aiEngine,
+        intro_heading: heading || projectName,
+        intro_subheading: subheading,
+        voiceover_script: voiceoverScript,
+        voiceover_voice: voiceoverVoice,
+        intro_template: introTemplate,
+        outro_template: outroTemplate,
+        brand_kit_id: selectedBrandKitId || "",
+        status: "draft",
+      });
+      toast({ title: "Project saved", description: "You can continue anytime from your dashboard." });
+      navigate("/dashboard");
+    } catch {
+      toast({ title: "Failed to save", variant: "destructive" });
+    }
+    setSavingDraft(false);
+  };
+
+  const handleDragStart = (index) => { dragItem.current = index; };
+  const handleDragEnter = (index) => { dragOver.current = index; };
+  const handleDragEnd = () => {
+    const from = dragItem.current;
+    const to = dragOver.current;
+    if (from === null || to === null || from === to) return;
+    setSelectedPhotos((prev) => {
+      const updated = [...prev];
+      const [moved] = updated.splice(from, 1);
+      updated.splice(to, 0, moved);
+      return updated;
+    });
+    dragItem.current = null;
+    dragOver.current = null;
   };
 
   const handleSaveAndRender = async () => {
@@ -182,22 +253,35 @@ South African luxury real estate aesthetic.`;
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Progress bar */}
+      {/* Progress bar + Save & Exit */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          {stepLabels.map((label, i) => (
-            <div key={label} className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                i <= step ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-gray-400"
-              }`}>
-                {i < step ? <Check className="w-4 h-4" /> : i + 1}
+          <div className="flex items-center gap-1 flex-wrap flex-1">
+            {stepLabels.map((label, i) => (
+              <div key={label} className="flex items-center gap-1">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                  i <= step ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-gray-400"
+                }`}>
+                  {i < step ? <Check className="w-4 h-4" /> : i + 1}
+                </div>
+                <span className={`hidden sm:block text-xs font-medium mr-1 ${i <= step ? "text-[#0F082B]" : "text-gray-400"}`}>{label}</span>
+                {i < stepLabels.length - 1 && (
+                  <div className={`hidden sm:block w-6 lg:w-10 h-0.5 ${i < step ? "bg-[#21ABB5]" : "bg-gray-200"}`} />
+                )}
               </div>
-              <span className={`hidden sm:block text-xs font-medium ${i <= step ? "text-[#0F082B]" : "text-gray-400"}`}>{label}</span>
-              {i < stepLabels.length - 1 && (
-                <div className={`hidden sm:block w-8 lg:w-16 h-0.5 ${i < step ? "bg-[#21ABB5]" : "bg-gray-200"}`} />
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
+          {step > 0 && projectId && (
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={savingDraft}
+              className="rounded-xl gap-2 text-xs ml-4 shrink-0"
+            >
+              {savingDraft ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+              {savingDraft ? "Saving..." : "Save & Exit"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -419,9 +503,17 @@ South African luxury real estate aesthetic.`;
                     <span className="text-xs text-[#606060]">VFX: {totalVfxCount}/3 used across all clips</span>
                   </div>
                   {selectedPhotos.map((url, i) => (
-                    <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2">
-                      <GripVertical className="w-4 h-4 text-gray-400 cursor-grab" />
-                      <img src={url} alt="" className="w-12 h-12 rounded-lg object-cover" />
+                    <div
+                      key={url}
+                      draggable
+                      onDragStart={() => handleDragStart(i)}
+                      onDragEnter={() => handleDragEnter(i)}
+                      onDragEnd={handleDragEnd}
+                      onDragOver={(e) => e.preventDefault()}
+                      className="flex items-center gap-3 bg-gray-50 rounded-xl p-2 cursor-grab active:opacity-60 active:scale-95 transition-all"
+                    >
+                      <GripVertical className="w-4 h-4 text-gray-400" />
+                      <img src={url} alt="" className="w-12 h-12 rounded-lg object-cover pointer-events-none" />
                       <span className="text-xs text-[#606060] flex-1">Clip {i + 1}</span>
                       <VFXSelector
                         photoIndex={i}

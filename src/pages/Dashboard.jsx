@@ -95,16 +95,23 @@ export default function Dashboard() {
               const StatusIcon = status.icon;
               return (
                 <div key={p.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-[#21ABB5]/20 transition-all group">
-                  <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center relative">
-                    {p.thumbnail_url ? (
-                      <img src={p.thumbnail_url} alt={p.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <Video className="w-10 h-10 text-gray-300" />
-                    )}
-                    <span className={`absolute top-3 left-3 inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg ${status.color}`}>
-                      <StatusIcon className="w-3 h-3" /> {status.label}
-                    </span>
-                  </div>
+                  <Link to={p.status === "draft" ? `/projects/new?resume=${p.id}` : `/projects/${p.id}`} className="block">
+                    <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center relative">
+                      {p.thumbnail_url ? (
+                        <img src={p.thumbnail_url} alt={p.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <Video className="w-10 h-10 text-gray-300" />
+                      )}
+                      <span className={`absolute top-3 left-3 inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg ${status.color}`}>
+                        <StatusIcon className="w-3 h-3" /> {status.label}
+                      </span>
+                      {p.status === "draft" && (
+                        <span className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#21ABB5] text-white text-xs font-semibold px-3 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                          Continue →
+                        </span>
+                      )}
+                    </div>
+                  </Link>
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -119,7 +126,9 @@ export default function Dashboard() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem asChild>
-                            <Link to={`/projects/${p.id}`}>Edit</Link>
+                            <Link to={p.status === "draft" ? `/projects/new?resume=${p.id}` : `/projects/${p.id}`}>
+                              {p.status === "draft" ? "Continue" : "View"}
+                            </Link>
                           </DropdownMenuItem>
                           <DropdownMenuItem asChild>
                             <Link to={`/projects/${p.id}/quick-edit`}>Quick Edit</Link>

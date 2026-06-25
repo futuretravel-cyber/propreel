@@ -24,7 +24,7 @@
     },
     "logo_url": {
       "type": "string",
-      "description": "Brand logo URL"
+      "description": "Company/agency logo URL"
     },
     "is_default": {
       "type": "boolean",
