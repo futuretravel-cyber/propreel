@@ -691,165 +691,222 @@ South African luxury real estate aesthetic.`;
         </div>
       )}
 
-      {/* Step 6: Branding */}
+      {/* Step 6: Branding — AutoReel-style 3-column studio layout */}
       {step === 5 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-8">
-          <h2 className="text-xl font-bold text-[#0F082B] mb-2">Add Branding</h2>
-          <p className="text-sm text-[#606060] mb-6">Customise your video with templates, music, voiceovers, and branding.</p>
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div>
+              <h2 className="text-lg font-bold text-[#0F082B]">Customise your video</h2>
+              <p className="text-xs text-[#606060] mt-0.5">Use the sidebar to add templates, music, voiceovers, and branding.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setStep(4)} className="rounded-xl gap-2 text-sm">
+                <ArrowLeft className="w-4 h-4" /> Back
+              </Button>
+              <Button
+                onClick={handleSaveAndRender}
+                disabled={loading}
+                className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-5 gap-2 text-sm"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {renderStatus === "generating_voiceover" ? "Generating voiceover..." : renderStatus === "generating_video" ? "Rendering video..." : "Saving..."}
+                  </>
+                ) : (
+                  <><Download className="w-4 h-4" /> Render branded video</>
+                )}
+              </Button>
+            </div>
+          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Left: Controls */}
-            <div className="space-y-6">
-              {/* Tabs */}
-              <div className="flex gap-2 flex-wrap">
-                {[
-                  { label: "Templates", icon: Sparkles },
-                  { label: "Music", icon: Music },
-                  { label: "Voiceovers", icon: Mic },
-                ].map((tab) => (
-                  <button
-                    key={tab.label}
-                    onClick={() => setBrandingTab(tab.label)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
-                      brandingTab === tab.label ? "bg-[#DEF5F7] text-[#21ABB5]" : "bg-gray-50 text-[#606060] hover:bg-gray-100"
-                    }`}
-                  >
-                    <tab.icon className="w-3.5 h-3.5" /> {tab.label}
-                  </button>
-                ))}
-              </div>
+          <div className="flex" style={{ minHeight: "560px" }}>
+            {/* Icon sidebar */}
+            <div className="w-16 bg-gray-50 border-r border-gray-100 flex flex-col items-center py-3 gap-1 flex-shrink-0">
+              {[
+                { label: "Templates", icon: Sparkles, key: "Templates" },
+                { label: "Brand Kit", icon: null, key: "BrandKit", emoji: "🎨" },
+                { label: "Music", icon: Music, key: "Music" },
+                { label: "Voiceover", icon: Mic, key: "Voiceovers" },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setBrandingTab(tab.key)}
+                  title={tab.label}
+                  className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all ${
+                    brandingTab === tab.key ? "bg-[#21ABB5] text-white shadow-sm" : "text-[#606060] hover:bg-gray-200"
+                  }`}
+                >
+                  {tab.icon ? <tab.icon className="w-4 h-4" /> : <span className="text-base">{tab.emoji}</span>}
+                  <span className="text-[9px] font-medium leading-none">{tab.label}</span>
+                </button>
+              ))}
+            </div>
 
-              {brandingTab === "Templates" && (
-                <>
-                  {/* Intro templates */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Intro Template</h3>
-                    <div className="grid grid-cols-3 gap-2">
-                      {["Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"].map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => { setIntroTemplate(t); setPreviewMode("intro"); }}
-                          className={`aspect-video rounded-lg border-2 text-xs font-medium flex items-center justify-center transition-all ${
-                            introTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300"
-                          }`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+            {/* Control panel */}
+            <div className="w-72 border-r border-gray-100 overflow-y-auto flex-shrink-0">
+              <div className="p-4">
 
-                  {/* Outro templates */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Outro Template</h3>
-                    <div className="grid grid-cols-3 gap-2">
-                      {["Agent Card", "Contact Block", "Agency Logo"].map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => { setOutroTemplate(t); setPreviewMode("outro"); }}
-                          className={`aspect-video rounded-lg border-2 text-xs font-medium flex items-center justify-center transition-all ${
-                            outroTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300"
-                          }`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Heading fields */}
-                  <div className="space-y-3">
+                {brandingTab === "Templates" && (
+                  <div className="space-y-5">
                     <div>
-                      <label className="text-xs font-medium text-[#0F082B] mb-1 block">Main heading</label>
-                      <Input value={heading} onChange={(e) => setHeading(e.target.value)} placeholder={projectName} className="rounded-xl h-10" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-[#0F082B] mb-1 block">Sub heading</label>
-                      <Input value={subheading} onChange={(e) => setSubheading(e.target.value)} placeholder="Beautiful family home in a prime location" className="rounded-xl h-10" />
-                    </div>
-                  </div>
+                      <p className="text-xs font-semibold text-[#0F082B] mb-1">Template style</p>
+                      <div className="flex gap-1 mb-3">
+                        <button onClick={() => setPreviewMode("intro")} className={`px-3 py-1 rounded-lg text-xs font-medium ${previewMode === "intro" ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-[#606060]"}`}>Intro</button>
+                        <button onClick={() => setPreviewMode("outro")} className={`px-3 py-1 rounded-lg text-xs font-medium ${previewMode === "outro" ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-[#606060]"}`}>Outro</button>
+                      </div>
 
-                  {/* Brand Kit selector */}
-                  {brandKits.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Brand Kit</h3>
-                      <div className="space-y-2">
-                        {brandKits.map((kit) => (
-                          <button
-                            key={kit.id}
-                            onClick={() => setSelectedBrandKitId(kit.id)}
-                            className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-[#21ABB5] bg-[#DEF5F7]/30" : "border-gray-100 hover:border-gray-200"}`}
-                          >
-                            <div className="w-8 h-8 rounded-full bg-[#DEF5F7] flex items-center justify-center text-xs font-bold text-[#21ABB5] flex-shrink-0">
-                              {kit.agent_name?.[0]}
+                      {previewMode === "intro" && (
+                        <>
+                          <p className="text-[10px] text-[#606060] mb-2">Select an intro template style</p>
+                          <div className="grid grid-cols-2 gap-2 mb-4">
+                            {["None", "Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"].map((t) => (
+                              <button
+                                key={t}
+                                onClick={() => setIntroTemplate(t)}
+                                className={`aspect-video rounded-lg border-2 text-[10px] font-medium flex items-center justify-center transition-all p-1 text-center ${
+                                  introTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"
+                                }`}
+                              >
+                                {t}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="space-y-2">
+                            <div>
+                              <label className="text-[10px] font-medium text-[#606060] mb-1 block">Line 1</label>
+                              <Input value={heading} onChange={(e) => setHeading(e.target.value)} placeholder={projectName} className="rounded-lg h-8 text-xs" />
                             </div>
                             <div>
-                              <p className="text-xs font-semibold text-[#0F082B]">{kit.name}</p>
-                              <p className="text-xs text-[#606060]">{kit.agent_name}</p>
+                              <label className="text-[10px] font-medium text-[#606060] mb-1 block">Line 2</label>
+                              <Input value={subheading} onChange={(e) => setSubheading(e.target.value)} placeholder="Beautiful family home..." className="rounded-lg h-8 text-xs" />
                             </div>
-                          </button>
-                        ))}
+                          </div>
+                        </>
+                      )}
+
+                      {previewMode === "outro" && (
+                        <>
+                          <p className="text-[10px] text-[#606060] mb-2">Select an outro template style</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {["None", "Agent Card", "Contact Block", "Agency Logo"].map((t) => (
+                              <button
+                                key={t}
+                                onClick={() => setOutroTemplate(t)}
+                                className={`aspect-video rounded-lg border-2 text-[10px] font-medium flex items-center justify-center transition-all p-1 text-center ${
+                                  outroTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"
+                                }`}
+                              >
+                                {t}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {brandingTab === "BrandKit" && (
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-[#0F082B]">Brand Kit</p>
+                    <p className="text-[10px] text-[#606060]">Your brand kit auto-applies your profile photo, logo, name, and contact info to your video.</p>
+                    {brandKits.length === 0 ? (
+                      <div className="bg-gray-50 rounded-xl p-4 text-center">
+                        <p className="text-xs text-[#606060] mb-2">No brand kits yet.</p>
+                        <a href="/brand-kits" target="_blank" className="text-xs text-[#21ABB5] underline">Create a Brand Kit →</a>
                       </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {brandingTab === "Music" && (
-                <div className="space-y-2">
-                  {musicTracks.length === 0 ? (
-                    <div className="bg-gray-50 rounded-xl p-6 text-center">
-                      <Music className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                      <p className="text-sm text-[#606060]">No music tracks yet.</p>
-                      <p className="text-xs text-[#606060] mt-1">Ask your admin to upload tracks in the Music Library.</p>
-                    </div>
-                  ) : (
-                    musicTracks.map((track) => (
-                      <button
-                        key={track.id}
-                        onClick={() => setMusicTrack(track.id)}
-                        className={`w-full flex items-center gap-3 rounded-xl p-3 transition-all border-2 ${musicTrack === track.id ? "border-[#21ABB5] bg-[#DEF5F7]/20" : "bg-gray-50 border-transparent hover:border-gray-200"}`}
-                      >
-                        <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const audio = new Audio(track.file_url);
-                            audio.play();
-                          }}
-                          className="w-8 h-8 rounded-full bg-[#21ABB5] flex items-center justify-center flex-shrink-0 hover:bg-[#1a9da6] transition-colors"
+                    ) : (
+                      brandKits.map((kit) => (
+                        <button
+                          key={kit.id}
+                          onClick={() => setSelectedBrandKitId(kit.id)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-[#21ABB5] bg-[#DEF5F7]/30" : "border-gray-100 hover:border-gray-200"}`}
                         >
-                          <Play className="w-3.5 h-3.5 text-white fill-white ml-0.5" />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p className="text-sm font-medium text-[#0F082B]">{track.name}</p>
-                          <p className="text-xs text-[#606060]">{track.genre}{track.duration ? ` · ${track.duration}` : ""}</p>
-                        </div>
-                        {musicTrack === track.id && <Check className="w-4 h-4 text-[#21ABB5]" />}
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
+                          {kit.profile_photo_url ? (
+                            <img src={kit.profile_photo_url} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                          ) : (
+                            <div className="w-9 h-9 rounded-full bg-[#DEF5F7] flex items-center justify-center text-xs font-bold text-[#21ABB5] flex-shrink-0">
+                              {kit.agent_name?.[0]}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-[#0F082B] truncate">{kit.name}</p>
+                            <p className="text-[10px] text-[#606060] truncate">{kit.agent_name}</p>
+                            {kit.email && <p className="text-[10px] text-[#606060] truncate">{kit.email}</p>}
+                          </div>
+                          {selectedBrandKitId === kit.id && <Check className="w-4 h-4 text-[#21ABB5] ml-auto flex-shrink-0" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
 
-              {brandingTab === "Voiceovers" && (
-                <VoiceoverSelector
-                  script={voiceoverScript}
-                  setScript={setVoiceoverScript}
-                  selectedVoice={voiceoverVoice}
-                  setSelectedVoice={setVoiceoverVoice}
-                  projectName={projectName}
-                  heading={heading}
-                  subheading={subheading}
-                  photoCount={selectedPhotos.length}
-                />
-              )}
+                {brandingTab === "Music" && (
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-[#0F082B]">Music</p>
+                    <p className="text-[10px] text-[#606060]">Select a track to feature in your video.</p>
+                    {musicTracks.length === 0 ? (
+                      <div className="bg-gray-50 rounded-xl p-4 text-center">
+                        <Music className="w-6 h-6 text-gray-300 mx-auto mb-1" />
+                        <p className="text-xs text-[#606060]">No music tracks yet.</p>
+                      </div>
+                    ) : (
+                      musicTracks.map((track) => (
+                        <button
+                          key={track.id}
+                          onClick={() => setMusicTrack(track.id)}
+                          className={`w-full flex items-center gap-2.5 rounded-xl p-2.5 transition-all border ${musicTrack === track.id ? "border-[#21ABB5] bg-[#DEF5F7]/20" : "bg-gray-50 border-transparent hover:border-gray-200"}`}
+                        >
+                          <div
+                            onClick={(e) => { e.stopPropagation(); new Audio(track.file_url).play(); }}
+                            className="w-7 h-7 rounded-full bg-[#21ABB5] flex items-center justify-center flex-shrink-0 hover:bg-[#1a9da6] transition-colors"
+                          >
+                            <Play className="w-3 h-3 text-white fill-white ml-0.5" />
+                          </div>
+                          <div className="flex-1 text-left min-w-0">
+                            <p className="text-xs font-medium text-[#0F082B] truncate">{track.name}</p>
+                            <p className="text-[10px] text-[#606060]">{track.genre}{track.duration ? ` · ${track.duration}` : ""}</p>
+                          </div>
+                          {musicTrack === track.id && <Check className="w-3.5 h-3.5 text-[#21ABB5] flex-shrink-0" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {brandingTab === "Voiceovers" && (
+                  <VoiceoverSelector
+                    script={voiceoverScript}
+                    setScript={setVoiceoverScript}
+                    selectedVoice={voiceoverVoice}
+                    setSelectedVoice={setVoiceoverVoice}
+                    projectName={projectName}
+                    heading={heading}
+                    subheading={subheading}
+                    photoCount={selectedPhotos.length}
+                  />
+                )}
+              </div>
             </div>
 
             {/* Right: Live Preview */}
-            <div>
-              <div className="sticky top-24">
-                <p className="text-xs font-semibold text-[#0F082B] mb-2">Live Preview</p>
-                <div className={`rounded-2xl overflow-hidden border border-gray-200 shadow-lg ${orientation === "portrait" ? "aspect-[9/16] max-w-[220px] mx-auto" : "aspect-video"}`}>
+            <div className="flex-1 bg-gray-50 flex flex-col items-center justify-center p-6 gap-4">
+              <div className="w-full max-w-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-[#0F082B]">Preview</p>
+                  <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
+                    <button onClick={() => setOrientation("portrait")} className={`px-2.5 py-1 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${orientation === "portrait" ? "bg-[#21ABB5] text-white" : "text-[#606060]"}`}>
+                      <Smartphone className="w-3 h-3" /> Portrait
+                    </button>
+                    <button onClick={() => setOrientation("landscape")} className={`px-2.5 py-1 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${orientation === "landscape" ? "bg-[#21ABB5] text-white" : "text-[#606060]"}`}>
+                      <Monitor className="w-3 h-3" /> Landscape
+                    </button>
+                  </div>
+                </div>
+
+                <div className={`rounded-xl overflow-hidden border border-gray-200 shadow-md mx-auto ${orientation === "portrait" ? "aspect-[9/16] max-w-[180px]" : "aspect-video w-full"}`}>
                   <BrandingPreview
                     orientation={orientation}
                     introTemplate={introTemplate}
@@ -862,55 +919,29 @@ South African luxury real estate aesthetic.`;
                   />
                 </div>
 
-                {/* Preview mode switcher */}
-                <div className="flex gap-1 justify-center mt-3 bg-gray-100 rounded-xl p-1">
+                {/* Intro / Outro switcher */}
+                <div className="flex gap-1 mt-3 bg-white border border-gray-200 rounded-xl p-1">
                   {["intro", "video", "outro"].map((m) => (
                     <button
                       key={m}
                       onClick={() => setPreviewMode(m)}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${previewMode === m ? "bg-white text-[#0F082B] shadow-sm" : "text-[#606060] hover:text-[#0F082B]"}`}
+                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium capitalize transition-colors ${previewMode === m ? "bg-[#21ABB5] text-white shadow-sm" : "text-[#606060] hover:text-[#0F082B]"}`}
                     >
                       {m}
                     </button>
                   ))}
                 </div>
 
-                <div className="flex gap-2 justify-center mt-3">
-                  <button
-                    onClick={() => setOrientation("landscape")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium ${orientation === "landscape" ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-[#606060]"}`}
-                  >
-                    Landscape
-                  </button>
-                  <button
-                    onClick={() => setOrientation("portrait")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium ${orientation === "portrait" ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-[#606060]"}`}
-                  >
-                    Portrait
-                  </button>
+                {/* Summary panel */}
+                <div className="mt-4 bg-white rounded-xl border border-gray-200 p-3 space-y-1.5">
+                  <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Intro:</span> {introTemplate || "None"}</p>
+                  <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Outro:</span> {outroTemplate || "None"}</p>
+                  <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Music:</span> {musicTracks.find(t => t.id === musicTrack)?.name || "None"}</p>
+                  {selectedBrandKit && <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Brand Kit:</span> {selectedBrandKit.name}</p>}
+                  {voiceoverScript && <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Script:</span> {voiceoverScript.slice(0, 40)}...</p>}
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="flex justify-between mt-8">
-            <Button variant="outline" onClick={() => setStep(4)} className="rounded-xl gap-2">
-              <ArrowLeft className="w-4 h-4" /> Back
-            </Button>
-            <Button
-              onClick={handleSaveAndRender}
-              disabled={loading}
-              className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {renderStatus === "generating_voiceover" ? "Generating voiceover..." : renderStatus === "generating_video" ? "Rendering video..." : "Saving..."}
-                </>
-              ) : (
-                <><Download className="w-4 h-4" /> Render video</>
-              )}
-            </Button>
           </div>
         </div>
       )}
