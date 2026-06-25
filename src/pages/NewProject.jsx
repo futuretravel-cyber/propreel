@@ -25,6 +25,8 @@ export default function NewProject() {
   const [importUrl, setImportUrl] = useState("");
   const [uploadTab, setUploadTab] = useState("device");
   const [vfxEffects, setVfxEffects] = useState({});
+  const [globalCameraMotion, setGlobalCameraMotion] = useState("Auto");
+  const [globalVfxEffects, setGlobalVfxEffects] = useState([]);
   const [introTemplate, setIntroTemplate] = useState("Address Reveal");
   const [outroTemplate, setOutroTemplate] = useState("Agent Card");
   const [heading, setHeading] = useState("");
@@ -412,7 +414,17 @@ export default function NewProject() {
               <p className="text-xs text-[#606060] mb-3">Default: Auto (AI picks the best motion for each clip)</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-w-md">
                 {["Auto", "Push In", "Push Out", "Orbit Left", "Orbit Right"].map((m) => (
-                  <span key={m} className="text-xs text-center bg-gray-50 border border-gray-100 rounded-lg py-2 px-3">{m}</span>
+                  <button
+                    key={m}
+                    onClick={() => setGlobalCameraMotion(m)}
+                    className={`text-xs text-center rounded-lg py-2 px-3 border-2 transition-all font-medium ${
+                      globalCameraMotion === m
+                        ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]"
+                        : "bg-gray-50 border-gray-100 text-[#606060] hover:border-gray-300"
+                    }`}
+                  >
+                    {m}
+                  </button>
                 ))}
               </div>
             </div>
@@ -457,16 +469,37 @@ export default function NewProject() {
                   { name: "Virtual Staging", desc: "Animates empty room to furnished" },
                   { name: "Lifestyle", desc: "Adds warm lived-in feel" },
                   { name: "Pencil Sketch", desc: "Artistic illustrated look" },
-                ].map((vfx) => (
-                  <div key={vfx.name} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100">
-                    <Sparkles className="w-4 h-4 text-[#21ABB5] flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-[#0F082B]">{vfx.name}</p>
-                      <p className="text-xs text-[#606060]">{vfx.desc}</p>
-                    </div>
-                  </div>
-                ))}
+                ].map((vfx) => {
+                  const selected = globalVfxEffects.includes(vfx.name);
+                  const disabled = !selected && globalVfxEffects.length >= 3;
+                  return (
+                    <button
+                      key={vfx.name}
+                      onClick={() => setGlobalVfxEffects((prev) =>
+                        prev.includes(vfx.name) ? prev.filter((v) => v !== vfx.name) : [...prev, vfx.name]
+                      )}
+                      disabled={disabled}
+                      className={`flex items-center gap-3 rounded-xl p-3 border-2 text-left transition-all ${
+                        selected
+                          ? "border-[#21ABB5] bg-[#DEF5F7]/30"
+                          : disabled
+                          ? "bg-gray-50 border-gray-100 opacity-40 cursor-not-allowed"
+                          : "bg-gray-50 border-gray-100 hover:border-gray-300"
+                      }`}
+                    >
+                      <Sparkles className={`w-4 h-4 flex-shrink-0 ${selected ? "text-[#21ABB5]" : "text-[#606060]"}`} />
+                      <div>
+                        <p className={`text-sm font-medium ${selected ? "text-[#21ABB5]" : "text-[#0F082B]"}`}>{vfx.name}</p>
+                        <p className="text-xs text-[#606060]">{vfx.desc}</p>
+                      </div>
+                      {selected && <Check className="w-4 h-4 text-[#21ABB5] ml-auto flex-shrink-0" />}
+                    </button>
+                  );
+                })}
               </div>
+              {globalVfxEffects.length > 0 && (
+                <p className="text-xs text-[#21ABB5] mt-2">{globalVfxEffects.length}/3 effects selected</p>
+              )}
             </div>
 
             {/* Credit Warning */}

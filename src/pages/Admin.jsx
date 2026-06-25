@@ -256,9 +256,24 @@ export default function Admin() {
                       <p className="text-sm font-semibold text-[#0F082B]">{u.full_name || "—"}</p>
                       <p className="text-xs text-[#606060]">{u.email}</p>
                     </div>
-                    <div className="text-right flex-shrink-0">
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="text-right">
+                        <p className="text-xs font-semibold text-[#0F082B]">{u.credits || 0} credits</p>
+                        <p className="text-xs text-[#606060] mt-0.5">Joined {new Date(u.created_date).toLocaleDateString("en-ZA", { day: "numeric", month: "short" })}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-lg text-xs h-8"
+                        onClick={async () => {
+                          await base44.entities.User.update(u.id, { credits: (u.credits || 0) + 100 });
+                          setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, credits: (x.credits || 0) + 100 } : x));
+                          toast({ title: `+100 credits added to ${u.full_name || u.email}` });
+                        }}
+                      >
+                        +100 credits
+                      </Button>
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>{u.role}</span>
-                      <p className="text-xs text-[#606060] mt-1">Joined {new Date(u.created_date).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}</p>
                     </div>
                   </div>
                 ))}

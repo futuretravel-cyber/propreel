@@ -1,4 +1,6 @@
 {
+  "name": "User",
+  "type": "object",
   "properties": {
     "role": {
       "type": "string",
@@ -7,11 +9,14 @@
         "admin",
         "user"
       ]
+    },
+    "credits": {
+      "type": "number",
+      "default": 0,
+      "description": "Available video credits"
     }
   },
   "required": [
     "role"
-  ],
-  "name": "User",
-  "type": "object"
+  ]
 }
