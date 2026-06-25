@@ -96,7 +96,7 @@ export default function ProjectDetail() {
                 heading={project.intro_heading || project.name}
                 subheading={project.intro_subheading}
                 orientation={project.orientation}
-                clipDuration={3}
+                clipDuration={project.clip_duration || (slideshowPhotos.length <= 5 ? 5 : slideshowPhotos.length <= 10 ? 4 : slideshowPhotos.length <= 15 ? 3.5 : 3)}
               />
 
               <div className="flex gap-3 mt-4 justify-center flex-wrap">
@@ -148,7 +148,7 @@ export default function ProjectDetail() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#606060]">Photos in video</span>
-                <span className="font-medium text-[#0F082B]">{slideshowPhotos.length} ({slideshowPhotos.length * 3}s)</span>
+                <span className="font-medium text-[#0F082B]">{slideshowPhotos.length} ({Math.round(slideshowPhotos.length * (project.clip_duration || 3))}s)</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#606060]">Resolution</span>

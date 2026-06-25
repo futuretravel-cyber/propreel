@@ -85,6 +85,11 @@
       "type": "string",
       "description": "Generated voiceover audio URL"
     },
+    "clip_duration": {
+      "type": "number",
+      "default": 3,
+      "description": "Seconds per photo clip (auto-scaled by photo count)"
+    },
     "avatar_id": {
       "type": "string",
       "description": "Selected avatar ID"

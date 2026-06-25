@@ -11,6 +11,15 @@ import VoiceoverSelector from "@/components/studio/VoiceoverSelector";
 
 const stepLabels = ["Create", "Upload Photos", "Edit Photos", "Select Photos", "Video Settings", "Branding"];
 
+// Auto-scale clip duration based on photo count so total video feels right
+// 1-5 photos → 5s each | 6-10 → 4s | 11-15 → 3.5s | 16-20 → 3s
+function getClipDuration(count) {
+  if (count <= 5) return 5;
+  if (count <= 10) return 4;
+  if (count <= 15) return 3.5;
+  return 3;
+}
+
 export default function NewProject() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -167,6 +176,8 @@ export default function NewProject() {
   const handleSaveAndRender = async () => {
     setLoading(true);
     const selectedTrack = musicTracks.find((t) => t.id === musicTrack);
+    const clipDuration = getClipDuration(selectedPhotos.length);
+    const totalDuration = Math.round(selectedPhotos.length * clipDuration);
     try {
       // Step 1: Save all project settings
       await base44.entities.Project.update(projectId, {
@@ -215,11 +226,12 @@ export default function NewProject() {
         thumbnail_url: coverPhoto,
         voiceover_url: voiceoverUrl || "",
         music_url: musicUrl,
+        clip_duration: clipDuration,
         credits_used: 1,
       });
 
       setRenderStatus("done");
-      toast({ title: "Video ready! 🎬", description: `Your ${selectedPhotos.length}-photo slideshow is ready to preview.` });
+      toast({ title: "Video ready! 🎬", description: `Your ${selectedPhotos.length}-photo slideshow is ready (${totalDuration}s total).` });
       navigate(`/projects/${projectId}`);
     } catch (err) {
       toast({ title: "Failed to start render", variant: "destructive" });
@@ -467,7 +479,7 @@ export default function NewProject() {
 
             <div>
               <h3 className="text-sm font-semibold text-[#0F082B] mb-3">
-                Selected for video ({selectedPhotos.length} photos ≈ {selectedPhotos.length * 3}s)
+                Selected for video ({selectedPhotos.length} photos ≈ {Math.round(selectedPhotos.length * getClipDuration(selectedPhotos.length))}s)
               </h3>
               {selectedPhotos.length === 0 ? (
                 <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center text-sm text-[#606060]">
