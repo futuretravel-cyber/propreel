@@ -29,7 +29,7 @@
         "type": "string"
       },
       "default": [],
-      "description": "Photo indices selected for video"
+      "description": "Photo URLs selected for video (ordered)"
     },
     "orientation": {
       "type": "string",
@@ -69,6 +69,10 @@
       "type": "string",
       "description": "Selected music track name"
     },
+    "music_url": {
+      "type": "string",
+      "description": "Music file URL for playback"
+    },
     "voiceover_script": {
       "type": "string",
       "description": "Voiceover script text"
@@ -76,6 +80,10 @@
     "voiceover_voice": {
       "type": "string",
       "description": "Selected voice ID"
+    },
+    "voiceover_url": {
+      "type": "string",
+      "description": "Generated voiceover audio URL"
     },
     "avatar_id": {
       "type": "string",
@@ -101,11 +109,11 @@
     },
     "thumbnail_url": {
       "type": "string",
-      "description": "Video thumbnail URL"
+      "description": "Video thumbnail URL (first photo)"
     },
     "video_url": {
       "type": "string",
-      "description": "Generated video URL"
+      "description": "Generated video URL (if server-rendered)"
     },
     "credits_used": {
       "type": "number",

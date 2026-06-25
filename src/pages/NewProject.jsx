@@ -201,48 +201,25 @@ export default function NewProject() {
           });
           voiceoverUrl = result.url;
         } catch {
-          // non-fatal, continue without voiceover
+          // non-fatal
         }
       }
 
-      // Step 3: Generate the video using AI image-to-video
+      // Step 3: Save everything and mark ready — slideshow plays in-browser using actual uploaded photos
       setRenderStatus("generating_video");
-      const photosForVideo = selectedPhotos.slice(0, 8); // use up to 8 photos
-      const vfxDesc = globalVfxEffects.length ? `Apply these VFX effects: ${globalVfxEffects.join(", ")}.` : "";
-      const motionDesc = globalCameraMotion !== "Auto" ? `Use ${globalCameraMotion} camera motion.` : "Use dynamic cinematic camera movement.";
-      const orientStr = orientation === "portrait" ? "9:16 vertical portrait format" : "16:9 landscape format";
+      const coverPhoto = selectedPhotos[0] || photos[0] || "";
+      const musicUrl = selectedTrack?.file_url || "";
 
-      // Generate a cinematic video from the first key photo
-      const coverPhoto = photosForVideo[0];
-      const videoPrompt = `Create a cinematic real estate property showcase video in ${orientStr}. 
-Property: "${heading || projectName}". ${subheading ? `Subtitle: "${subheading}".` : ""}
-${motionDesc} ${vfxDesc}
-Show the property beautifully with smooth transitions, professional lighting, and a luxury real estate feel.
-Music style: ${selectedTrack?.genre || "cinematic background music"}.
-South African luxury real estate aesthetic.`;
-
-      let videoUrl = null;
-      try {
-        const videoResult = await base44.integrations.Core.GenerateVideo({
-          prompt: videoPrompt,
-          aspect_ratio: orientation === "portrait" ? "9:16" : "16:9",
-          duration: Math.min(8, Math.max(4, photosForVideo.length)),
-        });
-        videoUrl = videoResult.url;
-      } catch {
-        // If video generation fails, mark as processing (simulated)
-      }
-
-      // Step 4: Save final output
       await base44.entities.Project.update(projectId, {
-        status: videoUrl ? "ready" : "processing",
-        video_url: videoUrl || "",
-        thumbnail_url: coverPhoto || "",
+        status: "ready",
+        thumbnail_url: coverPhoto,
+        voiceover_url: voiceoverUrl || "",
+        music_url: musicUrl,
         credits_used: 1,
       });
 
       setRenderStatus("done");
-      toast({ title: videoUrl ? "Video rendered successfully! 🎬" : "Render queued!", description: videoUrl ? "Your video is ready to view." : "We'll notify you when it's ready." });
+      toast({ title: "Video ready! 🎬", description: `Your ${selectedPhotos.length}-photo slideshow is ready to preview.` });
       navigate(`/projects/${projectId}`);
     } catch (err) {
       toast({ title: "Failed to start render", variant: "destructive" });
