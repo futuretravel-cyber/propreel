@@ -1,7 +1,9 @@
 import React, { useState, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Play, Star, ArrowRight, GripVertical } from "lucide-react";
+import { Play, Star, ArrowRight, GripVertical, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+const DEMO_VIDEO = "https://media.base44.com/videos/public/6a3d034ac0fe750276476665/58b14a718_generated_video.mp4";
 
 const HERO_VIDEO = "https://media.base44.com/videos/public/6a3d034ac0fe750276476665/58d86fd5e_generated_video.mp4";
 
@@ -27,6 +29,7 @@ const previewCards = [
 
 export default function HeroSection() {
   const [sliderPos, setSliderPos] = useState(50);
+  const [showDemo, setShowDemo] = useState(false);
   const sliderRef = useRef(null);
   const dragging = useRef(false);
 
@@ -59,7 +62,7 @@ export default function HeroSection() {
               Get started free <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
-          <Button variant="outline" className="h-12 rounded-xl text-base gap-2 border-gray-200 px-8">
+          <Button variant="outline" onClick={() => setShowDemo(true)} className="h-12 rounded-xl text-base gap-2 border-gray-200 px-8">
             <Play className="w-4 h-4 fill-[#21ABB5] text-[#21ABB5]" /> Watch demo
           </Button>
         </div>
@@ -133,6 +136,27 @@ export default function HeroSection() {
           <div className="absolute top-3 right-3 bg-[#21ABB5] text-white text-[10px] font-semibold px-2 py-1 rounded-md z-20">After</div>
         </div>
       </div>
+
+      {/* Demo video modal */}
+      {showDemo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setShowDemo(false)}>
+          <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowDemo(false)}
+              className="absolute -top-10 right-0 text-white/70 hover:text-white flex items-center gap-1 text-sm"
+            >
+              <X className="w-4 h-4" /> Close
+            </button>
+            <video
+              src={DEMO_VIDEO}
+              autoPlay
+              controls
+              className="w-full rounded-2xl shadow-2xl"
+              style={{ aspectRatio: "16/9" }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Scrolling preview strip */}
       <div className="relative overflow-hidden py-4">

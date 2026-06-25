@@ -116,16 +116,25 @@ export default function SlideshowPlayer({
       .finally(() => setAnalyzing(false));
   }, [photos]);
 
-  // Setup audio
+  // Setup audio — tear down old instances before creating new ones
   useEffect(() => {
+    voiceRef.current?.pause();
+    voiceRef.current = null;
+    musicRef.current?.pause();
+    musicRef.current = null;
+
     if (voiceoverUrl) {
-      voiceRef.current = new Audio(voiceoverUrl);
-      voiceRef.current.volume = 1.0;
+      const a = new Audio(voiceoverUrl);
+      a.volume = 1.0;
+      a.preload = "auto";
+      voiceRef.current = a;
     }
     if (musicUrl) {
-      musicRef.current = new Audio(musicUrl);
-      musicRef.current.volume = 0.25;
-      musicRef.current.loop = true;
+      const a = new Audio(musicUrl);
+      a.volume = 0.25;
+      a.loop = true;
+      a.preload = "auto";
+      musicRef.current = a;
     }
     return () => {
       voiceRef.current?.pause();
