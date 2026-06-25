@@ -55,6 +55,7 @@ export default function BrandKits() {
   const handleUploadAvatar = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = "";
     setUploadingAvatar(true);
     try {
       const res = await base44.integrations.Core.UploadFile({ file });
@@ -69,6 +70,7 @@ export default function BrandKits() {
   const handleUploadLogo = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = "";
     setUploadingLogo(true);
     try {
       const res = await base44.integrations.Core.UploadFile({ file });
