@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown } from "lucide-react";
+import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown, ShieldCheck } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -11,6 +11,10 @@ const navItems = [
   { icon: CreditCard, label: "Brand Kits", path: "/brand-kits" },
   { icon: Settings, label: "Settings", path: "/settings" },
   { icon: HelpCircle, label: "Help", path: "#" },
+];
+
+const adminNavItems = [
+  { icon: ShieldCheck, label: "Admin", path: "/admin" },
 ];
 
 export default function StudioLayout() {
@@ -50,6 +54,28 @@ export default function StudioLayout() {
             );
           })}
         </div>
+
+        {user?.role === "admin" && (
+          <div className="mt-3 space-y-1">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-1">Admin</p>
+            {adminNavItems.map((item) => {
+              const active = location.pathname === item.path;
+              return (
+                <Link
+                  key={item.label}
+                  to={item.path}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    active ? "bg-purple-50 text-purple-600" : "text-[#606060] hover:bg-gray-50 hover:text-[#0F082B]"
+                  }`}
+                >
+                  <item.icon className="w-5 h-5" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
 
         <div className="mt-4 mx-3">
           <Link

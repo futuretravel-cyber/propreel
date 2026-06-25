@@ -3,15 +3,26 @@ import { Link } from "react-router-dom";
 import { Play, Star, ArrowRight, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const HERO_VIDEO = "https://media.base44.com/videos/public/6a3d034ac0fe750276476665/58d86fd5e_generated_video.mp4";
+
+const PROPERTY_IMAGES = {
+  clifton: "https://media.base44.com/images/public/6a3d034ac0fe750276476665/440304db6_generated_image.png",
+  sandton: "https://media.base44.com/images/public/6a3d034ac0fe750276476665/f97b84cb9_generated_image.png",
+  interior: "https://media.base44.com/images/public/6a3d034ac0fe750276476665/912441b3b_generated_image.png",
+  hermanus: "https://media.base44.com/images/public/6a3d034ac0fe750276476665/27ab3c7c7_generated_image.png",
+  franschhoek: "https://media.base44.com/images/public/6a3d034ac0fe750276476665/97187bdcc_generated_image.png",
+  campsbay: "https://media.base44.com/images/public/6a3d034ac0fe750276476665/a75998de2_generated_image.png",
+};
+
 const previewCards = [
-  { w: "w-48", h: "h-28", label: "Sandton Villa", aspect: "16:9", bg: "from-[#21ABB5]/20 to-[#21ABB5]/5" },
-  { w: "w-32", h: "h-52", label: "Cape Town Penthouse", aspect: "9:16", bg: "from-purple-200/40 to-purple-100/20" },
-  { w: "w-48", h: "h-28", label: "Durban Beachfront", aspect: "16:9", bg: "from-amber-200/40 to-amber-100/20" },
-  { w: "w-32", h: "h-52", label: "Stellenbosch Estate", aspect: "9:16", bg: "from-emerald-200/40 to-emerald-100/20" },
-  { w: "w-48", h: "h-28", label: "Pretoria Suburb", aspect: "16:9", bg: "from-rose-200/40 to-rose-100/20" },
-  { w: "w-32", h: "h-52", label: "Camps Bay", aspect: "9:16", bg: "from-blue-200/40 to-blue-100/20" },
-  { w: "w-48", h: "h-28", label: "Umhlanga Rocks", aspect: "16:9", bg: "from-[#21ABB5]/15 to-[#21ABB5]/5" },
-  { w: "w-32", h: "h-52", label: "Franschhoek Wine Estate", aspect: "9:16", bg: "from-violet-200/40 to-violet-100/20" },
+  { w: "w-48", h: "h-28", label: "Clifton, Cape Town", aspect: "16:9", img: PROPERTY_IMAGES.clifton },
+  { w: "w-32", h: "h-52", label: "Cape Town Interior", aspect: "9:16", img: PROPERTY_IMAGES.interior },
+  { w: "w-48", h: "h-28", label: "Sandton, JHB", aspect: "16:9", img: PROPERTY_IMAGES.sandton },
+  { w: "w-32", h: "h-52", label: "Camps Bay", aspect: "9:16", img: PROPERTY_IMAGES.campsbay },
+  { w: "w-48", h: "h-28", label: "Hermanus Coast", aspect: "16:9", img: PROPERTY_IMAGES.hermanus },
+  { w: "w-32", h: "h-52", label: "Franschhoek Estate", aspect: "9:16", img: PROPERTY_IMAGES.franschhoek },
+  { w: "w-48", h: "h-28", label: "Clifton, Cape Town", aspect: "16:9", img: PROPERTY_IMAGES.clifton },
+  { w: "w-32", h: "h-52", label: "Sandton, JHB", aspect: "9:16", img: PROPERTY_IMAGES.sandton },
 ];
 
 export default function HeroSection() {
@@ -77,28 +88,31 @@ export default function HeroSection() {
           onTouchEnd={() => (dragging.current = false)}
           onMouseLeave={() => (dragging.current = false)}
         >
-          {/* "After" - full background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-[#21ABB5]/10 via-[#DEF5F7] to-white flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl bg-[#21ABB5] mx-auto mb-3 flex items-center justify-center">
-                <Play className="w-8 h-8 text-white fill-white" />
-              </div>
-              <p className="text-sm font-semibold text-[#0F082B]">Cinematic AI Video</p>
-              <p className="text-xs text-[#606060]">After — Polished reel</p>
+          {/* "After" - cinematic video */}
+          <div className="absolute inset-0 bg-black">
+            <video
+              src={HERO_VIDEO}
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+            <div className="absolute bottom-4 right-4 bg-[#21ABB5] text-white text-xs font-semibold px-3 py-1 rounded-lg flex items-center gap-1.5">
+              <Play className="w-3 h-3 fill-white" /> AI Video
             </div>
           </div>
 
-          {/* "Before" - clipped left */}
+          {/* "Before" - raw listing photo, clipped left */}
           <div
-            className="absolute inset-0 bg-gradient-to-br from-gray-200 via-gray-100 to-gray-50 flex items-center justify-center"
+            className="absolute inset-0"
             style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
           >
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl bg-gray-300 mx-auto mb-3 flex items-center justify-center">
-                <div className="w-8 h-6 bg-gray-400 rounded" />
-              </div>
-              <p className="text-sm font-semibold text-[#0F082B]">Raw Listing Photo</p>
-              <p className="text-xs text-[#606060]">Before — Static image</p>
+            <img src={PROPERTY_IMAGES.clifton} alt="Before" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-br from-gray-900/20 to-transparent" />
+            <div className="absolute bottom-4 left-4 bg-black/60 text-white text-xs font-semibold px-3 py-1 rounded-lg">
+              Raw Photo
             </div>
           </div>
 
@@ -115,8 +129,8 @@ export default function HeroSection() {
           </div>
 
           {/* Labels */}
-          <div className="absolute top-3 left-3 bg-black/60 text-white text-[10px] font-semibold px-2 py-1 rounded-md">Before</div>
-          <div className="absolute top-3 right-3 bg-[#21ABB5] text-white text-[10px] font-semibold px-2 py-1 rounded-md">After</div>
+          <div className="absolute top-3 left-3 bg-black/60 text-white text-[10px] font-semibold px-2 py-1 rounded-md z-20">Before</div>
+          <div className="absolute top-3 right-3 bg-[#21ABB5] text-white text-[10px] font-semibold px-2 py-1 rounded-md z-20">After</div>
         </div>
       </div>
 
@@ -126,10 +140,13 @@ export default function HeroSection() {
           {[...previewCards, ...previewCards].map((c, i) => (
             <div
               key={i}
-              className={`${c.w} ${c.h} rounded-xl bg-gradient-to-br ${c.bg} border border-gray-100 flex-shrink-0 flex flex-col items-center justify-end p-3`}
+              className={`${c.w} ${c.h} rounded-xl overflow-hidden border border-gray-100 flex-shrink-0 relative group`}
             >
-              <span className="text-[10px] font-medium text-[#606060] text-center">{c.label}</span>
-              <span className="text-[8px] text-gray-400">{c.aspect}</span>
+              <img src={c.img} alt={c.label} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col items-start justify-end p-2">
+                <span className="text-[10px] font-semibold text-white leading-tight">{c.label}</span>
+                <span className="text-[8px] text-white/60">{c.aspect}</span>
+              </div>
             </div>
           ))}
         </div>

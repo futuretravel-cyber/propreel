@@ -32,6 +32,7 @@ import QuickEdit from '@/pages/QuickEdit';
 import Studio from '@/pages/Studio';
 import BrandKits from '@/pages/BrandKits';
 import Settings from '@/pages/Settings';
+import Admin from '@/pages/Admin';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -82,6 +83,7 @@ const AuthenticatedApp = () => {
           <Route path="/projects/:id/quick-edit" element={<QuickEdit />} />
           <Route path="/brand-kits" element={<BrandKits />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/admin" element={<Admin />} />
         </Route>
         <Route path="/projects/:id/studio" element={<Studio />} />
       </Route>

@@ -1,10 +1,12 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, ArrowLeft, Check, Upload, Link as LinkIcon, Cloud, X, GripVertical, Monitor, Smartphone, Wand2, Sparkles, Music, Mic, Play, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
+import VFXSelector from "@/components/studio/VFXSelector";
+import BrandingPreview from "@/components/studio/BrandingPreview";
 
 const stepLabels = ["Create", "Upload Photos", "Edit Photos", "Select Photos", "Video Settings", "Branding"];
 
@@ -22,6 +24,26 @@ export default function NewProject() {
   const [aiEngine, setAiEngine] = useState("v25");
   const [importUrl, setImportUrl] = useState("");
   const [uploadTab, setUploadTab] = useState("device");
+  const [vfxEffects, setVfxEffects] = useState({});
+  const [introTemplate, setIntroTemplate] = useState("Address Reveal");
+  const [outroTemplate, setOutroTemplate] = useState("Agent Card");
+  const [heading, setHeading] = useState("");
+  const [subheading, setSubheading] = useState("");
+  const [musicTrack, setMusicTrack] = useState("Uplifting Morning");
+  const [brandingTab, setBrandingTab] = useState("Templates");
+  const [previewMode, setPreviewMode] = useState("intro");
+  const [brandKits, setBrandKits] = useState([]);
+  const [selectedBrandKitId, setSelectedBrandKitId] = useState(null);
+
+  useEffect(() => {
+    base44.entities.BrandKit.filter({ is_default: true }).then((kits) => {
+      if (kits.length) setSelectedBrandKitId(kits[0].id);
+    });
+    base44.entities.BrandKit.list().then(setBrandKits);
+  }, []);
+
+  const selectedBrandKit = brandKits.find((k) => k.id === selectedBrandKitId) || null;
+  const totalVfxCount = Object.keys(vfxEffects).length;
 
   const handleCreateProject = async () => {
     if (!projectName.trim()) return;
@@ -314,11 +336,21 @@ export default function NewProject() {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-3.5 h-3.5 text-[#21ABB5]" />
+                    <span className="text-xs text-[#606060]">VFX: {totalVfxCount}/3 used across all clips</span>
+                  </div>
                   {selectedPhotos.map((url, i) => (
                     <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2">
                       <GripVertical className="w-4 h-4 text-gray-400 cursor-grab" />
                       <img src={url} alt="" className="w-12 h-12 rounded-lg object-cover" />
                       <span className="text-xs text-[#606060] flex-1">Clip {i + 1}</span>
+                      <VFXSelector
+                        photoIndex={i}
+                        vfxEffects={vfxEffects}
+                        setVfxEffects={setVfxEffects}
+                        totalVfxCount={totalVfxCount}
+                      />
                       <button onClick={() => togglePhotoSelection(url)} className="p-1">
                         <X className="w-4 h-4 text-gray-400 hover:text-red-500" />
                       </button>
@@ -473,11 +505,12 @@ export default function NewProject() {
                   { label: "Templates", icon: Sparkles },
                   { label: "Music", icon: Music },
                   { label: "Voiceovers", icon: Mic },
-                ].map((tab, i) => (
+                ].map((tab) => (
                   <button
                     key={tab.label}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium ${
-                      i === 0 ? "bg-[#DEF5F7] text-[#21ABB5]" : "bg-gray-50 text-[#606060]"
+                    onClick={() => setBrandingTab(tab.label)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+                      brandingTab === tab.label ? "bg-[#DEF5F7] text-[#21ABB5]" : "bg-gray-50 text-[#606060] hover:bg-gray-100"
                     }`}
                   >
                     <tab.icon className="w-3.5 h-3.5" /> {tab.label}
@@ -485,87 +518,147 @@ export default function NewProject() {
                 ))}
               </div>
 
-              {/* Intro templates */}
-              <div>
-                <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Intro Template</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {["Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"].map((t, i) => (
-                    <button
-                      key={t}
-                      className={`aspect-video rounded-lg border-2 text-xs font-medium flex items-center justify-center transition-all ${
-                        i === 0 ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {brandingTab === "Templates" && (
+                <>
+                  {/* Intro templates */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Intro Template</h3>
+                    <div className="grid grid-cols-3 gap-2">
+                      {["Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"].map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => { setIntroTemplate(t); setPreviewMode("intro"); }}
+                          className={`aspect-video rounded-lg border-2 text-xs font-medium flex items-center justify-center transition-all ${
+                            introTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300"
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Outro templates */}
-              <div>
-                <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Outro Template</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {["Agent Card", "Contact Block", "Agency Logo"].map((t, i) => (
-                    <button
-                      key={t}
-                      className={`aspect-video rounded-lg border-2 text-xs font-medium flex items-center justify-center transition-all ${
-                        i === 0 ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  {/* Outro templates */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Outro Template</h3>
+                    <div className="grid grid-cols-3 gap-2">
+                      {["Agent Card", "Contact Block", "Agency Logo"].map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => { setOutroTemplate(t); setPreviewMode("outro"); }}
+                          className={`aspect-video rounded-lg border-2 text-xs font-medium flex items-center justify-center transition-all ${
+                            outroTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300"
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Heading fields */}
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-[#0F082B] mb-1 block">Main heading</label>
-                  <Input placeholder={projectName} className="rounded-xl h-10" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-[#0F082B] mb-1 block">Sub heading</label>
-                  <Input placeholder="Beautiful family home in a prime location" className="rounded-xl h-10" />
-                </div>
-              </div>
+                  {/* Heading fields */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-[#0F082B] mb-1 block">Main heading</label>
+                      <Input value={heading} onChange={(e) => setHeading(e.target.value)} placeholder={projectName} className="rounded-xl h-10" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-[#0F082B] mb-1 block">Sub heading</label>
+                      <Input value={subheading} onChange={(e) => setSubheading(e.target.value)} placeholder="Beautiful family home in a prime location" className="rounded-xl h-10" />
+                    </div>
+                  </div>
 
-              {/* Music preview */}
-              <div>
-                <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Music</h3>
-                <div className="space-y-2">
-                  {[
-                    { name: "Uplifting Morning", duration: "2:34", genre: "Upbeat" },
-                    { name: "Cinematic Elegance", duration: "3:12", genre: "Cinematic" },
-                    { name: "SA Sunset Vibes", duration: "2:48", genre: "SA Vibes" },
-                  ].map((track) => (
-                    <div key={track.name} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
-                      <button className="w-8 h-8 rounded-full bg-[#21ABB5] flex items-center justify-center flex-shrink-0">
-                        <Play className="w-3.5 h-3.5 text-white fill-white ml-0.5" />
-                      </button>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-[#0F082B]">{track.name}</p>
-                        <p className="text-xs text-[#606060]">{track.duration} · {track.genre}</p>
+                  {/* Brand Kit selector */}
+                  {brandKits.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#0F082B] mb-3">Brand Kit</h3>
+                      <div className="space-y-2">
+                        {brandKits.map((kit) => (
+                          <button
+                            key={kit.id}
+                            onClick={() => setSelectedBrandKitId(kit.id)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-[#21ABB5] bg-[#DEF5F7]/30" : "border-gray-100 hover:border-gray-200"}`}
+                          >
+                            <div className="w-8 h-8 rounded-full bg-[#DEF5F7] flex items-center justify-center text-xs font-bold text-[#21ABB5] flex-shrink-0">
+                              {kit.agent_name?.[0]}
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-[#0F082B]">{kit.name}</p>
+                              <p className="text-xs text-[#606060]">{kit.agent_name}</p>
+                            </div>
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+                  )}
+                </>
+              )}
 
-            {/* Right: Preview */}
-            <div>
-              <div className="sticky top-24">
-                <div className={`bg-gray-900 rounded-2xl overflow-hidden ${orientation === "portrait" ? "aspect-[9/16] max-w-[240px] mx-auto" : "aspect-video"}`}>
-                  <div className="w-full h-full flex flex-col items-center justify-center text-white">
-                    <Play className="w-12 h-12 mb-3 opacity-50" />
-                    <p className="text-sm font-medium opacity-70">Video Preview</p>
-                    <p className="text-xs opacity-50 mt-1">{projectName}</p>
+              {brandingTab === "Music" && (
+                <div>
+                  <div className="space-y-2">
+                    {[
+                      { name: "Uplifting Morning", duration: "2:34", genre: "Upbeat" },
+                      { name: "Cinematic Elegance", duration: "3:12", genre: "Cinematic" },
+                      { name: "SA Sunset Vibes", duration: "2:48", genre: "SA Vibes" },
+                    ].map((track) => (
+                      <button
+                        key={track.name}
+                        onClick={() => setMusicTrack(track.name)}
+                        className={`w-full flex items-center gap-3 rounded-xl p-3 transition-all border-2 ${musicTrack === track.name ? "border-[#21ABB5] bg-[#DEF5F7]/20" : "bg-gray-50 border-transparent"}`}
+                      >
+                        <div className="w-8 h-8 rounded-full bg-[#21ABB5] flex items-center justify-center flex-shrink-0">
+                          <Play className="w-3.5 h-3.5 text-white fill-white ml-0.5" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#0F082B]">{track.name}</p>
+                          <p className="text-xs text-[#606060]">{track.duration} · {track.genre}</p>
+                        </div>
+                        {musicTrack === track.name && <Check className="w-4 h-4 text-[#21ABB5]" />}
+                      </button>
+                    ))}
                   </div>
                 </div>
+              )}
 
-                <div className="flex gap-2 justify-center mt-4">
+              {brandingTab === "Voiceovers" && (
+                <div className="bg-[#DEF5F7]/50 rounded-xl p-4">
+                  <p className="text-sm text-[#606060]"><strong className="text-[#0F082B]">SA English Voiceovers</strong> — Available after rendering. Choose from Cape Town, Joburg, and Durban accents.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Live Preview */}
+            <div>
+              <div className="sticky top-24">
+                <p className="text-xs font-semibold text-[#0F082B] mb-2">Live Preview</p>
+                <div className={`rounded-2xl overflow-hidden border border-gray-200 shadow-lg ${orientation === "portrait" ? "aspect-[9/16] max-w-[220px] mx-auto" : "aspect-video"}`}>
+                  <BrandingPreview
+                    orientation={orientation}
+                    introTemplate={introTemplate}
+                    outroTemplate={outroTemplate}
+                    heading={heading || projectName}
+                    subheading={subheading}
+                    brandKit={selectedBrandKit}
+                    musicTrack={musicTrack}
+                    previewMode={previewMode}
+                  />
+                </div>
+
+                {/* Preview mode switcher */}
+                <div className="flex gap-1 justify-center mt-3 bg-gray-100 rounded-xl p-1">
+                  {["intro", "video", "outro"].map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setPreviewMode(m)}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${previewMode === m ? "bg-white text-[#0F082B] shadow-sm" : "text-[#606060] hover:text-[#0F082B]"}`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex gap-2 justify-center mt-3">
                   <button
                     onClick={() => setOrientation("landscape")}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium ${orientation === "landscape" ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-[#606060]"}`}
