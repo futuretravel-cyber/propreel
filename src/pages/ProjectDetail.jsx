@@ -74,33 +74,39 @@ export default function ProjectDetail() {
         {/* Video preview */}
         <div className="lg:col-span-2">
           <div className={`bg-gray-900 rounded-2xl overflow-hidden ${project.orientation === "portrait" ? "aspect-[9/16] max-w-xs mx-auto" : "aspect-video"}`}>
-            <div className="w-full h-full flex flex-col items-center justify-center text-white">
-              {project.status === "processing" ? (
-                <>
-                  <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin mb-4" />
-                  <p className="text-sm font-medium opacity-70">Rendering video...</p>
-                </>
-              ) : project.status === "ready" ? (
-                <>
-                  <Play className="w-16 h-16 opacity-50 mb-3" />
-                  <p className="text-sm font-medium opacity-70">Click to play</p>
-                </>
-              ) : (
-                <>
-                  <Video className="w-12 h-12 opacity-30 mb-3" />
-                  <p className="text-sm opacity-50">No video rendered yet</p>
-                </>
-              )}
-            </div>
+            {project.video_url ? (
+              <video
+                src={project.video_url}
+                controls
+                poster={project.thumbnail_url || undefined}
+                className="w-full h-full object-contain"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-white">
+                {project.status === "processing" ? (
+                  <>
+                    <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin mb-4" />
+                    <p className="text-sm font-medium opacity-70">Rendering video...</p>
+                  </>
+                ) : (
+                  <>
+                    <Video className="w-12 h-12 opacity-30 mb-3" />
+                    <p className="text-sm opacity-50">No video rendered yet</p>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
-          {project.status === "ready" && (
+          {project.video_url && (
             <div className="flex gap-3 mt-4 justify-center">
-              <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl gap-2">
-                <Download className="w-4 h-4" /> Download MP4
-              </Button>
-              <Button variant="outline" className="rounded-xl gap-2">
-                <Share2 className="w-4 h-4" /> Share
+              <a href={project.video_url} download target="_blank" rel="noreferrer">
+                <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl gap-2">
+                  <Download className="w-4 h-4" /> Download MP4
+                </Button>
+              </a>
+              <Button variant="outline" className="rounded-xl gap-2" onClick={() => { navigator.clipboard.writeText(project.video_url); }}>
+                <Share2 className="w-4 h-4" /> Copy link
               </Button>
             </div>
           )}
@@ -131,6 +137,24 @@ export default function ProjectDetail() {
                 <span className="text-[#606060]">Credits used</span>
                 <span className="font-medium text-[#0F082B]">{project.credits_used || 0}</span>
               </div>
+              {project.music_track && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#606060]">Music</span>
+                  <span className="font-medium text-[#0F082B] truncate max-w-[120px]">{project.music_track}</span>
+                </div>
+              )}
+              {project.voiceover_voice && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#606060]">Voiceover</span>
+                  <span className="font-medium text-[#0F082B] capitalize">{project.voiceover_voice}</span>
+                </div>
+              )}
+              {project.intro_template && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#606060]">Intro</span>
+                  <span className="font-medium text-[#0F082B]">{project.intro_template}</span>
+                </div>
+              )}
             </div>
           </div>
 

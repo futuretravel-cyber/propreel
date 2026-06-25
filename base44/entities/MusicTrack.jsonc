@@ -1,0 +1,30 @@
+{
+  "name": "MusicTrack",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Track display name"
+    },
+    "genre": {
+      "type": "string",
+      "description": "Genre / mood label"
+    },
+    "duration": {
+      "type": "string",
+      "description": "e.g. 2:34"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "Uploaded audio file URL"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name",
+    "file_url"
+  ]
+}

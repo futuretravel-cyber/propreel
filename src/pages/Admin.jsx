@@ -5,13 +5,14 @@ import { Navigate } from "react-router-dom";
 import {
   Users, Video, Mail, TrendingUp, CheckCircle2, Clock, FileEdit,
   MoreVertical, Eye, Trash2, Reply, RefreshCw, BarChart3,
-  CreditCard, Activity, Filter
+  CreditCard, Activity, Filter, Music
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
+import MusicLibrary from "@/components/admin/MusicLibrary";
 
-const TABS = ["Overview", "Projects", "Users", "Contact Submissions"];
+const TABS = ["Overview", "Projects", "Users", "Music Library", "Contact Submissions"];
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-gray-100 text-gray-600", icon: FileEdit },
@@ -280,6 +281,9 @@ export default function Admin() {
               </div>
             </div>
           )}
+
+          {/* Music Library Tab */}
+          {tab === "Music Library" && <MusicLibrary />}
 
           {/* Contact Submissions Tab */}
           {tab === "Contact Submissions" && (
