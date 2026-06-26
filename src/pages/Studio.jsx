@@ -1,26 +1,30 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Play, Pause, Download, Monitor, Smartphone, Layers, Music, Mic, Star, Check, Wand2, User, Loader2, Share2 } from "lucide-react";
+import { ArrowLeft, Play, Pause, Download, Monitor, Smartphone, Layers, Music, Mic, Star, Check, Wand2, User, Loader2, Share2, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import BrandingPreview from "@/components/studio/BrandingPreview";
 import VoiceoverSelector from "@/components/studio/VoiceoverSelector";
+import ElevenLabsVoiceover from "@/components/studio/ElevenLabsVoiceover";
 import AIPhotoEditor from "@/components/studio/AIPhotoEditor";
 import AvatarSelector from "@/components/studio/AvatarSelector";
+import HeyGenAvatar from "@/components/studio/HeyGenAvatar";
 import VideoExportModal from "@/components/studio/VideoExportModal";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
+import CreatomateTemplates from "@/components/studio/CreatomateTemplates";
 
 const INTRO_TEMPLATES = ["None", "Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"];
 const OUTRO_TEMPLATES = ["None", "Agent Card", "Contact Block", "Agency Logo"];
 
 const sidebarTabs = [
-  { key: "templates", label: "Templates", icon: Layers },
-  { key: "brandkit", label: "Brand Kit", icon: Star },
-  { key: "music",    label: "Music",     icon: Music },
-  { key: "voiceover",label: "Voiceover", icon: Mic },
-  { key: "avatar",   label: "Avatar",    icon: User },
-  { key: "photos",   label: "AI Edits",  icon: Wand2 },
+  { key: "templates",   label: "Templates", icon: Layers },
+  { key: "brandkit",    label: "Brand Kit", icon: Star },
+  { key: "music",       label: "Music",     icon: Music },
+  { key: "voiceover",   label: "Voice",     icon: Mic },
+  { key: "avatar",      label: "Avatar",    icon: User },
+  { key: "photos",      label: "AI Edits",  icon: Wand2 },
+  { key: "creatomate",  label: "Export",    icon: Video },
 ];
 
 export default function Studio() {
@@ -48,6 +52,8 @@ export default function Studio() {
   const [clips, setClips] = useState([]);
   const [voiceoverUrl, setVoiceoverUrl] = useState("");
   const [musicUrl, setMusicUrl] = useState("");
+  const [voiceEngine, setVoiceEngine] = useState("builtin"); // "builtin" | "elevenlabs"
+  const [avatarEngine, setAvatarEngine] = useState("builtin"); // "builtin" | "heygen"
 
   useEffect(() => {
     Promise.all([
@@ -309,43 +315,88 @@ export default function Studio() {
 
             {activeTab === "voiceover" && (
               <div className="space-y-3">
-                <VoiceoverSelector
-                  script={voiceoverScript}
-                  setScript={setVoiceoverScript}
-                  selectedVoice={voiceoverVoice}
-                  setSelectedVoice={setVoiceoverVoice}
-                  projectName={project.name}
-                  heading={heading}
-                  subheading={subheading}
-                  photoCount={clips.length}
-                />
-                {voiceoverScript.trim() && (
-                  <Button
-                    onClick={handleRenderVoiceover}
-                    disabled={rendering}
-                    className="w-full bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl gap-2 text-sm"
-                  >
-                    {rendering ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Mic className="w-4 h-4" /> Generate Voiceover</>}
-                  </Button>
+                {/* Engine toggle */}
+                <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                  <button onClick={() => setVoiceEngine("builtin")} className={`flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${voiceEngine === "builtin" ? "bg-white text-[#0F082B] shadow-sm" : "text-[#606060]"}`}>
+                    Built-in AI
+                  </button>
+                  <button onClick={() => setVoiceEngine("elevenlabs")} className={`flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${voiceEngine === "elevenlabs" ? "bg-white text-[#21ABB5] shadow-sm" : "text-[#606060]"}`}>
+                    ElevenLabs ✨
+                  </button>
+                </div>
+
+                {voiceEngine === "builtin" ? (
+                  <>
+                    <VoiceoverSelector
+                      script={voiceoverScript}
+                      setScript={setVoiceoverScript}
+                      selectedVoice={voiceoverVoice}
+                      setSelectedVoice={setVoiceoverVoice}
+                      projectName={project.name}
+                      heading={heading}
+                      subheading={subheading}
+                      photoCount={clips.length}
+                    />
+                    {voiceoverScript.trim() && (
+                      <Button onClick={handleRenderVoiceover} disabled={rendering} className="w-full bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl gap-2 text-sm">
+                        {rendering ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Mic className="w-4 h-4" /> Generate Voiceover</>}
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <ElevenLabsVoiceover
+                    script={voiceoverScript}
+                    setScript={setVoiceoverScript}
+                    selectedVoice={voiceoverVoice}
+                    setSelectedVoice={setVoiceoverVoice}
+                    projectName={project.name}
+                    heading={heading}
+                    subheading={subheading}
+                    photoCount={clips.length}
+                    onVoiceoverReady={(url) => {
+                      setVoiceoverUrl(url);
+                      base44.entities.Project.update(id, { voiceover_url: url });
+                    }}
+                  />
                 )}
+
                 {voiceoverUrl && (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                     <p className="text-xs font-semibold text-emerald-800 mb-2">✓ Voiceover ready</p>
-                    <audio controls src={voiceoverUrl} className="w-full h-8" style={{ height: "32px" }} />
-                    <a href={voiceoverUrl} download="voiceover.mp3" className="text-[10px] text-[#21ABB5] underline mt-1 block">
-                      Download MP3
-                    </a>
+                    <audio controls src={voiceoverUrl} className="w-full" style={{ height: "32px" }} />
+                    <a href={voiceoverUrl} download="voiceover.mp3" className="text-[10px] text-[#21ABB5] underline mt-1 block">Download MP3</a>
                   </div>
                 )}
               </div>
             )}
 
             {activeTab === "avatar" && (
-              <AvatarSelector
-                selectedAvatarId={selectedAvatarId}
-                setSelectedAvatarId={setSelectedAvatarId}
-                project={project}
-              />
+              <div className="space-y-3">
+                {/* Engine toggle */}
+                <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                  <button onClick={() => setAvatarEngine("builtin")} className={`flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${avatarEngine === "builtin" ? "bg-white text-[#0F082B] shadow-sm" : "text-[#606060]"}`}>
+                    AI Image
+                  </button>
+                  <button onClick={() => setAvatarEngine("heygen")} className={`flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${avatarEngine === "heygen" ? "bg-white text-purple-600 shadow-sm" : "text-[#606060]"}`}>
+                    HeyGen 🎬
+                  </button>
+                </div>
+                {avatarEngine === "builtin" ? (
+                  <AvatarSelector
+                    selectedAvatarId={selectedAvatarId}
+                    setSelectedAvatarId={setSelectedAvatarId}
+                    project={project}
+                  />
+                ) : (
+                  <HeyGenAvatar
+                    selectedAvatarId={selectedAvatarId}
+                    setSelectedAvatarId={setSelectedAvatarId}
+                    script={voiceoverScript}
+                    voiceId={voiceoverVoice}
+                    onAvatarVideoReady={(url) => toast({ title: "Avatar video ready!", description: "Download it from the Avatar panel." })}
+                  />
+                )}
+              </div>
             )}
 
             {activeTab === "photos" && clips.length > 0 && (
@@ -359,6 +410,15 @@ export default function Studio() {
               <div className="text-center py-8">
                 <p className="text-xs text-[#606060]">No photos in this project yet.</p>
               </div>
+            )}
+
+            {activeTab === "creatomate" && (
+              <CreatomateTemplates
+                project={project}
+                brandKit={brandKits.find(k => k.id === selectedBrandKitId) || null}
+                voiceoverUrl={voiceoverUrl}
+                musicUrl={musicUrl}
+              />
             )}
           </div>
         </div>
