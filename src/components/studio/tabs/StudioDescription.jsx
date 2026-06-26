@@ -1,18 +1,52 @@
 import React, { useState } from "react";
-import { Sparkles, Loader2, Copy, Check, RefreshCw } from "lucide-react";
+import { Sparkles, Loader2, Copy, Check, RefreshCw, MapPin, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 
 const TONES = [
-  { key: "professional", label: "👔 Professional", desc: "Clear, factual and authoritative." },
-  { key: "exciting",     label: "🔥 Exciting & Urgent", desc: "High energy, FOMO-driven." },
-  { key: "luxury",       label: "✨ Luxury & Aspirational", desc: "Evocative, lifestyle-focused." },
+  { key: "professional", label: "👔 Professional",        desc: "Clear, factual and authoritative." },
+  { key: "exciting",     label: "🔥 Exciting & Urgent",   desc: "High energy, FOMO-driven." },
+  { key: "luxury",       label: "✨ Luxury & Aspirational",desc: "Evocative, lifestyle-focused." },
   { key: "friendly",     label: "😊 Friendly & Approachable", desc: "Warm and conversational." },
 ];
 
+const FEATURES = [
+  "Swimming Pool", "Double Garage", "Solar Panels", "Generator", "Fibre Internet",
+  "Air Conditioning", "Underfloor Heating", "Security Estate", "Mountain Views", "Sea Views",
+  "Garden", "Staff Quarters", "Study", "Scullery", "Braai Area", "Entertainment Area",
+  "Pet Friendly", "Borehole", "Water Tanks", "EV Charging",
+];
+
+function formatRand(val) {
+  if (!val) return "";
+  return Number(val).toLocaleString("en-ZA");
+}
+
 export default function StudioDescription({ project, listing }) {
   const { toast } = useToast();
+
+  // Property fields (pre-filled from listing if available)
+  const [streetAddress, setStreetAddress] = useState(listing?.street_address || "");
+  const [suburb, setSuburb] = useState(listing?.suburb || "");
+  const [city, setCity] = useState(listing?.city || "");
+  const [province, setProvince] = useState(listing?.province || "");
+  const [propertyType, setPropertyType] = useState(listing?.property_type || "House");
+  const [bedrooms, setBedrooms] = useState(listing?.bedrooms?.toString() || "");
+  const [bathrooms, setBathrooms] = useState(listing?.bathrooms?.toString() || "");
+  const [garages, setGarages] = useState(listing?.garages?.toString() || "");
+  const [price, setPrice] = useState(listing?.price?.toString() || "");
+  const [erfSize, setErfSize] = useState(listing?.erf_size?.toString() || "");
+  const [floorSize, setFloorSize] = useState(listing?.floor_size?.toString() || "");
+  const [features, setFeatures] = useState(listing?.features || []);
+
+  // Address verification
+  const [verifying, setVerifying] = useState(false);
+  const [addressVerified, setAddressVerified] = useState(listing?.address_verified || false);
+  const [addressError, setAddressError] = useState("");
+
+  // AI generation
   const [tone, setTone] = useState("professional");
   const [aiPrompt, setAiPrompt] = useState("");
   const [description, setDescription] = useState(listing?.description || "");
@@ -21,25 +55,58 @@ export default function StudioDescription({ project, listing }) {
   const [loadingAmenities, setLoadingAmenities] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const suburb = listing?.suburb || "";
-  const city = listing?.city || "";
+  const fullAddress = [streetAddress, suburb, city, province].filter(Boolean).join(", ");
+
+  const verifyAddress = async () => {
+    if (!streetAddress || !suburb) return;
+    setVerifying(true);
+    setAddressError("");
+    try {
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `Verify if this South African property address is valid: "${fullAddress}". Return JSON: { valid: boolean, suburb: string, city: string, province: string, note: string }`,
+        add_context_from_internet: true,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            valid: { type: "boolean" },
+            suburb: { type: "string" },
+            city: { type: "string" },
+            province: { type: "string" },
+            note: { type: "string" },
+          },
+        },
+      });
+      if (result.valid) {
+        setAddressVerified(true);
+        if (result.suburb) setSuburb(result.suburb);
+        if (result.city) setCity(result.city);
+        if (result.province) setProvince(result.province);
+        toast({ title: "✓ Address verified" });
+      } else {
+        setAddressError(result.note || "Address could not be verified.");
+      }
+    } catch {
+      setAddressError("Verification failed. Please check manually.");
+    }
+    setVerifying(false);
+  };
 
   const fetchAmenities = async () => {
     if (!suburb) return;
     setLoadingAmenities(true);
     try {
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `For the suburb "${suburb}${city ? `, ${city}` : ""}, South Africa", list the key nearby amenities that matter to property buyers. Include schools, shopping centres, hospitals, transport. Return JSON with: { amenities: [{ type: string, name: string, distance_km: number }] }. Max 8 items.`,
+        prompt: `For the suburb "${suburb}${city ? `, ${city}` : ""}, South Africa", list key nearby amenities for property buyers. Return JSON: { amenities: [{ type: string, name: string, distance_km: number }] }. Max 8 items.`,
         add_context_from_internet: true,
         response_json_schema: {
           type: "object",
           properties: {
             amenities: {
               type: "array",
-              items: { type: "object", properties: { type: { type: "string" }, name: { type: "string" }, distance_km: { type: "number" } } }
-            }
-          }
-        }
+              items: { type: "object", properties: { type: { type: "string" }, name: { type: "string" }, distance_km: { type: "number" } } },
+            },
+          },
+        },
       });
       setAmenities(result.amenities || []);
     } catch {}
@@ -50,26 +117,16 @@ export default function StudioDescription({ project, listing }) {
     setGenerating(true);
     const toneLabel = TONES.find(t => t.key === tone)?.label?.replace(/^[^\s]+ /, "") || "Professional";
     const amenityText = amenities.map(a => `${a.name} (${a.type}) — ${a.distance_km}km away`).join(", ");
-    const propType = listing?.property_type || "Property";
-    const beds = listing?.bedrooms || "N/A";
-    const baths = listing?.bathrooms || "N/A";
-    const garages = listing?.garages || "N/A";
-    const price = listing?.price ? `R ${Number(listing.price).toLocaleString("en-ZA")}` : "POA";
-    const erf = listing?.erf_size ? `${listing.erf_size}m²` : "N/A";
-    const floor = listing?.floor_size ? `${listing.floor_size}m²` : "N/A";
-    const feats = listing?.features?.join(", ") || "N/A";
-
     const prompt = `You are a South African real estate copywriter. Write a compelling ${toneLabel}-tone property listing description.
 
-Property: ${propType} | Beds: ${beds} | Baths: ${baths} | Garages: ${garages} | Price: ${price} | Erf: ${erf} | Floor: ${floor}
-Features: ${feats}
-Nearby (DO NOT mention the address, only distances): ${amenityText || "N/A"}
+Property: ${propertyType} | Beds: ${bedrooms || "N/A"} | Baths: ${bathrooms || "N/A"} | Garages: ${garages || "N/A"} | Price: R${formatRand(price) || "POA"} | Erf: ${erfSize ? erfSize + "m²" : "N/A"} | Floor: ${floorSize ? floorSize + "m²" : "N/A"}
+Features: ${features.join(", ") || "N/A"}
+Nearby (reference distances naturally, do NOT mention the street address): ${amenityText || "N/A"}
 ${aiPrompt ? `Agent instructions: ${aiPrompt}` : ""}
 
 RULES:
 - ${toneLabel} tone throughout
-- DO NOT mention street address
-- Reference amenity distances naturally (e.g. "minutes from Sandton City")
+- DO NOT mention the street address
 - South African English (metres, rand, braai, etc.)
 - 3-4 compelling paragraphs
 - End with a clear call to action
@@ -91,9 +148,115 @@ RULES:
     toast({ title: "Copied!" });
   };
 
+  const toggleFeature = (f) =>
+    setFeatures(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+
   return (
     <div className="space-y-6">
-      {/* Amenities fetch */}
+
+      {/* ── Property Details Card ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 space-y-6">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900 mb-0.5">Property Details</h2>
+          <p className="text-sm text-gray-500">Enter the listing information. The address is used for AI research only — it won't appear in the description.</p>
+        </div>
+
+        {/* Address */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">📍 Property Address</h3>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Street Address *</label>
+            <div className="flex gap-2">
+              <Input
+                value={streetAddress}
+                onChange={e => { setStreetAddress(e.target.value); setAddressVerified(false); }}
+                placeholder="e.g. 12 Clifton Road"
+                className="rounded-xl flex-1"
+              />
+              <Button
+                onClick={verifyAddress}
+                disabled={verifying || !streetAddress || !suburb}
+                variant="outline"
+                className={`rounded-xl gap-1.5 text-xs shrink-0 ${addressVerified ? "border-emerald-400 text-emerald-600" : ""}`}
+              >
+                {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : addressVerified ? <CheckCircle2 className="w-3.5 h-3.5" /> : <MapPin className="w-3.5 h-3.5" />}
+                {verifying ? "Verifying..." : addressVerified ? "Verified" : "Verify"}
+              </Button>
+            </div>
+            {addressError && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{addressError}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Suburb *</label>
+              <Input value={suburb} onChange={e => { setSuburb(e.target.value); setAddressVerified(false); }} placeholder="e.g. Constantia" className="rounded-xl" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">City</label>
+              <Input value={city} onChange={e => setCity(e.target.value)} placeholder="e.g. Cape Town" className="rounded-xl" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Province</label>
+              <select value={province} onChange={e => setProvince(e.target.value)} className="w-full border border-input rounded-xl px-3 h-9 text-sm outline-none focus:ring-1 focus:ring-purple-700 bg-white">
+                <option value="">Select province...</option>
+                {["Western Cape","Gauteng","KwaZulu-Natal","Eastern Cape","Limpopo","Mpumalanga","North West","Free State","Northern Cape"].map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Property Type</label>
+              <select value={propertyType} onChange={e => setPropertyType(e.target.value)} className="w-full border border-input rounded-xl px-3 h-9 text-sm outline-none focus:ring-1 focus:ring-purple-700 bg-white">
+                {["House","Apartment","Townhouse","Plot","Farm","Commercial","Other"].map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Property Specs */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">🏠 Property Specs</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              { label: "Bedrooms",       value: bedrooms,   set: setBedrooms,   placeholder: "3" },
+              { label: "Bathrooms",      value: bathrooms,  set: setBathrooms,  placeholder: "2" },
+              { label: "Garages",        value: garages,    set: setGarages,    placeholder: "2" },
+              { label: "Erf Size (m²)",  value: erfSize,    set: setErfSize,    placeholder: "600" },
+              { label: "Floor Size (m²)",value: floorSize,  set: setFloorSize,  placeholder: "280" },
+            ].map(f => (
+              <div key={f.label}>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">{f.label}</label>
+                <Input type="number" value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.placeholder} className="rounded-xl" />
+              </div>
+            ))}
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Asking Price (R)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-400">R</span>
+                <Input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="3,500,000" className="rounded-xl pl-7" />
+              </div>
+              {price && <p className="text-[10px] text-purple-700 mt-0.5 font-medium">R {formatRand(price)}</p>}
+            </div>
+          </div>
+        </div>
+
+        {/* Key Features */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">✅ Key Features</h3>
+          <div className="flex flex-wrap gap-2">
+            {FEATURES.map(f => (
+              <button
+                key={f}
+                onClick={() => toggleFeature(f)}
+                className={`text-xs rounded-lg px-3 py-1.5 border-2 font-medium transition-all ${features.includes(f) ? "border-purple-700 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}
+              >
+                {features.includes(f) ? "✓ " : ""}{f}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Area Amenities ── */}
       {suburb && (
         <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-2">
@@ -117,7 +280,7 @@ RULES:
         </div>
       )}
 
-      {/* Tone selection */}
+      {/* ── Tone ── */}
       <div>
         <label className="text-sm font-semibold text-gray-900 block mb-3">Description Tone</label>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -135,7 +298,7 @@ RULES:
         </div>
       </div>
 
-      {/* AI instructions */}
+      {/* ── Additional instructions ── */}
       <div>
         <label className="text-sm font-semibold text-gray-900 block mb-2">Additional AI Instructions (optional)</label>
         <textarea
@@ -151,7 +314,7 @@ RULES:
         {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating description...</> : <><Sparkles className="w-4 h-4" /> Generate Description</>}
       </Button>
 
-      {/* Editable result */}
+      {/* ── Result ── */}
       {description && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
