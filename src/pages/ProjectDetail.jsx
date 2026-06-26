@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Download, Share2, Pencil, SlidersHorizontal, CheckCircle2, Clock, FileEdit } from "lucide-react";
+import { ArrowLeft, Download, Share2, Pencil, SlidersHorizontal, CheckCircle2, Clock, FileEdit, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
@@ -99,21 +99,50 @@ export default function ProjectDetail() {
                 clipDuration={project.clip_duration || 5}
               />
 
-              <div className="flex gap-3 mt-4 justify-center flex-wrap">
-                {project.voiceover_url && (
-                  <a href={project.voiceover_url} download target="_blank" rel="noreferrer">
-                    <Button variant="outline" className="rounded-xl gap-2">
-                      <Download className="w-4 h-4" /> Download Voiceover
+              {/* Download & Share */}
+              <div className="mt-4 bg-white rounded-2xl border border-gray-100 p-4">
+                <h3 className="font-semibold text-[#0F082B] mb-3 text-sm">Download</h3>
+                <div className="flex flex-wrap gap-2">
+                  {project.voiceover_url && (
+                    <a href={project.voiceover_url} download="voiceover.mp3" target="_blank" rel="noreferrer">
+                      <Button variant="outline" size="sm" className="rounded-xl gap-2">
+                        <Download className="w-4 h-4" /> Voiceover (MP3)
+                      </Button>
+                    </a>
+                  )}
+                  {slideshowPhotos.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl gap-2"
+                      onClick={() => {
+                        slideshowPhotos.forEach((url, i) => {
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `photo-${i + 1}.jpg`;
+                          a.target = "_blank";
+                          a.rel = "noreferrer";
+                          a.click();
+                        });
+                      }}
+                    >
+                      <Image className="w-4 h-4" /> Photos ({slideshowPhotos.length})
                     </Button>
-                  </a>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl gap-2"
+                    onClick={() => { navigator.clipboard.writeText(window.location.href); }}
+                  >
+                    <Share2 className="w-4 h-4" /> Copy link
+                  </Button>
+                </div>
+                {!project.voiceover_url && (
+                  <p className="text-xs text-[#606060] mt-2">
+                    💡 Add a voiceover script in the Studio to generate a downloadable MP3 narration.
+                  </p>
                 )}
-                <Button
-                  variant="outline"
-                  className="rounded-xl gap-2"
-                  onClick={() => { navigator.clipboard.writeText(window.location.href); }}
-                >
-                  <Share2 className="w-4 h-4" /> Copy link
-                </Button>
               </div>
             </>
           ) : (
