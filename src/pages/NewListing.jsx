@@ -322,7 +322,7 @@ Exported from AutoReel Studio for ${portalName}
               </div>
               <div>
                 <label className="text-xs font-medium text-[#606060] mb-1 block">Province</label>
-                <select value={province} onChange={e => setProvince(e.target.value)} className="w-full border border-input rounded-xl px-3 h-9 text-sm outline-none focus:ring-1 focus:ring-[#21ABB5] bg-white">
+                <select value={province} onChange={e => setProvince(e.target.value)} className="w-full border border-input rounded-xl px-3 h-9 text-sm outline-none focus:ring-1 focus:ring-purple-700 bg-white">
                   <option value="">Select province...</option>
                   {["Western Cape","Gauteng","KwaZulu-Natal","Eastern Cape","Limpopo","Mpumalanga","North West","Free State","Northern Cape"].map(p => (
                     <option key={p} value={p}>{p}</option>
@@ -331,7 +331,7 @@ Exported from AutoReel Studio for ${portalName}
               </div>
               <div>
                 <label className="text-xs font-medium text-[#606060] mb-1 block">Property Type</label>
-                <select value={propertyType} onChange={e => setPropertyType(e.target.value)} className="w-full border border-input rounded-xl px-3 h-9 text-sm outline-none focus:ring-1 focus:ring-[#21ABB5] bg-white">
+                <select value={propertyType} onChange={e => setPropertyType(e.target.value)} className="w-full border border-input rounded-xl px-3 h-9 text-sm outline-none focus:ring-1 focus:ring-purple-700 bg-white">
                   {["House","Apartment","Townhouse","Plot","Farm","Commercial","Other"].map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
@@ -366,7 +366,7 @@ Exported from AutoReel Studio for ${portalName}
                     className="rounded-xl pl-7"
                   />
                 </div>
-                {price && <p className="text-[10px] text-[#21ABB5] mt-0.5 font-medium">R {formatRand(price)}</p>}
+                {price && <p className="text-[10px] text-purple-700 mt-0.5 font-medium">R {formatRand(price)}</p>}
               </div>
             </div>
           </div>
@@ -379,7 +379,7 @@ Exported from AutoReel Studio for ${portalName}
                 <button
                   key={f}
                   onClick={() => setFeatures(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])}
-                  className={`text-xs rounded-lg px-3 py-1.5 border-2 font-medium transition-all ${features.includes(f) ? "border-[#21ABB5] bg-[#DEF5F7]/40 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300"}`}
+                  className={`text-xs rounded-lg px-3 py-1.5 border-2 font-medium transition-all ${features.includes(f) ? "border-purple-700 bg-purple-50 text-purple-700" : "border-gray-200 text-[#606060] hover:border-gray-300"}`}
                 >
                   {features.includes(f) ? "✓ " : ""}{f}
                 </button>
@@ -388,7 +388,7 @@ Exported from AutoReel Studio for ${portalName}
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={() => setStep(1)} disabled={!streetAddress || !suburb} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2">
+            <Button onClick={() => setStep(1)} disabled={!streetAddress || !suburb} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-6 gap-2">
               Next <ArrowRight className="w-4 h-4" />
             </Button>
           </div>
@@ -401,8 +401,8 @@ Exported from AutoReel Studio for ${portalName}
           <h2 className="text-xl font-bold text-[#0F082B] mb-1">Listing Photos</h2>
           <p className="text-sm text-[#606060] mb-6">Upload all photos. You can bulk-edit them with AI before generating your listing.</p>
 
-          <label className="block border-2 border-dashed border-[#21ABB5]/30 rounded-2xl p-8 text-center cursor-pointer hover:bg-[#DEF5F7]/20 transition-colors mb-4">
-            <Upload className="w-8 h-8 text-[#21ABB5] mx-auto mb-2" />
+          <label className="block border-2 border-dashed border-purple-200 rounded-2xl p-8 text-center cursor-pointer hover:bg-purple-50 transition-colors mb-4">
+            <Upload className="w-8 h-8 text-purple-700 mx-auto mb-2" />
             <p className="text-sm font-medium text-[#0F082B] mb-1">Click to upload listing photos</p>
             <p className="text-xs text-[#606060]">JPG, PNG up to 25MB each</p>
             <input type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" />
@@ -410,7 +410,7 @@ Exported from AutoReel Studio for ${portalName}
 
           {loading && (
             <div className="flex items-center justify-center py-4 gap-2 text-sm text-[#606060]">
-              <Loader2 className="w-4 h-4 animate-spin text-[#21ABB5]" /> Uploading photos...
+              <Loader2 className="w-4 h-4 animate-spin text-purple-700" /> Uploading photos...
             </div>
           )}
 
@@ -454,7 +454,7 @@ Exported from AutoReel Studio for ${portalName}
 
           <div className="flex justify-between mt-8">
             <Button variant="outline" onClick={() => setStep(0)} className="rounded-xl gap-2"><ArrowLeft className="w-4 h-4" /> Back</Button>
-            <Button onClick={() => { setStep(2); fetchAmenities(); }} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2">
+            <Button onClick={() => { setStep(2); fetchAmenities(); }} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-6 gap-2">
               Next <ArrowRight className="w-4 h-4" />
             </Button>
           </div>
@@ -493,11 +493,11 @@ Exported from AutoReel Studio for ${portalName}
                 <button
                   key={t.key}
                   onClick={() => setTone(t.key)}
-                  className={`p-3 rounded-xl border-2 text-left transition-all ${tone === t.key ? "border-[#21ABB5] bg-[#DEF5F7]/30" : "border-gray-200 hover:border-gray-300"}`}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${tone === t.key ? "border-purple-700 bg-purple-50" : "border-gray-200 hover:border-gray-300"}`}
                 >
                   <p className="text-sm font-semibold text-[#0F082B] mb-0.5">{t.emoji} {t.label}</p>
                   <p className="text-xs text-[#606060]">{t.desc}</p>
-                  {tone === t.key && <Check className="w-4 h-4 text-[#21ABB5] mt-1" />}
+                  {tone === t.key && <Check className="w-4 h-4 text-purple-700 mt-1" />}
                 </button>
               ))}
             </div>
@@ -511,11 +511,11 @@ Exported from AutoReel Studio for ${portalName}
               onChange={e => setAiPrompt(e.target.value)}
               placeholder="e.g. Emphasise the mountain views, mention the excellent school catchment, highlight the recent kitchen renovation..."
               rows={2}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[#21ABB5] resize-none"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-purple-700 resize-none"
             />
           </div>
 
-          <Button onClick={generateDescription} disabled={generating} className="w-full bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl gap-2 h-11 mb-5">
+          <Button onClick={generateDescription} disabled={generating} className="w-full bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl gap-2 h-11 mb-5">
             {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating description...</> : <><Sparkles className="w-4 h-4" /> Generate Description</>}
           </Button>
 
@@ -524,7 +524,7 @@ Exported from AutoReel Studio for ${portalName}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-semibold text-[#0F082B]">Generated Description</label>
-                <button onClick={() => copyToClipboard(description)} className="flex items-center gap-1 text-xs text-[#21ABB5] hover:underline">
+                <button onClick={() => copyToClipboard(description)} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
                   <Copy className="w-3.5 h-3.5" /> Copy
                 </button>
               </div>
@@ -532,7 +532,7 @@ Exported from AutoReel Studio for ${portalName}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 rows={10}
-                className="w-full border border-[#21ABB5]/30 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-[#21ABB5] resize-none leading-relaxed"
+                className="w-full border border-purple-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-purple-700 resize-none leading-relaxed"
               />
               <p className="text-xs text-[#606060]">{description.length} characters · You can edit the description directly above</p>
             </div>
@@ -540,7 +540,7 @@ Exported from AutoReel Studio for ${portalName}
 
           <div className="flex justify-between mt-8">
             <Button variant="outline" onClick={() => setStep(1)} className="rounded-xl gap-2"><ArrowLeft className="w-4 h-4" /> Back</Button>
-            <Button onClick={() => setStep(3)} disabled={!description} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2">
+            <Button onClick={() => setStep(3)} disabled={!description} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-6 gap-2">
               Next <ArrowRight className="w-4 h-4" />
             </Button>
           </div>
@@ -558,7 +558,7 @@ Exported from AutoReel Studio for ${portalName}
             <h3 className="text-sm font-semibold text-[#0F082B] mb-2">Listing Summary</h3>
             <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
               <p><span className="text-[#606060]">Type:</span> <span className="font-medium">{propertyType}</span></p>
-              <p><span className="text-[#606060]">Price:</span> <span className="font-medium text-[#21ABB5]">R {formatRand(price)}</span></p>
+              <p><span className="text-[#606060]">Price:</span> <span className="font-medium text-purple-700">R {formatRand(price)}</span></p>
               <p><span className="text-[#606060]">Beds:</span> <span className="font-medium">{bedrooms}</span></p>
               <p><span className="text-[#606060]">Baths:</span> <span className="font-medium">{bathrooms}</span></p>
               <p><span className="text-[#606060]">Garages:</span> <span className="font-medium">{garages}</span></p>
@@ -603,7 +603,7 @@ Exported from AutoReel Studio for ${portalName}
             <div className="border border-gray-200 rounded-xl p-4 mb-6">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold text-[#0F082B]">📋 Listing Description</h3>
-                <button onClick={() => copyToClipboard(description)} className="flex items-center gap-1 text-xs text-[#21ABB5] hover:underline">
+                <button onClick={() => copyToClipboard(description)} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
                   <Copy className="w-3.5 h-3.5" /> Copy all
                 </button>
               </div>
@@ -613,7 +613,7 @@ Exported from AutoReel Studio for ${portalName}
 
           <div className="flex justify-between mt-8">
             <Button variant="outline" onClick={() => setStep(2)} className="rounded-xl gap-2"><ArrowLeft className="w-4 h-4" /> Back</Button>
-            <Button onClick={saveListing} disabled={saving} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2">
+            <Button onClick={saveListing} disabled={saving} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-6 gap-2">
               {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <><Check className="w-4 h-4" /> Save Listing</>}
             </Button>
           </div>
