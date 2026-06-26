@@ -195,10 +195,10 @@ export default function Studio() {
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden min-h-0">
+      <div className="flex flex-1 overflow-hidden min-h-0 min-w-0">
 
         {/* ── VERTICAL TAB RAIL (desktop) ── */}
-        <nav className="hidden lg:flex flex-col w-[200px] bg-white border-r border-gray-100 flex-shrink-0 overflow-y-auto">
+        <nav className="hidden lg:flex flex-col w-[220px] bg-white border-r border-gray-100 flex-shrink-0 overflow-y-auto">
           <div className="p-3 space-y-1">
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -214,7 +214,7 @@ export default function Studio() {
                   }`}
                 >
                   <Icon className="w-4 h-4 flex-shrink-0" />
-                  <span className="leading-tight">{tab.label}</span>
+                  <span className="leading-tight text-[13px]">{tab.label}</span>
                 </button>
               );
             })}
@@ -273,8 +273,8 @@ export default function Studio() {
         </div>
 
         {/* ── MAIN CONTENT ── */}
-        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">
-          <div className="p-4 lg:p-6 max-w-5xl mx-auto">
+        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0 min-w-0">
+          <div className="p-4 lg:p-6 max-w-4xl mx-auto w-full">
             {/* Tab heading */}
             <div className="flex items-center gap-2 mb-5">
               {activeTabData && (
