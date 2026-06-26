@@ -42,6 +42,9 @@ export default function Studio() {
   // Photo state — shared across photo tabs
   const [photos, setPhotos] = useState([]);
 
+  // Description from description tab
+  const [propertyDescription, setPropertyDescription] = useState("");
+
   // Brand kits & music
   const [brandKits, setBrandKits] = useState([]);
   const [musicTracks, setMusicTracks] = useState([]);
@@ -124,23 +127,15 @@ export default function Studio() {
   const renderTabContent = () => {
     switch (activeTab) {
       case "description":
-        return <StudioDescription project={project} listing={listing} />;
+        return <StudioDescription project={project} listing={listing} onDescriptionGenerated={(text) => setPropertyDescription(text)} />;
       case "ai_editor":
-        return photos.length > 0
-          ? <StudioAIPhotoEditor {...sharedPhotoProps} />
-          : <EmptyPhotos />;
+        return <StudioAIPhotoEditor {...sharedPhotoProps} />;
       case "staging":
-        return photos.length > 0
-          ? <StudioVirtualStaging {...sharedPhotoProps} />
-          : <EmptyPhotos />;
+        return <StudioVirtualStaging {...sharedPhotoProps} />;
       case "furniture":
-        return photos.length > 0
-          ? <StudioFurnitureRemoval {...sharedPhotoProps} />
-          : <EmptyPhotos />;
+        return <StudioFurnitureRemoval {...sharedPhotoProps} />;
       case "twilight":
-        return photos.length > 0
-          ? <StudioTwilight {...sharedPhotoProps} />
-          : <EmptyPhotos />;
+        return <StudioTwilight {...sharedPhotoProps} />;
       case "social":
         return <StudioSocialMedia photos={photos} project={project} listing={listing} />;
       case "video":
@@ -149,6 +144,7 @@ export default function Studio() {
             project={project}
             projectId={id}
             photos={photos}
+            editedPhotos={photos}
             brandKits={brandKits}
             musicTracks={musicTracks}
             selectedBrandKitId={selectedBrandKitId}
@@ -158,6 +154,7 @@ export default function Studio() {
             musicUrl={musicUrl}
             setMusicUrl={setMusicUrl}
             selectedBrandKit={selectedBrandKit}
+            propertyDescription={propertyDescription}
           />
         );
       default:
@@ -166,7 +163,7 @@ export default function Studio() {
   };
 
   return (
-    <div className="-m-4 lg:-m-8 min-h-screen bg-gray-50 flex flex-col">
+    <div className="fixed inset-0 bg-gray-50 flex flex-col z-50">
       {/* ── TOP BAR ── */}
       <header className="flex items-center justify-between px-4 lg:px-6 h-14 bg-white border-b border-gray-100 flex-shrink-0 z-30">
         <div className="flex items-center gap-3 min-w-0">

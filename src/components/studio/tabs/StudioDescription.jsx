@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Sparkles, Loader2, Copy, Check, RefreshCw, MapPin, CheckCircle2, AlertCircle } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { Sparkles, Loader2, Copy, Check, RefreshCw, MapPin, CheckCircle2, AlertCircle, Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { base44 } from "@/api/base44Client";
@@ -24,10 +24,10 @@ function formatRand(val) {
   return Number(val).toLocaleString("en-ZA");
 }
 
-export default function StudioDescription({ project, listing }) {
+export default function StudioDescription({ project, listing, onDescriptionGenerated }) {
   const { toast } = useToast();
+  const fileInputRef = useRef(null);
 
-  // Property fields (pre-filled from listing if available)
   const [streetAddress, setStreetAddress] = useState(listing?.street_address || "");
   const [suburb, setSuburb] = useState(listing?.suburb || "");
   const [city, setCity] = useState(listing?.city || "");
@@ -41,12 +41,10 @@ export default function StudioDescription({ project, listing }) {
   const [floorSize, setFloorSize] = useState(listing?.floor_size?.toString() || "");
   const [features, setFeatures] = useState(listing?.features || []);
 
-  // Address verification
   const [verifying, setVerifying] = useState(false);
   const [addressVerified, setAddressVerified] = useState(listing?.address_verified || false);
   const [addressError, setAddressError] = useState("");
 
-  // AI generation
   const [tone, setTone] = useState("professional");
   const [aiPrompt, setAiPrompt] = useState("");
   const [description, setDescription] = useState(listing?.description || "");
@@ -55,7 +53,30 @@ export default function StudioDescription({ project, listing }) {
   const [loadingAmenities, setLoadingAmenities] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const [attachedPhotos, setAttachedPhotos] = useState([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
   const fullAddress = [streetAddress, suburb, city, province].filter(Boolean).join(", ");
+
+  const handlePhotoUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setUploadingPhoto(true);
+    try {
+      const urls = await Promise.all(
+        files.map(async (file) => {
+          const { file_url } = await base44.integrations.Core.UploadFile({ file });
+          return file_url;
+        })
+      );
+      setAttachedPhotos(prev => [...prev, ...urls]);
+      toast({ title: `${urls.length} photo(s) attached` });
+    } catch {
+      toast({ title: "Upload failed", variant: "destructive" });
+    }
+    setUploadingPhoto(false);
+    e.target.value = "";
+  };
 
   const verifyAddress = async () => {
     if (!streetAddress || !suburb) return;
@@ -133,8 +154,13 @@ RULES:
 - Return ONLY the description text`;
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({ prompt });
-      setDescription(typeof result === "string" ? result.trim() : "");
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt,
+        ...(attachedPhotos.length > 0 ? { file_urls: attachedPhotos } : {}),
+      });
+      const text = typeof result === "string" ? result.trim() : "";
+      setDescription(text);
+      if (onDescriptionGenerated) onDescriptionGenerated(text);
     } catch {
       toast({ title: "Generation failed", variant: "destructive" });
     }
@@ -151,34 +177,69 @@ RULES:
   const toggleFeature = (f) =>
     setFeatures(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
 
+  const downloadPortal = (portal) => {
+    const lines = [];
+    if (portal === "p24") {
+      lines.push("PROPERTY24 LISTING EXPORT");
+      lines.push("=========================");
+      lines.push(`Property Type: ${propertyType}`);
+      lines.push(`Bedrooms: ${bedrooms || "N/A"}`);
+      lines.push(`Bathrooms: ${bathrooms || "N/A"}`);
+      lines.push(`Garages: ${garages || "N/A"}`);
+      lines.push(`Erf Size: ${erfSize ? erfSize + " m²" : "N/A"}`);
+      lines.push(`Floor Size: ${floorSize ? floorSize + " m²" : "N/A"}`);
+      lines.push(`Asking Price: ${price ? "R " + formatRand(price) : "POA"}`);
+      lines.push(`Suburb: ${suburb}`);
+      lines.push(`City: ${city}`);
+      lines.push(`Province: ${province}`);
+      lines.push("");
+      lines.push("FEATURES:");
+      features.forEach(f => lines.push(`• ${f}`));
+      lines.push("");
+      lines.push("LISTING DESCRIPTION:");
+      lines.push(description || "(No description generated yet)");
+    } else {
+      lines.push("PRIVATE PROPERTY LISTING EXPORT");
+      lines.push("================================");
+      lines.push(`Type: ${propertyType}`);
+      lines.push(`Beds: ${bedrooms || "N/A"} | Baths: ${bathrooms || "N/A"} | Garages: ${garages || "N/A"}`);
+      lines.push(`Size: ${floorSize ? floorSize + "m² floor" : ""} ${erfSize ? "/ " + erfSize + "m² erf" : ""}`);
+      lines.push(`Price: ${price ? "R " + formatRand(price) : "POA"}`);
+      lines.push(`Location: ${[suburb, city, province].filter(Boolean).join(", ")}`);
+      lines.push("");
+      lines.push("Key Features: " + (features.join(" | ") || "N/A"));
+      lines.push("");
+      const desc = description || "(No description generated yet)";
+      lines.push("Description:");
+      lines.push(desc.length > 800 ? desc.slice(0, 800) + "..." : desc);
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = portal === "p24" ? "property24-listing.txt" : "private-property-listing.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: portal === "p24" ? "Property24 export downloaded!" : "Private Property export downloaded!" });
+  };
+
   return (
     <div className="space-y-6">
-
-      {/* ── Property Details Card ── */}
+      {/* Property Details Card */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 space-y-6">
         <div>
           <h2 className="text-lg font-bold text-gray-900 mb-0.5">Property Details</h2>
           <p className="text-sm text-gray-500">Enter the listing information. The address is used for AI research only — it won't appear in the description.</p>
         </div>
 
-        {/* Address */}
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-gray-900">📍 Property Address</h3>
           <div>
             <label className="text-xs font-medium text-gray-500 mb-1 block">Street Address *</label>
             <div className="flex gap-2">
-              <Input
-                value={streetAddress}
-                onChange={e => { setStreetAddress(e.target.value); setAddressVerified(false); }}
-                placeholder="e.g. 12 Clifton Road"
-                className="rounded-xl flex-1"
-              />
-              <Button
-                onClick={verifyAddress}
-                disabled={verifying || !streetAddress || !suburb}
-                variant="outline"
-                className={`rounded-xl gap-1.5 text-xs shrink-0 ${addressVerified ? "border-emerald-400 text-emerald-600" : ""}`}
-              >
+              <Input value={streetAddress} onChange={e => { setStreetAddress(e.target.value); setAddressVerified(false); }} placeholder="e.g. 12 Clifton Road" className="rounded-xl flex-1" />
+              <Button onClick={verifyAddress} disabled={verifying || !streetAddress || !suburb} variant="outline"
+                className={`rounded-xl gap-1.5 text-xs shrink-0 ${addressVerified ? "border-emerald-400 text-emerald-600" : ""}`}>
                 {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : addressVerified ? <CheckCircle2 className="w-3.5 h-3.5" /> : <MapPin className="w-3.5 h-3.5" />}
                 {verifying ? "Verifying..." : addressVerified ? "Verified" : "Verify"}
               </Button>
@@ -198,9 +259,7 @@ RULES:
               <label className="text-xs font-medium text-gray-500 mb-1 block">Province</label>
               <select value={province} onChange={e => setProvince(e.target.value)} className="w-full border border-input rounded-xl px-3 h-9 text-sm outline-none focus:ring-1 focus:ring-purple-700 bg-white">
                 <option value="">Select province...</option>
-                {["Western Cape","Gauteng","KwaZulu-Natal","Eastern Cape","Limpopo","Mpumalanga","North West","Free State","Northern Cape"].map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
+                {["Western Cape","Gauteng","KwaZulu-Natal","Eastern Cape","Limpopo","Mpumalanga","North West","Free State","Northern Cape"].map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
@@ -212,7 +271,6 @@ RULES:
           </div>
         </div>
 
-        {/* Property Specs */}
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-gray-900">🏠 Property Specs</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -239,16 +297,12 @@ RULES:
           </div>
         </div>
 
-        {/* Key Features */}
         <div>
           <h3 className="text-sm font-semibold text-gray-900 mb-3">✅ Key Features</h3>
           <div className="flex flex-wrap gap-2">
             {FEATURES.map(f => (
-              <button
-                key={f}
-                onClick={() => toggleFeature(f)}
-                className={`text-xs rounded-lg px-3 py-1.5 border-2 font-medium transition-all ${features.includes(f) ? "border-purple-700 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}
-              >
+              <button key={f} onClick={() => toggleFeature(f)}
+                className={`text-xs rounded-lg px-3 py-1.5 border-2 font-medium transition-all ${features.includes(f) ? "border-purple-700 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
                 {features.includes(f) ? "✓ " : ""}{f}
               </button>
             ))}
@@ -256,7 +310,35 @@ RULES:
         </div>
       </div>
 
-      {/* ── Area Amenities ── */}
+      {/* Attach Photos */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">📎 Attach Property Photos</p>
+            <p className="text-xs text-gray-400 mt-0.5">AI will analyse these photos when generating your description</p>
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
+          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingPhoto} className="rounded-xl gap-1.5 text-xs">
+            {uploadingPhoto ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+            {uploadingPhoto ? "Uploading..." : "Upload Photos"}
+          </Button>
+        </div>
+        {attachedPhotos.length > 0 ? (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {attachedPhotos.map((url, i) => (
+              <div key={i} className="relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-gray-200 group">
+                <img src={url} alt="" className="w-full h-full object-cover" />
+                <button onClick={() => setAttachedPhotos(prev => prev.filter((_, j) => j !== i))}
+                  className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs transition-opacity">✕</button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400">No photos attached. Upload photos to enhance AI description quality.</p>
+        )}
+      </div>
+
+      {/* Area Amenities */}
       {suburb && (
         <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-2">
@@ -269,9 +351,7 @@ RULES:
           {amenities.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {amenities.map((a, i) => (
-                <span key={i} className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-medium">
-                  {a.name} · {a.distance_km}km
-                </span>
+                <span key={i} className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-medium">{a.name} · {a.distance_km}km</span>
               ))}
             </div>
           ) : (
@@ -280,16 +360,13 @@ RULES:
         </div>
       )}
 
-      {/* ── Tone ── */}
+      {/* Tone */}
       <div>
         <label className="text-sm font-semibold text-gray-900 block mb-3">Description Tone</label>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {TONES.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTone(t.key)}
-              className={`p-3 rounded-xl border-2 text-left transition-all ${tone === t.key ? "border-purple-700 bg-purple-50" : "border-gray-200 hover:border-gray-300 bg-white"}`}
-            >
+            <button key={t.key} onClick={() => setTone(t.key)}
+              className={`p-3 rounded-xl border-2 text-left transition-all ${tone === t.key ? "border-purple-700 bg-purple-50" : "border-gray-200 hover:border-gray-300 bg-white"}`}>
               <p className="text-sm font-semibold text-gray-900 mb-0.5">{t.label}</p>
               <p className="text-xs text-gray-500">{t.desc}</p>
               {tone === t.key && <Check className="w-4 h-4 text-purple-700 mt-1" />}
@@ -298,13 +375,10 @@ RULES:
         </div>
       </div>
 
-      {/* ── Additional instructions ── */}
       <div>
         <label className="text-sm font-semibold text-gray-900 block mb-2">Additional AI Instructions (optional)</label>
-        <textarea
-          value={aiPrompt}
-          onChange={e => setAiPrompt(e.target.value)}
-          placeholder="e.g. Emphasise the mountain views, highlight the recent kitchen renovation, mention the top school catchment..."
+        <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
+          placeholder="e.g. Emphasise the mountain views, highlight the recent kitchen renovation..."
           rows={3}
           className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white"
         />
@@ -314,7 +388,6 @@ RULES:
         {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating description...</> : <><Sparkles className="w-4 h-4" /> Generate Description</>}
       </Button>
 
-      {/* ── Result ── */}
       {description && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -324,15 +397,62 @@ RULES:
               {copied ? "Copied!" : "Copy"}
             </button>
           </div>
-          <textarea
-            value={description}
-            onChange={e => setDescription(e.target.value)}
+          <textarea value={description} onChange={e => {
+            setDescription(e.target.value);
+            if (onDescriptionGenerated) onDescriptionGenerated(e.target.value);
+          }}
             rows={12}
             className="w-full border border-purple-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none leading-relaxed bg-white"
           />
           <p className="text-xs text-gray-400">{description.length} characters · Edit directly above</p>
         </div>
       )}
+
+      {/* Export for Portal */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-6">
+        <h3 className="text-base font-bold text-gray-900 mb-1">Export for Portal</h3>
+        <p className="text-sm text-gray-500 mb-5">Download a formatted text file optimised for each portal's listing requirements.</p>
+
+        {(bedrooms || price || suburb) && (
+          <div className="bg-gray-50 rounded-xl p-4 mb-5">
+            <p className="text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Listing Summary</p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+              <span className="text-gray-500">Type: <strong className="text-gray-900">{propertyType}</strong></span>
+              {price && <span className="text-gray-500">Price: <strong className="text-purple-700">R {formatRand(price)}</strong></span>}
+              {bedrooms && <span className="text-gray-500">Beds: <strong className="text-gray-900">{bedrooms}</strong></span>}
+              {bathrooms && <span className="text-gray-500">Baths: <strong className="text-gray-900">{bathrooms}</strong></span>}
+              {garages && <span className="text-gray-500">Garages: <strong className="text-gray-900">{garages}</strong></span>}
+              {erfSize && <span className="text-gray-500">Erf: <strong className="text-gray-900">{erfSize}m²</strong></span>}
+              {suburb && <span className="text-gray-500">Suburb: <strong className="text-gray-900">{suburb}</strong></span>}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="border border-gray-200 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>
+              <p className="text-sm font-bold text-gray-900">Property24</p>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">SA's largest property portal. Formatted for their listing submission requirements.</p>
+            <button onClick={() => downloadPortal("p24")}
+              className="w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors">
+              <Download className="w-4 h-4" /> Download for Property24
+            </button>
+          </div>
+          <div className="border border-gray-200 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>
+              <p className="text-sm font-bold text-gray-900">Private Property</p>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">Second-largest SA portal. Optimised description length and feature format.</p>
+            <button onClick={() => downloadPortal("pp")}
+              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors">
+              <Download className="w-4 h-4" /> Download for Private Property
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
