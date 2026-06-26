@@ -12,20 +12,20 @@
     --card-foreground: 248 78% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 248 78% 10%;
-    --primary: 183 69% 42%;
+    --primary: 300 100% 25%;
     --primary-foreground: 0 0% 100%;
     --secondary: 210 17% 97%;
     --secondary-foreground: 248 78% 10%;
     --muted: 210 17% 97%;
     --muted-foreground: 0 0% 38%;
-    --accent: 183 69% 92%;
-    --accent-foreground: 183 69% 32%;
+    --accent: 300 50% 95%;
+    --accent-foreground: 300 100% 25%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 183 69% 42%;
-    --chart-1: 183 69% 42%;
+    --ring: 300 100% 25%;
+    --chart-1: 300 100% 25%;
     --chart-2: 260 50% 60%;
     --chart-3: 30 80% 55%;
     --chart-4: 43 74% 66%;
@@ -37,12 +37,12 @@
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 248 78% 10%;
-    --sidebar-primary: 183 69% 42%;
+    --sidebar-primary: 300 100% 25%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 183 69% 92%;
-    --sidebar-accent-foreground: 183 69% 32%;
+    --sidebar-accent: 300 50% 95%;
+    --sidebar-accent-foreground: 300 100% 25%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 183 69% 42%;
+    --sidebar-ring: 300 100% 25%;
   }
 }
 
@@ -58,7 +58,7 @@
 @layer utilities {
   .text-gradient {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, #21ABB5, #1a8f98);
+    background-image: linear-gradient(135deg, #800080, #b300b3);
   }
 }
 

@@ -27,11 +27,11 @@ export default function StudioLayout() {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       <div className="p-5 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-[#21ABB5] flex items-center justify-center">
-          <span className="text-white font-bold text-xs">AR</span>
+        <div className="w-8 h-8 rounded-lg bg-purple-700 flex items-center justify-center">
+          <span className="text-white font-bold text-xs">PR</span>
         </div>
-        <span className="font-bold text-[#0F082B]">AutoReel</span>
-        <span className="text-[9px] font-semibold bg-[#DEF5F7] text-[#21ABB5] px-1.5 py-0.5 rounded-full">SA</span>
+        <span className="font-bold text-[#0F082B]">PropReel</span>
+        <span className="text-[9px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">SA</span>
       </div>
 
       <nav className="flex-1 px-3 mt-2">
@@ -45,7 +45,7 @@ export default function StudioLayout() {
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   active
-                    ? "bg-[#DEF5F7] text-[#21ABB5]"
+                    ? "bg-purple-100 text-purple-700"
                     : "text-[#606060] hover:bg-gray-50 hover:text-[#0F082B]"
                 }`}
               >
@@ -82,7 +82,7 @@ export default function StudioLayout() {
           <Link
             to="/listings/new"
             onClick={() => setSidebarOpen(false)}
-            className="flex items-center justify-center gap-2 bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
+            className="flex items-center justify-center gap-2 bg-purple-700 hover:bg-purple-800 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
           >
             <Plus className="w-4 h-4" /> New Listing
           </Link>
@@ -97,11 +97,11 @@ export default function StudioLayout() {
 
         <div className="mt-6 mx-3 p-4 bg-gradient-to-br from-[#21ABB5]/5 to-[#DEF5F7] rounded-xl">
           <div className="flex items-center gap-2 mb-2">
-            <Gem className="w-4 h-4 text-[#21ABB5]" />
+            <Gem className="w-4 h-4 text-purple-700" />
             <span className="text-xs font-semibold text-[#0F082B]">Upgrade to Pro</span>
           </div>
           <p className="text-[11px] text-[#606060] leading-relaxed mb-3">Unlock unlimited videos, AI staging, and more.</p>
-          <Link to="/pricing" className="text-xs font-semibold text-[#21ABB5] hover:underline">
+          <Link to="/pricing" className="text-xs font-semibold text-purple-700 hover:underline">
             View plans →
           </Link>
         </div>
@@ -109,8 +109,8 @@ export default function StudioLayout() {
 
       <div className="p-4 border-t border-gray-100">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-[#DEF5F7] flex items-center justify-center">
-            <span className="text-sm font-bold text-[#21ABB5]">{initials}</span>
+          <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center">
+            <span className="text-sm font-bold text-purple-700">{initials}</span>
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-[#0F082B] truncate">{user?.full_name || "User"}</p>
@@ -163,13 +163,13 @@ export default function StudioLayout() {
             <div className="flex items-center gap-3">
               <button className="relative w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
                 <Bell className="w-4 h-4 text-[#606060]" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#21ABB5] rounded-full" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-purple-700 rounded-full" />
               </button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger className="flex items-center gap-2 hover:bg-gray-50 rounded-xl px-2 py-1.5 transition-colors">
-                  <div className="w-8 h-8 rounded-full bg-[#DEF5F7] flex items-center justify-center">
-                    <span className="text-xs font-bold text-[#21ABB5]">{initials}</span>
+                  <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+                    <span className="text-xs font-bold text-purple-700">{initials}</span>
                   </div>
                   <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
                 </DropdownMenuTrigger>

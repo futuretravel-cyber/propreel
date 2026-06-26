@@ -48,7 +48,7 @@ export default function Listings() {
           <p className="text-sm text-[#606060] mt-1">Manage your property listings and track performance.</p>
         </div>
         <Link to="/listings/new">
-          <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold px-6 rounded-xl h-11 gap-2">
+          <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-6 rounded-xl h-11 gap-2">
             <Plus className="w-4 h-4" /> New Listing
           </Button>
         </Link>
@@ -58,8 +58,8 @@ export default function Listings() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="bg-white rounded-2xl p-6 border border-gray-100">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-[#DEF5F7] flex items-center justify-center">
-              <Home className="w-5 h-5 text-[#21ABB5]" />
+            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
+              <Home className="w-5 h-5 text-purple-700" />
             </div>
             <span className="text-sm text-[#606060]">Active Listings</span>
           </div>
@@ -97,17 +97,17 @@ export default function Listings() {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-4 border-gray-200 border-t-[#21ABB5] rounded-full animate-spin" />
+          <div className="w-8 h-8 border-4 border-gray-200 border-t-purple-700 rounded-full animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#DEF5F7] flex items-center justify-center mx-auto mb-4">
-            <Home className="w-8 h-8 text-[#21ABB5]" />
+          <div className="w-16 h-16 rounded-2xl bg-purple-100 flex items-center justify-center mx-auto mb-4">
+            <Home className="w-8 h-8 text-purple-700" />
           </div>
           <h3 className="font-bold text-[#0F082B] mb-2">No listings yet</h3>
           <p className="text-sm text-[#606060] mb-6">Create your first property listing with AI-generated descriptions</p>
           <Link to="/listings/new">
-            <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-8 h-11 gap-2">
+            <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-8 h-11 gap-2">
               <Plus className="w-4 h-4" /> New Listing
             </Button>
           </Link>
@@ -118,7 +118,7 @@ export default function Listings() {
             const sc = statusConfig[listing.status] || statusConfig.draft;
             const StatusIcon = sc.icon;
             return (
-              <div key={listing.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-[#21ABB5]/20 transition-all">
+              <div key={listing.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-purple-200 transition-all">
                 {/* Photo */}
                 <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-50 relative">
                   {listing.photos?.[0] ? (
@@ -139,7 +139,7 @@ export default function Listings() {
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="min-w-0">
-                      <p className="font-semibold text-[#21ABB5] text-sm">{formatRand(listing.price)}</p>
+                      <p className="font-semibold text-purple-700 text-sm">{formatRand(listing.price)}</p>
                       <p className="text-sm font-medium text-[#0F082B] truncate">{listing.property_type} · {listing.suburb}</p>
                       <div className="flex items-center gap-1 text-xs text-[#606060] mt-0.5">
                         <MapPin className="w-3 h-3" /> {listing.suburb}{listing.city ? `, ${listing.city}` : ""}

@@ -276,11 +276,11 @@ Exported from AutoReel Studio for ${portalName}
         <div className="flex items-center gap-1 flex-wrap">
           {STEPS.map((label, i) => (
             <div key={label} className="flex items-center gap-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${i <= step ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-gray-400"}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${i <= step ? "bg-purple-700 text-white" : "bg-gray-100 text-gray-400"}`}>
                 {i < step ? <Check className="w-4 h-4" /> : i + 1}
               </div>
               <span className={`hidden sm:block text-xs font-medium mr-1 ${i <= step ? "text-[#0F082B]" : "text-gray-400"}`}>{label}</span>
-              {i < STEPS.length - 1 && <div className={`hidden sm:block w-6 h-0.5 ${i < step ? "bg-[#21ABB5]" : "bg-gray-200"}`} />}
+              {i < STEPS.length - 1 && <div className={`hidden sm:block w-6 h-0.5 ${i < step ? "bg-purple-700" : "bg-gray-200"}`} />}
             </div>
           ))}
         </div>

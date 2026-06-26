@@ -43,10 +43,10 @@ const AuthenticatedApp = () => {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-[#21ABB5] flex items-center justify-center">
-            <span className="text-white font-bold text-sm">AR</span>
+          <div className="w-10 h-10 rounded-xl bg-purple-700 flex items-center justify-center">
+            <span className="text-white font-bold text-sm">PR</span>
           </div>
-          <div className="w-8 h-8 border-4 border-gray-200 border-t-[#21ABB5] rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-4 border-gray-200 border-t-purple-700 rounded-full animate-spin"></div>
         </div>
       </div>
     );
