@@ -7,12 +7,12 @@ import { useToast } from "@/components/ui/use-toast";
 import BrandingPreview from "@/components/studio/BrandingPreview";
 import VoiceoverSelector from "@/components/studio/VoiceoverSelector";
 import ElevenLabsVoiceover from "@/components/studio/ElevenLabsVoiceover";
-import AIPhotoEditor from "@/components/studio/AIPhotoEditor";
+import PhotoEditTab from "@/components/studio/PhotoEditTab";
 import AvatarSelector from "@/components/studio/AvatarSelector";
 import HeyGenAvatar from "@/components/studio/HeyGenAvatar";
 import VideoExportModal from "@/components/studio/VideoExportModal";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
-import CreatomateTemplates from "@/components/studio/CreatomateTemplates";
+import CreatomateDownload from "@/components/studio/CreatomateDownload";
 
 const INTRO_TEMPLATES = ["None", "Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"];
 const OUTRO_TEMPLATES = ["None", "Agent Card", "Contact Block", "Agency Logo"];
@@ -23,8 +23,8 @@ const sidebarTabs = [
   { key: "music",       label: "Music",     icon: Music },
   { key: "voiceover",   label: "Voice",     icon: Mic },
   { key: "avatar",      label: "Avatar",    icon: User },
-  { key: "photos",      label: "AI Edits",  icon: Wand2 },
-  { key: "creatomate",  label: "Export",    icon: Video },
+  { key: "photos",      label: "AI & Stage",icon: Wand2 },
+  { key: "creatomate",  label: "Download",  icon: Video },
 ];
 
 export default function Studio() {
@@ -400,7 +400,7 @@ export default function Studio() {
             )}
 
             {activeTab === "photos" && clips.length > 0 && (
-              <AIPhotoEditor
+              <PhotoEditTab
                 photos={clips}
                 onPhotoReplaced={handlePhotoReplaced}
               />
@@ -408,17 +408,13 @@ export default function Studio() {
 
             {activeTab === "photos" && clips.length === 0 && (
               <div className="text-center py-8">
+                <Wand2 className="w-8 h-8 text-gray-200 mx-auto mb-2" />
                 <p className="text-xs text-[#606060]">No photos in this project yet.</p>
               </div>
             )}
 
             {activeTab === "creatomate" && (
-              <CreatomateTemplates
-                project={project}
-                brandKit={brandKits.find(k => k.id === selectedBrandKitId) || null}
-                voiceoverUrl={voiceoverUrl}
-                musicUrl={musicUrl}
-              />
+              <CreatomateDownload project={project} />
             )}
           </div>
         </div>
