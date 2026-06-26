@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Download, Share2, Pencil, SlidersHorizontal, CheckCircle2, Clock, FileEdit, Image } from "lucide-react";
+import VideoExportModal from "@/components/studio/VideoExportModal";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
@@ -16,6 +17,7 @@ export default function ProjectDetail() {
   const [project, setProject] = useState(null);
   const [brandKit, setBrandKit] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showExport, setShowExport] = useState(false);
 
   useEffect(() => {
     base44.entities.Project.get(id)
@@ -71,13 +73,18 @@ export default function ProjectDetail() {
             </span>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Link to={`/projects/${id}/quick-edit`}>
             <Button variant="outline" className="rounded-xl gap-2"><Pencil className="w-4 h-4" /> Quick Edit</Button>
           </Link>
           <Link to={`/projects/${id}/studio`}>
             <Button variant="outline" className="rounded-xl gap-2"><SlidersHorizontal className="w-4 h-4" /> Studio</Button>
           </Link>
+          {project.status === "ready" && (
+            <Button onClick={() => setShowExport(true)} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl gap-2">
+              <Share2 className="w-4 h-4" /> Export & Share
+            </Button>
+          )}
         </div>
       </div>
 
@@ -243,6 +250,14 @@ export default function ProjectDetail() {
           )}
         </div>
       </div>
+      {showExport && (
+        <VideoExportModal
+          project={project}
+          photos={slideshowPhotos}
+          voiceoverUrl={project.voiceover_url}
+          onClose={() => setShowExport(false)}
+        />
+      )}
     </div>
   );
 }

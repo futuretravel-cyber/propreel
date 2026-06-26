@@ -1,61 +1,59 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Pause, Volume2, VolumeX, Loader2 } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, Loader2, Download, Share2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 /**
- * Ken Burns presets — each defines a CSS transform animation from → to.
- * The focus point from AI analysis biases which preset is chosen per photo.
+ * More extreme Ken Burns presets for real estate drama.
+ * Each clip gets a unique motion to keep viewers engaged.
  */
 const KB_PRESETS = [
-  // zoom in toward center
-  { from: "scale(1) translate(0%, 0%)",    to: "scale(1.18) translate(0%, 0%)" },
-  // zoom in, pan right (subject on left)
-  { from: "scale(1.08) translate(-3%, 0%)", to: "scale(1.2) translate(3%, 0%)" },
-  // zoom in, pan left (subject on right)
-  { from: "scale(1.08) translate(3%, 0%)",  to: "scale(1.2) translate(-3%, 0%)" },
-  // zoom in, pan up (subject at bottom)
-  { from: "scale(1.08) translate(0%, 3%)",  to: "scale(1.2) translate(0%, -3%)" },
-  // zoom in, pan down (subject at top)
-  { from: "scale(1.08) translate(0%, -3%)", to: "scale(1.2) translate(0%, 3%)" },
-  // slow zoom out
-  { from: "scale(1.2) translate(0%, 0%)",   to: "scale(1) translate(0%, 0%)" },
-  // diagonal drift
-  { from: "scale(1.05) translate(-2%, -2%)", to: "scale(1.18) translate(2%, 2%)" },
-  { from: "scale(1.05) translate(2%, -2%)",  to: "scale(1.18) translate(-2%, 2%)" },
+  // Strong zoom into center
+  { from: "scale(1) translate(0%, 0%)",      to: "scale(1.35) translate(0%, 0%)" },
+  // Zoom + hard pan right (subject on left)
+  { from: "scale(1.1) translate(-6%, 2%)",   to: "scale(1.4) translate(6%, -2%)" },
+  // Zoom + hard pan left (subject on right)
+  { from: "scale(1.1) translate(6%, -2%)",   to: "scale(1.4) translate(-6%, 2%)" },
+  // Zoom + strong pan up
+  { from: "scale(1.1) translate(0%, 8%)",    to: "scale(1.38) translate(0%, -8%)" },
+  // Zoom + strong pan down
+  { from: "scale(1.1) translate(0%, -8%)",   to: "scale(1.38) translate(0%, 8%)" },
+  // Dramatic zoom out from tight shot
+  { from: "scale(1.45) translate(0%, 0%)",   to: "scale(1) translate(0%, 0%)" },
+  // Diagonal sweep (top-left to bottom-right)
+  { from: "scale(1.05) translate(-5%, -5%)", to: "scale(1.35) translate(5%, 5%)" },
+  // Diagonal sweep opposite
+  { from: "scale(1.05) translate(5%, 5%)",   to: "scale(1.35) translate(-5%, -5%)" },
+  // Zoom + drift with rotation feel (no actual rotation, just asymmetric zoom)
+  { from: "scale(1.0) translate(-4%, 3%)",   to: "scale(1.42) translate(4%, -3%)" },
 ];
 
 /**
- * Map AI-detected focus position to a Ken Burns preset index.
- * focus: { x: "left"|"center"|"right", y: "top"|"center"|"bottom" }
+ * AI-driven preset selection: maps focus point to the most cinematic motion.
  */
-function pickPreset(focus) {
-  if (!focus) return KB_PRESETS[0];
+function pickPreset(focus, index) {
+  if (!focus) return KB_PRESETS[index % KB_PRESETS.length];
   const { x, y } = focus;
-  if (x === "left")   return KB_PRESETS[1]; // pan toward left subject
-  if (x === "right")  return KB_PRESETS[2]; // pan toward right subject
-  if (y === "bottom") return KB_PRESETS[3]; // pan up toward bottom subject
-  if (y === "top")    return KB_PRESETS[4]; // pan down toward top subject
-  // alternate center presets for variety
-  return KB_PRESETS[Math.floor(Math.random() * 2) === 0 ? 0 : 5];
+  // Use subject position to drive camera toward the subject
+  if (x === "left" && y === "top")    return KB_PRESETS[1];
+  if (x === "right" && y === "top")   return KB_PRESETS[2];
+  if (x === "left" && y === "bottom") return KB_PRESETS[6];
+  if (x === "right" && y === "bottom")return KB_PRESETS[7];
+  if (x === "left")   return KB_PRESETS[1];
+  if (x === "right")  return KB_PRESETS[2];
+  if (y === "bottom") return KB_PRESETS[3];
+  if (y === "top")    return KB_PRESETS[4];
+  // Center subjects: alternate between zoom in and zoom out for variety
+  return index % 2 === 0 ? KB_PRESETS[0] : KB_PRESETS[5];
 }
 
-/**
- * Analyze all photos with AI to get focus points and scene descriptions.
- * Returns array of { x, y, description } per photo.
- */
 async function analyzePhotos(photoUrls) {
-  const prompt = `Analyze these real estate property photos. For each photo, identify:
-1. The primary focus point/subject position (x: "left", "center", or "right"; y: "top", "center", or "bottom")
-2. A 1-sentence scene description for cinematic framing
-
-Return a JSON array with one object per photo in order:
-[{ "x": "center", "y": "center", "description": "Wide living room with fireplace" }, ...]
-
-Photos to analyze: ${photoUrls.length} photos provided as file_urls.`;
-
   const result = await base44.integrations.Core.InvokeLLM({
-    prompt,
-    file_urls: photoUrls.slice(0, 20), // API limit
+    prompt: `Analyze these real estate property photos. For each photo identify:
+1. Primary subject position: x ("left", "center", "right"), y ("top", "center", "bottom")
+2. Scene type (e.g. "kitchen", "bedroom", "exterior", "pool")
+
+Return JSON with a "scenes" array, one entry per photo in order.`,
+    file_urls: photoUrls.slice(0, 20),
     response_json_schema: {
       type: "object",
       properties: {
@@ -73,7 +71,6 @@ Photos to analyze: ${photoUrls.length} photos provided as file_urls.`;
       },
     },
   });
-
   return result?.scenes || photoUrls.map(() => ({ x: "center", y: "center", description: "" }));
 }
 
@@ -87,15 +84,15 @@ export default function SlideshowPlayer({
   heading,
   subheading,
   orientation = "landscape",
-  clipDuration = 3,
+  clipDuration = 5,
 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [scenes, setScenes] = useState(null); // null = not analyzed yet
+  const [scenes, setScenes] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
-  const [animKey, setAnimKey] = useState(0); // forces CSS animation restart per clip
+  const [animKey, setAnimKey] = useState(0);
 
   const voiceRef = useRef(null);
   const musicRef = useRef(null);
@@ -106,7 +103,7 @@ export default function SlideshowPlayer({
   const totalPhotos = photos.length;
   const totalDuration = totalPhotos * clipDuration;
 
-  // Analyze photos on mount
+  // AI scene analysis
   useEffect(() => {
     if (!photos.length) return;
     setAnalyzing(true);
@@ -116,7 +113,7 @@ export default function SlideshowPlayer({
       .finally(() => setAnalyzing(false));
   }, [photos]);
 
-  // Setup audio — tear down old instances before creating new ones
+  // Audio setup — tear down before rebuilding
   useEffect(() => {
     voiceRef.current?.pause();
     voiceRef.current = null;
@@ -131,7 +128,7 @@ export default function SlideshowPlayer({
     }
     if (musicUrl) {
       const a = new Audio(musicUrl);
-      a.volume = 0.25;
+      a.volume = voiceoverUrl ? 0.15 : 0.35; // duck music under voiceover
       a.loop = true;
       a.preload = "auto";
       musicRef.current = a;
@@ -180,7 +177,7 @@ export default function SlideshowPlayer({
       if (idx !== lastIndexRef.current) {
         lastIndexRef.current = idx;
         setCurrentIndex(idx);
-        setAnimKey(k => k + 1); // restart Ken Burns animation for new clip
+        setAnimKey(k => k + 1);
       }
 
       if (elapsed >= totalDuration) {
@@ -199,11 +196,10 @@ export default function SlideshowPlayer({
 
   const currentPhoto = photos[currentIndex];
   const currentScene = scenes?.[currentIndex];
-  const preset = pickPreset(currentScene);
+  const preset = pickPreset(currentScene, currentIndex);
   const elapsed = (progress / 100) * totalDuration;
   const timeLabel = `${Math.floor(elapsed)}s / ${totalDuration}s`;
 
-  // Inject keyframe style for Ken Burns animation
   const kbStyle = `
     @keyframes kenburns-${animKey} {
       0%   { transform: ${preset.from}; }
@@ -211,35 +207,43 @@ export default function SlideshowPlayer({
     }
   `;
 
-  const isIntro = currentIndex === 0 && introTemplate && introTemplate !== "None";
-  const isOutro = currentIndex === totalPhotos - 1 && outroTemplate && outroTemplate !== "None" && brandKit;
+  const showIntro = currentIndex === 0 && playing && introTemplate && introTemplate !== "None";
+  const showOutro = currentIndex === totalPhotos - 1 && playing && outroTemplate && outroTemplate !== "None";
+
+  // Template background colour
+  const templateColors = {
+    "Address Reveal": { bg: "rgba(15,8,43,0.72)", accent: "#21ABB5" },
+    "Open House":     { bg: "rgba(6,78,59,0.72)",  accent: "#34d399" },
+    "Just Listed":    { bg: "rgba(120,10,30,0.72)", accent: "#fb7185" },
+    "Price Drop":     { bg: "rgba(120,60,0,0.72)",  accent: "#fbbf24" },
+    "Luxury Feature": { bg: "rgba(26,10,46,0.72)",  accent: "#a78bfa" },
+    "Simple":         { bg: "rgba(30,30,30,0.65)",  accent: "#d1d5db" },
+  };
+  const tc = templateColors[introTemplate] || templateColors["Address Reveal"];
 
   return (
     <div className="w-full">
       <style>{kbStyle}</style>
 
-      {/* Analyzing badge */}
       {analyzing && (
         <div className="flex items-center gap-2 mb-2 text-xs text-[#21ABB5] font-medium">
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          AI analyzing scenes for Ken Burns effect...
+          AI analysing scenes for Ken Burns effect...
         </div>
       )}
 
-      {/* Viewer */}
-      <div
-        className={`relative bg-black rounded-2xl overflow-hidden mx-auto ${orientation === "portrait" ? "aspect-[9/16] max-w-xs" : "aspect-video w-full"}`}
-      >
+      {/* Player */}
+      <div className={`relative bg-black rounded-2xl overflow-hidden mx-auto ${orientation === "portrait" ? "aspect-[9/16] max-w-xs" : "aspect-video w-full"}`}>
+
         {/* Ken Burns photo */}
         {currentPhoto && (
           <div
             key={`kb-${animKey}`}
             className="absolute inset-0 w-full h-full"
             style={{
-              animation: playing
-                ? `kenburns-${animKey} ${clipDuration}s ease-in-out forwards`
-                : "none",
+              animation: playing ? `kenburns-${animKey} ${clipDuration}s ease-in-out forwards` : "none",
               transform: preset.from,
+              willChange: "transform",
             }}
           >
             <img
@@ -247,47 +251,73 @@ export default function SlideshowPlayer({
               alt=""
               className="w-full h-full object-cover"
               style={{
-                // Smart crop: use object-position based on AI focus point
                 objectPosition: `${currentScene?.x === "left" ? "25%" : currentScene?.x === "right" ? "75%" : "50%"} ${currentScene?.y === "top" ? "25%" : currentScene?.y === "bottom" ? "75%" : "50%"}`,
               }}
             />
           </div>
         )}
 
-        {/* Scene description overlay (subtle, bottom-left during playback) */}
-        {playing && currentScene?.description && !isIntro && !isOutro && (
-          <div className="absolute bottom-3 left-3 right-3 pointer-events-none">
+        {/* Persistent logo watermark (always visible during playback) */}
+        {playing && brandKit?.logo_url && (
+          <div className="absolute top-3 right-3 z-20 pointer-events-none">
+            <img src={brandKit.logo_url} alt="" className="h-8 object-contain drop-shadow-lg" />
+          </div>
+        )}
+
+        {/* INTRO overlay */}
+        {showIntro && (
+          <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-end"
+            style={{ background: `linear-gradient(to top, ${tc.bg} 0%, transparent 60%)` }}>
+            <div className="p-5">
+              <div className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest mb-2"
+                style={{ backgroundColor: tc.accent, color: "#fff" }}>
+                {introTemplate}
+              </div>
+              <p className="text-white font-extrabold text-xl leading-tight drop-shadow-lg">{heading}</p>
+              {subheading && <p className="text-white/80 text-sm mt-1 drop-shadow">{subheading}</p>}
+              {brandKit?.agent_name && (
+                <p className="text-white/60 text-xs mt-2">{brandKit.agent_name}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* OUTRO overlay */}
+        {showOutro && (
+          <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.72)" }}>
+            {brandKit?.profile_photo_url && (
+              <img src={brandKit.profile_photo_url} alt="" className="w-20 h-20 rounded-full object-cover border-2 border-white mb-3 shadow-xl" />
+            )}
+            {brandKit?.logo_url && !brandKit?.profile_photo_url && (
+              <img src={brandKit.logo_url} alt="" className="h-14 object-contain mb-3" />
+            )}
+            <p className="text-white font-bold text-lg">{brandKit?.agent_name || heading}</p>
+            {brandKit?.phone && <p className="text-white/70 text-sm mt-1">{brandKit.phone}</p>}
+            {brandKit?.email && <p className="text-white/70 text-sm">{brandKit.email}</p>}
+            {brandKit?.logo_url && brandKit?.profile_photo_url && (
+              <img src={brandKit.logo_url} alt="" className="h-8 object-contain mt-4 opacity-80" />
+            )}
+          </div>
+        )}
+
+        {/* Scene label during video (non-intro/outro clips) */}
+        {playing && !showIntro && !showOutro && currentScene?.description && (
+          <div className="absolute bottom-3 left-3 pointer-events-none">
             <p className="text-white/50 text-[10px] drop-shadow">{currentScene.description}</p>
           </div>
         )}
 
-        {/* Intro branding overlay */}
-        {isIntro && (
-          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/20 flex flex-col justify-end p-6 pointer-events-none">
-            {heading && <p className="text-white font-bold text-xl drop-shadow-lg leading-tight">{heading}</p>}
-            {subheading && <p className="text-white/80 text-sm mt-1 drop-shadow">{subheading}</p>}
-            <p className="text-white/50 text-[10px] mt-2 uppercase tracking-widest">{introTemplate}</p>
+        {/* Clip counter */}
+        {playing && (
+          <div className="absolute top-3 left-3 bg-black/50 text-white text-xs px-2 py-1 rounded-lg font-mono z-20">
+            {currentIndex + 1} / {totalPhotos}
           </div>
         )}
 
-        {/* Outro branding overlay */}
-        {isOutro && (
-          <div className="absolute inset-0 bg-black/65 flex flex-col items-center justify-center p-6 text-center pointer-events-none">
-            {brandKit.profile_photo_url && (
-              <img src={brandKit.profile_photo_url} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-white mb-3" />
-            )}
-            {brandKit.logo_url && (
-              <img src={brandKit.logo_url} alt="" className="h-10 object-contain mb-3" />
-            )}
-            <p className="text-white font-bold text-lg">{brandKit.agent_name}</p>
-            {brandKit.email && <p className="text-white/70 text-sm mt-0.5">{brandKit.email}</p>}
-            {brandKit.phone && <p className="text-white/70 text-sm">{brandKit.phone}</p>}
-          </div>
-        )}
-
-        {/* Pause overlay */}
+        {/* Play/Pause overlay */}
         {!playing && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/25">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-20">
             <button
               onClick={handlePlay}
               disabled={analyzing}
@@ -297,13 +327,6 @@ export default function SlideshowPlayer({
                 ? <Loader2 className="w-6 h-6 text-[#21ABB5] animate-spin" />
                 : <Play className="w-7 h-7 text-[#0F082B] fill-[#0F082B] ml-1" />}
             </button>
-          </div>
-        )}
-
-        {/* Clip counter */}
-        {playing && (
-          <div className="absolute top-3 right-3 bg-black/50 text-white text-xs px-2 py-1 rounded-lg font-mono">
-            {currentIndex + 1} / {totalPhotos}
           </div>
         )}
       </div>
@@ -342,14 +365,7 @@ export default function SlideshowPlayer({
               key={i}
               className={`flex-shrink-0 w-10 h-10 rounded-md overflow-hidden border-2 transition-all ${i === currentIndex ? "border-[#21ABB5]" : "border-transparent opacity-50"}`}
             >
-              <img
-                src={url}
-                alt=""
-                className="w-full h-full object-cover"
-                style={{
-                  objectPosition: scenes?.[i]?.x === "left" ? "25% 50%" : scenes?.[i]?.x === "right" ? "75% 50%" : "50% 50%",
-                }}
-              />
+              <img src={url} alt="" className="w-full h-full object-cover" />
             </div>
           ))}
         </div>

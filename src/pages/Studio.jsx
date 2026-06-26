@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Play, Pause, Download, Monitor, Smartphone, Layers, Music, Mic, Star, Check, X, GripVertical, Loader2 } from "lucide-react";
+import { ArrowLeft, Play, Pause, Download, Monitor, Smartphone, Layers, Music, Mic, Star, Check, Wand2, User, Loader2, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
+import { useToast } from "@/components/ui/use-toast";
 import BrandingPreview from "@/components/studio/BrandingPreview";
 import VoiceoverSelector from "@/components/studio/VoiceoverSelector";
+import AIPhotoEditor from "@/components/studio/AIPhotoEditor";
+import AvatarSelector from "@/components/studio/AvatarSelector";
+import VideoExportModal from "@/components/studio/VideoExportModal";
+import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 
 const INTRO_TEMPLATES = ["None", "Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"];
 const OUTRO_TEMPLATES = ["None", "Agent Card", "Contact Block", "Agency Logo"];
@@ -12,15 +17,20 @@ const OUTRO_TEMPLATES = ["None", "Agent Card", "Contact Block", "Agency Logo"];
 const sidebarTabs = [
   { key: "templates", label: "Templates", icon: Layers },
   { key: "brandkit", label: "Brand Kit", icon: Star },
-  { key: "music", label: "Music", icon: Music },
-  { key: "voiceover", label: "Voiceover", icon: Mic },
+  { key: "music",    label: "Music",     icon: Music },
+  { key: "voiceover",label: "Voiceover", icon: Mic },
+  { key: "avatar",   label: "Avatar",    icon: User },
+  { key: "photos",   label: "AI Edits",  icon: Wand2 },
 ];
 
 export default function Studio() {
   const { id } = useParams();
+  const { toast } = useToast();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [rendering, setRendering] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [activeTab, setActiveTab] = useState("templates");
   const [orientation, setOrientation] = useState("landscape");
   const [previewMode, setPreviewMode] = useState("intro");
@@ -34,6 +44,10 @@ export default function Studio() {
   const [musicTrack, setMusicTrack] = useState(null);
   const [voiceoverScript, setVoiceoverScript] = useState("");
   const [voiceoverVoice, setVoiceoverVoice] = useState("alloy");
+  const [selectedAvatarId, setSelectedAvatarId] = useState(null);
+  const [clips, setClips] = useState([]);
+  const [voiceoverUrl, setVoiceoverUrl] = useState("");
+  const [musicUrl, setMusicUrl] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -50,11 +64,15 @@ export default function Studio() {
       setSelectedBrandKitId(p.brand_kit_id || null);
       setVoiceoverScript(p.voiceover_script || "");
       setVoiceoverVoice(p.voiceover_voice || "alloy");
+      setVoiceoverUrl(p.voiceover_url || "");
+      setClips(p.selected_photo_ids?.length ? p.selected_photo_ids : p.photos || []);
       setBrandKits(kits);
       setMusicTracks(tracks);
-      const savedTrack = tracks.find(t => t.name === p.music_track);
-      if (savedTrack) setMusicTrack(savedTrack.id);
-      else if (tracks.length) setMusicTrack(tracks[0].id);
+      const savedTrack = tracks.find(t => t.name === p.music_track) || (tracks.length ? tracks[0] : null);
+      if (savedTrack) {
+        setMusicTrack(savedTrack.id);
+        setMusicUrl(savedTrack.file_url || "");
+      }
     }).catch(() => {}).finally(() => setLoading(false));
   }, [id]);
 
@@ -69,12 +87,40 @@ export default function Studio() {
         intro_subheading: subheading,
         brand_kit_id: selectedBrandKitId || "",
         music_track: selectedTrack?.name || "",
+        music_url: selectedTrack?.file_url || "",
         voiceover_script: voiceoverScript,
         voiceover_voice: voiceoverVoice,
         orientation,
       });
+      toast({ title: "Saved!" });
     } catch {}
     setSaving(false);
+  };
+
+  const handleRenderVoiceover = async () => {
+    if (!voiceoverScript.trim()) return;
+    setRendering(true);
+    try {
+      const result = await base44.integrations.Core.GenerateSpeech({
+        text: voiceoverScript,
+        voice: voiceoverVoice,
+        language_code: "en",
+      });
+      setVoiceoverUrl(result.url);
+      await base44.entities.Project.update(id, { voiceover_url: result.url });
+      toast({ title: "Voiceover generated!", description: "Your narration is ready." });
+    } catch {
+      toast({ title: "Voiceover failed", variant: "destructive" });
+    }
+    setRendering(false);
+  };
+
+  const handlePhotoReplaced = (idx, newUrl) => {
+    setClips(prev => {
+      const next = [...prev];
+      next[idx] = newUrl;
+      return next;
+    });
   };
 
   if (loading) {
@@ -95,7 +141,7 @@ export default function Studio() {
   }
 
   const selectedBrandKit = brandKits.find(k => k.id === selectedBrandKitId) || null;
-  const clips = project.selected_photo_ids?.length ? project.selected_photo_ids : project.photos || [];
+  const selectedTrack = musicTracks.find(t => t.id === musicTrack);
 
   return (
     <div className="-m-4 lg:-m-8 min-h-screen bg-white flex flex-col">
@@ -117,11 +163,13 @@ export default function Studio() {
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
             {saving ? "Saving..." : "Save"}
           </Button>
-          <Link to={`/projects/${id}`}>
-            <Button size="sm" className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-lg gap-2 text-xs px-4">
-              <Download className="w-3.5 h-3.5" /> Export
-            </Button>
-          </Link>
+          <Button
+            size="sm"
+            onClick={() => setShowExport(true)}
+            className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-lg gap-2 text-xs px-4"
+          >
+            <Share2 className="w-3.5 h-3.5" /> Export & Share
+          </Button>
         </div>
       </div>
 
@@ -161,24 +209,20 @@ export default function Studio() {
                       <p className="text-[10px] text-[#606060] mb-2">Select an intro template</p>
                       <div className="grid grid-cols-2 gap-2 mb-3">
                         {INTRO_TEMPLATES.map((t) => (
-                          <button
-                            key={t}
-                            onClick={() => setIntroTemplate(t)}
+                          <button key={t} onClick={() => setIntroTemplate(t)}
                             className={`aspect-video rounded-lg border-2 text-[10px] font-medium flex items-center justify-center p-1 text-center transition-all ${
-                              introTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"
-                            }`}
-                          >
+                              introTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"}`}>
                             {t}
                           </button>
                         ))}
                       </div>
                       <div className="space-y-2">
                         <div>
-                          <label className="text-[10px] font-medium text-[#606060] mb-1 block">Line 1</label>
+                          <label className="text-[10px] font-medium text-[#606060] mb-1 block">Heading</label>
                           <input value={heading} onChange={(e) => setHeading(e.target.value)} placeholder={project.name} className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[#21ABB5]" />
                         </div>
                         <div>
-                          <label className="text-[10px] font-medium text-[#606060] mb-1 block">Line 2</label>
+                          <label className="text-[10px] font-medium text-[#606060] mb-1 block">Subheading</label>
                           <input value={subheading} onChange={(e) => setSubheading(e.target.value)} placeholder="Subtitle..." className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[#21ABB5]" />
                         </div>
                       </div>
@@ -190,13 +234,9 @@ export default function Studio() {
                       <p className="text-[10px] text-[#606060] mb-2">Select an outro template</p>
                       <div className="grid grid-cols-2 gap-2">
                         {OUTRO_TEMPLATES.map((t) => (
-                          <button
-                            key={t}
-                            onClick={() => setOutroTemplate(t)}
+                          <button key={t} onClick={() => setOutroTemplate(t)}
                             className={`aspect-video rounded-lg border-2 text-[10px] font-medium flex items-center justify-center p-1 text-center transition-all ${
-                              outroTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"
-                            }`}
-                          >
+                              outroTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"}`}>
                             {t}
                           </button>
                         ))}
@@ -218,11 +258,8 @@ export default function Studio() {
                   </div>
                 ) : (
                   brandKits.map((kit) => (
-                    <button
-                      key={kit.id}
-                      onClick={() => setSelectedBrandKitId(kit.id)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-[#21ABB5] bg-[#DEF5F7]/30" : "border-gray-100 hover:border-gray-200"}`}
-                    >
+                    <button key={kit.id} onClick={() => setSelectedBrandKitId(kit.id)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-[#21ABB5] bg-[#DEF5F7]/30" : "border-gray-100 hover:border-gray-200"}`}>
                       {kit.profile_photo_url ? (
                         <img src={kit.profile_photo_url} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
                       ) : (
@@ -245,7 +282,7 @@ export default function Studio() {
             {activeTab === "music" && (
               <div className="space-y-3">
                 <p className="text-xs font-semibold text-[#0F082B]">Music</p>
-                <p className="text-[10px] text-[#606060]">Select a track to feature in your video.</p>
+                <p className="text-[10px] text-[#606060]">Select a background track for your video.</p>
                 {musicTracks.length === 0 ? (
                   <div className="bg-gray-50 rounded-xl p-4 text-center">
                     <Music className="w-6 h-6 text-gray-300 mx-auto mb-1" />
@@ -253,15 +290,10 @@ export default function Studio() {
                   </div>
                 ) : (
                   musicTracks.map((track) => (
-                    <button
-                      key={track.id}
-                      onClick={() => setMusicTrack(track.id)}
-                      className={`w-full flex items-center gap-2.5 rounded-xl p-2.5 transition-all border ${musicTrack === track.id ? "border-[#21ABB5] bg-[#DEF5F7]/20" : "bg-gray-50 border-transparent hover:border-gray-200"}`}
-                    >
-                      <div
-                        onClick={(e) => { e.stopPropagation(); new Audio(track.file_url).play(); }}
-                        className="w-7 h-7 rounded-full bg-[#21ABB5] flex items-center justify-center flex-shrink-0 hover:bg-[#1a9da6]"
-                      >
+                    <button key={track.id} onClick={() => { setMusicTrack(track.id); setMusicUrl(track.file_url || ""); }}
+                      className={`w-full flex items-center gap-2.5 rounded-xl p-2.5 transition-all border ${musicTrack === track.id ? "border-[#21ABB5] bg-[#DEF5F7]/20" : "bg-gray-50 border-transparent hover:border-gray-200"}`}>
+                      <div onClick={(e) => { e.stopPropagation(); new Audio(track.file_url).play(); }}
+                        className="w-7 h-7 rounded-full bg-[#21ABB5] flex items-center justify-center flex-shrink-0 hover:bg-[#1a9da6]">
                         <Play className="w-3 h-3 text-white fill-white ml-0.5" />
                       </div>
                       <div className="flex-1 text-left min-w-0">
@@ -276,77 +308,140 @@ export default function Studio() {
             )}
 
             {activeTab === "voiceover" && (
-              <VoiceoverSelector
-                script={voiceoverScript}
-                setScript={setVoiceoverScript}
-                selectedVoice={voiceoverVoice}
-                setSelectedVoice={setVoiceoverVoice}
-                projectName={project.name}
-                heading={heading}
-                subheading={subheading}
-                photoCount={clips.length}
+              <div className="space-y-3">
+                <VoiceoverSelector
+                  script={voiceoverScript}
+                  setScript={setVoiceoverScript}
+                  selectedVoice={voiceoverVoice}
+                  setSelectedVoice={setVoiceoverVoice}
+                  projectName={project.name}
+                  heading={heading}
+                  subheading={subheading}
+                  photoCount={clips.length}
+                />
+                {voiceoverScript.trim() && (
+                  <Button
+                    onClick={handleRenderVoiceover}
+                    disabled={rendering}
+                    className="w-full bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl gap-2 text-sm"
+                  >
+                    {rendering ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Mic className="w-4 h-4" /> Generate Voiceover</>}
+                  </Button>
+                )}
+                {voiceoverUrl && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-emerald-800 mb-2">✓ Voiceover ready</p>
+                    <audio controls src={voiceoverUrl} className="w-full h-8" style={{ height: "32px" }} />
+                    <a href={voiceoverUrl} download="voiceover.mp3" className="text-[10px] text-[#21ABB5] underline mt-1 block">
+                      Download MP3
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "avatar" && (
+              <AvatarSelector
+                selectedAvatarId={selectedAvatarId}
+                setSelectedAvatarId={setSelectedAvatarId}
+                project={project}
               />
+            )}
+
+            {activeTab === "photos" && clips.length > 0 && (
+              <AIPhotoEditor
+                photos={clips}
+                onPhotoReplaced={handlePhotoReplaced}
+              />
+            )}
+
+            {activeTab === "photos" && clips.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-xs text-[#606060]">No photos in this project yet.</p>
+              </div>
             )}
           </div>
         </div>
 
         {/* Preview area */}
-        <div className="flex-1 bg-gray-50 flex flex-col items-center justify-center p-6 gap-4 overflow-auto">
-          <div className="w-full max-w-md">
+        <div className="flex-1 bg-gray-50 flex flex-col items-center justify-start p-6 gap-4 overflow-auto">
+          <div className="w-full max-w-lg">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-[#0F082B]">Preview</p>
+              <p className="text-sm font-semibold text-[#0F082B]">Live Preview</p>
               <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
-                <button
-                  onClick={() => setOrientation("portrait")}
-                  className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors ${orientation === "portrait" ? "bg-[#21ABB5] text-white" : "text-[#606060]"}`}
-                >
+                <button onClick={() => setOrientation("portrait")}
+                  className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors ${orientation === "portrait" ? "bg-[#21ABB5] text-white" : "text-[#606060]"}`}>
                   <Smartphone className="w-3 h-3" /> Portrait
                 </button>
-                <button
-                  onClick={() => setOrientation("landscape")}
-                  className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors ${orientation === "landscape" ? "bg-[#21ABB5] text-white" : "text-[#606060]"}`}
-                >
+                <button onClick={() => setOrientation("landscape")}
+                  className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors ${orientation === "landscape" ? "bg-[#21ABB5] text-white" : "text-[#606060]"}`}>
                   <Monitor className="w-3 h-3" /> Landscape
                 </button>
               </div>
             </div>
 
-            <div className={`rounded-2xl overflow-hidden border border-gray-200 shadow-lg mx-auto ${orientation === "portrait" ? "aspect-[9/16] max-w-[220px]" : "aspect-video w-full"}`}>
-              <BrandingPreview
-                orientation={orientation}
+            {/* Slideshow player for live preview */}
+            {clips.length > 0 ? (
+              <SlideshowPlayer
+                photos={clips}
+                voiceoverUrl={voiceoverUrl}
+                musicUrl={musicUrl}
+                brandKit={selectedBrandKit}
                 introTemplate={introTemplate}
                 outroTemplate={outroTemplate}
                 heading={heading || project.name}
                 subheading={subheading}
-                brandKit={selectedBrandKit}
-                previewMode={previewMode}
+                orientation={orientation}
+                clipDuration={project.clip_duration || 5}
               />
-            </div>
+            ) : (
+              <>
+                {/* Static branding preview when no clips */}
+                <div className={`rounded-2xl overflow-hidden border border-gray-200 shadow-lg mx-auto ${orientation === "portrait" ? "aspect-[9/16] max-w-[220px]" : "aspect-video w-full"}`}>
+                  <BrandingPreview
+                    orientation={orientation}
+                    introTemplate={introTemplate}
+                    outroTemplate={outroTemplate}
+                    heading={heading || project.name}
+                    subheading={subheading}
+                    brandKit={selectedBrandKit}
+                    previewMode={previewMode}
+                  />
+                </div>
 
-            {/* Intro / Outro tabs */}
-            <div className="flex gap-1 mt-3 bg-white border border-gray-200 rounded-xl p-1">
-              {["intro", "video", "outro"].map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setPreviewMode(m)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${previewMode === m ? "bg-[#21ABB5] text-white" : "text-[#606060] hover:text-[#0F082B]"}`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
+                <div className="flex gap-1 mt-3 bg-white border border-gray-200 rounded-xl p-1">
+                  {["intro", "video", "outro"].map((m) => (
+                    <button key={m} onClick={() => setPreviewMode(m)}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${previewMode === m ? "bg-[#21ABB5] text-white" : "text-[#606060] hover:text-[#0F082B]"}`}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Summary */}
             <div className="mt-3 bg-white rounded-xl border border-gray-200 p-3 space-y-1.5">
               <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Intro:</span> {introTemplate}</p>
               <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Outro:</span> {outroTemplate}</p>
-              <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Music:</span> {musicTracks.find(t => t.id === musicTrack)?.name || "None"}</p>
+              <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Music:</span> {selectedTrack?.name || "None"}</p>
               {selectedBrandKit && <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Brand Kit:</span> {selectedBrandKit.name}</p>}
-              {voiceoverScript && <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Script:</span> {voiceoverScript.slice(0, 50)}...</p>}
+              {voiceoverUrl && <p className="text-[10px] text-emerald-700 font-semibold">✓ Voiceover ready</p>}
+              {selectedAvatarId && <p className="text-[10px] text-[#606060]"><span className="font-semibold text-[#0F082B]">Avatar:</span> {selectedAvatarId}</p>}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Export modal */}
+      {showExport && (
+        <VideoExportModal
+          project={project}
+          photos={clips}
+          voiceoverUrl={voiceoverUrl}
+          onClose={() => setShowExport(false)}
+        />
+      )}
     </div>
   );
 }
