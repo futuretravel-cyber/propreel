@@ -43,13 +43,13 @@ export default function HeroSection() {
   return (
     <section className="pt-28 lg:pt-36 pb-8 px-4 overflow-hidden">
       <div className="max-w-5xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 bg-[#DEF5F7] text-[#21ABB5] text-xs font-semibold px-4 py-2 rounded-full mb-6">
+        <div className="inline-flex items-center gap-2 bg-purple-50 text-purple-700 text-xs font-semibold px-4 py-2 rounded-full mb-6">
           SOUTH AFRICAN REAL ESTATE AI PLATFORM
         </div>
 
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-[#0F082B] leading-tight mb-5 tracking-tight">
           Create Stunning Property Videos{" "}
-          <span className="text-[#21ABB5]">Instantly</span> with AI
+          <span className="text-purple-700">Instantly</span> with AI
         </h1>
 
         <p className="text-lg text-[#606060] max-w-2xl mx-auto mb-8 leading-relaxed">
@@ -58,12 +58,12 @@ export default function HeroSection() {
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-4">
           <Link to="/register">
-            <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold px-8 h-12 rounded-xl text-base gap-2">
+            <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-8 h-12 rounded-xl text-base gap-2">
               Get started free <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
           <Button variant="outline" onClick={() => setShowDemo(true)} className="h-12 rounded-xl text-base gap-2 border-gray-200 px-8">
-            <Play className="w-4 h-4 fill-[#21ABB5] text-[#21ABB5]" /> Watch demo
+            <Play className="w-4 h-4 fill-purple-700 text-purple-700" /> Watch demo
           </Button>
         </div>
 
@@ -102,7 +102,7 @@ export default function HeroSection() {
               className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-            <div className="absolute bottom-4 right-4 bg-[#21ABB5] text-white text-xs font-semibold px-3 py-1 rounded-lg flex items-center gap-1.5">
+            <div className="absolute bottom-4 right-4 bg-purple-700 text-white text-xs font-semibold px-3 py-1 rounded-lg flex items-center gap-1.5">
               <Play className="w-3 h-3 fill-white" /> AI Video
             </div>
           </div>
@@ -126,14 +126,14 @@ export default function HeroSection() {
             onMouseDown={() => (dragging.current = true)}
             onTouchStart={() => (dragging.current = true)}
           >
-            <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-10 h-10 bg-white rounded-full shadow-lg border-2 border-[#21ABB5] flex items-center justify-center">
-              <GripVertical className="w-4 h-4 text-[#21ABB5]" />
+            <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-10 h-10 bg-white rounded-full shadow-lg border-2 border-purple-700 flex items-center justify-center">
+            <GripVertical className="w-4 h-4 text-purple-700" />
             </div>
           </div>
 
           {/* Labels */}
           <div className="absolute top-3 left-3 bg-black/60 text-white text-[10px] font-semibold px-2 py-1 rounded-md z-20">Before</div>
-          <div className="absolute top-3 right-3 bg-[#21ABB5] text-white text-[10px] font-semibold px-2 py-1 rounded-md z-20">After</div>
+          <div className="absolute top-3 right-3 bg-purple-700 text-white text-[10px] font-semibold px-2 py-1 rounded-md z-20">After</div>
         </div>
       </div>
 

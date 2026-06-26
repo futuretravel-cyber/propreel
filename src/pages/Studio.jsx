@@ -182,9 +182,9 @@ export default function Studio() {
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {saving ? "Saving..." : "Save"}
           </Button>
-          {/* Mobile panel toggle */}
+          {/* Mobile panel toggle — only on small screens */}
           <button
-            className="lg:hidden p-2 rounded-lg bg-gray-100 hover:bg-gray-200"
+            className="md:hidden p-2 rounded-lg bg-gray-100 hover:bg-gray-200"
             onClick={() => setMobilePanelOpen(o => !o)}
           >
             {mobilePanelOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
@@ -194,9 +194,9 @@ export default function Studio() {
 
       <div className="flex flex-1 overflow-hidden min-h-0 min-w-0">
 
-        {/* ── VERTICAL TAB RAIL (desktop) ── */}
-        <nav className="hidden lg:flex flex-col w-[220px] bg-white border-r border-gray-100 flex-shrink-0 overflow-y-auto">
-          <div className="p-3 space-y-1">
+        {/* ── VERTICAL TAB RAIL (tablet+) ── */}
+        <nav className="hidden md:flex flex-col w-[52px] lg:w-[200px] bg-white border-r border-gray-100 flex-shrink-0 overflow-y-auto">
+          <div className="p-2 lg:p-3 space-y-1">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.key;
@@ -204,14 +204,15 @@ export default function Studio() {
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all ${
+                  title={tab.label}
+                  className={`w-full flex items-center gap-2.5 px-2 lg:px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all ${
                     active
                       ? "bg-purple-700 text-white shadow-sm"
                       : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
                   }`}
                 >
                   <Icon className="w-4 h-4 flex-shrink-0" />
-                  <span className="leading-tight text-[13px]">{tab.label}</span>
+                  <span className="hidden lg:block leading-tight text-[13px]">{tab.label}</span>
                 </button>
               );
             })}
@@ -220,7 +221,7 @@ export default function Studio() {
 
         {/* ── MOBILE TAB DRAWER ── */}
         {mobilePanelOpen && (
-          <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="fixed inset-0 z-50 md:hidden">
             <div className="absolute inset-0 bg-black/40" onClick={() => setMobilePanelOpen(false)} />
             <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-xl overflow-y-auto">
               <div className="p-4 border-b border-gray-100 flex items-center justify-between">
@@ -250,7 +251,7 @@ export default function Studio() {
         )}
 
         {/* ── MOBILE horizontal tab strip ── */}
-        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-40 flex overflow-x-auto">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-40 flex overflow-x-auto">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
@@ -270,7 +271,7 @@ export default function Studio() {
         </div>
 
         {/* ── MAIN CONTENT ── */}
-        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0 min-w-0">
+        <main className="flex-1 overflow-y-auto pb-20 md:pb-0 min-w-0">
           <div className="p-4 lg:p-6 max-w-4xl mx-auto w-full">
             {/* Tab heading */}
             <div className="flex items-center gap-2 mb-5">
