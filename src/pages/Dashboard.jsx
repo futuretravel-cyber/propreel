@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Video, CreditCard, Zap, MoreVertical, Clock, CheckCircle2, FileEdit, FolderOpen } from "lucide-react";
+import { Plus, Video, CreditCard, Zap, MoreVertical, Clock, CheckCircle2, FileEdit, FolderOpen, Home, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
@@ -15,13 +15,17 @@ const statusConfig = {
 export default function Dashboard() {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
+  const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    base44.entities.Project.list("-created_date", 20)
-      .then(setProjects)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      base44.entities.Project.list("-created_date", 20),
+      base44.entities.Listing.list("-created_date", 50),
+    ]).then(([projs, lists]) => {
+      setProjects(projs);
+      setListings(lists);
+    }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const hour = new Date().getHours();
@@ -30,6 +34,8 @@ export default function Dashboard() {
 
   const readyCount = projects.filter((p) => p.status === "ready").length;
   const processingCount = projects.filter((p) => p.status === "processing").length;
+  const activeListings = listings.filter(l => l.status === "active").length;
+  const monthlyRevenue = listings.filter(l => l.status === "active").reduce((s, l) => s + (l.monthly_revenue || 0), 0);
 
   return (
     <div>
@@ -46,21 +52,22 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
-          { icon: Video, label: "Videos created this month", value: readyCount, color: "text-[#21ABB5]", bg: "bg-[#DEF5F7]" },
-          { icon: CreditCard, label: "Credits remaining", value: "10", color: "text-purple-600", bg: "bg-purple-50" },
-          { icon: Zap, label: "Videos processed today", value: processingCount, color: "text-amber-600", bg: "bg-amber-50" },
+          { icon: Home, label: "Active Listings", value: activeListings.toLocaleString("en-ZA"), color: "text-[#21ABB5]", bg: "bg-[#DEF5F7]", link: "/listings" },
+          { icon: TrendingUp, label: "Monthly Revenue", value: `R ${monthlyRevenue.toLocaleString("en-ZA")}`, color: "text-emerald-600", bg: "bg-emerald-50", link: "/listings" },
+          { icon: Video, label: "Videos Ready", value: readyCount.toLocaleString("en-ZA"), color: "text-purple-600", bg: "bg-purple-50", link: "/projects" },
+          { icon: Zap, label: "Processing", value: processingCount.toLocaleString("en-ZA"), color: "text-amber-600", bg: "bg-amber-50", link: "/projects" },
         ].map((s) => (
-          <div key={s.label} className="bg-white rounded-2xl p-6 border border-gray-100">
-            <div className="flex items-center gap-3 mb-3">
-              <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center`}>
-                <s.icon className={`w-5 h-5 ${s.color}`} />
+          <Link key={s.label} to={s.link} className="bg-white rounded-2xl p-5 border border-gray-100 hover:shadow-md hover:border-[#21ABB5]/20 transition-all block">
+            <div className="flex items-center gap-2 mb-3">
+              <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center`}>
+                <s.icon className={`w-4 h-4 ${s.color}`} />
               </div>
-              <span className="text-sm text-[#606060]">{s.label}</span>
+              <span className="text-xs text-[#606060]">{s.label}</span>
             </div>
-            <span className="text-3xl font-extrabold text-[#0F082B]">{s.value}</span>
-          </div>
+            <span className="text-2xl font-extrabold text-[#0F082B]">{s.value}</span>
+          </Link>
         ))}
       </div>
 

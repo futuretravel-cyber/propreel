@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown, ShieldCheck, Home } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: Home, label: "Listings", path: "/listings" },
   { icon: FolderOpen, label: "My Projects", path: "/projects" },
   { icon: CreditCard, label: "Brand Kits", path: "/brand-kits" },
   { icon: Settings, label: "Settings", path: "/settings" },
@@ -77,13 +78,20 @@ export default function StudioLayout() {
           </div>
         )}
 
-        <div className="mt-4 mx-3">
+        <div className="mt-4 mx-3 space-y-2">
           <Link
-            to="/projects/new"
+            to="/listings/new"
             onClick={() => setSidebarOpen(false)}
             className="flex items-center justify-center gap-2 bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
           >
-            <Plus className="w-4 h-4" /> New project
+            <Plus className="w-4 h-4" /> New Listing
+          </Link>
+          <Link
+            to="/projects/new"
+            onClick={() => setSidebarOpen(false)}
+            className="flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-[#0F082B] font-semibold py-2.5 rounded-xl text-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" /> New Video
           </Link>
         </div>
 

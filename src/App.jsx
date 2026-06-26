@@ -33,6 +33,8 @@ import Studio from '@/pages/Studio';
 import BrandKits from '@/pages/BrandKits';
 import Settings from '@/pages/Settings';
 import Admin from '@/pages/Admin';
+import Listings from '@/pages/Listings';
+import NewListing from '@/pages/NewListing';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -81,6 +83,8 @@ const AuthenticatedApp = () => {
           <Route path="/projects/new" element={<NewProject />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/projects/:id/quick-edit" element={<QuickEdit />} />
+          <Route path="/listings" element={<Listings />} />
+          <Route path="/listings/new" element={<NewListing />} />
           <Route path="/brand-kits" element={<BrandKits />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={<Admin />} />

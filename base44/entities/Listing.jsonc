@@ -1,0 +1,118 @@
+{
+  "name": "Listing",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "description": "Linked project/video ID"
+    },
+    "street_address": {
+      "type": "string"
+    },
+    "suburb": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "province": {
+      "type": "string"
+    },
+    "full_address": {
+      "type": "string"
+    },
+    "address_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "property_type": {
+      "type": "string",
+      "enum": [
+        "House",
+        "Apartment",
+        "Townhouse",
+        "Plot",
+        "Farm",
+        "Commercial",
+        "Other"
+      ]
+    },
+    "bedrooms": {
+      "type": "number"
+    },
+    "bathrooms": {
+      "type": "number"
+    },
+    "garages": {
+      "type": "number"
+    },
+    "price": {
+      "type": "number"
+    },
+    "erf_size": {
+      "type": "number",
+      "description": "Erf size in m\u00b2"
+    },
+    "floor_size": {
+      "type": "number",
+      "description": "Floor size in m\u00b2"
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "description_tone": {
+      "type": "string",
+      "enum": [
+        "professional",
+        "exciting",
+        "luxury",
+        "friendly"
+      ],
+      "default": "professional"
+    },
+    "description": {
+      "type": "string"
+    },
+    "ai_prompt": {
+      "type": "string"
+    },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "sold",
+        "expired"
+      ],
+      "default": "draft"
+    },
+    "portal_export_p24": {
+      "type": "boolean",
+      "default": false
+    },
+    "portal_export_pp": {
+      "type": "boolean",
+      "default": false
+    },
+    "monthly_revenue": {
+      "type": "number",
+      "default": 0,
+      "description": "Subscription revenue tied to this listing"
+    }
+  },
+  "required": [
+    "street_address",
+    "suburb"
+  ]
+}
