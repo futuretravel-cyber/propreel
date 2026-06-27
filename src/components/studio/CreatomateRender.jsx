@@ -7,15 +7,17 @@ import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 
 const SA_TEMPLATES = [
-  { id: "luxury_estate",     name: "Luxury Estate",       preview_color: "#1a0a2e", accent: "#c9a84c" },
+  { id: "luxury_home",       name: "Luxury Home",          preview_color: "#1a0a2e", accent: "#c9a84c" },
   { id: "family_home",       name: "Family Home",          preview_color: "#1e3a5f", accent: "#4CAF50" },
-  { id: "modern_apartment",  name: "Modern Minimal",       preview_color: "#1a1a2e", accent: "#7c3aed" },
-  { id: "coastal_property",  name: "Coastal Lifestyle",    preview_color: "#0d4f6e", accent: "#00b4d8" },
-  { id: "new_development",   name: "Just Listed",          preview_color: "#b71c1c", accent: "#ff5722" },
-  { id: "investment_rental", name: "Investment",           preview_color: "#1b1b2f", accent: "#9c27b0" },
   { id: "security_estate",   name: "Security Estate",      preview_color: "#0f2940", accent: "#2196F3" },
-  { id: "virtual_tour",      name: "Virtual Tour",         preview_color: "#2d4a1e", accent: "#8bc34a" },
-  { id: "social_teaser",     name: "Social Teaser",        preview_color: "#3e2723", accent: "#ff8f00" },
+  { id: "coastal_lifestyle", name: "Coastal Lifestyle",    preview_color: "#0d4f6e", accent: "#00b4d8" },
+  { id: "modern_minimal",    name: "Modern Minimal",       preview_color: "#1a1a2e", accent: "#21ABB5" },
+  { id: "farm",              name: "Farm",                 preview_color: "#2d4a1e", accent: "#8bc34a" },
+  { id: "commercial",        name: "Commercial",           preview_color: "#0f2940", accent: "#607D8B" },
+  { id: "new_dev",           name: "New Dev",              preview_color: "#b71c1c", accent: "#ff5722" },
+  { id: "just_listed",       name: "Just Listed",          preview_color: "#7f0000", accent: "#ff1744" },
+  { id: "investment",        name: "Investment",           preview_color: "#1b1b2f", accent: "#9c27b0" },
+  { id: "modern_apartment",  name: "Modern Apartment",     preview_color: "#212121", accent: "#E91E63" },
 ];
 
 function buildRenderPayload({ template, orientation, photos, heading, subheading, agentName, agentPhone, voiceoverUrl, musicUrl }) {
