@@ -95,7 +95,7 @@ export default function NewProject() {
     try {
       const p = await base44.entities.Project.create({ name: projectName, status: "draft" });
       setProjectId(p.id);
-      setStep(1);
+      navigate(`/projects/${p.id}/studio`);
     } catch {
       toast({ title: "Failed to create project", variant: "destructive" });
     }
@@ -228,7 +228,7 @@ export default function NewProject() {
 
       setRenderStatus("done");
       toast({ title: "Video ready! 🎬", description: `Your ${selectedPhotos.length}-photo slideshow is ready (${totalDuration}s total).` });
-      navigate(`/projects/${projectId}`);
+      navigate(`/projects/${projectId}/studio`);
     } catch (err) {
       toast({ title: "Failed to start render", variant: "destructive" });
     }

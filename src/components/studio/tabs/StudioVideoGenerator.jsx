@@ -18,6 +18,9 @@ const AI_VOICES = [
   { id: "sekou",   name: "Sekou",   gender: "Male",   desc: "Friendly and Confident" },
   { id: "mark",    name: "Mark",    gender: "Male",   desc: "Natural Conversations" },
   { id: "alesha",  name: "Alesha",  gender: "Female", desc: "Laidback, Relaxed and Friendly" },
+  { id: "claire",  name: "Claire",  gender: "Female", desc: "Neutral, Even, and Polished", elevenId: "cgSgspJ2msm6clMCkdW9" },
+  { id: "crystal", name: "Crystal", gender: "Female", desc: "Casual conversationalist", elevenId: "XrExE9yKIg1WjnnlVkGX" },
+  { id: "harry",   name: "Harry",   gender: "Male",   desc: "Fierce Warrior", elevenId: "SOYHLrjzK2X1ezoPC6cr" },
 ];
 
 function Section({ sectionKey, label, icon: Icon, desc, children, defaultOpen = false }) {
@@ -93,9 +96,31 @@ export default function StudioVideoGenerator({
     if (!voiceoverScript.trim()) return;
     setRendering(true);
     try {
-      const result = await base44.integrations.Core.GenerateSpeech({ text: voiceoverScript, language_code: "en" });
-      setVoiceoverUrl(result.url);
-      await base44.entities.Project.update(projectId, { voiceover_url: result.url, voiceover_script: voiceoverScript });
+      const voice = AI_VOICES.find(v => v.id === voiceoverVoice);
+      const elevenKey = localStorage.getItem("elevenlabs_api_key");
+      let audioUrl = null;
+
+      if (voice?.elevenId && elevenKey) {
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice.elevenId}`, {
+          method: "POST",
+          headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ text: voiceoverScript, model_id: "eleven_multilingual_v2", voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+        });
+        if (response.ok) {
+          const blob = await response.blob();
+          const file = new File([blob], "voiceover.mp3", { type: "audio/mpeg" });
+          const { file_url } = await base44.integrations.Core.UploadFile({ file });
+          audioUrl = file_url;
+        }
+      }
+
+      if (!audioUrl) {
+        const result = await base44.integrations.Core.GenerateSpeech({ text: voiceoverScript, language_code: "en" });
+        audioUrl = result.url;
+      }
+
+      setVoiceoverUrl(audioUrl);
+      await base44.entities.Project.update(projectId, { voiceover_url: audioUrl, voiceover_script: voiceoverScript });
       toast({ title: "Voiceover generated!" });
     } catch {
       toast({ title: "Voiceover failed", variant: "destructive" });
