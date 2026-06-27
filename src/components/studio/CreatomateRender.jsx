@@ -4,8 +4,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { base44 } from "@/api/base44Client";
 
-const MAKE_WEBHOOK_URL = "https://hook.eu1.make.com/pc3exi3npkd98b1gje2rq68jvdls46zl";
-
 export default function CreatomateRender({ project, voiceoverUrl, musicUrl, selectedBrandKit }) {
   const { toast } = useToast();
   const [orientation, setOrientation] = useState("landscape");
@@ -36,13 +34,9 @@ export default function CreatomateRender({ project, voiceoverUrl, musicUrl, sele
     };
 
     try {
-      const res = await fetch(MAKE_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await base44.functions.invoke("makeWebhook", payload);
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.data?.ok) throw new Error(`Webhook error: ${res.data?.body || res.data?.status}`);
 
       setSubmitted(true);
       if (project?.id) {
