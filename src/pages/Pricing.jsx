@@ -63,13 +63,13 @@ export default function Pricing() {
             <span className={`text-sm font-medium ${!annual ? "text-[#0F082B]" : "text-[#606060]"}`}>Monthly</span>
             <button
               onClick={() => setAnnual(!annual)}
-              className={`w-12 h-6 rounded-full relative transition-colors ${annual ? "bg-[#21ABB5]" : "bg-gray-300"}`}
+              className={`w-12 h-6 rounded-full relative transition-colors ${annual ? "bg-purple-700" : "bg-gray-300"}`}
             >
               <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${annual ? "left-[26px]" : "left-0.5"}`} />
             </button>
             <span className={`text-sm font-medium ${annual ? "text-[#0F082B]" : "text-[#606060]"}`}>Annual</span>
             {annual && (
-              <span className="text-xs font-semibold bg-[#DEF5F7] text-[#21ABB5] px-2 py-1 rounded-full">Save 30%</span>
+              <span className="text-xs font-semibold bg-purple-50 text-purple-700 px-2 py-1 rounded-full">Save 30%</span>
             )}
           </div>
         </div>
@@ -80,12 +80,12 @@ export default function Pricing() {
               key={plan.name}
               className={`relative rounded-2xl p-8 ${
                 plan.featured
-                  ? "bg-white border-2 border-[#21ABB5] shadow-xl"
+                  ? "bg-white border-2 border-purple-700 shadow-xl"
                   : "bg-white border border-gray-200"
               }`}
             >
               {plan.badge && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#21ABB5] text-white text-xs font-semibold px-4 py-1 rounded-full">
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-purple-700 text-white text-xs font-semibold px-4 py-1 rounded-full">
                   {plan.badge}
                 </span>
               )}
@@ -106,7 +106,7 @@ export default function Pricing() {
                 <Button
                   className={`w-full h-12 rounded-xl font-semibold text-base ${
                     plan.featured
-                      ? "bg-[#21ABB5] hover:bg-[#1a9da6] text-white"
+                      ? "bg-purple-700 hover:bg-purple-800 text-white"
                       : "bg-gray-100 hover:bg-gray-200 text-[#0F082B]"
                   }`}
                 >
@@ -117,7 +117,7 @@ export default function Pricing() {
               <ul className="mt-6 space-y-3">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2.5">
-                    <Check className="w-4 h-4 text-[#21ABB5] mt-0.5 flex-shrink-0" />
+                    <Check className="w-4 h-4 text-purple-700 mt-0.5 flex-shrink-0" />
                     <span className="text-sm text-[#606060]">{f}</span>
                   </li>
                 ))}
@@ -142,7 +142,7 @@ export default function Pricing() {
               <button
                 key={i}
                 onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                className="w-full text-left bg-white border border-gray-100 rounded-xl p-4 hover:border-[#21ABB5]/20 transition-all"
+                className="w-full text-left bg-white border border-gray-100 rounded-xl p-4 hover:border-purple-200 transition-all"
               >
                 <div className="flex justify-between items-start gap-3">
                   <span className="text-sm font-semibold text-[#0F082B]">{faq.q}</span>

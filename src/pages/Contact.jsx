@@ -96,7 +96,7 @@ export default function Contact() {
             <Button
               type="submit"
               disabled={loading}
-              className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold h-12 rounded-xl px-8 gap-2"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-semibold h-12 rounded-xl px-8 gap-2"
             >
               {loading ? "Sending..." : <><Send className="w-4 h-4" /> Send message</>}
             </Button>
@@ -111,8 +111,8 @@ export default function Contact() {
             ].map((item) => (
               <div key={item.title} className="bg-white border border-gray-100 rounded-2xl p-6 hover:shadow-md transition-all">
                 <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-[#DEF5F7] flex items-center justify-center flex-shrink-0">
-                    <item.icon className="w-5 h-5 text-[#21ABB5]" />
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center flex-shrink-0">
+                    <item.icon className="w-5 h-5 text-purple-700" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-[#0F082B] text-sm">{item.title}</h3>

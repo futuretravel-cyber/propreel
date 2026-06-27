@@ -21,7 +21,7 @@ export default function Reviews() {
           <h1 className="text-4xl sm:text-5xl font-extrabold text-[#0F082B] mb-4">
             What South African property professionals are saying
           </h1>
-          <div className="inline-flex items-center gap-2 bg-[#DEF5F7] px-4 py-2 rounded-full mt-4">
+          <div className="inline-flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-full mt-4">
             <div className="flex gap-0.5">
               {[...Array(5)].map((_, i) => (
                 <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
@@ -41,8 +41,8 @@ export default function Reviews() {
               </div>
               <p className="text-sm text-[#0F082B] leading-relaxed mb-4">&ldquo;{r.quote}&rdquo;</p>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#DEF5F7] flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-bold text-[#21ABB5]">
+                <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm font-bold text-purple-700">
                     {r.name.split(" ").map((n) => n[0]).join("")}
                   </span>
                 </div>

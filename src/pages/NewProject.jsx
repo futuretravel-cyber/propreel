@@ -245,13 +245,13 @@ export default function NewProject() {
             {stepLabels.map((label, i) => (
               <div key={label} className="flex items-center gap-1">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                  i <= step ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-gray-400"
+                  i <= step ? "bg-purple-700 text-white" : "bg-gray-100 text-gray-400"
                 }`}>
                   {i < step ? <Check className="w-4 h-4" /> : i + 1}
                 </div>
                 <span className={`hidden sm:block text-xs font-medium mr-1 ${i <= step ? "text-[#0F082B]" : "text-gray-400"}`}>{label}</span>
                 {i < stepLabels.length - 1 && (
-                  <div className={`hidden sm:block w-6 lg:w-10 h-0.5 ${i < step ? "bg-[#21ABB5]" : "bg-gray-200"}`} />
+                  <div className={`hidden sm:block w-6 lg:w-10 h-0.5 ${i < step ? "bg-purple-700" : "bg-gray-200"}`} />
                 )}
               </div>
             ))}
@@ -286,7 +286,7 @@ export default function NewProject() {
             <Button
               onClick={handleCreateProject}
               disabled={!projectName.trim() || loading}
-              className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl h-11 px-6 gap-2"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl h-11 px-6 gap-2"
             >
               {loading ? "Creating..." : <>Create project <ArrowRight className="w-4 h-4" /></>}
             </Button>
@@ -310,7 +310,7 @@ export default function NewProject() {
                 key={tab.key}
                 onClick={() => setUploadTab(tab.key)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  uploadTab === tab.key ? "bg-[#DEF5F7] text-[#21ABB5]" : "bg-gray-50 text-[#606060] hover:bg-gray-100"
+                  uploadTab === tab.key ? "bg-purple-50 text-purple-700" : "bg-gray-50 text-[#606060] hover:bg-gray-100"
                 }`}
               >
                 <tab.icon className="w-4 h-4" /> {tab.label}
@@ -319,8 +319,8 @@ export default function NewProject() {
           </div>
 
           {uploadTab === "device" && (
-            <label className="block border-2 border-dashed border-[#21ABB5]/30 rounded-2xl p-10 text-center cursor-pointer hover:bg-[#DEF5F7]/20 transition-colors">
-              <Upload className="w-10 h-10 text-[#21ABB5] mx-auto mb-3" />
+            <label className="block border-2 border-dashed border-purple-200 rounded-2xl p-10 text-center cursor-pointer hover:bg-purple-50/30 transition-colors">
+              <Upload className="w-10 h-10 text-purple-700 mx-auto mb-3" />
               <p className="text-sm font-medium text-[#0F082B] mb-1">Drag & drop listing photos here, or click to browse</p>
               <p className="text-xs text-[#606060]">JPG, PNG up to 25MB</p>
               <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" />
@@ -336,7 +336,7 @@ export default function NewProject() {
                   placeholder="Paste your Property24 listing URL"
                   className="rounded-xl h-11 flex-1"
                 />
-                <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl h-11 px-6">Import</Button>
+                <Button className="bg-purple-700 hover:bg-purple-800 text-white rounded-xl h-11 px-6">Import</Button>
               </div>
               <p className="text-xs text-[#606060]">e.g. https://www.property24.com/for-sale/sandton/12345</p>
             </div>
@@ -351,7 +351,7 @@ export default function NewProject() {
 
           {loading && (
             <div className="flex items-center justify-center py-6">
-              <div className="w-6 h-6 border-3 border-gray-200 border-t-[#21ABB5] rounded-full animate-spin" />
+              <div className="w-6 h-6 border-3 border-gray-200 border-t-purple-700 rounded-full animate-spin" />
               <span className="ml-3 text-sm text-[#606060]">Uploading...</span>
             </div>
           )}
@@ -387,7 +387,7 @@ export default function NewProject() {
             <Button
               onClick={() => { setSelectedPhotos([...photos]); setStep(2); }}
               disabled={photos.length === 0}
-              className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-6 gap-2"
             >
               Next <ArrowRight className="w-4 h-4" />
             </Button>
@@ -402,7 +402,7 @@ export default function NewProject() {
           <p className="text-sm text-[#606060] mb-6">Enhance your photos with AI. This step is optional.</p>
 
           <div className="flex gap-4 mb-6">
-            <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-[#DEF5F7] text-[#21ABB5]">
+            <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-purple-50 text-purple-700">
               <Wand2 className="w-4 h-4" /> AI Photo Edits
             </button>
             <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-gray-50 text-[#606060] hover:bg-gray-100">
@@ -412,12 +412,12 @@ export default function NewProject() {
 
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
             {photos.map((url, i) => (
-              <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group cursor-pointer hover:ring-2 hover:ring-[#21ABB5] transition-all">
-                <img src={url} alt="" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+              <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group cursor-pointer hover:ring-2 hover:ring-purple-700 transition-all">
+                 <img src={url} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
                   <Button
                     size="sm"
-                    className="bg-[#21ABB5] text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                    className="bg-purple-700 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-xs"
                   >
                     <Wand2 className="w-3 h-3 mr-1" /> AI Edit
                   </Button>
@@ -426,7 +426,7 @@ export default function NewProject() {
             ))}
           </div>
 
-          <div className="bg-[#DEF5F7]/50 rounded-xl p-4 mt-6">
+          <div className="bg-purple-50/50 rounded-xl p-4 mt-6">
             <p className="text-sm text-[#606060]">
               <strong className="text-[#0F082B]">Pro Tip:</strong> AI photo edits include sky replacement, twilight conversion, lawn greening, and furniture removal. Virtual staging lets you furnish empty rooms with SA furniture styles.
             </p>
@@ -436,7 +436,7 @@ export default function NewProject() {
             <Button variant="outline" onClick={() => setStep(1)} className="rounded-xl gap-2">
               <ArrowLeft className="w-4 h-4" /> Back
             </Button>
-            <Button onClick={() => setStep(3)} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2">
+            <Button onClick={() => setStep(3)} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-6 gap-2">
               Next <ArrowRight className="w-4 h-4" />
             </Button>
           </div>
@@ -459,11 +459,11 @@ export default function NewProject() {
                     <button
                       key={i}
                       onClick={() => togglePhotoSelection(url)}
-                      className={`relative aspect-square rounded-xl overflow-hidden ${selected ? "ring-2 ring-[#21ABB5]" : "hover:ring-2 hover:ring-gray-300"} transition-all`}
+                      className={`relative aspect-square rounded-xl overflow-hidden ${selected ? "ring-2 ring-purple-700" : "hover:ring-2 hover:ring-gray-300"} transition-all`}
                     >
                       <img src={url} alt="" className="w-full h-full object-cover" />
                       {selected && (
-                        <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-[#21ABB5] rounded-full flex items-center justify-center">
+                        <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-purple-700 rounded-full flex items-center justify-center">
                           <Check className="w-3 h-3 text-white" />
                         </div>
                       )}
@@ -484,7 +484,7 @@ export default function NewProject() {
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="w-3.5 h-3.5 text-[#21ABB5]" />
+                    <Sparkles className="w-3.5 h-3.5 text-purple-700" />
                     <span className="text-xs text-[#606060]">VFX: {totalVfxCount}/3 used across all clips</span>
                   </div>
                   {selectedPhotos.map((url, i) => (
@@ -523,7 +523,7 @@ export default function NewProject() {
             <Button
               onClick={() => setStep(4)}
               disabled={selectedPhotos.length === 0}
-              className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-6 gap-2"
             >
               Next <ArrowRight className="w-4 h-4" />
             </Button>
@@ -550,10 +550,10 @@ export default function NewProject() {
                     key={o.key}
                     onClick={() => setOrientation(o.key)}
                     className={`p-4 rounded-xl border-2 text-left transition-all ${
-                      orientation === o.key ? "border-[#21ABB5] bg-[#DEF5F7]/30" : "border-gray-200 hover:border-gray-300"
+                      orientation === o.key ? "border-purple-700 bg-purple-50/30" : "border-gray-200 hover:border-gray-300"
                     }`}
                   >
-                    <o.icon className={`w-6 h-6 mb-2 ${orientation === o.key ? "text-[#21ABB5]" : "text-gray-400"}`} />
+                    <o.icon className={`w-6 h-6 mb-2 ${orientation === o.key ? "text-purple-700" : "text-gray-400"}`} />
                     <p className="text-sm font-semibold text-[#0F082B]">{o.label}</p>
                     <p className="text-xs text-[#606060] mt-1">{o.desc}</p>
                   </button>
@@ -572,7 +572,7 @@ export default function NewProject() {
                     onClick={() => setGlobalCameraMotion(m)}
                     className={`text-xs text-center rounded-lg py-2 px-3 border-2 transition-all font-medium ${
                       globalCameraMotion === m
-                        ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]"
+                        ? "border-purple-700 bg-purple-50/30 text-purple-700"
                         : "bg-gray-50 border-gray-100 text-[#606060] hover:border-gray-300"
                     }`}
                   >
@@ -634,24 +634,24 @@ export default function NewProject() {
                       disabled={disabled}
                       className={`flex items-center gap-3 rounded-xl p-3 border-2 text-left transition-all ${
                         selected
-                          ? "border-[#21ABB5] bg-[#DEF5F7]/30"
+                          ? "border-purple-700 bg-purple-50/30"
                           : disabled
                           ? "bg-gray-50 border-gray-100 opacity-40 cursor-not-allowed"
                           : "bg-gray-50 border-gray-100 hover:border-gray-300"
                       }`}
                     >
-                      <Sparkles className={`w-4 h-4 flex-shrink-0 ${selected ? "text-[#21ABB5]" : "text-[#606060]"}`} />
-                      <div>
-                        <p className={`text-sm font-medium ${selected ? "text-[#21ABB5]" : "text-[#0F082B]"}`}>{vfx.name}</p>
+                      <Sparkles className={`w-4 h-4 flex-shrink-0 ${selected ? "text-purple-700" : "text-[#606060]"}`} />
+                       <div>
+                        <p className={`text-sm font-medium ${selected ? "text-purple-700" : "text-[#0F082B]"}`}>{vfx.name}</p>
                         <p className="text-xs text-[#606060]">{vfx.desc}</p>
                       </div>
-                      {selected && <Check className="w-4 h-4 text-[#21ABB5] ml-auto flex-shrink-0" />}
+                      {selected && <Check className="w-4 h-4 text-purple-700 ml-auto flex-shrink-0" />}
                     </button>
                   );
                 })}
               </div>
               {globalVfxEffects.length > 0 && (
-                <p className="text-xs text-[#21ABB5] mt-2">{globalVfxEffects.length}/3 effects selected</p>
+                <p className="text-xs text-purple-700 mt-2">{globalVfxEffects.length}/3 effects selected</p>
               )}
             </div>
 
@@ -669,7 +669,7 @@ export default function NewProject() {
             <Button variant="outline" onClick={() => setStep(3)} className="rounded-xl gap-2">
               <ArrowLeft className="w-4 h-4" /> Back
             </Button>
-            <Button onClick={() => setStep(5)} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-6 gap-2">
+            <Button onClick={() => setStep(5)} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-6 gap-2">
               Next <ArrowRight className="w-4 h-4" />
             </Button>
           </div>
@@ -692,7 +692,7 @@ export default function NewProject() {
               <Button
                 onClick={handleSaveAndRender}
                 disabled={loading}
-                className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-5 gap-2 text-sm"
+                className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-5 gap-2 text-sm"
               >
                 {loading ? (
                   <>
@@ -720,7 +720,7 @@ export default function NewProject() {
                   onClick={() => setBrandingTab(tab.key)}
                   title={tab.label}
                   className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all ${
-                    brandingTab === tab.key ? "bg-[#21ABB5] text-white shadow-sm" : "text-[#606060] hover:bg-gray-200"
+                    brandingTab === tab.key ? "bg-purple-700 text-white shadow-sm" : "text-[#606060] hover:bg-gray-200"
                   }`}
                 >
                   {tab.icon ? <tab.icon className="w-4 h-4" /> : <span className="text-base">{tab.emoji}</span>}
@@ -738,8 +738,8 @@ export default function NewProject() {
                     <div>
                       <p className="text-xs font-semibold text-[#0F082B] mb-1">Template style</p>
                       <div className="flex gap-1 mb-3">
-                        <button onClick={() => setPreviewMode("intro")} className={`px-3 py-1 rounded-lg text-xs font-medium ${previewMode === "intro" ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-[#606060]"}`}>Intro</button>
-                        <button onClick={() => setPreviewMode("outro")} className={`px-3 py-1 rounded-lg text-xs font-medium ${previewMode === "outro" ? "bg-[#21ABB5] text-white" : "bg-gray-100 text-[#606060]"}`}>Outro</button>
+                        <button onClick={() => setPreviewMode("intro")} className={`px-3 py-1 rounded-lg text-xs font-medium ${previewMode === "intro" ? "bg-purple-700 text-white" : "bg-gray-100 text-[#606060]"}`}>Intro</button>
+                        <button onClick={() => setPreviewMode("outro")} className={`px-3 py-1 rounded-lg text-xs font-medium ${previewMode === "outro" ? "bg-purple-700 text-white" : "bg-gray-100 text-[#606060]"}`}>Outro</button>
                       </div>
 
                       {previewMode === "intro" && (
@@ -751,7 +751,7 @@ export default function NewProject() {
                                 key={t}
                                 onClick={() => setIntroTemplate(t)}
                                 className={`aspect-video rounded-lg border-2 text-[10px] font-medium flex items-center justify-center transition-all p-1 text-center ${
-                                  introTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"
+                                  introTemplate === t ? "border-purple-700 bg-purple-50/30 text-purple-700" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"
                                 }`}
                               >
                                 {t}
@@ -780,7 +780,7 @@ export default function NewProject() {
                                 key={t}
                                 onClick={() => setOutroTemplate(t)}
                                 className={`aspect-video rounded-lg border-2 text-[10px] font-medium flex items-center justify-center transition-all p-1 text-center ${
-                                  outroTemplate === t ? "border-[#21ABB5] bg-[#DEF5F7]/30 text-[#21ABB5]" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"
+                                  outroTemplate === t ? "border-purple-700 bg-purple-50/30 text-purple-700" : "border-gray-200 text-[#606060] hover:border-gray-300 bg-gray-50"
                                 }`}
                               >
                                 {t}
@@ -800,19 +800,19 @@ export default function NewProject() {
                     {brandKits.length === 0 ? (
                       <div className="bg-gray-50 rounded-xl p-4 text-center">
                         <p className="text-xs text-[#606060] mb-2">No brand kits yet.</p>
-                        <a href="/brand-kits" target="_blank" className="text-xs text-[#21ABB5] underline">Create a Brand Kit →</a>
+                        <a href="/brand-kits" target="_blank" className="text-xs text-purple-700 underline">Create a Brand Kit →</a>
                       </div>
                     ) : (
                       brandKits.map((kit) => (
                         <button
                           key={kit.id}
                           onClick={() => setSelectedBrandKitId(kit.id)}
-                          className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-[#21ABB5] bg-[#DEF5F7]/30" : "border-gray-100 hover:border-gray-200"}`}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-purple-700 bg-purple-50/30" : "border-gray-100 hover:border-gray-200"}`}
                         >
                           {kit.profile_photo_url ? (
                             <img src={kit.profile_photo_url} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
                           ) : (
-                            <div className="w-9 h-9 rounded-full bg-[#DEF5F7] flex items-center justify-center text-xs font-bold text-[#21ABB5] flex-shrink-0">
+                            <div className="w-9 h-9 rounded-full bg-purple-50 flex items-center justify-center text-xs font-bold text-purple-700 flex-shrink-0">
                               {kit.agent_name?.[0]}
                             </div>
                           )}
@@ -821,7 +821,7 @@ export default function NewProject() {
                             <p className="text-[10px] text-[#606060] truncate">{kit.agent_name}</p>
                             {kit.email && <p className="text-[10px] text-[#606060] truncate">{kit.email}</p>}
                           </div>
-                          {selectedBrandKitId === kit.id && <Check className="w-4 h-4 text-[#21ABB5] ml-auto flex-shrink-0" />}
+                          {selectedBrandKitId === kit.id && <Check className="w-4 h-4 text-purple-700 ml-auto flex-shrink-0" />}
                         </button>
                       ))
                     )}
@@ -842,11 +842,11 @@ export default function NewProject() {
                         <button
                           key={track.id}
                           onClick={() => setMusicTrack(track.id)}
-                          className={`w-full flex items-center gap-2.5 rounded-xl p-2.5 transition-all border ${musicTrack === track.id ? "border-[#21ABB5] bg-[#DEF5F7]/20" : "bg-gray-50 border-transparent hover:border-gray-200"}`}
+                          className={`w-full flex items-center gap-2.5 rounded-xl p-2.5 transition-all border ${musicTrack === track.id ? "border-purple-700 bg-purple-50/20" : "bg-gray-50 border-transparent hover:border-gray-200"}`}
                         >
                           <div
                             onClick={(e) => { e.stopPropagation(); new Audio(track.file_url).play(); }}
-                            className="w-7 h-7 rounded-full bg-[#21ABB5] flex items-center justify-center flex-shrink-0 hover:bg-[#1a9da6] transition-colors"
+                            className="w-7 h-7 rounded-full bg-purple-700 flex items-center justify-center flex-shrink-0 hover:bg-purple-800 transition-colors"
                           >
                             <Play className="w-3 h-3 text-white fill-white ml-0.5" />
                           </div>
@@ -854,7 +854,7 @@ export default function NewProject() {
                             <p className="text-xs font-medium text-[#0F082B] truncate">{track.name}</p>
                             <p className="text-[10px] text-[#606060]">{track.genre}{track.duration ? ` · ${track.duration}` : ""}</p>
                           </div>
-                          {musicTrack === track.id && <Check className="w-3.5 h-3.5 text-[#21ABB5] flex-shrink-0" />}
+                          {musicTrack === track.id && <Check className="w-3.5 h-3.5 text-purple-700 flex-shrink-0" />}
                         </button>
                       ))
                     )}
@@ -882,10 +882,10 @@ export default function NewProject() {
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-semibold text-[#0F082B]">Preview</p>
                   <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
-                    <button onClick={() => setOrientation("portrait")} className={`px-2.5 py-1 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${orientation === "portrait" ? "bg-[#21ABB5] text-white" : "text-[#606060]"}`}>
+                    <button onClick={() => setOrientation("portrait")} className={`px-2.5 py-1 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${orientation === "portrait" ? "bg-purple-700 text-white" : "text-[#606060]"}`}>
                       <Smartphone className="w-3 h-3" /> Portrait
                     </button>
-                    <button onClick={() => setOrientation("landscape")} className={`px-2.5 py-1 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${orientation === "landscape" ? "bg-[#21ABB5] text-white" : "text-[#606060]"}`}>
+                    <button onClick={() => setOrientation("landscape")} className={`px-2.5 py-1 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${orientation === "landscape" ? "bg-purple-700 text-white" : "text-[#606060]"}`}>
                       <Monitor className="w-3 h-3" /> Landscape
                     </button>
                   </div>
@@ -910,7 +910,7 @@ export default function NewProject() {
                     <button
                       key={m}
                       onClick={() => setPreviewMode(m)}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium capitalize transition-colors ${previewMode === m ? "bg-[#21ABB5] text-white shadow-sm" : "text-[#606060] hover:text-[#0F082B]"}`}
+                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium capitalize transition-colors ${previewMode === m ? "bg-purple-700 text-white shadow-sm" : "text-[#606060] hover:text-[#0F082B]"}`}
                     >
                       {m}
                     </button>

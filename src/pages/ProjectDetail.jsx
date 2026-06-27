@@ -37,7 +37,7 @@ export default function ProjectDetail() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="w-8 h-8 border-4 border-gray-200 border-t-[#21ABB5] rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-gray-200 border-t-purple-700 rounded-full animate-spin" />
       </div>
     );
   }
@@ -46,7 +46,7 @@ export default function ProjectDetail() {
     return (
       <div className="text-center py-20">
         <h2 className="text-xl font-bold text-[#0F082B] mb-2">Project not found</h2>
-        <Link to="/projects" className="text-[#21ABB5] text-sm hover:underline">Back to projects</Link>
+        <Link to="/projects" className="text-purple-700 text-sm hover:underline">Back to projects</Link>
       </div>
     );
   }
@@ -81,7 +81,7 @@ export default function ProjectDetail() {
             <Button variant="outline" className="rounded-xl gap-2"><SlidersHorizontal className="w-4 h-4" /> Studio</Button>
           </Link>
           {project.status === "ready" && (
-            <Button onClick={() => setShowExport(true)} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl gap-2">
+            <Button onClick={() => setShowExport(true)}               className="bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2">
               <Share2 className="w-4 h-4" /> Export & Share
             </Button>
           )}
@@ -164,7 +164,7 @@ export default function ProjectDetail() {
                   <>
                     <p className="text-sm opacity-50 mb-3">No video rendered yet</p>
                     <Link to={`/projects/${id}/studio`}>
-                      <Button size="sm" className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl">Open Studio</Button>
+                      <Button size="sm" className="bg-purple-700 hover:bg-purple-800 text-white rounded-xl">Open Studio</Button>
                     </Link>
                   </>
                 )}
@@ -203,7 +203,7 @@ export default function ProjectDetail() {
               {project.voiceover_script && (
                 <div className="flex justify-between text-sm">
                   <span className="text-[#606060]">Voiceover</span>
-                  <span className="font-medium text-[#21ABB5]">✓ Included</span>
+                  <span className="font-medium text-purple-700">✓ Included</span>
                 </div>
               )}
               {project.intro_template && project.intro_template !== "None" && (

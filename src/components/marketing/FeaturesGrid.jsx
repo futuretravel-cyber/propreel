@@ -18,7 +18,7 @@ export default function FeaturesGrid() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
           <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0F082B] mb-4">
-            Everything You Need to Create <span className="text-[#21ABB5]">Stunning</span> Property Videos
+            Everything You Need to Create <span className="text-purple-700">Stunning</span> Property Videos
           </h2>
         </div>
 
@@ -26,12 +26,12 @@ export default function FeaturesGrid() {
           {features.map((f) => (
             <div
               key={f.title}
-              className={`bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-lg hover:border-[#21ABB5]/20 transition-all duration-300 group ${
+              className={`bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-lg hover:border-purple-200 transition-all duration-300 group ${
                 f.wide ? "sm:col-span-2" : ""
               }`}
             >
-              <div className="w-10 h-10 rounded-xl bg-[#DEF5F7] flex items-center justify-center mb-4 group-hover:bg-[#21ABB5] transition-colors">
-                <f.icon className="w-5 h-5 text-[#21ABB5] group-hover:text-white transition-colors" />
+              <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center mb-4 group-hover:bg-purple-700 transition-colors">
+                <f.icon className="w-5 h-5 text-purple-700 group-hover:text-white transition-colors" />
               </div>
               <h3 className="font-bold text-[#0F082B] mb-2">{f.title}</h3>
               <p className="text-sm text-[#606060] leading-relaxed">{f.desc}</p>
