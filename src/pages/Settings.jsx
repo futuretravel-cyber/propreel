@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { User, CreditCard, Bell, Zap, ExternalLink, Eye, EyeOff } from "lucide-react";
+import { User, CreditCard, Bell, Zap, ExternalLink, Eye, EyeOff, Download } from "lucide-react";
+import CreatomateTemplates from "@/components/studio/CreatomateTemplates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -167,6 +168,20 @@ export default function Settings() {
               </div>
             </div>
           ))}
+
+          {/* Creatomate Templates Download */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-xl bg-purple-700 flex items-center justify-center">
+                <Download className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-[#0F082B] text-sm">Creatomate Video Templates</h3>
+                <p className="text-xs text-[#606060]">Download all 22 JSON templates to import into Creatomate (11 styles × landscape + portrait)</p>
+              </div>
+            </div>
+            <CreatomateTemplates />
+          </div>
         </div>
       )}
 
