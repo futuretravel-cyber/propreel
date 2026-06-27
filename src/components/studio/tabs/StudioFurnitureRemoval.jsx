@@ -6,10 +6,10 @@ import { useToast } from "@/components/ui/use-toast";
 
 const REMOVAL_MODES = [
   { key: "all",      label: "🗑️ Remove All Furniture",   prompt: "Remove ALL furniture, decor, rugs, curtains, and movable items from this room. Leave only the empty room — floors, walls, windows, built-in units. Do not add anything." },
-  { key: "clutter",  label: "🧹 Remove Clutter Only",    prompt: "Remove all clutter, personal items, mess, and temporary items. Keep the main furniture but make the space look spotlessly clean and professionally decluttered." },
-  { key: "personal", label: "👤 Remove Personal Items",  prompt: "Remove all personal items: photos, children's toys, personal hygiene items, clothing, paperwork, and personal decor. Keep structural furniture only." },
+  { key: "clutter",  label: "🧹 Remove Clutter Only",    prompt: "Remove all clutter, personal items, mess, and temporary items. Keep the main furniture but make the space look spotlessly clean." },
+  { key: "personal", label: "👤 Remove Personal Items",  prompt: "Remove all personal items: photos, children's toys, clothing, paperwork, and personal decor. Keep structural furniture only." },
   { key: "cars",     label: "🚗 Remove Vehicles",        prompt: "Remove all cars, motorcycles, and vehicles from the driveway and street. Replace with clean empty driveway or road surface." },
-  { key: "objects",  label: "📦 Remove Specific Objects", prompt: "Remove any temporary or unwanted objects and items that detract from the property's appeal. Clean up the space professionally." },
+  { key: "objects",  label: "📦 Remove Specific Objects", prompt: "Remove any temporary or unwanted objects that detract from the property's appeal. Clean up the space professionally." },
 ];
 
 export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoReplaced }) {
@@ -47,12 +47,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => {
-    setSelectedIdx(idx);
-    setResultPhoto(null);
-    setSelectedMode(null);
-    setCustomPrompt("");
-  };
+  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setSelectedMode(null); setCustomPrompt(""); };
 
   const runRemoval = async () => {
     const mode = REMOVAL_MODES.find(m => m.key === selectedMode);
@@ -66,7 +61,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
         existing_image_urls: [originalPhoto],
       });
       setResultPhoto(result.url);
-      toast({ title: "Removal complete!", description: "Compare before/after below." });
+      toast({ title: "Removal complete!" });
     } catch {
       toast({ title: "Processing failed", variant: "destructive" });
     }
@@ -76,19 +71,14 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
   const applyEdit = () => {
     if (!resultPhoto) return;
     setAppliedEdits(prev => ({ ...prev, [selectedIdx]: resultPhoto }));
-    if (selectedIdx < projectPhotos.length) {
-      onPhotoReplaced(selectedIdx, resultPhoto);
-    }
+    if (selectedIdx < projectPhotos.length) onPhotoReplaced(selectedIdx, resultPhoto);
     setResultPhoto(null);
     toast({ title: "✓ Photo updated!" });
   };
 
   const downloadPhoto = (url, filename) => {
     const a = document.createElement("a");
-    a.href = url;
-    a.download = filename || "photo.jpg";
-    a.target = "_blank";
-    a.click();
+    a.href = url; a.download = filename || "photo.jpg"; a.target = "_blank"; a.click();
   };
 
   return (
@@ -126,8 +116,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Before</p>
-              <button onClick={() => downloadPhoto(originalPhoto, `before-${selectedIdx + 1}.jpg`)}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-700">
+              <button onClick={() => downloadPhoto(originalPhoto, `before-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-700">
                 <Download className="w-3.5 h-3.5" /> Download
               </button>
             </div>
@@ -137,18 +126,14 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">After Removal</p>
               {(resultPhoto || appliedEdits[selectedIdx]) && (
-                <button onClick={() => downloadPhoto(resultPhoto || appliedEdits[selectedIdx], `after-${selectedIdx + 1}.jpg`)}
-                  className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
+                <button onClick={() => downloadPhoto(resultPhoto || appliedEdits[selectedIdx], `after-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
               )}
             </div>
             <div className="relative aspect-video bg-gray-50 flex items-center justify-center">
               {processing ? (
-                <div className="flex flex-col items-center gap-2">
-                  <Loader2 className="w-8 h-8 text-purple-700 animate-spin" />
-                  <p className="text-sm text-gray-500">AI is removing items...</p>
-                </div>
+                <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 text-purple-700 animate-spin" /><p className="text-sm text-gray-500">AI is removing items...</p></div>
               ) : resultPhoto ? (
                 <>
                   <img src={resultPhoto} alt="Result" className="w-full h-full object-cover" />
@@ -173,25 +158,19 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
             {REMOVAL_MODES.map(mode => (
               <button key={mode.key} onClick={() => setSelectedMode(mode.key)}
-                className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all ${
-                  selectedMode === mode.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"
-                }`}>
+                className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all ${selectedMode === mode.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"}`}>
                 {mode.label}
               </button>
             ))}
             <button onClick={() => setSelectedMode("custom")}
-              className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all ${
-                selectedMode === "custom" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"
-              }`}>
+              className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all ${selectedMode === "custom" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"}`}>
               ✏️ Custom Removal
             </button>
           </div>
           {selectedMode === "custom" && (
             <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
               placeholder="Describe exactly what to remove, e.g. Remove the red couch and the ceiling fan..."
-              rows={2}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none mb-4 bg-white"
-            />
+              rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none mb-4 bg-white" />
           )}
           <Button onClick={runRemoval} disabled={processing || !selectedMode || (selectedMode === "custom" && !customPrompt.trim())}
             className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">

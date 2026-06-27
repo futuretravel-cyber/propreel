@@ -5,16 +5,14 @@ import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 
 const PLATFORMS = [
-  { key: "facebook",   label: "Facebook",   emoji: "📘", maxChars: 500,  desc: "Engaging post for Facebook property groups and your business page.", imageAspect: "1200x630", imagePrompt: "Facebook post image 1200x630px landscape, premium South African real estate marketing graphic, clean modern design, property lifestyle, warm purples and whites" },
-  { key: "instagram",  label: "Instagram",  emoji: "📸", maxChars: 300,  desc: "Punchy caption with hashtags for Instagram property marketing.", imageAspect: "1080x1080", imagePrompt: "Instagram square post 1080x1080px, stunning South African property marketing photo, bold elegant estate agency aesthetic, deep purple accent colours" },
-  { key: "whatsapp",   label: "WhatsApp",   emoji: "💬", maxChars: 400,  desc: "Short, personal message to send to your buyer database.", imageAspect: "1280x720", imagePrompt: "WhatsApp status image 1280x720px landscape, South African property for sale, clean professional real estate graphic" },
-  { key: "linkedin",   label: "LinkedIn",   emoji: "💼", maxChars: 700,  desc: "Professional property announcement for LinkedIn network.", imageAspect: "1200x627", imagePrompt: "LinkedIn post image 1200x627px, corporate professional South African real estate property announcement, clean navy and white professional design" },
-  { key: "twitter",    label: "Twitter/X",  emoji: "🐦", maxChars: 240,  desc: "Concise tweet-style post with key highlights.", imageAspect: "1600x900", imagePrompt: "Twitter/X post image 1600x900px wide landscape, South African property listing graphic, modern bold design with property preview" },
-  { key: "tiktok",     label: "TikTok",     emoji: "🎵", maxChars: 300,  desc: "Trendy, youthful caption for TikTok property tours.", imageAspect: "1080x1920", imagePrompt: "TikTok thumbnail 1080x1920px vertical portrait, trendy South African property tour cover, vibrant modern design for Gen Z audience" },
-  { key: "newsletter", label: "Newsletter", emoji: "📧", maxChars: 1000, desc: "Full newsletter section for your monthly property email.", imageAspect: "600x400", imagePrompt: "Email newsletter header 600x400px, professional South African real estate property listing banner, clean layout with elegant typography space" },
+  { key: "facebook",   label: "Facebook",   emoji: "📘", maxChars: 500,  desc: "Engaging post for Facebook property groups.", imagePrompt: "Facebook post image 1200x630px landscape, premium South African real estate marketing graphic, clean modern design" },
+  { key: "instagram",  label: "Instagram",  emoji: "📸", maxChars: 300,  desc: "Punchy caption with hashtags for Instagram.", imagePrompt: "Instagram square post 1080x1080px, stunning South African property marketing photo, bold elegant estate agency aesthetic, deep purple accent colours" },
+  { key: "whatsapp",   label: "WhatsApp",   emoji: "💬", maxChars: 400,  desc: "Short, personal message to send to your buyer database.", imagePrompt: "WhatsApp status image 1280x720px landscape, South African property for sale, clean professional real estate graphic" },
+  { key: "linkedin",   label: "LinkedIn",   emoji: "💼", maxChars: 700,  desc: "Professional property announcement for LinkedIn.", imagePrompt: "LinkedIn post image 1200x627px, corporate professional South African real estate property announcement" },
+  { key: "twitter",    label: "Twitter/X",  emoji: "🐦", maxChars: 240,  desc: "Concise tweet-style post with key highlights.", imagePrompt: "Twitter/X post image 1600x900px wide landscape, South African property listing graphic, modern bold design" },
+  { key: "tiktok",     label: "TikTok",     emoji: "🎵", maxChars: 300,  desc: "Trendy, youthful caption for TikTok property tours.", imagePrompt: "TikTok thumbnail 1080x1920px vertical portrait, trendy South African property tour cover, vibrant modern design" },
+  { key: "newsletter", label: "Newsletter", emoji: "📧", maxChars: 1000, desc: "Full newsletter section for your monthly property email.", imagePrompt: "Email newsletter header 600x400px, professional South African real estate property listing banner" },
 ];
-
-const SA_HASHTAGS = "#PropertyForSale #SouthAfricaProperty #RealEstate #SAProperties #Property24 #PrivateProperty #HomesForSale #DreamHome #PropertyInvestment #LuxuryProperty";
 
 export default function StudioSocialMedia({ photos: projectPhotos, project, listing }) {
   const { toast } = useToast();
@@ -55,7 +53,7 @@ export default function StudioSocialMedia({ photos: projectPhotos, project, list
 
   const buildPropertyDetails = () => {
     if (listing) {
-      return `Property: ${listing.property_type || "Property"} | Beds: ${listing.bedrooms || "N/A"} | Baths: ${listing.bathrooms || "N/A"} | Garages: ${listing.garages || "N/A"} | Price: ${listing.price ? `R ${Number(listing.price).toLocaleString("en-ZA")}` : "POA"} | Suburb: ${listing.suburb || ""} | Features: ${listing.features?.join(", ") || "N/A"}`;
+      return `Property: ${listing.property_type || "Property"} | Beds: ${listing.bedrooms || "N/A"} | Baths: ${listing.bathrooms || "N/A"} | Price: ${listing.price ? `R ${Number(listing.price).toLocaleString("en-ZA")}` : "POA"} | Suburb: ${listing.suburb || ""}`;
     }
     return `Project: ${project?.name || "Property"}`;
   };
@@ -67,20 +65,17 @@ export default function StudioSocialMedia({ photos: projectPhotos, project, list
 
 ${buildPropertyDetails()}
 
-Platform: ${plat.label}
-Max characters: ${plat.maxChars}
-Platform requirements: ${plat.desc}
+Platform: ${plat.label} | Max characters: ${plat.maxChars}
+Requirements: ${plat.desc}
 
 RULES:
 - Write in South African English
 - Do NOT mention the street address
-- Include relevant South African property hashtags for Instagram and TikTok
-- For WhatsApp: make it feel personal, like from an agent to a client
+- Include relevant SA property hashtags for Instagram and TikTok
+- For WhatsApp: feel personal, like from an agent to a client
 - For LinkedIn: professional tone, mention investment value
-- For Facebook: engaging, share-worthy, include a question to drive engagement
-- For Twitter/X: punchy, under ${plat.maxChars} chars, include 2-3 hashtags
-- For Newsletter: include a clear header, body, and CTA
-- Return ONLY the post text, no labels or explanations`;
+- For Facebook: engaging, include a question
+- Return ONLY the post text`;
 
     try {
       const result = await base44.integrations.Core.InvokeLLM({ prompt });
@@ -110,9 +105,7 @@ RULES:
     const blob = new Blob([currentPost], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `${selectedPlatform}-post.txt`;
-    a.click();
+    a.href = url; a.download = `${selectedPlatform}-post.txt`; a.click();
     URL.revokeObjectURL(url);
     toast({ title: "Post downloaded!" });
   };
@@ -128,7 +121,7 @@ RULES:
         existing_image_urls: [referencePhoto],
       });
       setGeneratedImageUrl(result.url);
-      toast({ title: `${plat.label} image created (${plat.imageAspect})!` });
+      toast({ title: `${plat.label} image created!` });
     } catch {
       toast({ title: "Image generation failed", variant: "destructive" });
     }
@@ -142,9 +135,7 @@ RULES:
         <div className="flex flex-wrap gap-2">
           {PLATFORMS.map(p => (
             <button key={p.key} onClick={() => handlePlatformChange(p.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
-                selectedPlatform === p.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-600 hover:border-gray-300"
-              }`}>
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border-2 transition-all ${selectedPlatform === p.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}>
               <span>{p.emoji}</span> {p.label}
             </button>
           ))}
@@ -153,14 +144,13 @@ RULES:
       </div>
 
       <div className="flex gap-3">
-        <Button onClick={generatePost} disabled={generating}
-          className="flex-1 bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+        <Button onClick={generatePost} disabled={generating} className="flex-1 bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
           {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Share className="w-4 h-4" /> Generate {platform?.label} Post</>}
         </Button>
         {allPhotos.length > 0 && (
           <Button onClick={generateSocialImage} disabled={generatingImage} variant="outline" className="rounded-xl gap-2 h-11">
             {generatingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : "🖼️"}
-            {generatingImage ? "Creating..." : `Make ${platform?.imageAspect || ""} Image`}
+            {generatingImage ? "Creating..." : "Make Image"}
           </Button>
         )}
       </div>
@@ -170,9 +160,7 @@ RULES:
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-900">{platform?.emoji} {platform?.label} Post</p>
             <div className="flex items-center gap-3">
-              <span className={`text-xs font-medium ${currentPost.length > (platform?.maxChars || 999) ? "text-red-500" : "text-gray-400"}`}>
-                {currentPost.length} / {platform?.maxChars}
-              </span>
+              <span className={`text-xs font-medium ${currentPost.length > (platform?.maxChars || 999) ? "text-red-500" : "text-gray-400"}`}>{currentPost.length} / {platform?.maxChars}</span>
               <button onClick={copy} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? "Copied!" : "Copy"}
@@ -182,21 +170,15 @@ RULES:
               </button>
             </div>
           </div>
-          <textarea value={currentPost} onChange={e => setEditedPost(e.target.value)}
-            rows={8}
-            className="w-full border border-purple-100 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none leading-relaxed bg-white"
-          />
-          <div className="text-xs text-gray-400">Tip: Add these hashtags → <span className="text-purple-700 font-medium">{SA_HASHTAGS.split(" ").slice(0, 4).join(" ")}</span></div>
+          <textarea value={currentPost} onChange={e => setEditedPost(e.target.value)} rows={8}
+            className="w-full border border-purple-100 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none leading-relaxed bg-white" />
         </div>
       )}
 
       {generatedImageUrl && (
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-4 pt-3 pb-2">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">{platform?.emoji} {platform?.label} Image</p>
-              <p className="text-xs text-gray-400">{platform?.imageAspect} optimised</p>
-            </div>
+            <p className="text-sm font-semibold text-gray-900">{platform?.emoji} {platform?.label} Image</p>
             <a href={generatedImageUrl} download={`${selectedPlatform}-image.jpg`} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
               <Download className="w-3.5 h-3.5" /> Download
             </a>
@@ -221,10 +203,6 @@ RULES:
             {allPhotos.map((url, i) => (
               <div key={i} className="relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-gray-200">
                 <img src={url} alt="" className="w-full h-full object-cover" />
-                <a href={url} download={`photo-${i + 1}.jpg`} target="_blank" rel="noreferrer"
-                  className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity">
-                  <Download className="w-4 h-4 text-white" />
-                </a>
               </div>
             ))}
           </div>

@@ -6,17 +6,17 @@ import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 
 const TONES = [
-  { key: "professional", label: "👔 Professional",        desc: "Clear, factual and authoritative." },
-  { key: "exciting",     label: "🔥 Exciting & Urgent",   desc: "High energy, FOMO-driven." },
-  { key: "luxury",       label: "✨ Luxury & Aspirational",desc: "Evocative, lifestyle-focused." },
+  { key: "professional", label: "👔 Professional",          desc: "Clear, factual and authoritative." },
+  { key: "exciting",     label: "🔥 Exciting & Urgent",     desc: "High energy, FOMO-driven." },
+  { key: "luxury",       label: "✨ Luxury & Aspirational", desc: "Evocative, lifestyle-focused." },
   { key: "friendly",     label: "😊 Friendly & Approachable", desc: "Warm and conversational." },
 ];
 
 const FEATURES = [
-  "Swimming Pool", "Double Garage", "Solar Panels", "Generator", "Fibre Internet",
-  "Air Conditioning", "Underfloor Heating", "Security Estate", "Mountain Views", "Sea Views",
-  "Garden", "Staff Quarters", "Study", "Scullery", "Braai Area", "Entertainment Area",
-  "Pet Friendly", "Borehole", "Water Tanks", "EV Charging",
+  "Swimming Pool","Double Garage","Solar Panels","Generator","Fibre Internet",
+  "Air Conditioning","Underfloor Heating","Security Estate","Mountain Views","Sea Views",
+  "Garden","Staff Quarters","Study","Scullery","Braai Area","Entertainment Area",
+  "Pet Friendly","Borehole","Water Tanks","EV Charging",
 ];
 
 function formatRand(val) {
@@ -63,12 +63,10 @@ export default function StudioDescription({ project, listing, onDescriptionGener
     if (!files.length) return;
     setUploadingPhoto(true);
     try {
-      const urls = await Promise.all(
-        files.map(async (file) => {
-          const { file_url } = await base44.integrations.Core.UploadFile({ file });
-          return file_url;
-        })
-      );
+      const urls = await Promise.all(files.map(async (file) => {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        return file_url;
+      }));
       setAttachedPhotos(prev => [...prev, ...urls]);
       toast({ title: `${urls.length} photo(s) attached` });
     } catch {
@@ -86,16 +84,7 @@ export default function StudioDescription({ project, listing, onDescriptionGener
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: `Verify if this South African property address is valid: "${fullAddress}". Return JSON: { valid: boolean, suburb: string, city: string, province: string, note: string }`,
         add_context_from_internet: true,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            valid: { type: "boolean" },
-            suburb: { type: "string" },
-            city: { type: "string" },
-            province: { type: "string" },
-            note: { type: "string" },
-          },
-        },
+        response_json_schema: { type: "object", properties: { valid: { type: "boolean" }, suburb: { type: "string" }, city: { type: "string" }, province: { type: "string" }, note: { type: "string" } } },
       });
       if (result.valid) {
         setAddressVerified(true);
@@ -119,15 +108,7 @@ export default function StudioDescription({ project, listing, onDescriptionGener
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: `For the suburb "${suburb}${city ? `, ${city}` : ""}, South Africa", list key nearby amenities for property buyers. Return JSON: { amenities: [{ type: string, name: string, distance_km: number }] }. Max 8 items.`,
         add_context_from_internet: true,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            amenities: {
-              type: "array",
-              items: { type: "object", properties: { type: { type: "string" }, name: { type: "string" }, distance_km: { type: "number" } } },
-            },
-          },
-        },
+        response_json_schema: { type: "object", properties: { amenities: { type: "array", items: { type: "object", properties: { type: { type: "string" }, name: { type: "string" }, distance_km: { type: "number" } } } } } },
       });
       setAmenities(result.amenities || []);
     } catch {}
@@ -142,7 +123,7 @@ export default function StudioDescription({ project, listing, onDescriptionGener
 
 Property: ${propertyType} | Beds: ${bedrooms || "N/A"} | Baths: ${bathrooms || "N/A"} | Garages: ${garages || "N/A"} | Price: R${formatRand(price) || "POA"} | Erf: ${erfSize ? erfSize + "m²" : "N/A"} | Floor: ${floorSize ? floorSize + "m²" : "N/A"}
 Features: ${features.join(", ") || "N/A"}
-Nearby (reference distances naturally, do NOT mention the street address): ${amenityText || "N/A"}
+Nearby: ${amenityText || "N/A"}
 ${aiPrompt ? `Agent instructions: ${aiPrompt}` : ""}
 
 RULES:
@@ -154,10 +135,7 @@ RULES:
 - Return ONLY the description text`;
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt,
-        ...(attachedPhotos.length > 0 ? { file_urls: attachedPhotos } : {}),
-      });
+      const result = await base44.integrations.Core.InvokeLLM({ prompt, ...(attachedPhotos.length > 0 ? { file_urls: attachedPhotos } : {}) });
       const text = typeof result === "string" ? result.trim() : "";
       setDescription(text);
       if (onDescriptionGenerated) onDescriptionGenerated(text);
@@ -174,45 +152,12 @@ RULES:
     toast({ title: "Copied!" });
   };
 
-  const toggleFeature = (f) =>
-    setFeatures(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+  const toggleFeature = (f) => setFeatures(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
 
   const downloadPortal = (portal) => {
-    const lines = [];
-    if (portal === "p24") {
-      lines.push("PROPERTY24 LISTING EXPORT");
-      lines.push("=========================");
-      lines.push(`Property Type: ${propertyType}`);
-      lines.push(`Bedrooms: ${bedrooms || "N/A"}`);
-      lines.push(`Bathrooms: ${bathrooms || "N/A"}`);
-      lines.push(`Garages: ${garages || "N/A"}`);
-      lines.push(`Erf Size: ${erfSize ? erfSize + " m²" : "N/A"}`);
-      lines.push(`Floor Size: ${floorSize ? floorSize + " m²" : "N/A"}`);
-      lines.push(`Asking Price: ${price ? "R " + formatRand(price) : "POA"}`);
-      lines.push(`Suburb: ${suburb}`);
-      lines.push(`City: ${city}`);
-      lines.push(`Province: ${province}`);
-      lines.push("");
-      lines.push("FEATURES:");
-      features.forEach(f => lines.push(`• ${f}`));
-      lines.push("");
-      lines.push("LISTING DESCRIPTION:");
-      lines.push(description || "(No description generated yet)");
-    } else {
-      lines.push("PRIVATE PROPERTY LISTING EXPORT");
-      lines.push("================================");
-      lines.push(`Type: ${propertyType}`);
-      lines.push(`Beds: ${bedrooms || "N/A"} | Baths: ${bathrooms || "N/A"} | Garages: ${garages || "N/A"}`);
-      lines.push(`Size: ${floorSize ? floorSize + "m² floor" : ""} ${erfSize ? "/ " + erfSize + "m² erf" : ""}`);
-      lines.push(`Price: ${price ? "R " + formatRand(price) : "POA"}`);
-      lines.push(`Location: ${[suburb, city, province].filter(Boolean).join(", ")}`);
-      lines.push("");
-      lines.push("Key Features: " + (features.join(" | ") || "N/A"));
-      lines.push("");
-      const desc = description || "(No description generated yet)";
-      lines.push("Description:");
-      lines.push(desc.length > 800 ? desc.slice(0, 800) + "..." : desc);
-    }
+    const lines = portal === "p24"
+      ? ["PROPERTY24 LISTING EXPORT","=========================",`Property Type: ${propertyType}`,`Bedrooms: ${bedrooms || "N/A"}`,`Bathrooms: ${bathrooms || "N/A"}`,`Garages: ${garages || "N/A"}`,`Erf Size: ${erfSize ? erfSize + " m²" : "N/A"}`,`Floor Size: ${floorSize ? floorSize + " m²" : "N/A"}`,`Asking Price: ${price ? "R " + formatRand(price) : "POA"}`,`Suburb: ${suburb}`,`City: ${city}`,`Province: ${province}`,"","FEATURES:",...features.map(f => `• ${f}`),"","LISTING DESCRIPTION:",description || "(No description generated yet)"]
+      : ["PRIVATE PROPERTY LISTING EXPORT","================================",`Type: ${propertyType}`,`Beds: ${bedrooms || "N/A"} | Baths: ${bathrooms || "N/A"} | Garages: ${garages || "N/A"}`,`Size: ${floorSize ? floorSize + "m² floor" : ""} ${erfSize ? "/ " + erfSize + "m² erf" : ""}`,`Price: ${price ? "R " + formatRand(price) : "POA"}`,`Location: ${[suburb, city, province].filter(Boolean).join(", ")}`,"",`Key Features: ${features.join(" | ") || "N/A"}`,"","Description:",description || "(No description generated yet)"];
     const blob = new Blob([lines.join("\n")], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -225,13 +170,11 @@ RULES:
 
   return (
     <div className="space-y-6">
-      {/* Property Details Card */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 space-y-6">
         <div>
           <h2 className="text-lg font-bold text-gray-900 mb-0.5">Property Details</h2>
-          <p className="text-sm text-gray-500">Enter the listing information. The address is used for AI research only — it won't appear in the description.</p>
+          <p className="text-sm text-gray-500">Enter the listing information. The address is used for AI research only.</p>
         </div>
-
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-gray-900">📍 Property Address</h3>
           <div>
@@ -247,14 +190,8 @@ RULES:
             {addressError && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{addressError}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Suburb *</label>
-              <Input value={suburb} onChange={e => { setSuburb(e.target.value); setAddressVerified(false); }} placeholder="e.g. Constantia" className="rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">City</label>
-              <Input value={city} onChange={e => setCity(e.target.value)} placeholder="e.g. Cape Town" className="rounded-xl" />
-            </div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Suburb *</label><Input value={suburb} onChange={e => { setSuburb(e.target.value); setAddressVerified(false); }} placeholder="e.g. Constantia" className="rounded-xl" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">City</label><Input value={city} onChange={e => setCity(e.target.value)} placeholder="e.g. Cape Town" className="rounded-xl" /></div>
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Province</label>
               <select value={province} onChange={e => setProvince(e.target.value)} className="w-full border border-input rounded-xl px-3 h-9 text-sm outline-none focus:ring-1 focus:ring-purple-700 bg-white">
@@ -270,21 +207,17 @@ RULES:
             </div>
           </div>
         </div>
-
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-gray-900">🏠 Property Specs</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {[
-              { label: "Bedrooms",       value: bedrooms,   set: setBedrooms,   placeholder: "3" },
-              { label: "Bathrooms",      value: bathrooms,  set: setBathrooms,  placeholder: "2" },
-              { label: "Garages",        value: garages,    set: setGarages,    placeholder: "2" },
-              { label: "Erf Size (m²)",  value: erfSize,    set: setErfSize,    placeholder: "600" },
-              { label: "Floor Size (m²)",value: floorSize,  set: setFloorSize,  placeholder: "280" },
+              { label: "Bedrooms", value: bedrooms, set: setBedrooms, placeholder: "3" },
+              { label: "Bathrooms", value: bathrooms, set: setBathrooms, placeholder: "2" },
+              { label: "Garages", value: garages, set: setGarages, placeholder: "2" },
+              { label: "Erf Size (m²)", value: erfSize, set: setErfSize, placeholder: "600" },
+              { label: "Floor Size (m²)", value: floorSize, set: setFloorSize, placeholder: "280" },
             ].map(f => (
-              <div key={f.label}>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">{f.label}</label>
-                <Input type="number" value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.placeholder} className="rounded-xl" />
-              </div>
+              <div key={f.label}><label className="text-xs font-medium text-gray-500 mb-1 block">{f.label}</label><Input type="number" value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.placeholder} className="rounded-xl" /></div>
             ))}
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Asking Price (R)</label>
@@ -296,7 +229,6 @@ RULES:
             </div>
           </div>
         </div>
-
         <div>
           <h3 className="text-sm font-semibold text-gray-900 mb-3">✅ Key Features</h3>
           <div className="flex flex-wrap gap-2">
@@ -310,7 +242,6 @@ RULES:
         </div>
       </div>
 
-      {/* Attach Photos */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -338,7 +269,6 @@ RULES:
         )}
       </div>
 
-      {/* Area Amenities */}
       {suburb && (
         <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-2">
@@ -350,9 +280,7 @@ RULES:
           </div>
           {amenities.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
-              {amenities.map((a, i) => (
-                <span key={i} className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-medium">{a.name} · {a.distance_km}km</span>
-              ))}
+              {amenities.map((a, i) => <span key={i} className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-medium">{a.name} · {a.distance_km}km</span>)}
             </div>
           ) : (
             <p className="text-xs text-purple-600">Click "Fetch Amenities" to research nearby schools, shops, hospitals and more for {suburb}.</p>
@@ -360,7 +288,6 @@ RULES:
         </div>
       )}
 
-      {/* Tone */}
       <div>
         <label className="text-sm font-semibold text-gray-900 block mb-3">Description Tone</label>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -379,9 +306,7 @@ RULES:
         <label className="text-sm font-semibold text-gray-900 block mb-2">Additional AI Instructions (optional)</label>
         <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
           placeholder="e.g. Emphasise the mountain views, highlight the recent kitchen renovation..."
-          rows={3}
-          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white"
-        />
+          rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
       </div>
 
       <Button onClick={generate} disabled={generating} className="w-full bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl gap-2 h-11">
@@ -397,57 +322,27 @@ RULES:
               {copied ? "Copied!" : "Copy"}
             </button>
           </div>
-          <textarea value={description} onChange={e => {
-            setDescription(e.target.value);
-            if (onDescriptionGenerated) onDescriptionGenerated(e.target.value);
-          }}
-            rows={12}
-            className="w-full border border-purple-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none leading-relaxed bg-white"
-          />
+          <textarea value={description} onChange={e => { setDescription(e.target.value); if (onDescriptionGenerated) onDescriptionGenerated(e.target.value); }}
+            rows={12} className="w-full border border-purple-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none leading-relaxed bg-white" />
           <p className="text-xs text-gray-400">{description.length} characters · Edit directly above</p>
         </div>
       )}
 
-      {/* Export for Portal */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6">
         <h3 className="text-base font-bold text-gray-900 mb-1">Export for Portal</h3>
         <p className="text-sm text-gray-500 mb-5">Download a formatted text file optimised for each portal's listing requirements.</p>
-
-        {(bedrooms || price || suburb) && (
-          <div className="bg-gray-50 rounded-xl p-4 mb-5">
-            <p className="text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Listing Summary</p>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-              <span className="text-gray-500">Type: <strong className="text-gray-900">{propertyType}</strong></span>
-              {price && <span className="text-gray-500">Price: <strong className="text-purple-700">R {formatRand(price)}</strong></span>}
-              {bedrooms && <span className="text-gray-500">Beds: <strong className="text-gray-900">{bedrooms}</strong></span>}
-              {bathrooms && <span className="text-gray-500">Baths: <strong className="text-gray-900">{bathrooms}</strong></span>}
-              {garages && <span className="text-gray-500">Garages: <strong className="text-gray-900">{garages}</strong></span>}
-              {erfSize && <span className="text-gray-500">Erf: <strong className="text-gray-900">{erfSize}m²</strong></span>}
-              {suburb && <span className="text-gray-500">Suburb: <strong className="text-gray-900">{suburb}</strong></span>}
-            </div>
-          </div>
-        )}
-
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="border border-gray-200 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>
-              <p className="text-sm font-bold text-gray-900">Property24</p>
-            </div>
-            <p className="text-xs text-gray-500 mb-4">SA's largest property portal. Formatted for their listing submission requirements.</p>
-            <button onClick={() => downloadPortal("p24")}
-              className="w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors">
+            <div className="flex items-center gap-2 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span><p className="text-sm font-bold text-gray-900">Property24</p></div>
+            <p className="text-xs text-gray-500 mb-4">SA's largest property portal.</p>
+            <button onClick={() => downloadPortal("p24")} className="w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors">
               <Download className="w-4 h-4" /> Download for Property24
             </button>
           </div>
           <div className="border border-gray-200 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>
-              <p className="text-sm font-bold text-gray-900">Private Property</p>
-            </div>
-            <p className="text-xs text-gray-500 mb-4">Second-largest SA portal. Optimised description length and feature format.</p>
-            <button onClick={() => downloadPortal("pp")}
-              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors">
+            <div className="flex items-center gap-2 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span><p className="text-sm font-bold text-gray-900">Private Property</p></div>
+            <p className="text-xs text-gray-500 mb-4">Second-largest SA portal.</p>
+            <button onClick={() => downloadPortal("pp")} className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors">
               <Download className="w-4 h-4" /> Download for Private Property
             </button>
           </div>

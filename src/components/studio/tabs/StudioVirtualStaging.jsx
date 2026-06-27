@@ -5,14 +5,14 @@ import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 
 const STYLES = [
-  { key: "luxury",       label: "🛋️ Luxury Modern",        prompt: "Virtually stage this empty room with modern luxury South African furniture. Add a stylish sofa, coffee table, artwork, floor lamp, plants, and a designer rug. Warm neutral tones, high-end finishes. Show home quality." },
-  { key: "minimal",      label: "✨ Scandinavian Minimal",  prompt: "Virtually stage this empty room with minimal Scandinavian furniture. Clean lines, white oak, neutral tones, uncluttered. Perfect for modern buyers." },
-  { key: "contemporary", label: "🖤 Contemporary Dark",    prompt: "Virtually stage this room with contemporary dark furniture. Deep charcoal sofa, black accents, brass fixtures, moody lighting. Sophisticated and dramatic." },
-  { key: "coastal",      label: "🌊 Coastal Relaxed",       prompt: "Virtually stage this room in a relaxed coastal style. Light blue and white tones, natural textures, rattan, linen fabrics. Beachy and inviting." },
-  { key: "family",       label: "👨‍👩‍👧 Family Comfortable",  prompt: "Virtually stage this room for a family. Comfortable L-shaped sofa, coffee table with books, warm rugs, family-friendly decor. Inviting and lived-in feel." },
-  { key: "bedroom_lux",  label: "🛏️ Luxury Bedroom",       prompt: "Virtually stage this bedroom with luxury hotel-quality white linen, upholstered headboard, bedside lamps, artwork, and a bench at the foot of the bed." },
-  { key: "office",       label: "💼 Home Office",           prompt: "Virtually stage this room as a stylish home office. Desk, ergonomic chair, bookshelves, a plant, and good lighting. Professional yet comfortable." },
-  { key: "industrial",   label: "⚙️ Industrial Loft",       prompt: "Virtually stage this room in industrial loft style. Exposed brick effect, leather sofa, metal shelving, Edison bulb lighting, raw wood table." },
+  { key: "luxury",       label: "🛋️ Luxury Modern",        prompt: "Virtually stage this empty room with modern luxury South African furniture. Add a stylish sofa, coffee table, artwork, floor lamp, plants, and a designer rug. Warm neutral tones, high-end finishes." },
+  { key: "minimal",      label: "✨ Scandinavian Minimal",  prompt: "Virtually stage this empty room with minimal Scandinavian furniture. Clean lines, white oak, neutral tones, uncluttered." },
+  { key: "contemporary", label: "🖤 Contemporary Dark",     prompt: "Virtually stage this room with contemporary dark furniture. Deep charcoal sofa, black accents, brass fixtures, moody lighting." },
+  { key: "coastal",      label: "🌊 Coastal Relaxed",       prompt: "Virtually stage this room in a relaxed coastal style. Light blue and white tones, natural textures, rattan, linen fabrics." },
+  { key: "family",       label: "👨‍👩‍👧 Family Comfortable",  prompt: "Virtually stage this room for a family. Comfortable L-shaped sofa, coffee table, warm rugs, family-friendly decor." },
+  { key: "bedroom_lux",  label: "🛏️ Luxury Bedroom",       prompt: "Virtually stage this bedroom with luxury hotel-quality white linen, upholstered headboard, bedside lamps, artwork." },
+  { key: "office",       label: "💼 Home Office",           prompt: "Virtually stage this room as a stylish home office. Desk, ergonomic chair, bookshelves, a plant, and good lighting." },
+  { key: "industrial",   label: "⚙️ Industrial Loft",       prompt: "Virtually stage this room in industrial loft style. Exposed brick effect, leather sofa, metal shelving, Edison bulb lighting." },
 ];
 
 export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoReplaced }) {
@@ -49,11 +49,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => {
-    setSelectedIdx(idx);
-    setResultPhoto(null);
-    setSelectedStyle(null);
-  };
+  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setSelectedStyle(null); };
 
   const runStaging = async () => {
     const style = STYLES.find(s => s.key === selectedStyle);
@@ -66,7 +62,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
         existing_image_urls: [originalPhoto],
       });
       setResultPhoto(result.url);
-      toast({ title: "Staging complete!", description: "Compare and apply below." });
+      toast({ title: "Staging complete!" });
     } catch {
       toast({ title: "Staging failed", variant: "destructive" });
     }
@@ -76,19 +72,14 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
   const applyEdit = () => {
     if (!resultPhoto) return;
     setAppliedEdits(prev => ({ ...prev, [selectedIdx]: resultPhoto }));
-    if (selectedIdx < projectPhotos.length) {
-      onPhotoReplaced(selectedIdx, resultPhoto);
-    }
+    if (selectedIdx < projectPhotos.length) onPhotoReplaced(selectedIdx, resultPhoto);
     setResultPhoto(null);
     toast({ title: "✓ Staged photo applied!" });
   };
 
   const downloadPhoto = (url, filename) => {
     const a = document.createElement("a");
-    a.href = url;
-    a.download = filename || "staged-photo.jpg";
-    a.target = "_blank";
-    a.click();
+    a.href = url; a.download = filename || "staged-photo.jpg"; a.target = "_blank"; a.click();
   };
 
   return (
@@ -126,8 +117,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Original</p>
-              <button onClick={() => downloadPhoto(originalPhoto, `original-${selectedIdx + 1}.jpg`)}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-700">
+              <button onClick={() => downloadPhoto(originalPhoto, `original-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-700">
                 <Download className="w-3.5 h-3.5" /> Download
               </button>
             </div>
@@ -137,18 +127,14 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">Staged Result</p>
               {(resultPhoto || appliedEdits[selectedIdx]) && (
-                <button onClick={() => downloadPhoto(resultPhoto || appliedEdits[selectedIdx], `staged-${selectedIdx + 1}.jpg`)}
-                  className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
+                <button onClick={() => downloadPhoto(resultPhoto || appliedEdits[selectedIdx], `staged-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
               )}
             </div>
             <div className="relative aspect-video bg-gray-50 flex items-center justify-center">
               {processing ? (
-                <div className="flex flex-col items-center gap-2">
-                  <Loader2 className="w-8 h-8 text-purple-700 animate-spin" />
-                  <p className="text-sm text-gray-500">AI is staging the room...</p>
-                </div>
+                <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 text-purple-700 animate-spin" /><p className="text-sm text-gray-500">AI is staging the room...</p></div>
               ) : resultPhoto ? (
                 <>
                   <img src={resultPhoto} alt="Staged" className="w-full h-full object-cover" />
@@ -173,15 +159,12 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
             {STYLES.map(style => (
               <button key={style.key} onClick={() => setSelectedStyle(style.key)}
-                className={`text-xs font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight ${
-                  selectedStyle === style.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"
-                }`}>
+                className={`text-xs font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight ${selectedStyle === style.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"}`}>
                 {style.label}
               </button>
             ))}
           </div>
-          <Button onClick={runStaging} disabled={processing || !selectedStyle}
-            className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          <Button onClick={runStaging} disabled={processing || !selectedStyle} className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Staging room...</> : <><Sofa className="w-4 h-4" /> Stage This Room</>}
           </Button>
         </div>

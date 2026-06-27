@@ -9,8 +9,8 @@ const TWILIGHT_STYLES = [
   { key: "golden_dusk",  label: "🌅 Golden Dusk",          prompt: "Convert to golden dusk. Orange and pink horizon, last rays of sunlight, warm glow on the facade, exterior lights starting to appear. Warm and inviting." },
   { key: "night_lights", label: "🌃 Night Lights",         prompt: "Convert to a full night shot. Dark sky with stars, all interior lights glowing warmly through windows, exterior pathway and landscape lighting. Premium feel." },
   { key: "sunset_sky",   label: "🔴 Dramatic Sunset",      prompt: "Replace the sky with a dramatic red-orange sunset. Vivid clouds, warm light bathing the whole property. Keep the property structure identical." },
-  { key: "moody_dusk",   label: "🌫️ Moody & Atmospheric",  prompt: "Create a moody atmospheric dusk shot. Soft purple-blue tones, subtle mist, warm interior glows, cinematic feel. High-end real estate photography style." },
-  { key: "christmas",    label: "🎄 Festive Evening",      prompt: "Convert to a festive evening shot with warm Christmas fairy lights on the exterior, glowing windows, and a dark twilight sky with a warm colour palette." },
+  { key: "moody_dusk",   label: "🌫️ Moody & Atmospheric",  prompt: "Create a moody atmospheric dusk shot. Soft purple-blue tones, subtle mist, warm interior glows, cinematic feel." },
+  { key: "christmas",    label: "🎄 Festive Evening",      prompt: "Convert to a festive evening shot with warm Christmas fairy lights on the exterior, glowing windows, and a dark twilight sky." },
 ];
 
 export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced }) {
@@ -47,11 +47,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced 
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => {
-    setSelectedIdx(idx);
-    setResultPhoto(null);
-    setSelectedStyle(null);
-  };
+  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setSelectedStyle(null); };
 
   const runTwilight = async () => {
     const style = TWILIGHT_STYLES.find(s => s.key === selectedStyle);
@@ -74,19 +70,14 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced 
   const applyEdit = () => {
     if (!resultPhoto) return;
     setAppliedEdits(prev => ({ ...prev, [selectedIdx]: resultPhoto }));
-    if (selectedIdx < projectPhotos.length) {
-      onPhotoReplaced(selectedIdx, resultPhoto);
-    }
+    if (selectedIdx < projectPhotos.length) onPhotoReplaced(selectedIdx, resultPhoto);
     setResultPhoto(null);
     toast({ title: "✓ Twilight photo applied!" });
   };
 
   const downloadPhoto = (url, filename) => {
     const a = document.createElement("a");
-    a.href = url;
-    a.download = filename || "twilight-photo.jpg";
-    a.target = "_blank";
-    a.click();
+    a.href = url; a.download = filename || "twilight-photo.jpg"; a.target = "_blank"; a.click();
   };
 
   return (
@@ -124,8 +115,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced 
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Day Shot (Original)</p>
-              <button onClick={() => downloadPhoto(originalPhoto, `original-${selectedIdx + 1}.jpg`)}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-700">
+              <button onClick={() => downloadPhoto(originalPhoto, `original-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-700">
                 <Download className="w-3.5 h-3.5" /> Download
               </button>
             </div>
@@ -135,18 +125,14 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced 
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Twilight Conversion</p>
               {(resultPhoto || appliedEdits[selectedIdx]) && (
-                <button onClick={() => downloadPhoto(resultPhoto || appliedEdits[selectedIdx], `twilight-${selectedIdx + 1}.jpg`)}
-                  className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                <button onClick={() => downloadPhoto(resultPhoto || appliedEdits[selectedIdx], `twilight-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
               )}
             </div>
             <div className="relative aspect-video bg-gradient-to-br from-indigo-950 to-indigo-800 flex items-center justify-center">
               {processing ? (
-                <div className="flex flex-col items-center gap-2">
-                  <Loader2 className="w-8 h-8 text-indigo-300 animate-spin" />
-                  <p className="text-sm text-indigo-200">Converting to twilight...</p>
-                </div>
+                <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 text-indigo-300 animate-spin" /><p className="text-sm text-indigo-200">Converting to twilight...</p></div>
               ) : resultPhoto ? (
                 <>
                   <img src={resultPhoto} alt="Twilight" className="w-full h-full object-cover" />
@@ -171,15 +157,12 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
             {TWILIGHT_STYLES.map(style => (
               <button key={style.key} onClick={() => setSelectedStyle(style.key)}
-                className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight ${
-                  selectedStyle === style.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"
-                }`}>
+                className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight ${selectedStyle === style.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"}`}>
                 {style.label}
               </button>
             ))}
           </div>
-          <Button onClick={runTwilight} disabled={processing || !selectedStyle}
-            className="w-full bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl gap-2 h-11">
+          <Button onClick={runTwilight} disabled={processing || !selectedStyle} className="w-full bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Converting to twilight...</> : <>🌆 Convert to Twilight</>}
           </Button>
         </div>
