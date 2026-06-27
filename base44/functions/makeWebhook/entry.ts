@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const MAKE_WEBHOOK_URL = "https://hook.eu1.make.com/pc3exi3npkd98b1gje2rq68jvdls46zl";
+const MAKE_WEBHOOK_URL = "https://hook.eu1.make.com/2136mj2guw97mxagplgd29akmxm4lea4";
 
 Deno.serve(async (req) => {
   try {
