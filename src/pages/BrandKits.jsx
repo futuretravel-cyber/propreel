@@ -122,23 +122,23 @@ export default function BrandKits() {
           <h1 className="text-2xl font-bold text-[#0F082B]">Brand Kits</h1>
           <p className="text-sm text-[#606060] mt-1">Save your branding once — auto-apply to every video.</p>
         </div>
-        <Button onClick={openNew} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl h-11 px-6 gap-2">
+        <Button onClick={openNew} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl h-11 px-6 gap-2">
           <Plus className="w-4 h-4" /> New Brand Kit
         </Button>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-4 border-gray-200 border-t-[#21ABB5] rounded-full animate-spin" />
+          <div className="w-8 h-8 border-4 border-gray-200 border-t-purple-700 rounded-full animate-spin" />
         </div>
       ) : kits.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#DEF5F7] flex items-center justify-center mx-auto mb-4">
-            <Star className="w-8 h-8 text-[#21ABB5]" />
+          <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mx-auto mb-4">
+          <Star className="w-8 h-8 text-purple-700" />
           </div>
           <h3 className="font-bold text-[#0F082B] mb-2">No brand kits yet</h3>
           <p className="text-sm text-[#606060] mb-6">Create a brand kit to auto-apply your branding to every video.</p>
-          <Button onClick={openNew} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-8 h-11 gap-2">
+          <Button onClick={openNew} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-8 h-11 gap-2">
             <Plus className="w-4 h-4" /> Create Brand Kit
           </Button>
         </div>
@@ -151,8 +151,8 @@ export default function BrandKits() {
                   {kit.profile_photo_url ? (
                     <img src={kit.profile_photo_url} alt={kit.agent_name} className="w-12 h-12 rounded-full object-cover" />
                   ) : (
-                    <div className="w-12 h-12 rounded-full bg-[#DEF5F7] flex items-center justify-center">
-                      <span className="text-sm font-bold text-[#21ABB5]">
+                    <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                      <span className="text-sm font-bold text-purple-700">
                         {kit.agent_name?.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                       </span>
                     </div>
@@ -163,7 +163,7 @@ export default function BrandKits() {
                       <h3 className="font-semibold text-[#0F082B] text-sm">{kit.name}</h3>
                     </div>
                     {kit.is_default && (
-                      <span className="text-[10px] font-semibold bg-[#DEF5F7] text-[#21ABB5] px-2 py-0.5 rounded-full">Default</span>
+                      <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Default</span>
                     )}
                   </div>
                 </div>
@@ -242,8 +242,8 @@ export default function BrandKits() {
               <div className="flex flex-col items-center gap-4">
                 {form.profile_photo_url ? (
                   <div className="relative">
-                    <img src={form.profile_photo_url} alt="avatar" className="w-28 h-28 rounded-full object-cover border-4 border-[#DEF5F7]" />
-                    <div className="absolute bottom-0 right-0 w-8 h-8 bg-[#21ABB5] rounded-full flex items-center justify-center">
+                    <img src={form.profile_photo_url} alt="avatar" className="w-28 h-28 rounded-full object-cover border-4 border-purple-100" />
+                    <div className="absolute bottom-0 right-0 w-8 h-8 bg-purple-700 rounded-full flex items-center justify-center">
                       <Check className="w-4 h-4 text-white" />
                     </div>
                   </div>
@@ -296,7 +296,7 @@ export default function BrandKits() {
           <Button
             onClick={handleSave}
             disabled={!form.name || !form.agent_name || saving}
-            className="w-full bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl h-11 mt-2"
+            className="w-full bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl h-11 mt-2"
           >
             {saving ? "Saving..." : "Save Brand Kit"}
           </Button>

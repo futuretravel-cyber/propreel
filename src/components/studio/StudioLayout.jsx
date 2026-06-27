@@ -11,7 +11,7 @@ const navItems = [
   { icon: FolderOpen, label: "My Projects", path: "/projects" },
   { icon: CreditCard, label: "Brand Kits", path: "/brand-kits" },
   { icon: Settings, label: "Settings", path: "/settings" },
-  { icon: HelpCircle, label: "Help", path: "#" },
+  { icon: HelpCircle, label: "Help", path: "/contact" },
 ];
 
 const adminNavItems = [
@@ -95,7 +95,7 @@ export default function StudioLayout() {
           </Link>
         </div>
 
-        <div className="mt-6 mx-3 p-4 bg-gradient-to-br from-[#21ABB5]/5 to-[#DEF5F7] rounded-xl">
+        <div className="mt-6 mx-3 p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl">
           <div className="flex items-center gap-2 mb-2">
             <Gem className="w-4 h-4 text-purple-700" />
             <span className="text-xs font-semibold text-[#0F082B]">Upgrade to Pro</span>
@@ -204,7 +204,7 @@ export default function StudioLayout() {
       {/* Floating FAB */}
       <Link
         to="/projects/new"
-        className="fixed bottom-6 right-6 w-14 h-14 bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-2xl shadow-lg shadow-[#21ABB5]/30 flex items-center justify-center transition-all hover:scale-105 z-40 lg:hidden"
+        className="fixed bottom-6 right-6 w-14 h-14 bg-purple-700 hover:bg-purple-800 text-white rounded-2xl shadow-lg shadow-purple-700/30 flex items-center justify-center transition-all hover:scale-105 z-40 lg:hidden"
       >
         <Plus className="w-6 h-6" />
       </Link>

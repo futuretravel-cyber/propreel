@@ -10,8 +10,8 @@ const steps = [
     title: "Upload your listing photos",
     desc: "Upload from your device, or import from Property24 or Private Property with one click.",
     mock: (
-      <div className="mt-4 border-2 border-dashed border-[#21ABB5]/30 rounded-xl p-6 bg-[#DEF5F7]/30 text-center">
-        <Upload className="w-8 h-8 text-[#21ABB5] mx-auto mb-2" />
+      <div className="mt-4 border-2 border-dashed border-purple-200 rounded-xl p-6 bg-purple-50/30 text-center">
+        <Upload className="w-8 h-8 text-purple-700 mx-auto mb-2" />
         <p className="text-xs text-[#606060]">Drag & drop photos here</p>
         <p className="text-[10px] text-gray-400 mt-1">JPG, PNG up to 25MB</p>
       </div>
@@ -27,17 +27,17 @@ const steps = [
         <div className="flex items-center gap-3">
           <span className="text-xs text-[#606060] w-20">Orientation</span>
           <div className="flex bg-gray-100 rounded-lg p-0.5">
-            <span className="text-[10px] font-medium bg-[#21ABB5] text-white px-3 py-1.5 rounded-md">Landscape</span>
+            <span className="text-[10px] font-medium bg-purple-700 text-white px-3 py-1.5 rounded-md">Landscape</span>
             <span className="text-[10px] font-medium text-gray-500 px-3 py-1.5">Portrait</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Music className="w-4 h-4 text-[#21ABB5]" />
+          <Music className="w-4 h-4 text-purple-700" />
           <span className="text-xs text-[#606060]">Music</span>
-          <div className="w-8 h-4 bg-[#21ABB5] rounded-full relative"><div className="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full" /></div>
+          <div className="w-8 h-4 bg-purple-700 rounded-full relative"><div className="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full" /></div>
         </div>
         <div className="flex items-center gap-3">
-          <Type className="w-4 h-4 text-[#21ABB5]" />
+          <Type className="w-4 h-4 text-purple-700" />
           <span className="text-xs text-[#606060]">Captions</span>
           <span className="text-[10px] bg-gray-100 px-2 py-1 rounded">Modern Bold</span>
         </div>
@@ -53,7 +53,7 @@ const steps = [
       <div className="mt-4 bg-gray-900 rounded-xl p-4 text-center">
         <Play className="w-8 h-8 text-white mx-auto mb-2" />
         <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
-          <div className="h-full bg-[#21ABB5] rounded-full" style={{ width: "72%" }} />
+          <div className="h-full bg-purple-700 rounded-full" style={{ width: "72%" }} />
         </div>
         <p className="text-[10px] text-gray-400 mt-2">Rendering... 72%</p>
       </div>
@@ -65,9 +65,9 @@ const steps = [
     title: "Add your branding",
     desc: "Add your agency logo, contact details, watermark. Share to Instagram, TikTok, WhatsApp.",
     mock: (
-      <div className="mt-4 bg-gradient-to-br from-[#21ABB5]/5 to-[#DEF5F7]/50 rounded-xl p-4">
+      <div className="mt-4 bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-3">
-          <div className="w-8 h-8 rounded-full bg-[#21ABB5]/20 flex items-center justify-center"><Image className="w-4 h-4 text-[#21ABB5]" /></div>
+          <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center"><Image className="w-4 h-4 text-purple-700" /></div>
           <div>
             <p className="text-[10px] font-semibold text-[#0F082B]">Smit Properties</p>
             <p className="text-[8px] text-gray-400">+27 82 123 4567</p>
@@ -94,10 +94,10 @@ export default function HowItWorks() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {steps.map((s) => (
-            <div key={s.num} className="bg-white border border-gray-100 rounded-2xl p-6 hover:shadow-lg hover:border-[#21ABB5]/20 transition-all duration-300 group">
+            <div key={s.num} className="bg-white border border-gray-100 rounded-2xl p-6 hover:shadow-lg hover:border-purple-200 transition-all duration-300 group">
               <div className="flex items-center gap-3 mb-3">
-                <span className="text-xs font-bold text-[#21ABB5]">{s.num}</span>
-                <s.icon className="w-5 h-5 text-[#21ABB5]" />
+                <span className="text-xs font-bold text-purple-700">{s.num}</span>
+                <s.icon className="w-5 h-5 text-purple-700" />
               </div>
               <h3 className="font-bold text-[#0F082B] mb-2">{s.title}</h3>
               <p className="text-sm text-[#606060] leading-relaxed">{s.desc}</p>
@@ -108,12 +108,12 @@ export default function HowItWorks() {
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center mt-12">
           <Link to="/register">
-            <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold px-8 h-12 rounded-xl text-base gap-2">
+            <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-8 h-12 rounded-xl text-base gap-2">
               Start creating free <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
           <Button variant="outline" className="h-12 rounded-xl text-base gap-2 border-gray-200 px-8">
-            <Play className="w-4 h-4 fill-[#21ABB5] text-[#21ABB5]" /> Watch demo
+            <Play className="w-4 h-4 fill-purple-700 text-purple-700" /> Watch demo
           </Button>
         </div>
       </div>

@@ -60,7 +60,7 @@ export default function Settings() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              tab === t.key ? "bg-[#DEF5F7] text-[#21ABB5]" : "text-[#606060] hover:bg-gray-50"
+              tab === t.key ? "bg-purple-50 text-purple-700" : "text-[#606060] hover:bg-gray-50"
             }`}
           >
             <t.icon className="w-4 h-4" /> {t.label}
@@ -71,8 +71,8 @@ export default function Settings() {
       {tab === "profile" && (
         <div className="bg-white rounded-2xl border border-gray-100 p-8 space-y-5">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 rounded-full bg-[#DEF5F7] flex items-center justify-center">
-              <span className="text-xl font-bold text-[#21ABB5]">
+            <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+              <span className="text-xl font-bold text-purple-700">
                 {user?.full_name?.split(" ").map((n) => n[0]).join("").slice(0, 2) || "U"}
               </span>
             </div>
@@ -95,7 +95,7 @@ export default function Settings() {
             <label className="text-sm font-medium text-[#0F082B] mb-1.5 block">Agency / Company</label>
             <Input value={profile.company} onChange={(e) => setProfile({ ...profile, company: e.target.value })} placeholder="Smit Properties" className="rounded-xl h-11 max-w-sm" />
           </div>
-          <Button onClick={saveProfile} disabled={saving} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl h-11 px-6">
+          <Button onClick={saveProfile} disabled={saving} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl h-11 px-6">
             {saving ? "Saving..." : "Save changes"}
           </Button>
         </div>
@@ -110,7 +110,7 @@ export default function Settings() {
               desc: "Ultra-realistic AI voice narration for property videos. Free plan includes 10,000 chars/month.",
               link: "https://elevenlabs.io",
               linkLabel: "Get API key at elevenlabs.io",
-              color: "#21ABB5",
+              color: "#7c3aed",
             },
             {
               key: "heygen",
@@ -142,7 +142,7 @@ export default function Settings() {
                   <span className="ml-auto text-xs bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1 rounded-full">✓ Connected</span>
                 )}
               </div>
-              <a href={service.link} target="_blank" rel="noreferrer" className="text-xs text-[#21ABB5] flex items-center gap-1 hover:underline mb-3">
+              <a href={service.link} target="_blank" rel="noreferrer" className="text-xs text-purple-700 flex items-center gap-1 hover:underline mb-3">
                 {service.linkLabel} <ExternalLink className="w-3 h-3" />
               </a>
               <div className="flex gap-2">
@@ -161,7 +161,7 @@ export default function Settings() {
                     {showKeys[service.key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <Button onClick={() => saveKey(service.key)} disabled={!keys[service.key]} className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl px-5">
+                <Button onClick={() => saveKey(service.key)} disabled={!keys[service.key]} className="bg-purple-700 hover:bg-purple-800 text-white rounded-xl px-5">
                   Save
                 </Button>
               </div>
@@ -178,7 +178,7 @@ export default function Settings() {
                 <h3 className="font-semibold text-[#0F082B]">Current Plan</h3>
                 <p className="text-sm text-[#606060]">Free — R0/month</p>
               </div>
-              <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl font-semibold px-6">Upgrade</Button>
+              <Button className="bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-semibold px-6">Upgrade</Button>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-gray-50 rounded-xl p-4">

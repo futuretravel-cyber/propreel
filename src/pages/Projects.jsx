@@ -57,7 +57,7 @@ export default function Projects() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-[#0F082B]">My Projects</h1>
         <Link to="/projects/new">
-          <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold px-6 rounded-xl h-11 gap-2">
+          <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-6 rounded-xl h-11 gap-2">
             <Plus className="w-4 h-4" /> New project
           </Button>
         </Link>
@@ -70,7 +70,7 @@ export default function Projects() {
               key={f}
               onClick={() => setFilter(f)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${
-                filter === f ? "bg-[#DEF5F7] text-[#21ABB5]" : "text-[#606060] hover:bg-gray-50"
+                filter === f ? "bg-purple-50 text-purple-700" : "text-[#606060] hover:bg-gray-50"
               }`}
             >
               {f}
@@ -103,7 +103,7 @@ export default function Projects() {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-4 border-gray-200 border-t-[#21ABB5] rounded-full animate-spin" />
+          <div className="w-8 h-8 border-4 border-gray-200 border-t-purple-700 rounded-full animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
@@ -111,7 +111,7 @@ export default function Projects() {
           <h3 className="font-bold text-[#0F082B] mb-2">No projects yet</h3>
           <p className="text-sm text-[#606060] mb-6">Create your first property video to get started.</p>
           <Link to="/projects/new">
-            <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-8 h-11 gap-2">
+            <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-8 h-11 gap-2">
               <Plus className="w-4 h-4" /> New project
             </Button>
           </Link>
@@ -122,7 +122,7 @@ export default function Projects() {
             const status = statusConfig[p.status] || statusConfig.draft;
             const StatusIcon = status.icon;
             return (
-              <div key={p.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-[#21ABB5]/20 transition-all">
+              <div key={p.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-purple-200 transition-all">
                 <Link to={`/projects/${p.id}`}>
                   <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center relative">
                     {p.thumbnail_url ? (

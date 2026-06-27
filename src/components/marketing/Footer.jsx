@@ -34,11 +34,11 @@ export default function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-10">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-9 h-9 rounded-lg bg-[#21ABB5] flex items-center justify-center">
-                <span className="text-white font-bold text-sm">AR</span>
+              <div className="w-9 h-9 rounded-lg bg-purple-700 flex items-center justify-center">
+                <span className="text-white font-bold text-sm">PR</span>
               </div>
-              <span className="font-bold text-lg">AutoReel</span>
-              <span className="text-[10px] font-semibold bg-[#21ABB5]/20 text-[#21ABB5] px-1.5 py-0.5 rounded-full">
+              <span className="font-bold text-lg">PropReel</span>
+              <span className="text-[10px] font-semibold bg-purple-700/30 text-purple-300 px-1.5 py-0.5 rounded-full">
                 SA
               </span>
             </div>
@@ -49,7 +49,7 @@ export default function Footer() {
               {["Instagram", "LinkedIn", "Facebook", "TikTok"].map((s) => (
                 <div
                   key={s}
-                  className="w-9 h-9 rounded-lg bg-white/10 hover:bg-[#21ABB5]/30 flex items-center justify-center cursor-pointer transition-colors"
+                  className="w-9 h-9 rounded-lg bg-white/10 hover:bg-purple-700/40 flex items-center justify-center cursor-pointer transition-colors"
                 >
                   <span className="text-xs font-medium text-gray-300">{s[0]}</span>
                 </div>
@@ -65,7 +65,7 @@ export default function Footer() {
                   <li key={l.label}>
                     <Link
                       to={l.href}
-                      className="text-sm text-gray-400 hover:text-[#21ABB5] transition-colors"
+                      className="text-sm text-gray-400 hover:text-purple-400 transition-colors"
                     >
                       {l.label}
                     </Link>
@@ -80,7 +80,7 @@ export default function Footer() {
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
           <p className="text-xs text-gray-500">
-            © 2026 AutoReel SA. All rights reserved. | South African market.
+            © 2026 PropReel SA. All rights reserved. | South African market.
           </p>
           <div className="flex gap-4">
             <Link to="#" className="text-xs text-gray-500 hover:text-gray-300">Privacy Policy</Link>

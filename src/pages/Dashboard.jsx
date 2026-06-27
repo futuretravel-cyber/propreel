@@ -45,7 +45,7 @@ export default function Dashboard() {
           <p className="text-sm text-[#606060] mt-1">Here's what's happening with your property videos.</p>
         </div>
         <Link to="/projects/new">
-          <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold px-6 rounded-xl h-11 gap-2">
+          <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-6 rounded-xl h-11 gap-2">
             <Plus className="w-4 h-4" /> New project
           </Button>
         </Link>
@@ -54,7 +54,7 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
-          { icon: Home, label: "Active Listings", value: activeListings.toLocaleString("en-ZA"), color: "text-[#21ABB5]", bg: "bg-[#DEF5F7]", link: "/listings" },
+          { icon: Home, label: "Active Listings", value: activeListings.toLocaleString("en-ZA"), color: "text-purple-600", bg: "bg-purple-50", link: "/listings" },
           { icon: TrendingUp, label: "Monthly Revenue", value: `R ${monthlyRevenue.toLocaleString("en-ZA")}`, color: "text-emerald-600", bg: "bg-emerald-50", link: "/listings" },
           { icon: Video, label: "Videos Ready", value: readyCount.toLocaleString("en-ZA"), color: "text-purple-600", bg: "bg-purple-50", link: "/projects" },
           { icon: Zap, label: "Processing", value: processingCount.toLocaleString("en-ZA"), color: "text-amber-600", bg: "bg-amber-50", link: "/projects" },
@@ -75,22 +75,22 @@ export default function Dashboard() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-[#0F082B]">Recent Projects</h2>
-          <Link to="/projects" className="text-sm text-[#21ABB5] hover:underline font-medium">View all →</Link>
+          <Link to="/projects" className="text-sm text-purple-700 hover:underline font-medium">View all →</Link>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-4 border-gray-200 border-t-[#21ABB5] rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-gray-200 border-t-purple-700 rounded-full animate-spin" />
           </div>
         ) : projects.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-[#DEF5F7] flex items-center justify-center mx-auto mb-4">
-              <FolderOpen className="w-8 h-8 text-[#21ABB5]" />
+            <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mx-auto mb-4">
+            <FolderOpen className="w-8 h-8 text-purple-700" />
             </div>
             <h3 className="font-bold text-[#0F082B] mb-2">No projects yet</h3>
             <p className="text-sm text-[#606060] mb-6">Create your first property video to get started</p>
             <Link to="/projects/new">
-              <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold rounded-xl px-8 h-11 gap-2">
+              <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-8 h-11 gap-2">
                 <Plus className="w-4 h-4" /> New project
               </Button>
             </Link>
@@ -101,7 +101,7 @@ export default function Dashboard() {
               const status = statusConfig[p.status] || statusConfig.draft;
               const StatusIcon = status.icon;
               return (
-                <div key={p.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-[#21ABB5]/20 transition-all group">
+                <div key={p.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-purple-200 transition-all group">
                   <Link to={p.status === "draft" ? `/projects/new?resume=${p.id}` : `/projects/${p.id}`} className="block">
                     <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center relative">
                       {p.thumbnail_url ? (
@@ -113,7 +113,7 @@ export default function Dashboard() {
                         <StatusIcon className="w-3 h-3" /> {status.label}
                       </span>
                       {p.status === "draft" && (
-                        <span className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#21ABB5] text-white text-xs font-semibold px-3 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-purple-700 text-white text-xs font-semibold px-3 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                           Continue →
                         </span>
                       )}

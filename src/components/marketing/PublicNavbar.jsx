@@ -33,11 +33,11 @@ export default function PublicNavbar() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 lg:h-18">
             <Link to="/" className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-[#21ABB5] flex items-center justify-center">
-                <span className="text-white font-bold text-sm">AR</span>
+              <div className="w-9 h-9 rounded-lg bg-purple-700 flex items-center justify-center">
+                <span className="text-white font-bold text-sm">PR</span>
               </div>
-              <span className="font-bold text-lg text-[#0F082B]">AutoReel</span>
-              <span className="text-[10px] font-semibold bg-[#DEF5F7] text-[#21ABB5] px-1.5 py-0.5 rounded-full">
+              <span className="font-bold text-lg text-[#0F082B]">PropReel</span>
+              <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
                 SA
               </span>
             </Link>
@@ -61,7 +61,7 @@ export default function PublicNavbar() {
                 </Button>
               </Link>
               <Link to="/register">
-                <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white text-sm font-semibold px-5 rounded-xl">
+                <Button className="bg-purple-700 hover:bg-purple-800 text-white text-sm font-semibold px-5 rounded-xl">
                   Get started free
                 </Button>
               </Link>
@@ -81,11 +81,11 @@ export default function PublicNavbar() {
         <div className="fixed inset-0 z-[100] bg-white flex flex-col">
           <div className="flex items-center justify-between px-4 h-16">
             <Link to="/" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}>
-              <div className="w-9 h-9 rounded-lg bg-[#21ABB5] flex items-center justify-center">
-                <span className="text-white font-bold text-sm">AR</span>
+              <div className="w-9 h-9 rounded-lg bg-purple-700 flex items-center justify-center">
+                <span className="text-white font-bold text-sm">PR</span>
               </div>
-              <span className="font-bold text-lg text-[#0F082B]">AutoReel</span>
-              <span className="text-[10px] font-semibold bg-[#DEF5F7] text-[#21ABB5] px-1.5 py-0.5 rounded-full">SA</span>
+              <span className="font-bold text-lg text-[#0F082B]">PropReel</span>
+              <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">SA</span>
             </Link>
             <button onClick={() => setMobileOpen(false)} className="p-2">
               <X className="w-6 h-6" />
@@ -108,7 +108,7 @@ export default function PublicNavbar() {
               <Button variant="outline" className="w-full rounded-xl h-12 text-base">Log in</Button>
             </Link>
             <Link to="/register" onClick={() => setMobileOpen(false)}>
-              <Button className="w-full bg-[#21ABB5] hover:bg-[#1a9da6] text-white rounded-xl h-12 text-base font-semibold">
+              <Button className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl h-12 text-base font-semibold">
                 Get started free
               </Button>
             </Link>

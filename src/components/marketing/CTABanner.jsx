@@ -11,7 +11,7 @@ export default function CTABanner() {
           Create your AI property videos today
         </h2>
         <Link to="/register">
-          <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold px-10 h-14 rounded-xl text-lg gap-2">
+          <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-10 h-14 rounded-xl text-lg gap-2">
             Get started for free <ArrowRight className="w-5 h-5" />
           </Button>
         </Link>
