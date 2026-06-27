@@ -223,16 +223,6 @@ export default function StudioVideoGenerator({
         </div>
       )}
 
-      {/* Creatomate */}
-      <Section sectionKey="creatomate" label="Render Video (Creatomate)" icon={Video} desc="Submit photos to Creatomate and get a rendered MP4 back" defaultOpen={true}>
-        <CreatomateRender
-          project={project}
-          voiceoverUrl={voiceoverUrl}
-          musicUrl={musicUrl}
-          selectedBrandKit={selectedBrandKit}
-        />
-      </Section>
-
       {/* AI Voice */}
       <Section sectionKey="voiceover" label="AI Voiceover" icon={Mic} desc="Generate professional AI narration for your video">
         <div className="space-y-4">
@@ -399,6 +389,16 @@ export default function StudioVideoGenerator({
             ))
           )}
         </div>
+      </Section>
+
+      {/* Render Video */}
+      <Section sectionKey="creatomate" label="Render Video" icon={Video} desc="Submit photos to Creatomate and get a rendered MP4 back" defaultOpen={false}>
+        <CreatomateRender
+          project={project}
+          voiceoverUrl={voiceoverUrl}
+          musicUrl={musicUrl}
+          selectedBrandKit={selectedBrandKit}
+        />
       </Section>
     </div>
   );

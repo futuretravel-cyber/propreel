@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { User, CreditCard, Bell, Zap, ExternalLink, Eye, EyeOff, Download } from "lucide-react";
+import { User, CreditCard, Bell, Zap, ExternalLink, Eye, EyeOff, Download, Copy } from "lucide-react";
 import CreatomateTemplates from "@/components/studio/CreatomateTemplates";
+
+const WEBHOOK_URL = "https://app--propreel.base44.app/api/apps/6a3d034ac0fe750276476665/functions/creatomateWebhook";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -131,6 +133,18 @@ export default function Settings() {
             },
           ].map(service => (
             <div key={service.key} className="bg-white rounded-2xl border border-gray-100 p-6">
+              {service.key === "creatomate" && keys[service.key] && (
+                <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs font-bold text-amber-900 mb-1">📌 Webhook URL</p>
+                  <p className="text-[10px] text-amber-700 mb-2">Paste into Creatomate Project Settings → Webhook URL so rendered videos save automatically.</p>
+                  <div className="flex items-center gap-2 bg-white border border-amber-200 rounded-xl px-3 py-2">
+                    <code className="text-[10px] text-gray-700 flex-1 break-all select-all">{WEBHOOK_URL}</code>
+                    <button onClick={() => navigator.clipboard.writeText(WEBHOOK_URL)} className="flex-shrink-0 p-1 hover:bg-amber-100 rounded-lg transition-colors" title="Copy">
+                      <Copy className="w-3.5 h-3.5 text-amber-700" />
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: service.color }}>
                   <Zap className="w-4 h-4 text-white" />
