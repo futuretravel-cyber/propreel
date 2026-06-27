@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Video, Key, Play, Loader2, CheckCircle2, ExternalLink, RefreshCw, Download, AlertCircle } from "lucide-react";
+import { Video, Key, Play, Loader2, CheckCircle2, ExternalLink, RefreshCw, Download, AlertCircle, Copy } from "lucide-react";
+
+const WEBHOOK_URL = "https://app--propreel.base44.app/api/apps/6a3d034ac0fe750276476665/functions/creatomateWebhook";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
@@ -7,9 +9,13 @@ import { useToast } from "@/components/ui/use-toast";
 const SA_TEMPLATES = [
   { id: "luxury_estate",     name: "Luxury Estate",       preview_color: "#1a0a2e", accent: "#c9a84c" },
   { id: "family_home",       name: "Family Home",          preview_color: "#1e3a5f", accent: "#4CAF50" },
-  { id: "modern_apartment",  name: "Modern Apartment",     preview_color: "#1a1a2e", accent: "#7c3aed" },
-  { id: "coastal_property",  name: "Coastal Property",     preview_color: "#0d4f6e", accent: "#00b4d8" },
-  { id: "new_development",   name: "New Development",      preview_color: "#b71c1c", accent: "#ff5722" },
+  { id: "modern_apartment",  name: "Modern Minimal",       preview_color: "#1a1a2e", accent: "#7c3aed" },
+  { id: "coastal_property",  name: "Coastal Lifestyle",    preview_color: "#0d4f6e", accent: "#00b4d8" },
+  { id: "new_development",   name: "Just Listed",          preview_color: "#b71c1c", accent: "#ff5722" },
+  { id: "investment_rental", name: "Investment",           preview_color: "#1b1b2f", accent: "#9c27b0" },
+  { id: "security_estate",   name: "Security Estate",      preview_color: "#0f2940", accent: "#2196F3" },
+  { id: "virtual_tour",      name: "Virtual Tour",         preview_color: "#2d4a1e", accent: "#8bc34a" },
+  { id: "social_teaser",     name: "Social Teaser",        preview_color: "#3e2723", accent: "#ff8f00" },
 ];
 
 function buildRenderPayload({ template, orientation, photos, heading, subheading, agentName, agentPhone, voiceoverUrl, musicUrl }) {
@@ -113,7 +119,7 @@ export default function CreatomateRender({ project, voiceoverUrl, musicUrl, sele
       const res = await fetch("https://api.creatomate.com/v1/renders", {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ source: payload }),
+        body: JSON.stringify({ source: payload, metadata: { project_id: project?.id } }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -198,6 +204,19 @@ export default function CreatomateRender({ project, voiceoverUrl, musicUrl, sele
             </a>
           </p>
         )}
+      </div>
+
+      {/* Webhook URL */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+        <p className="text-xs font-bold text-amber-900 mb-1">📌 Creatomate Webhook URL</p>
+        <p className="text-[10px] text-amber-700 mb-2">Paste this into your Creatomate Project Settings → Webhook URL field so rendered videos are saved automatically.</p>
+        <div className="flex items-center gap-2 bg-white border border-amber-200 rounded-xl px-3 py-2">
+          <code className="text-[10px] text-gray-700 flex-1 break-all select-all">{WEBHOOK_URL}</code>
+          <button onClick={() => { navigator.clipboard.writeText(WEBHOOK_URL); }}
+            className="flex-shrink-0 p-1 hover:bg-amber-100 rounded-lg transition-colors" title="Copy">
+            <Copy className="w-3.5 h-3.5 text-amber-700" />
+          </button>
+        </div>
       </div>
 
       {/* Template selection */}
