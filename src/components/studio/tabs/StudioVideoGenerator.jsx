@@ -392,12 +392,15 @@ export default function StudioVideoGenerator({
       </Section>
 
       {/* Render Video */}
-      <Section sectionKey="creatomate" label="Render Video" icon={Video} desc="Submit photos to Creatomate and get a rendered MP4 back" defaultOpen={false}>
+      <Section sectionKey="creatomate" label="Render Video" icon={Video} desc="Send to Make.com and get a rendered MP4 back" defaultOpen={true}>
         <CreatomateRender
           project={project}
+          photos={photos}
           voiceoverUrl={voiceoverUrl}
           musicUrl={musicUrl}
           selectedBrandKit={selectedBrandKit}
+          orientation={orientation}
+          heading={heading}
         />
       </Section>
     </div>
