@@ -8,7 +8,7 @@ import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
-import CreatomateDownload from "@/components/studio/CreatomateDownload";
+import CreatomateRender from "@/components/studio/CreatomateRender";
 
 const INTRO_TEMPLATES = ["None", "Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"];
 const OUTRO_TEMPLATES = ["None", "Agent Card", "Contact Block", "Agency Logo"];
@@ -224,8 +224,13 @@ export default function StudioVideoGenerator({
       )}
 
       {/* Creatomate */}
-      <Section sectionKey="creatomate" label="Creatomate Templates" icon={Video} desc="9 professional video templates — download and render on Creatomate" defaultOpen={true}>
-        <CreatomateDownload project={project} />
+      <Section sectionKey="creatomate" label="Render Video (Creatomate)" icon={Video} desc="Submit photos to Creatomate and get a rendered MP4 back" defaultOpen={true}>
+        <CreatomateRender
+          project={project}
+          voiceoverUrl={voiceoverUrl}
+          musicUrl={musicUrl}
+          selectedBrandKit={selectedBrandKit}
+        />
       </Section>
 
       {/* AI Voice */}
