@@ -18,7 +18,7 @@ const AI_EDITS = [
   { key: "fix_lighting", label: "🔆 Fix Dark Corners",    prompt: "Fix all dark corners and shadows. Add realistic ambient fill lighting so the entire space is evenly lit." },
 ];
 
-export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoReplaced }) {
+export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoReplaced, projectId }) {
   const { toast } = useToast();
   const fileInputRef = useRef(null);
 
@@ -77,6 +77,16 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     if (!resultPhoto) return;
     setAppliedEdits(prev => ({ ...prev, [selectedIdx]: resultPhoto }));
     if (selectedIdx < projectPhotos.length) onPhotoReplaced(selectedIdx, resultPhoto);
+    if (projectId) {
+      base44.entities.PhotoEdit.create({
+        project_id: projectId,
+        edit_type: "ai_edit",
+        original_url: originalPhoto,
+        result_url: resultPhoto,
+        photo_index: selectedIdx,
+        prompt: selectedEdit === "custom" ? customPrompt : AI_EDITS.find(e => e.key === selectedEdit)?.prompt || "",
+      }).catch(() => {});
+    }
     setResultPhoto(null);
     toast({ title: "✓ Photo updated!" });
   };

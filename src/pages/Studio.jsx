@@ -129,13 +129,13 @@ export default function Studio() {
       case "description":
         return <StudioDescription project={project} listing={listing} onDescriptionGenerated={(text) => setPropertyDescription(text)} />;
       case "ai_editor":
-        return <StudioAIPhotoEditor {...sharedPhotoProps} />;
+        return <StudioAIPhotoEditor {...sharedPhotoProps} projectId={id} />;
       case "staging":
-        return <StudioVirtualStaging {...sharedPhotoProps} />;
+        return <StudioVirtualStaging {...sharedPhotoProps} projectId={id} />;
       case "furniture":
-        return <StudioFurnitureRemoval {...sharedPhotoProps} />;
+        return <StudioFurnitureRemoval {...sharedPhotoProps} projectId={id} />;
       case "twilight":
-        return <StudioTwilight {...sharedPhotoProps} />;
+        return <StudioTwilight {...sharedPhotoProps} projectId={id} />;
       case "social":
         return <StudioSocialMedia photos={photos} project={project} listing={listing} />;
       case "video":
