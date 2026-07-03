@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import MusicLibrary from "@/components/admin/MusicLibrary";
+import AIVideoTest from "@/components/admin/AIVideoTest";
 
-const TABS = ["Overview", "Projects", "Users", "Music Library", "Contact Submissions"];
+const TABS = ["Overview", "Projects", "Users", "Music Library", "Contact Submissions", "AI Video Test"];
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-gray-100 text-gray-600", icon: FileEdit },
@@ -284,6 +285,9 @@ export default function Admin() {
 
           {/* Music Library Tab */}
           {tab === "Music Library" && <MusicLibrary />}
+
+          {/* AI Video Test Tab */}
+          {tab === "AI Video Test" && <AIVideoTest />}
 
           {/* Contact Submissions Tab */}
           {tab === "Contact Submissions" && (
