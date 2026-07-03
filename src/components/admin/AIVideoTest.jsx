@@ -5,16 +5,16 @@ import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 
 const MOTIONS = {
-  "Push-In": "Slow cinematic camera dolly push forward through the space",
-  "Pull-Back": "Slow cinematic camera dolly pulling back and away from the space",
-  "Pan Left": "Smooth cinematic camera pan to the left across the space",
-  "Pan Right": "Smooth cinematic camera pan to the right across the space",
-  "Pedestal Up": "Smooth cinematic camera rising upward through the space",
-  "Pedestal Down": "Smooth cinematic camera lowering downward through the space",
-  "Orbit": "Smooth cinematic camera orbiting around the central subject of the space",
+  "Push-In": "First-person walking motion, moving forward deeper into the room as if physically walking through the space",
+  "Pull-Back": "First-person walking motion, stepping backward out of the room as if physically walking through the space",
+  "Pan Left": "First-person motion, turning and walking toward the left side of the room as if physically moving through the space",
+  "Pan Right": "First-person motion, turning and walking toward the right side of the room as if physically moving through the space",
+  "Pedestal Up": "First-person motion, slowly standing up to a taller viewpoint while walking through the space",
+  "Pedestal Down": "First-person motion, slowly crouching to a lower viewpoint while walking through the space",
+  "Orbit": "First-person motion, walking in a slow curved path around the central subject of the space",
 };
 
-const BASE_PROMPT_TEMPLATE = (motionLine) => `${motionLine}. Depth-aware 3D camera motion \u2014 the feeling of physically moving through the space, not just sliding a flat image. Smooth, stable, professional real estate photography motion. Foreground elements drift past naturally as the camera advances, revealing spatial depth and layout. Preserve original lighting exactly \u2014 warm tones, window light, shadows remain consistent across all frames, no flickering. Maintain architectural integrity: walls stay straight, floors remain level, furniture proportions hold true, no warping or melting. Natural parallax between near and far objects. Atmospheric, inviting, high-end property showcase feel. No people, no animals, no added objects, no distortion, no morphing, no sudden camera jumps.`;
+const BASE_PROMPT_TEMPLATE = (motionLine, sceneDescription) => `Real estate walkthrough video of this exact room: ${sceneDescription}. ${motionLine}. Depth-aware 3D camera motion \u2014 the feeling of physically walking through the space, not just sliding a flat image. Smooth, stable, professional real estate photography motion. Foreground elements drift past naturally as the viewer advances, revealing spatial depth and layout. Preserve original lighting exactly \u2014 warm tones, window light, shadows remain consistent across all frames, no flickering. Maintain architectural integrity: walls stay straight, floors remain level, furniture proportions hold true, no warping or melting. Natural parallax between near and far objects. Atmospheric, inviting, high-end property showcase feel. No people, no animals, no added objects, no distortion, no morphing, no sudden camera jumps.`;
 
 export default function AIVideoTest() {
   const { toast } = useToast();
@@ -56,9 +56,13 @@ export default function AIVideoTest() {
     setGenerating(true);
     setVideoUrl(null);
     try {
-      const prompt = BASE_PROMPT_TEMPLATE(MOTIONS[motion]);
+      const sceneDescription = await base44.integrations.Core.InvokeLLM({
+        prompt: "Describe this real estate interior photo in precise detail so it can be recreated exactly: room type, wall colors, floor material, all furniture with position and color, window placement and light direction, decor items, and overall style. Be extremely specific and concise (max 150 words), plain description only, no formatting.",
+        file_urls: [imageUrl],
+      });
+      const prompt = BASE_PROMPT_TEMPLATE(MOTIONS[motion], sceneDescription);
       const result = await base44.integrations.Core.GenerateVideo({
-        prompt: `${prompt} Reference image provided for the exact space, furniture and lighting to animate.`,
+        prompt,
         duration: 6,
         aspect_ratio: "16:9",
       });
