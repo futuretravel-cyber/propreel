@@ -222,6 +222,9 @@ export default function Register() {
             "Create account"
           )}
         </Button>
+        <p className="text-xs text-muted-foreground text-center leading-relaxed">
+          By signing up, you acknowledge that PropReel's tools produce AI-generated or AI-edited photos and videos, which may not perfectly represent the actual property.
+        </p>
       </form>
     </AuthLayout>
   );

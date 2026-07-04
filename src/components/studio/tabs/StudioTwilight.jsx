@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
+import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 
 const TWILIGHT_STYLES = [
   { key: "blue_hour",    label: "🌆 Blue Hour",            prompt: "Convert this property photo to a stunning blue hour twilight shot. Deep blue-purple sky, warm interior lights glowing through windows, exterior lights on. Dramatic and luxurious. Photorealistic." },
@@ -151,6 +152,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
                 <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 text-indigo-300 animate-spin" /><p className="text-sm text-indigo-200">Converting to twilight...</p></div>
               ) : resultPhoto ? (
                 <>
+                  <AIDisclaimerBadge />
                   <img src={resultPhoto} alt="Twilight" className="w-full h-full object-cover" />
                   <div className="absolute bottom-3 left-3 right-3 flex gap-2">
                     <Button size="sm" onClick={applyEdit} className="flex-1 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs gap-1"><Check className="w-3 h-3" /> Use This Photo</Button>
@@ -158,7 +160,10 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
                   </div>
                 </>
               ) : appliedEdits[selectedIdx] ? (
-                <img src={appliedEdits[selectedIdx]} alt="Applied" className="w-full h-full object-cover" />
+                <>
+                  <AIDisclaimerBadge />
+                  <img src={appliedEdits[selectedIdx]} alt="Applied" className="w-full h-full object-cover" />
+                </>
               ) : (
                 <p className="text-sm text-indigo-300">Twilight result will appear here</p>
               )}

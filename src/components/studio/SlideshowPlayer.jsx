@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Play, Pause, Volume2, VolumeX, Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 
 const KB_PRESETS = [
   { from: "scale(1) translate(0%, 0%)",      to: "scale(1.35) translate(0%, 0%)" },
@@ -206,6 +207,7 @@ export default function SlideshowPlayer({
             />
           </div>
         )}
+        {playing && <AIDisclaimerBadge />}
         {playing && brandKit?.logo_url && (
           <div className="absolute top-3 right-3 z-20 pointer-events-none">
             <img src={brandKit.logo_url} alt="" className="h-8 object-contain drop-shadow-lg" />

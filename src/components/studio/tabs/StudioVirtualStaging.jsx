@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
+import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 
 const STYLES = [
   { key: "luxury",       label: "🛋️ Luxury Modern",        prompt: "Virtually stage this empty room with modern luxury South African furniture. Add a stylish sofa, coffee table, artwork, floor lamp, plants, and a designer rug. Warm neutral tones, high-end finishes." },
@@ -153,6 +154,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
                 <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 text-purple-700 animate-spin" /><p className="text-sm text-gray-500">AI is staging the room...</p></div>
               ) : resultPhoto ? (
                 <>
+                  <AIDisclaimerBadge />
                   <img src={resultPhoto} alt="Staged" className="w-full h-full object-cover" />
                   <div className="absolute bottom-3 left-3 right-3 flex gap-2">
                     <Button size="sm" onClick={applyEdit} className="flex-1 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs gap-1"><Check className="w-3 h-3" /> Use This Photo</Button>
@@ -160,7 +162,10 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
                   </div>
                 </>
               ) : appliedEdits[selectedIdx] ? (
-                <img src={appliedEdits[selectedIdx]} alt="Applied" className="w-full h-full object-cover" />
+                <>
+                  <AIDisclaimerBadge />
+                  <img src={appliedEdits[selectedIdx]} alt="Applied" className="w-full h-full object-cover" />
+                </>
               ) : (
                 <p className="text-sm text-gray-400">Staged result will appear here</p>
               )}

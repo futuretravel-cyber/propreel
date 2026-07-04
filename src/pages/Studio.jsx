@@ -17,6 +17,7 @@ import StudioTwilight from "@/components/studio/tabs/StudioTwilight";
 import StudioSocialMedia from "@/components/studio/tabs/StudioSocialMedia";
 import StudioVideoGenerator from "@/components/studio/tabs/StudioVideoGenerator";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
+import AIDisclaimerNotice from "@/components/shared/AIDisclaimerNotice";
 
 const TABS = [
   { key: "description",   label: "Property Description",       icon: FileText,  short: "Description" },
@@ -283,6 +284,7 @@ export default function Studio() {
               )}
             </div>
 
+            {activeTab !== "description" && <AIDisclaimerNotice />}
             {renderTabContent()}
           </div>
         </main>

@@ -79,8 +79,8 @@ export default function Footer() {
 
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <p className="text-xs text-gray-500">
-            © 2026 PropReel SA. All rights reserved. | South African market.
+          <p className="text-xs text-gray-500 max-w-2xl">
+            © 2026 PropReel SA. All rights reserved. | South African market. Photos and videos produced with our tools include AI-generated or AI-edited content and may not perfectly represent the actual property.
           </p>
           <div className="flex gap-4">
             <Link to="#" className="text-xs text-gray-500 hover:text-gray-300">Privacy Policy</Link>
