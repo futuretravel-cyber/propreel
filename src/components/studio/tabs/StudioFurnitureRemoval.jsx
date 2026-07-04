@@ -3,6 +3,7 @@ import { Trash2, Loader2, Check, X, Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
+import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 
 const REMOVAL_MODES = [
   { key: "all",      label: "🗑️ Remove All Furniture",   prompt: "Remove ALL furniture, decor, rugs, curtains, and movable items from this room. Leave only the empty room — floors, walls, windows, built-in units. Do not add anything." },
@@ -53,6 +54,11 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
     const mode = REMOVAL_MODES.find(m => m.key === selectedMode);
     const prompt = selectedMode === "custom" ? customPrompt : mode?.prompt;
     if (!prompt?.trim()) return;
+    const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
+    if (!success) {
+      toast({ title: "Out of credits", description: "Upgrade your plan to keep removing items.", variant: "destructive" });
+      return;
+    }
     setProcessing(true);
     setResultPhoto(null);
     try {

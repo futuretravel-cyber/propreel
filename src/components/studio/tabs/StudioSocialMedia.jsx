@@ -3,6 +3,7 @@ import { Share, Loader2, Copy, Check, Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
+import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 
 const PLATFORMS = [
   { key: "facebook",   label: "Facebook",   emoji: "📘", maxChars: 500,  desc: "Engaging post for Facebook property groups.", imagePrompt: "Facebook post image 1200x630px landscape, premium South African real estate marketing graphic, clean modern design" },
@@ -59,6 +60,11 @@ export default function StudioSocialMedia({ photos: projectPhotos, project, list
   };
 
   const generatePost = async () => {
+    const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
+    if (!success) {
+      toast({ title: "Out of credits", description: "Upgrade your plan to generate more posts.", variant: "destructive" });
+      return;
+    }
     setGenerating(true);
     const plat = PLATFORMS.find(p => p.key === selectedPlatform);
     const prompt = `Write a compelling ${plat.label} social media post for a South African real estate listing.

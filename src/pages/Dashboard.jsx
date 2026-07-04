@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Video, CreditCard, Zap, MoreVertical, Clock, CheckCircle2, FileEdit, FolderOpen, Home, TrendingUp } from "lucide-react";
+import { Plus, Video, CreditCard, Zap, MoreVertical, Clock, CheckCircle2, FileEdit, FolderOpen, Home, TrendingUp, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
@@ -48,6 +48,22 @@ export default function Dashboard() {
           <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-6 rounded-xl h-11 gap-2">
             <Plus className="w-4 h-4" /> New project
           </Button>
+        </Link>
+      </div>
+
+      {/* Credits */}
+      <div className="flex items-center justify-between gap-4 bg-purple-50 border border-purple-100 rounded-2xl px-5 py-4 mb-8">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-purple-700 flex items-center justify-center flex-shrink-0">
+            <Coins className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-[#0F082B]">{(user?.credits ?? 0).toLocaleString("en-ZA")} credits remaining</p>
+            <p className="text-xs text-[#606060]">Photo tools cost 1 credit · AI videos cost 5-75 credits depending on tier</p>
+          </div>
+        </div>
+        <Link to="/pricing">
+          <Button variant="outline" size="sm" className="rounded-xl text-xs">Upgrade plan</Button>
         </Link>
       </div>
 

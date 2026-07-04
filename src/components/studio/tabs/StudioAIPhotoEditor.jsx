@@ -3,6 +3,7 @@ import { Wand2, Loader2, Check, X, Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
+import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 
 const AI_EDITS = [
   { key: "sky_golden",   label: "🌅 Golden Sunset Sky",  prompt: "Replace the sky with a dramatic golden sunset sky with warm orange and pink clouds. Keep the property and foreground exactly as-is." },
@@ -58,6 +59,11 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
   const runEdit = async () => {
     const prompt = selectedEdit === "custom" ? customPrompt : AI_EDITS.find(e => e.key === selectedEdit)?.prompt || "";
     if (!prompt.trim()) return;
+    const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
+    if (!success) {
+      toast({ title: "Out of credits", description: "Upgrade your plan to keep editing photos.", variant: "destructive" });
+      return;
+    }
     setProcessing(true);
     setResultPhoto(null);
     try {

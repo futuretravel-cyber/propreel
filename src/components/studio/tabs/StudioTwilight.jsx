@@ -3,6 +3,7 @@ import { Loader2, Check, X, Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
+import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 
 const TWILIGHT_STYLES = [
   { key: "blue_hour",    label: "🌆 Blue Hour",            prompt: "Convert this property photo to a stunning blue hour twilight shot. Deep blue-purple sky, warm interior lights glowing through windows, exterior lights on. Dramatic and luxurious. Photorealistic." },
@@ -52,6 +53,11 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
   const runTwilight = async () => {
     const style = TWILIGHT_STYLES.find(s => s.key === selectedStyle);
     if (!style) return;
+    const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
+    if (!success) {
+      toast({ title: "Out of credits", description: "Upgrade your plan to keep converting photos.", variant: "destructive" });
+      return;
+    }
     setProcessing(true);
     setResultPhoto(null);
     try {

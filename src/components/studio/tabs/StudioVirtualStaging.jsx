@@ -3,6 +3,7 @@ import { Sofa, Loader2, Check, X, Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
+import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 
 const STYLES = [
   { key: "luxury",       label: "🛋️ Luxury Modern",        prompt: "Virtually stage this empty room with modern luxury South African furniture. Add a stylish sofa, coffee table, artwork, floor lamp, plants, and a designer rug. Warm neutral tones, high-end finishes." },
@@ -54,6 +55,11 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
   const runStaging = async () => {
     const style = STYLES.find(s => s.key === selectedStyle);
     if (!style) return;
+    const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
+    if (!success) {
+      toast({ title: "Out of credits", description: "Upgrade your plan to keep staging photos.", variant: "destructive" });
+      return;
+    }
     setProcessing(true);
     setResultPhoto(null);
     try {
