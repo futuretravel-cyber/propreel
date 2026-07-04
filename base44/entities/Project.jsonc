@@ -55,6 +55,18 @@
       ],
       "default": "v25"
     },
+    "video_tier": {
+      "type": "string",
+      "enum": [
+        "essential",
+        "social",
+        "cinematic",
+        "premium",
+        "pro"
+      ],
+      "default": "essential",
+      "description": "Selected AI Video Generator quality tier"
+    },
     "camera_motions": {
       "type": "object",
       "default": {},

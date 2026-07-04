@@ -9,6 +9,7 @@ import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import CreatomateRender from "@/components/studio/CreatomateRender";
+import VideoTierSelector from "@/components/studio/tabs/VideoTierSelector";
 
 const INTRO_TEMPLATES = ["None", "Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"];
 const OUTRO_TEMPLATES = ["None", "Agent Card", "Contact Block", "Agency Logo"];
@@ -59,6 +60,12 @@ export default function StudioVideoGenerator({
   const [uploading, setUploading] = useState(false);
   const [uploadedPhotos, setUploadedPhotos] = useState([]);
   const [photoSource, setPhotoSource] = useState("project");
+  const [videoTier, setVideoTier] = useState(project?.video_tier || "essential");
+
+  const handleSelectTier = (tierId) => {
+    setVideoTier(tierId);
+    base44.entities.Project.update(projectId, { video_tier: tierId });
+  };
 
   const photos = photoSource === "uploaded" && uploadedPhotos.length ? uploadedPhotos : projectPhotos;
 
@@ -146,6 +153,9 @@ export default function StudioVideoGenerator({
 
   return (
     <div className="space-y-4">
+      {/* Video Tier */}
+      <VideoTierSelector selectedTier={videoTier} onSelectTier={handleSelectTier} />
+
       {/* Photo Source */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
         <p className="text-sm font-semibold text-gray-900 mb-1">📸 Video Photos</p>
