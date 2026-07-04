@@ -5,44 +5,54 @@ import { Button } from "@/components/ui/button";
 
 const plans = [
   {
-    name: "Free",
-    monthly: 0,
-    annual: 0,
+    name: "Essential",
+    monthly: 59,
+    annual: 590,
+    credits: 60,
     desc: "Get started with AI property videos",
-    features: ["2 videos per month", "15 photos per video", "AutoReel watermark", "Standard templates", "Email support"],
-    cta: "Get started free",
+    features: ["60 credits/month", "AI photo editor", "Virtual staging", "Furniture removal", "Twilight photography", "Property descriptions", "Essential tier videos"],
+    cta: "Get started",
     featured: false,
   },
   {
-    name: "Growth",
-    monthly: 549,
-    annual: 385,
+    name: "Premium",
+    monthly: 89,
+    annual: 890,
+    credits: 100,
     desc: "For active estate agents",
-    features: ["Unlimited videos", "20 photos per video", "No watermark", "AI voiceovers", "Property24 import", "Priority support", "3-month credit rollover"],
-    cta: "Start 7-day free trial",
+    features: ["100 credits/month", "Everything in Essential", "Social & Cinematic tier videos", "Premium tier videos", "Priority support"],
+    cta: "Start free trial",
     featured: true,
     badge: "Most popular",
   },
   {
     name: "Pro",
-    monthly: 999,
-    annual: 699,
+    monthly: 179,
+    annual: 1790,
+    credits: 200,
+    desc: "For high-volume agents",
+    features: ["200 credits/month", "Everything in Premium", "Pro tier videos", "Faster render priority", "Dedicated support"],
+    cta: "Start free trial",
+    featured: false,
+  },
+  {
+    name: "Agency",
+    monthly: 1200,
+    annual: 12000,
+    credits: 1500,
     desc: "For agencies & media companies",
-    features: ["Everything in Growth", "AI virtual staging unlimited", "AI photo edits unlimited", "AI avatars", "White-label branding", "25MB uploads", "Dedicated account manager", "1-year credit rollover"],
-    cta: "Start 7-day free trial",
+    features: ["1,500 credits/month", "Everything in Pro", "White-label branding", "Multiple team seats", "Dedicated account manager"],
+    cta: "Contact sales",
     featured: false,
   },
 ];
 
 const pricingFaqs = [
-  { q: "How many videos are included in each plan?", a: "Free plan includes 2 videos/month. Growth and Pro plans include unlimited videos per month." },
-  { q: "Is annual billing worth it?", a: "Yes! Annual billing saves you 30% compared to monthly. Growth drops from R549/mo to R385/mo, and Pro drops from R999/mo to R699/mo." },
-  { q: "Is there a per-video charge?", a: "No. All plans include videos as part of your subscription. There are no hidden per-video charges." },
-  { q: "Can I earn free credits?", a: "Yes! Refer a friend and you both get 2 free video credits when they sign up and create their first video." },
-  { q: "How does the 7-day trial work?", a: "Growth and Pro plans include a 7-day free trial. You get full access to all features. Cancel before 7 days and you won't be charged." },
-  { q: "Why is there a free plan?", a: "We want every SA estate agent to experience the power of AI video. The free plan lets you try AutoReel SA risk-free with 2 videos per month." },
-  { q: "Is virtual staging included free?", a: "Virtual staging is available on the Pro plan with unlimited uses. Growth plan users can access it as a paid add-on." },
-  { q: "What's the main difference between plans?", a: "Free is for trying out. Growth removes the watermark and adds unlimited videos. Pro adds advanced AI features like virtual staging, avatars, and white-label branding." },
+  { q: "How do credits work?", a: "Every plan gives you a monthly pool of credits. Photo tools (descriptions, AI photo edits, staging, furniture removal, twilight, social posts) cost 1 credit each, while AI videos cost 5-75 credits depending on the tier you choose." },
+  { q: "Is annual billing worth it?", a: "Yes! Annual billing gives you 1 month free compared to paying monthly." },
+  { q: "What happens when I run out of credits?", a: "You'll be prompted to upgrade your plan. Unused credits don't roll over month to month." },
+  { q: "What's the difference between video tiers?", a: "Essential uses fast zoom/pan motion at 1080p. Social, Cinematic, Premium and Pro use AI-generated motion at increasing quality and render time, costing more credits accordingly." },
+  { q: "What's the main difference between plans?", a: "Essential is for agents getting started. Premium and Pro add more monthly credits for higher volume. Agency is built for teams, with white-label branding and multiple seats." },
 ];
 
 const paymentMethods = ["Visa / Mastercard", "EFT / Instant EFT", "SnapScan", "PayFast", "PayGate", "Ozow"];
@@ -69,12 +79,12 @@ export default function Pricing() {
             </button>
             <span className={`text-sm font-medium ${annual ? "text-[#0F082B]" : "text-[#606060]"}`}>Annual</span>
             {annual && (
-              <span className="text-xs font-semibold bg-purple-50 text-purple-700 px-2 py-1 rounded-full">Save 30%</span>
+              <span className="text-xs font-semibold bg-purple-50 text-purple-700 px-2 py-1 rounded-full">1 month free</span>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           {plans.map((plan) => (
             <div
               key={plan.name}
@@ -92,15 +102,16 @@ export default function Pricing() {
               <h3 className="text-xl font-bold text-[#0F082B] mb-1">{plan.name}</h3>
               <p className="text-sm text-[#606060] mb-4">{plan.desc}</p>
 
-              <div className="mb-6">
+              <div className="mb-2">
                 <span className="text-4xl font-extrabold text-[#0F082B]">
-                  R{annual ? plan.annual : plan.monthly}
+                  R{annual ? Math.round(plan.annual / 12) : plan.monthly}
                 </span>
                 <span className="text-[#606060] text-sm">/month</span>
-                {annual && plan.monthly > 0 && (
-                  <p className="text-xs text-[#606060] mt-1 line-through">R{plan.monthly}/month</p>
+                {annual && (
+                  <p className="text-xs text-[#606060] mt-1">Billed R{plan.annual}/year</p>
                 )}
               </div>
+              <p className="text-sm font-semibold text-purple-700 mb-6">{plan.credits} credits/month</p>
 
               <Link to="/register">
                 <Button
