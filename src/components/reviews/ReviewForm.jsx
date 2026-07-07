@@ -1,0 +1,82 @@
+import React, { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import { base44 } from "@/api/base44Client";
+import StarRatingInput from "@/components/reviews/StarRatingInput";
+import { moderateReview } from "@/lib/reviewModeration";
+
+export default function ReviewForm({ user, onSubmitted }) {
+  const { toast } = useToast();
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const isPayingAgent = (user?.credits || 0) > 0;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!rating || !comment.trim()) return;
+    setSubmitting(true);
+    try {
+      const { status, flag_reason } = moderateReview(comment);
+      await base44.entities.Review.create({
+        agent_name: user.full_name || user.email,
+        rating,
+        comment: comment.trim(),
+        status,
+        flag_reason,
+      });
+      setSubmitted(true);
+      setRating(0);
+      setComment("");
+      if (onSubmitted) onSubmitted();
+    } catch {
+      toast({ title: "Failed to submit review", variant: "destructive" });
+    }
+    setSubmitting(false);
+  };
+
+  if (!user) {
+    return (
+      <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6 text-center text-sm text-[#606060]">
+        Log in as an agent to leave a review.
+      </div>
+    );
+  }
+
+  if (!isPayingAgent) {
+    return (
+      <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6 text-center text-sm text-[#606060]">
+        Only verified paying agents can leave a review. Upgrade your plan to unlock reviews.
+      </div>
+    );
+  }
+
+  if (submitted) {
+    return (
+      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center">
+        <p className="text-sm font-semibold text-emerald-800">Thanks for your review!</p>
+        <p className="text-xs text-emerald-700 mt-1">It will appear here once approved by our team.</p>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white border border-gray-100 rounded-2xl p-6 space-y-4">
+      <h3 className="font-bold text-[#0F082B]">Leave a review</h3>
+      <StarRatingInput value={rating} onChange={setRating} />
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Share your experience with PropReel..."
+        rows={4}
+        required
+        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none outline-none focus:ring-1 focus:ring-purple-700 placeholder:text-gray-400"
+      />
+      <Button type="submit" disabled={submitting || !rating || !comment.trim()} className="bg-purple-700 hover:bg-purple-800 text-white rounded-xl h-11 px-6">
+        {submitting ? "Submitting..." : "Submit Review"}
+      </Button>
+    </form>
+  );
+}

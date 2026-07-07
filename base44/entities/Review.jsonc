@@ -1,0 +1,38 @@
+{
+  "name": "Review",
+  "type": "object",
+  "properties": {
+    "agent_name": {
+      "type": "string",
+      "description": "Name of the reviewing agent"
+    },
+    "rating": {
+      "type": "number",
+      "description": "Star rating from 1 to 5"
+    },
+    "comment": {
+      "type": "string",
+      "description": "Written review text"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "flagged",
+        "rejected"
+      ],
+      "default": "pending",
+      "description": "Moderation status - only 'approved' reviews are shown publicly"
+    },
+    "flag_reason": {
+      "type": "string",
+      "description": "Why this review was auto-flagged for moderation"
+    }
+  },
+  "required": [
+    "agent_name",
+    "rating",
+    "comment"
+  ]
+}

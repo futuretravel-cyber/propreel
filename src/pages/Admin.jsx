@@ -5,7 +5,7 @@ import { Navigate } from "react-router-dom";
 import {
   Users, Video, Mail, TrendingUp, CheckCircle2, Clock, FileEdit,
   MoreVertical, Eye, Trash2, Reply, RefreshCw, BarChart3,
-  CreditCard, Activity, Filter, Music
+  CreditCard, Activity, Filter, Music, Star, Flag, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -13,7 +13,14 @@ import { useToast } from "@/components/ui/use-toast";
 import MusicLibrary from "@/components/admin/MusicLibrary";
 import AIVideoTest from "@/components/admin/AIVideoTest";
 
-const TABS = ["Overview", "Projects", "Users", "Music Library", "Contact Submissions", "AI Video Test"];
+const TABS = ["Overview", "Projects", "Users", "Reviews", "Music Library", "Contact Submissions", "AI Video Test"];
+
+const reviewStatusConfig = {
+  pending: { label: "Pending", color: "bg-amber-100 text-amber-700" },
+  approved: { label: "Approved", color: "bg-emerald-100 text-emerald-700" },
+  flagged: { label: "Flagged", color: "bg-rose-100 text-rose-700" },
+  rejected: { label: "Rejected", color: "bg-gray-100 text-gray-600" },
+};
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-gray-100 text-gray-600", icon: FileEdit },
@@ -34,6 +41,7 @@ export default function Admin() {
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,11 +51,17 @@ export default function Admin() {
       base44.entities.Project.list("-created_date", 100),
       base44.entities.User.list(),
       base44.entities.ContactSubmission.list("-created_date", 100),
+      base44.entities.Review.list("-created_date", 200),
     ])
-      .then(([p, u, c]) => { setProjects(p); setUsers(u); setContacts(c); })
+      .then(([p, u, c, r]) => { setProjects(p); setUsers(u); setContacts(c); setReviews(r); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  const updateReviewStatus = async (id, status) => {
+    await base44.entities.Review.update(id, { status });
+    setReviews((prev) => prev.map((r) => r.id === id ? { ...r, status } : r));
+  };
 
   if (user?.role !== "admin") return <Navigate to="/dashboard" replace />;
 
@@ -277,6 +291,59 @@ export default function Admin() {
                       </Button>
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>{u.role}</span>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Reviews Tab */}
+          {tab === "Reviews" && (
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <div className="p-6 border-b border-gray-100">
+                <h3 className="font-bold text-[#0F082B]">Agent Reviews ({reviews.length})</h3>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {reviews.length === 0 && <p className="text-sm text-[#606060] p-6">No reviews yet</p>}
+                {reviews.map((r) => (
+                  <div key={r.id} className="px-6 py-5 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-start justify-between gap-4 mb-2">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-sm font-semibold text-[#0F082B]">{r.agent_name}</p>
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md ${reviewStatusConfig[r.status]?.color}`}>
+                            {reviewStatusConfig[r.status]?.label}
+                          </span>
+                        </div>
+                        <div className="flex gap-0.5">
+                          {[...Array(5)].map((_, j) => (
+                            <Star key={j} className={`w-3.5 h-3.5 ${j < r.rating ? "fill-amber-400 text-amber-400" : "text-gray-300"}`} />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {r.status !== "approved" && (
+                          <Button size="sm" variant="outline" className="rounded-lg text-xs h-8 gap-1" onClick={() => updateReviewStatus(r.id, "approved")}>
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                          </Button>
+                        )}
+                        {r.status !== "flagged" && (
+                          <Button size="sm" variant="outline" className="rounded-lg text-xs h-8 gap-1" onClick={() => updateReviewStatus(r.id, "flagged")}>
+                            <Flag className="w-3.5 h-3.5" /> Flag
+                          </Button>
+                        )}
+                        {r.status !== "rejected" && (
+                          <Button size="sm" variant="outline" className="rounded-lg text-xs h-8 gap-1 text-red-600" onClick={() => updateReviewStatus(r.id, "rejected")}>
+                            <X className="w-3.5 h-3.5" /> Reject
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-sm text-[#606060] mt-1">{r.comment}</p>
+                    {r.flag_reason && (
+                      <p className="text-xs text-rose-600 mt-2 flex items-center gap-1"><Flag className="w-3 h-3" /> {r.flag_reason}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-2">{new Date(r.created_date).toLocaleDateString("en-ZA", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</p>
                   </div>
                 ))}
               </div>
