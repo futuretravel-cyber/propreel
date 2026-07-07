@@ -14,6 +14,18 @@
       "type": "number",
       "default": 0,
       "description": "Available video credits"
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Agency this user belongs to, if any"
+    },
+    "agency_role": {
+      "type": "string",
+      "enum": [
+        "owner",
+        "agent"
+      ],
+      "description": "Whether this user owns the agency account or is an agent within it"
     }
   },
   "required": [

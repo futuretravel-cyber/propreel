@@ -1,0 +1,32 @@
+{
+  "name": "AgencyInvite",
+  "type": "object",
+  "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Agency this invite belongs to"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Invited agent's email (lowercased)"
+    },
+    "allocated_credits": {
+      "type": "number",
+      "default": 0,
+      "description": "Credits allocated to the agent from the agency pool on signup"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted"
+      ],
+      "default": "pending"
+    }
+  },
+  "required": [
+    "agency_id",
+    "email"
+  ]
+}

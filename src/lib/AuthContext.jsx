@@ -5,6 +5,24 @@ import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
 
 const AuthContext = createContext();
 
+// If this user was invited to an agency, links them to it and grants their allocated credits.
+const linkPendingAgencyInvite = async (currentUser) => {
+  try {
+    const invites = await base44.entities.AgencyInvite.filter({ email: currentUser.email.toLowerCase(), status: 'pending' });
+    const invite = invites?.[0];
+    if (!invite) return currentUser;
+    await base44.auth.updateMe({
+      agency_id: invite.agency_id,
+      agency_role: 'agent',
+      credits: (currentUser.credits || 0) + (invite.allocated_credits || 0),
+    });
+    await base44.entities.AgencyInvite.update(invite.id, { status: 'accepted' });
+    return await base44.auth.me();
+  } catch {
+    return currentUser;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -102,7 +120,10 @@ export const AuthProvider = ({ children }) => {
     try {
       // Now check if the user is authenticated
       setIsLoadingAuth(true);
-      const currentUser = await base44.auth.me();
+      let currentUser = await base44.auth.me();
+      if (!currentUser.agency_id) {
+        currentUser = await linkPendingAgencyInvite(currentUser);
+      }
       setUser(currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);

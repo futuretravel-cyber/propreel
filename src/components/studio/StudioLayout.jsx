@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown, ShieldCheck, Home, Coins } from "lucide-react";
+import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown, ShieldCheck, Home, Coins, Building2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -54,6 +54,20 @@ export default function StudioLayout() {
               </Link>
             );
           })}
+          {(!user?.agency_id || user.agency_role === "owner") && (
+            <Link
+              to="/agency"
+              onClick={() => setSidebarOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                location.pathname === "/agency"
+                  ? "bg-purple-100 text-purple-700"
+                  : "text-[#606060] hover:bg-gray-50 hover:text-[#0F082B]"
+              }`}
+            >
+              <Building2 className="w-5 h-5" />
+              Agency
+            </Link>
+          )}
         </div>
 
         {user?.role === "admin" && (

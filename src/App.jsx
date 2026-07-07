@@ -35,6 +35,7 @@ import Settings from '@/pages/Settings';
 import Admin from '@/pages/Admin';
 import Listings from '@/pages/Listings';
 import NewListing from '@/pages/NewListing';
+import AgencyDashboard from '@/pages/AgencyDashboard';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -86,6 +87,7 @@ const AuthenticatedApp = () => {
           <Route path="/listings" element={<Listings />} />
           <Route path="/listings/new" element={<NewListing />} />
           <Route path="/brand-kits" element={<BrandKits />} />
+          <Route path="/agency" element={<AgencyDashboard />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={<Admin />} />
         </Route>
