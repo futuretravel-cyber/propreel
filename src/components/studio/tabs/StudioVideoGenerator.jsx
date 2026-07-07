@@ -9,7 +9,7 @@ import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import CreatomateRender from "@/components/studio/CreatomateRender";
-import VideoTierSelector from "@/components/studio/tabs/VideoTierSelector";
+import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
 
 const INTRO_TEMPLATES = ["None", "Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"];
 const OUTRO_TEMPLATES = ["None", "Agent Card", "Contact Block", "Agency Logo"];
@@ -61,13 +61,25 @@ export default function StudioVideoGenerator({
   const [uploadedPhotos, setUploadedPhotos] = useState([]);
   const [photoSource, setPhotoSource] = useState("project");
   const [videoTier, setVideoTier] = useState(project?.video_tier || "essential");
+  const [videoDuration, setVideoDuration] = useState(project?.video_duration || 30);
+
+  const maxImages = getMaxImages(videoDuration);
 
   const handleSelectTier = (tierId) => {
     setVideoTier(tierId);
-    base44.entities.Project.update(projectId, { video_tier: tierId });
+    const tierDurations = VIDEO_TIERS.find(t => t.id === tierId)?.durations || [30];
+    const nextDuration = tierDurations.includes(videoDuration) ? videoDuration : tierDurations[0];
+    setVideoDuration(nextDuration);
+    base44.entities.Project.update(projectId, { video_tier: tierId, video_duration: nextDuration });
   };
 
-  const photos = photoSource === "uploaded" && uploadedPhotos.length ? uploadedPhotos : projectPhotos;
+  const handleSelectDuration = (seconds) => {
+    setVideoDuration(seconds);
+    base44.entities.Project.update(projectId, { video_duration: seconds });
+  };
+
+  const allPhotos = photoSource === "uploaded" && uploadedPhotos.length ? uploadedPhotos : projectPhotos;
+  const photos = allPhotos.slice(0, maxImages);
 
   const [orientation, setOrientation] = useState(project?.orientation || "landscape");
   const [introTemplate, setIntroTemplate] = useState(project?.intro_template || "Address Reveal");
@@ -83,9 +95,20 @@ export default function StudioVideoGenerator({
   const handleUploadPhotos = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
+    const currentCount = (photoSource === "uploaded" ? uploadedPhotos.length : 0);
+    const remainingSlots = maxImages - currentCount;
+    if (remainingSlots <= 0) {
+      toast({ title: `Image limit reached`, description: `This video length allows a maximum of ${maxImages} images. Choose a longer length to add more.`, variant: "destructive" });
+      e.target.value = "";
+      return;
+    }
+    const filesToUpload = files.slice(0, remainingSlots);
+    if (filesToUpload.length < files.length) {
+      toast({ title: `Only ${remainingSlots} photo(s) added`, description: `This video length allows a maximum of ${maxImages} images.`, variant: "destructive" });
+    }
     setUploading(true);
     try {
-      const urls = await Promise.all(files.map(async f => {
+      const urls = await Promise.all(filesToUpload.map(async f => {
         const { file_url } = await base44.integrations.Core.UploadFile({ file: f });
         return file_url;
       }));
@@ -154,12 +177,23 @@ export default function StudioVideoGenerator({
   return (
     <div className="space-y-4">
       {/* Video Tier */}
-      <VideoTierSelector selectedTier={videoTier} onSelectTier={handleSelectTier} />
+      <VideoTierSelector
+        selectedTier={videoTier}
+        onSelectTier={handleSelectTier}
+        selectedDuration={videoDuration}
+        onSelectDuration={handleSelectDuration}
+      />
 
       {/* Photo Source */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
         <p className="text-sm font-semibold text-gray-900 mb-1">📸 Video Photos</p>
-        <p className="text-xs text-gray-400 mb-3">Use your project photos or upload new ones for the video.</p>
+        <p className="text-xs text-gray-400 mb-1">Use your project photos or upload new ones for the video.</p>
+        <p className="text-xs font-semibold text-purple-700 mb-3">Max {maxImages} images for {videoDuration}s video · Using {photos.length} of {maxImages}</p>
+        {allPhotos.length > maxImages && (
+          <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-3 text-xs text-amber-800">
+            Only the first {maxImages} photos will be used. Choose a longer video length to include more.
+          </div>
+        )}
         <div className="flex flex-wrap gap-2 mb-3">
           <button onClick={() => setPhotoSource("project")}
             className={`px-3 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${photoSource === "project" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
@@ -173,8 +207,8 @@ export default function StudioVideoGenerator({
           )}
           <div>
             <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleUploadPhotos} className="hidden" />
-            <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border-2 border-dashed border-gray-300 text-gray-500 hover:border-purple-700 hover:text-purple-700 transition-all">
+            <button onClick={() => fileInputRef.current?.click()} disabled={uploading || (photoSource === "uploaded" && uploadedPhotos.length >= maxImages)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border-2 border-dashed border-gray-300 text-gray-500 hover:border-purple-700 hover:text-purple-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
               {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
               {uploading ? "Uploading..." : "Upload New Photos"}
             </button>

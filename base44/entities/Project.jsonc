@@ -67,6 +67,16 @@
       "default": "essential",
       "description": "Selected AI Video Generator quality tier"
     },
+    "video_duration": {
+      "type": "number",
+      "enum": [
+        30,
+        60,
+        90
+      ],
+      "default": 30,
+      "description": "Selected video length in seconds (determines max image count)"
+    },
     "camera_motions": {
       "type": "object",
       "default": {},

@@ -14,7 +14,7 @@ const REMOVAL_MODES = [
   { key: "objects",  label: "📦 Remove Specific Objects", prompt: "Remove any temporary or unwanted objects that detract from the property's appeal. Clean up the space professionally." },
 ];
 
-export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoReplaced, projectId }) {
+export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
   const { toast } = useToast();
   const fileInputRef = useRef(null);
 
@@ -79,6 +79,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
     if (!resultPhoto) return;
     setAppliedEdits(prev => ({ ...prev, [selectedIdx]: resultPhoto }));
     if (selectedIdx < projectPhotos.length) onPhotoReplaced(selectedIdx, resultPhoto);
+    else onAddPhoto?.(resultPhoto);
     if (projectId) {
       base44.entities.PhotoEdit.create({
         project_id: projectId,

@@ -3,7 +3,7 @@ import { Play, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { base44 } from "@/api/base44Client";
-import { spendCredits, VIDEO_TIER_CREDITS } from "@/lib/credits";
+import { spendCredits, getVideoTierCredits } from "@/lib/credits";
 
 export default function CreatomateRender({ project, photos: photosProp, voiceoverUrl, musicUrl, selectedBrandKit, orientation: orientationProp, heading: headingProp }) {
   const { toast } = useToast();
@@ -24,7 +24,7 @@ export default function CreatomateRender({ project, photos: photosProp, voiceove
       return;
     }
 
-    const tierCost = VIDEO_TIER_CREDITS[project?.video_tier] || VIDEO_TIER_CREDITS.essential;
+    const tierCost = getVideoTierCredits(project?.video_tier, project?.video_duration);
     const { success } = await spendCredits(tierCost);
     if (!success) {
       toast({ title: "Out of credits", description: `This tier costs ${tierCost} credits. Upgrade your plan to render this video.`, variant: "destructive" });

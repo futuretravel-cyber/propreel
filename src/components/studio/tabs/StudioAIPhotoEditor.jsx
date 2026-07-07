@@ -20,7 +20,7 @@ const AI_EDITS = [
   { key: "fix_lighting", label: "🔆 Fix Dark Corners",    prompt: "Fix all dark corners and shadows. Add realistic ambient fill lighting so the entire space is evenly lit." },
 ];
 
-export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoReplaced, projectId }) {
+export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
   const { toast } = useToast();
   const fileInputRef = useRef(null);
 
@@ -84,6 +84,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     if (!resultPhoto) return;
     setAppliedEdits(prev => ({ ...prev, [selectedIdx]: resultPhoto }));
     if (selectedIdx < projectPhotos.length) onPhotoReplaced(selectedIdx, resultPhoto);
+    else onAddPhoto?.(resultPhoto);
     if (projectId) {
       base44.entities.PhotoEdit.create({
         project_id: projectId,

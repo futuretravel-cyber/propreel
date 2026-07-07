@@ -85,6 +85,10 @@ export default function Studio() {
     });
   };
 
+  const handleAddPhoto = (url) => {
+    setPhotos(prev => (prev.includes(url) ? prev : [...prev, url]));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -123,6 +127,7 @@ export default function Studio() {
   const sharedPhotoProps = {
     photos,
     onPhotoReplaced: handlePhotoReplaced,
+    onAddPhoto: handleAddPhoto,
   };
 
   const renderTabContent = () => {

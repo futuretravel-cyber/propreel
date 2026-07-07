@@ -10,6 +10,12 @@ export const VIDEO_TIER_CREDITS = {
   pro: 75,
 };
 
+// Credit cost scales linearly with video duration (30s = base cost from VIDEO_TIER_CREDITS)
+export function getVideoTierCredits(tier, durationSeconds) {
+  const base = VIDEO_TIER_CREDITS[tier] || VIDEO_TIER_CREDITS.essential;
+  return Math.round(base * ((durationSeconds || 30) / 30));
+}
+
 // Checks if the current user has enough credits and deducts them if so.
 // Returns { success, remaining }.
 export async function spendCredits(cost) {

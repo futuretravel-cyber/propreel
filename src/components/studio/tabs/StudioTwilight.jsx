@@ -15,7 +15,7 @@ const TWILIGHT_STYLES = [
   { key: "christmas",    label: "🎄 Festive Evening",      prompt: "Convert to a festive evening shot with warm Christmas fairy lights on the exterior, glowing windows, and a dark twilight sky." },
 ];
 
-export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced, projectId }) {
+export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
   const { toast } = useToast();
   const fileInputRef = useRef(null);
 
@@ -78,6 +78,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
     if (!resultPhoto) return;
     setAppliedEdits(prev => ({ ...prev, [selectedIdx]: resultPhoto }));
     if (selectedIdx < projectPhotos.length) onPhotoReplaced(selectedIdx, resultPhoto);
+    else onAddPhoto?.(resultPhoto);
     if (projectId) {
       base44.entities.PhotoEdit.create({
         project_id: projectId,

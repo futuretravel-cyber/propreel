@@ -17,7 +17,7 @@ const STYLES = [
   { key: "industrial",   label: "⚙️ Industrial Loft",       prompt: "Virtually stage this room in industrial loft style. Exposed brick effect, leather sofa, metal shelving, Edison bulb lighting." },
 ];
 
-export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoReplaced, projectId }) {
+export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
   const { toast } = useToast();
   const fileInputRef = useRef(null);
 
@@ -80,6 +80,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
     if (!resultPhoto) return;
     setAppliedEdits(prev => ({ ...prev, [selectedIdx]: resultPhoto }));
     if (selectedIdx < projectPhotos.length) onPhotoReplaced(selectedIdx, resultPhoto);
+    else onAddPhoto?.(resultPhoto);
     if (projectId) {
       base44.entities.PhotoEdit.create({
         project_id: projectId,
