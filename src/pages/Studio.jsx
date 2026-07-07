@@ -20,12 +20,12 @@ import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import AIDisclaimerNotice from "@/components/shared/AIDisclaimerNotice";
 
 const TABS = [
-  { key: "description",   label: "Property Description",       icon: FileText,  short: "Description" },
-  { key: "ai_editor",     label: "AI Photo Editor",            icon: Camera,    short: "AI Editor" },
-  { key: "staging",       label: "Virtual Staging",            icon: Sofa,      short: "Staging" },
-  { key: "furniture",     label: "Furniture Removal",          icon: Trash2,    short: "Furniture" },
-  { key: "twilight",      label: "Twilight Photography",       icon: Sunset,    short: "Twilight" },
-  { key: "social",        label: "Social Media",               icon: Share,     short: "Social" },
+  { key: "description",   label: "Property Description",       icon: FileText,  short: "Description", creditNote: "1 credit per generation" },
+  { key: "ai_editor",     label: "AI Photo Editor",            icon: Camera,    short: "AI Editor",    creditNote: "1 credit per photo render" },
+  { key: "staging",       label: "Virtual Staging",            icon: Sofa,      short: "Staging",      creditNote: "1 credit per photo render" },
+  { key: "furniture",     label: "Furniture Removal",          icon: Trash2,    short: "Furniture",    creditNote: "1 credit per photo render" },
+  { key: "twilight",      label: "Twilight Photography",       icon: Sunset,    short: "Twilight",     creditNote: "1 credit per photo render" },
+  { key: "social",        label: "Social Media",               icon: Share,     short: "Social",       creditNote: "1 credit per post render" },
   { key: "video",         label: "AI Video Generator",         icon: Video,     short: "Video" },
 ];
 
@@ -285,6 +285,11 @@ export default function Studio() {
                 <>
                   <activeTabData.icon className="w-5 h-5 text-purple-700" />
                   <h1 className="text-lg font-bold text-gray-900">{activeTabData.label}</h1>
+                  {activeTabData.creditNote && (
+                    <span className="text-[11px] font-semibold text-purple-700 bg-purple-50 border border-purple-100 rounded-full px-2.5 py-1">
+                      ⚡ {activeTabData.creditNote}
+                    </span>
+                  )}
                 </>
               )}
             </div>
