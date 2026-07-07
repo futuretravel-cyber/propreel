@@ -294,7 +294,7 @@ export default function Studio() {
               )}
             </div>
 
-            {activeTab !== "description" && <AIDisclaimerNotice />}
+            <AIDisclaimerNotice />
             {renderTabContent()}
           </div>
         </main>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import AIDisclaimerNotice from "@/components/shared/AIDisclaimerNotice";
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-gray-100 text-gray-600", icon: FileEdit },
@@ -50,6 +51,8 @@ export default function Dashboard() {
           </Button>
         </Link>
       </div>
+
+      <AIDisclaimerNotice />
 
       {/* Credits */}
       <div className="flex items-center justify-between gap-4 bg-purple-50 border border-purple-100 rounded-2xl px-5 py-4 mb-8">

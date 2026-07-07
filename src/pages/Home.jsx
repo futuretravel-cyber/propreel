@@ -9,6 +9,7 @@ import FeatureShowcase from "@/components/marketing/FeatureShowcase";
 import TestimonialsSection from "@/components/marketing/TestimonialsSection";
 import FAQSection from "@/components/marketing/FAQSection";
 import CTABanner from "@/components/marketing/CTABanner";
+import AIDisclaimerBanner from "@/components/marketing/AIDisclaimerBanner";
 
 export default function Home() {
   return (
@@ -20,6 +21,7 @@ export default function Home() {
       <WhoItsFor />
       <FeaturesGrid />
       <FeatureShowcase />
+      <AIDisclaimerBanner />
       <TestimonialsSection />
       <FAQSection />
       <CTABanner />

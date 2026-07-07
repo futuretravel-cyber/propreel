@@ -18,12 +18,17 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  const [agreedToAiTerms, setAgreedToAiTerms] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     if (password !== confirmPassword) {
       setError("Passwords do not match");
+      return;
+    }
+    if (!agreedToAiTerms) {
+      setError("You must acknowledge the AI disclaimer to continue");
       return;
     }
     setLoading(true);
@@ -212,7 +217,19 @@ export default function Register() {
             />
           </div>
         </div>
-        <Button type="submit" className="w-full h-12 font-medium" disabled={loading}>
+        <label className="flex items-start gap-2.5 text-xs text-muted-foreground leading-relaxed cursor-pointer">
+          <input
+            type="checkbox"
+            checked={agreedToAiTerms}
+            onChange={(e) => setAgreedToAiTerms(e.target.checked)}
+            required
+            className="mt-0.5 w-4 h-4 flex-shrink-0 rounded border-gray-300 accent-primary"
+          />
+          <span>
+            I understand that AutoReel uses AI technology, which may produce imperfect results, and I agree that spent credits are non-refundable.
+          </span>
+        </label>
+        <Button type="submit" className="w-full h-12 font-medium" disabled={loading || !agreedToAiTerms}>
           {loading ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -222,9 +239,6 @@ export default function Register() {
             "Create account"
           )}
         </Button>
-        <p className="text-xs text-muted-foreground text-center leading-relaxed">
-          By signing up, you acknowledge that PropReel's tools produce AI-generated or AI-edited photos and videos, which may not perfectly represent the actual property.
-        </p>
       </form>
     </AuthLayout>
   );
