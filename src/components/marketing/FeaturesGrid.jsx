@@ -1,5 +1,5 @@
 import React from "react";
-import { Video, Download, Armchair, Image, Wand2, Mic, SlidersHorizontal, User } from "lucide-react";
+import { Video, Download, Armchair, Image, Wand2, Mic, SlidersHorizontal } from "lucide-react";
 
 const features = [
   { icon: Video, title: "Photo to Video", desc: "Transform listing photos into captivating video tours.", wide: true },
@@ -9,7 +9,6 @@ const features = [
   { icon: Wand2, title: "Viral Visual Effects", desc: "Cinematic transitions, VFX, lifestyle shots.", wide: true },
   { icon: Mic, title: "AI Voiceovers", desc: "Narrations in South African English. Choose your voice.", wide: false },
   { icon: SlidersHorizontal, title: "Studio Editor", desc: "Fine-tune transitions, captions, and branding.", wide: false },
-  { icon: User, title: "AI Avatars", desc: "AI-generated presenters — no camera needed.", wide: true },
 ];
 
 export default function FeaturesGrid() {
