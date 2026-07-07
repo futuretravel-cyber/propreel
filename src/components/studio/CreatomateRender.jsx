@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { base44 } from "@/api/base44Client";
 import { spendCredits, getVideoTierCredits } from "@/lib/credits";
+import { notifyOutOfCredits } from "@/lib/creditsToast";
 
 export default function CreatomateRender({ project, photos: photosProp, voiceoverUrl, musicUrl, selectedBrandKit, orientation: orientationProp, heading: headingProp }) {
   const { toast } = useToast();
@@ -27,7 +28,7 @@ export default function CreatomateRender({ project, photos: photosProp, voiceove
     const tierCost = getVideoTierCredits(project?.video_tier, project?.video_duration);
     const { success } = await spendCredits(tierCost);
     if (!success) {
-      toast({ title: "Out of credits", description: `This tier costs ${tierCost} credits. Upgrade your plan to render this video.`, variant: "destructive" });
+      notifyOutOfCredits(toast, tierCost);
       return;
     }
 

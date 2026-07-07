@@ -18,6 +18,15 @@ export const AuthProvider = ({ children }) => {
     checkAppState();
   }, []);
 
+  // Real-time credit updates: any spendCredits() call in the app dispatches this event
+  useEffect(() => {
+    const handleCreditsUpdated = (e) => {
+      setUser((prev) => (prev ? { ...prev, credits: e.detail.credits } : prev));
+    };
+    window.addEventListener("credits:updated", handleCreditsUpdated);
+    return () => window.removeEventListener("credits:updated", handleCreditsUpdated);
+  }, []);
+
   const checkAppState = async () => {
     try {
       setIsLoadingPublicSettings(true);

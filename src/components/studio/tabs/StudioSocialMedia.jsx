@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
+import { notifyOutOfCredits } from "@/lib/creditsToast";
 
 const PLATFORMS = [
   { key: "facebook",   label: "Facebook",   emoji: "📘", maxChars: 500,  desc: "Engaging post for Facebook property groups.", imagePrompt: "Facebook post image 1200x630px landscape, premium South African real estate marketing graphic, clean modern design" },
@@ -62,7 +63,7 @@ export default function StudioSocialMedia({ photos: projectPhotos, project, list
   const generatePost = async () => {
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
-      toast({ title: "Out of credits", description: "Upgrade your plan to generate more posts.", variant: "destructive" });
+      notifyOutOfCredits(toast, PHOTO_TOOL_CREDIT_COST);
       return;
     }
     setGenerating(true);

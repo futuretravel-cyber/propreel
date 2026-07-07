@@ -25,5 +25,7 @@ export async function spendCredits(cost) {
     return { success: false, remaining: current };
   }
   await base44.auth.updateMe({ credits: current - cost });
-  return { success: true, remaining: current - cost };
+  const remaining = current - cost;
+  window.dispatchEvent(new CustomEvent("credits:updated", { detail: { credits: remaining } }));
+  return { success: true, remaining };
 }

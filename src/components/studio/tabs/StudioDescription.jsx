@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
+import { notifyOutOfCredits } from "@/lib/creditsToast";
 
 const TONES = [
   { key: "professional", label: "👔 Professional",          desc: "Clear, factual and authoritative." },
@@ -119,7 +120,7 @@ export default function StudioDescription({ project, listing, onDescriptionGener
   const generate = async () => {
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
-      toast({ title: "Out of credits", description: "Upgrade your plan to generate more descriptions.", variant: "destructive" });
+      notifyOutOfCredits(toast, PHOTO_TOOL_CREDIT_COST);
       return;
     }
     setGenerating(true);

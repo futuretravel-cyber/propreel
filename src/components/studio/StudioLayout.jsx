@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown, ShieldCheck, Home } from "lucide-react";
+import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown, ShieldCheck, Home, Coins } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -77,6 +77,17 @@ export default function StudioLayout() {
             })}
           </div>
         )}
+
+        <Link
+          to="/pricing"
+          onClick={() => setSidebarOpen(false)}
+          className="flex items-center justify-between gap-2 mx-3 mt-4 px-3 py-2.5 rounded-xl bg-purple-50 border border-purple-100 hover:border-purple-200 transition-colors"
+        >
+          <span className="flex items-center gap-2 text-xs font-semibold text-purple-800">
+            <Coins className="w-4 h-4" /> {(user?.credits ?? 0).toLocaleString("en-ZA")} credits
+          </span>
+          <span className="text-[10px] font-semibold text-purple-600">Top up →</span>
+        </Link>
 
         <div className="mt-4 mx-3 space-y-2">
           <Link

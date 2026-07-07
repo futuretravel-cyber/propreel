@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
+import { notifyOutOfCredits } from "@/lib/creditsToast";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 
 const STYLES = [
@@ -58,7 +59,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
     if (!style) return;
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
-      toast({ title: "Out of credits", description: "Upgrade your plan to keep staging photos.", variant: "destructive" });
+      notifyOutOfCredits(toast, PHOTO_TOOL_CREDIT_COST);
       return;
     }
     setProcessing(true);
