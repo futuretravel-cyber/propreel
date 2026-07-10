@@ -1,0 +1,14 @@
+{
+  "name": "AppSetting",
+  "type": "object",
+  "properties": {
+    "aws_render_api_url": {
+      "type": "string",
+      "description": "AWS API Gateway endpoint URL that receives new video render job submissions"
+    },
+    "aws_webhook_secret": {
+      "type": "string",
+      "description": "Shared secret used to validate incoming render-status webhook calls from AWS back to Base44"
+    }
+  }
+}

@@ -12,8 +12,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from "@/components/ui/use-toast";
 import MusicLibrary from "@/components/admin/MusicLibrary";
 import AIVideoTest from "@/components/admin/AIVideoTest";
+import AWSSettingsTab from "@/components/admin/AWSSettingsTab";
 
-const TABS = ["Overview", "Projects", "Users", "Reviews", "Music Library", "Contact Submissions", "AI Video Test"];
+const TABS = ["Overview", "Projects", "Users", "Reviews", "Music Library", "Contact Submissions", "AI Video Test", "AWS Settings"];
 
 const reviewStatusConfig = {
   pending: { label: "Pending", color: "bg-amber-100 text-amber-700" },
@@ -355,6 +356,9 @@ export default function Admin() {
 
           {/* AI Video Test Tab */}
           {tab === "AI Video Test" && <AIVideoTest />}
+
+          {/* AWS Settings Tab */}
+          {tab === "AWS Settings" && <AWSSettingsTab />}
 
           {/* Contact Submissions Tab */}
           {tab === "Contact Submissions" && (
