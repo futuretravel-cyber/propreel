@@ -10,6 +10,10 @@
       "type": "string",
       "description": "CloudFront CDN base URL for rendered video/asset delivery"
     },
+    "aws_webhook_url": {
+      "type": "string",
+      "description": "AWS endpoint that receives render-status webhook calls from Base44"
+    },
     "aws_webhook_secret": {
       "type": "string",
       "description": "Shared secret used to validate incoming render-status webhook calls from AWS back to Base44"

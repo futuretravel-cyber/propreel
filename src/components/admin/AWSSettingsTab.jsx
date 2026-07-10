@@ -11,6 +11,7 @@ export default function AWSSettingsTab() {
   const [settingId, setSettingId] = useState(null);
   const [apiUrl, setApiUrl] = useState("");
   const [cdnUrl, setCdnUrl] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -22,6 +23,7 @@ export default function AWSSettingsTab() {
         setSettingId(existing.id);
         setApiUrl(existing.aws_render_api_url || "");
         setCdnUrl(existing.aws_cdn_base_url || "");
+        setWebhookUrl(existing.aws_webhook_url || "");
         setWebhookSecret(existing.aws_webhook_secret || "");
       }
     }).finally(() => setLoading(false));
@@ -30,7 +32,7 @@ export default function AWSSettingsTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_secret: webhookSecret };
+      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_url: webhookUrl, aws_webhook_secret: webhookSecret };
       if (settingId) {
         await base44.entities.AppSetting.update(settingId, data);
       } else {
@@ -77,6 +79,16 @@ export default function AWSSettingsTab() {
             value={cdnUrl}
             onChange={(e) => setCdnUrl(e.target.value)}
             placeholder="https://xxxxx.cloudfront.net"
+            className="mt-1.5 rounded-xl"
+          />
+        </div>
+        <div>
+          <Label htmlFor="aws_webhook_url" className="text-xs font-semibold text-[#0F082B]">AWS Webhook URL</Label>
+          <Input
+            id="aws_webhook_url"
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+            placeholder="https://xxxxx.execute-api.af-south-1.amazonaws.com/prod/api/webhook/base44"
             className="mt-1.5 rounded-xl"
           />
         </div>
