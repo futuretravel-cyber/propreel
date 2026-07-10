@@ -10,6 +10,7 @@ export default function AWSSettingsTab() {
   const { toast } = useToast();
   const [settingId, setSettingId] = useState(null);
   const [apiUrl, setApiUrl] = useState("");
+  const [cdnUrl, setCdnUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -20,6 +21,7 @@ export default function AWSSettingsTab() {
       if (existing) {
         setSettingId(existing.id);
         setApiUrl(existing.aws_render_api_url || "");
+        setCdnUrl(existing.aws_cdn_base_url || "");
         setWebhookSecret(existing.aws_webhook_secret || "");
       }
     }).finally(() => setLoading(false));
@@ -28,7 +30,7 @@ export default function AWSSettingsTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const data = { aws_render_api_url: apiUrl, aws_webhook_secret: webhookSecret };
+      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_secret: webhookSecret };
       if (settingId) {
         await base44.entities.AppSetting.update(settingId, data);
       } else {
@@ -65,6 +67,16 @@ export default function AWSSettingsTab() {
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
             placeholder="https://xxxxx.execute-api.us-east-1.amazonaws.com/prod/render"
+            className="mt-1.5 rounded-xl"
+          />
+        </div>
+        <div>
+          <Label htmlFor="aws_cdn_base_url" className="text-xs font-semibold text-[#0F082B]">CDN Base URL</Label>
+          <Input
+            id="aws_cdn_base_url"
+            value={cdnUrl}
+            onChange={(e) => setCdnUrl(e.target.value)}
+            placeholder="https://xxxxx.cloudfront.net"
             className="mt-1.5 rounded-xl"
           />
         </div>
