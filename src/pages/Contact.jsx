@@ -104,7 +104,7 @@ export default function Contact() {
 
           <div className="lg:col-span-2 space-y-4">
             {[
-              { icon: Mail, title: "Email us", desc: "support@autoreelsa.co.za", sub: "We'll respond within 24 hours" },
+              { icon: Mail, title: "Email us", desc: "support@propreel.co.za", sub: "We'll respond within 24 hours" },
               { icon: MessageCircle, title: "Live chat", desc: "Chat with our team", sub: "Available Mon-Fri, 8am-5pm" },
               { icon: Clock, title: "Business hours", desc: "Monday - Friday", sub: "08:00 - 17:00 SAST" },
               { icon: HelpCircle, title: "FAQ", desc: "Check our FAQ section", sub: "Answers to common questions" },

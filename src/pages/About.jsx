@@ -21,7 +21,7 @@ export default function About() {
     <div className="pt-28 pb-20 px-4">
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-16">
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-[#0F082B] mb-6">About AutoReel SA</h1>
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-[#0F082B] mb-6">About PropReel SA</h1>
           <p className="text-lg text-[#606060] max-w-2xl mx-auto leading-relaxed">
             We're on a mission to democratise property video marketing for every estate agent in South Africa.
           </p>
@@ -31,13 +31,13 @@ export default function About() {
           <h2 className="text-2xl font-bold text-[#0F082B] mb-4">Our Story</h2>
           <div className="space-y-4 text-[#606060] leading-relaxed">
             <p>
-              AutoReel SA was born from a simple observation: South African estate agents know that video sells properties faster, but creating professional video content has always been too expensive and too time-consuming for most.
+              PropReel SA was born from a simple observation: South African estate agents know that video sells properties faster, but creating professional video content has always been too expensive and too time-consuming for most.
             </p>
             <p>
               We built an AI-powered platform that transforms static listing photos into cinematic property video tours — in minutes, not days. From Cape Town's waterfront apartments to Johannesburg's suburban estates, our technology understands the unique character of South African property.
             </p>
             <p>
-              Today, over 2,500 property professionals across all nine provinces use AutoReel SA to win more mandates, attract more qualified buyers, and close deals faster.
+              Today, over 2,500 property professionals across all nine provinces use PropReel SA to win more mandates, attract more qualified buyers, and close deals faster.
             </p>
           </div>
         </div>
@@ -75,7 +75,7 @@ export default function About() {
 
         <div className="bg-[#0F082B] rounded-3xl p-10 sm:p-14 text-center">
           <h2 className="text-3xl font-extrabold text-white mb-4">Ready to transform your property marketing?</h2>
-          <p className="text-gray-400 mb-6">Join 2,500+ South African agents already using AutoReel SA.</p>
+          <p className="text-gray-400 mb-6">Join 2,500+ South African agents already using PropReel SA.</p>
           <Link to="/register">
             <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold px-8 h-12 rounded-xl text-base gap-2">
               Get started free <ArrowRight className="w-4 h-4" />

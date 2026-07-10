@@ -226,7 +226,7 @@ export default function Register() {
             className="mt-0.5 w-4 h-4 flex-shrink-0 rounded border-gray-300 accent-primary"
           />
           <span>
-            I understand that AutoReel uses AI technology, which may produce imperfect results, and I agree that spent credits are non-refundable.
+            I understand that PropReel uses AI technology, which may produce imperfect results, and I agree that spent credits are non-refundable.
           </span>
         </label>
         <Button type="submit" className="w-full h-12 font-medium" disabled={loading || !agreedToAiTerms}>
