@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import {
-  Video, Music, Mic, User, Star, Layers, Monitor, Smartphone,
+  Music, Mic, User, Star, Layers, Monitor, Smartphone,
   Check, Play, Loader2, Download, ChevronDown, ChevronRight, Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,6 @@ import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
-import CreatomateRender from "@/components/studio/CreatomateRender";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
 
 const INTRO_TEMPLATES = ["None", "Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"];
@@ -435,18 +434,6 @@ export default function StudioVideoGenerator({
         </div>
       </Section>
 
-      {/* Render Video */}
-      <Section sectionKey="creatomate" label="Render Video" icon={Video} desc="Send to Make.com and get a rendered MP4 back" defaultOpen={true}>
-        <CreatomateRender
-          project={project}
-          photos={photos}
-          voiceoverUrl={voiceoverUrl}
-          musicUrl={musicUrl}
-          selectedBrandKit={selectedBrandKit}
-          orientation={orientation}
-          heading={heading}
-        />
-      </Section>
     </div>
   );
 }
