@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import {
-  Music, Mic, User, Star, Layers, Monitor, Smartphone,
+  Music, Mic, User, Star, Monitor, Smartphone,
   Check, Play, Loader2, Download, ChevronDown, ChevronRight, Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,19 +10,6 @@ import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
-
-const INTRO_TEMPLATES = ["None", "Address Reveal", "Open House", "Just Listed", "Price Drop", "Luxury Feature", "Simple"];
-const OUTRO_TEMPLATES = ["None", "Agent Card", "Contact Block", "Agency Logo"];
-
-const AI_VOICES = [
-  { id: "mapendo", name: "Mapendo", gender: "Female", desc: "Approachable, Confident & Warm" },
-  { id: "sekou",   name: "Sekou",   gender: "Male",   desc: "Friendly and Confident" },
-  { id: "mark",    name: "Mark",    gender: "Male",   desc: "Natural Conversations" },
-  { id: "alesha",  name: "Alesha",  gender: "Female", desc: "Laidback, Relaxed and Friendly" },
-  { id: "claire",  name: "Claire",  gender: "Female", desc: "Neutral, Even, and Polished", elevenId: "cgSgspJ2msm6clMCkdW9" },
-  { id: "crystal", name: "Crystal", gender: "Female", desc: "Casual conversationalist", elevenId: "XrExE9yKIg1WjnnlVkGX" },
-  { id: "harry",   name: "Harry",   gender: "Male",   desc: "Fierce Warrior", elevenId: "SOYHLrjzK2X1ezoPC6cr" },
-];
 
 const POLLY_VOICES = [
   { id: "Joanna", name: "Joanna", desc: "US Female" },
@@ -92,13 +79,10 @@ export default function StudioVideoGenerator({
   const photos = allPhotos.slice(0, maxImages);
 
   const [orientation, setOrientation] = useState(project?.orientation || "landscape");
-  const [introTemplate, setIntroTemplate] = useState(project?.intro_template || "Address Reveal");
-  const [outroTemplate, setOutroTemplate] = useState(project?.outro_template || "Agent Card");
   const [heading, setHeading] = useState(project?.intro_heading || "");
   const [subheading, setSubheading] = useState(project?.intro_subheading || "");
   const [musicTrack, setMusicTrack] = useState(null);
   const [voiceoverScript, setVoiceoverScript] = useState(project?.voiceover_script || "");
-  const [voiceoverVoice, setVoiceoverVoice] = useState("mapendo");
   const [narratorVoice, setNarratorVoice] = useState(project?.voiceover_voice || "Joanna");
   const [rendering, setRendering] = useState(false);
   const [submittingRender, setSubmittingRender] = useState(false);
@@ -138,29 +122,8 @@ export default function StudioVideoGenerator({
     if (!voiceoverScript.trim()) return;
     setRendering(true);
     try {
-      const voice = AI_VOICES.find(v => v.id === voiceoverVoice);
-      const elevenKey = localStorage.getItem("elevenlabs_api_key");
-      let audioUrl = null;
-
-      if (voice?.elevenId && elevenKey) {
-        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice.elevenId}`, {
-          method: "POST",
-          headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ text: voiceoverScript, model_id: "eleven_multilingual_v2", voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
-        });
-        if (response.ok) {
-          const blob = await response.blob();
-          const file = new File([blob], "voiceover.mp3", { type: "audio/mpeg" });
-          const { file_url } = await base44.integrations.Core.UploadFile({ file });
-          audioUrl = file_url;
-        }
-      }
-
-      if (!audioUrl) {
-        const result = await base44.integrations.Core.GenerateSpeech({ text: voiceoverScript, language_code: "en" });
-        audioUrl = result.url;
-      }
-
+      const result = await base44.integrations.Core.GenerateSpeech({ text: voiceoverScript, language_code: "en" });
+      const audioUrl = result.url;
       setVoiceoverUrl(audioUrl);
       await base44.entities.Project.update(projectId, { voiceover_url: audioUrl, voiceover_script: voiceoverScript });
       toast({ title: "Voiceover generated!" });
@@ -221,8 +184,6 @@ export default function StudioVideoGenerator({
         company_logo: selectedBrandKit?.logo_url || "",
         agent_name: selectedBrandKit?.agent_name || "",
         agent_phone: selectedBrandKit?.phone || "",
-        intro_template: introTemplate,
-        outro_template: outroTemplate,
       };
 
       const res = await fetch(renderApiUrl, {
@@ -323,8 +284,6 @@ export default function StudioVideoGenerator({
             voiceoverUrl={voiceoverUrl}
             musicUrl={musicUrl}
             brandKit={selectedBrandKit}
-            introTemplate={introTemplate}
-            outroTemplate={outroTemplate}
             heading={heading || project?.name}
             subheading={subheading}
             orientation={orientation}
@@ -349,30 +308,9 @@ export default function StudioVideoGenerator({
               placeholder="Write or generate your voiceover script..."
               rows={4} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none outline-none focus:ring-1 focus:ring-purple-700 placeholder:text-gray-400" />
           </div>
+          {/* Voiceover Narrator — used in final render */}
           <div>
-            <label className="text-xs font-semibold text-gray-700 mb-2 block">Select Voice</label>
-            <div className="grid grid-cols-1 gap-2">
-              {AI_VOICES.map(voice => {
-                const isSelected = voiceoverVoice === voice.id;
-                return (
-                  <button key={voice.id} onClick={() => setVoiceoverVoice(voice.id)}
-                    className={`flex items-center gap-3 rounded-xl p-3 border-2 text-left transition-all ${isSelected ? "border-purple-700 bg-purple-50" : "border-gray-100 bg-gray-50 hover:border-gray-300"}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isSelected ? "bg-purple-700" : "bg-gray-200"}`}>
-                      <Mic className={`w-3.5 h-3.5 ${isSelected ? "text-white" : "text-gray-500"}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-semibold ${isSelected ? "text-purple-700" : "text-gray-900"}`}>{voice.name} <span className="font-normal text-gray-500">· {voice.gender}</span></p>
-                      <p className="text-xs text-gray-500">{voice.desc}</p>
-                    </div>
-                    {isSelected && <Check className="w-4 h-4 text-purple-700 flex-shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* Voiceover Narrator (AWS Polly) — used in final render */}
-          <div>
-            <label className="text-xs font-semibold text-gray-700 mb-2 block">Voiceover Narrator (AWS Polly)</label>
+            <label className="text-xs font-semibold text-gray-700 mb-2 block">Voiceover Narrator</label>
             <p className="text-[10px] text-gray-400 mb-2">Select the narrator voice for the final rendered video.</p>
             <Select value={narratorVoice} onValueChange={handleSelectNarrator}>
               <SelectTrigger className="w-full rounded-xl h-10 text-sm">
@@ -398,44 +336,6 @@ export default function StudioVideoGenerator({
               <a href={voiceoverUrl} download="voiceover.mp3" className="text-[10px] text-purple-700 underline mt-1 block">Download MP3</a>
             </div>
           )}
-        </div>
-      </Section>
-
-      {/* Intro / Outro */}
-      <Section sectionKey="intros" label="Intro / Outro" icon={Layers} desc="Branded intro and outro overlays for your video">
-        <div className="space-y-4">
-          <div>
-            <p className="text-xs font-semibold text-gray-700 mb-2">Intro Template</p>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {INTRO_TEMPLATES.map(t => (
-                <button key={t} onClick={() => setIntroTemplate(t)}
-                  className={`aspect-video rounded-xl border-2 text-[10px] font-medium flex items-center justify-center p-1 text-center transition-all ${introTemplate === t ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-500 hover:border-gray-300 bg-gray-50"}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 mb-1 block">Heading</label>
-                <input value={heading} onChange={e => setHeading(e.target.value)} placeholder={project?.name} className="w-full border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-purple-700" />
-              </div>
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 mb-1 block">Subheading</label>
-                <input value={subheading} onChange={e => setSubheading(e.target.value)} placeholder="Subtitle..." className="w-full border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-purple-700" />
-              </div>
-            </div>
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-gray-700 mb-2">Outro Template</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {OUTRO_TEMPLATES.map(t => (
-                <button key={t} onClick={() => setOutroTemplate(t)}
-                  className={`aspect-video rounded-xl border-2 text-[10px] font-medium flex items-center justify-center p-1 text-center transition-all ${outroTemplate === t ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-500 hover:border-gray-300 bg-gray-50"}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </Section>
 
