@@ -3,17 +3,16 @@ import { base44 } from "@/api/base44Client";
 export const PHOTO_TOOL_CREDIT_COST = 1;
 
 export const VIDEO_TIER_CREDITS = {
-  essential: 5,
-  social: 15,
-  cinematic: 30,
-  premium: 50,
-  pro: 75,
+  essential: { 30: 5, 60: 10 },
+  social: { 20: 30, 40: 50, 60: 70 },
+  cinematic: { 30: 40, 60: 70, 90: 90 },
+  premium: { 30: 60, 60: 100, 90: 150 },
 };
 
-// Credit cost scales linearly with video duration (30s = base cost from VIDEO_TIER_CREDITS)
+// Credit cost is looked up per tier + duration (no longer linear)
 export function getVideoTierCredits(tier, durationSeconds) {
-  const base = VIDEO_TIER_CREDITS[tier] || VIDEO_TIER_CREDITS.essential;
-  return Math.round(base * ((durationSeconds || 30) / 30));
+  const tierCredits = VIDEO_TIER_CREDITS[tier] || VIDEO_TIER_CREDITS.essential;
+  return tierCredits[durationSeconds] ?? Object.values(tierCredits)[0];
 }
 
 // Checks if the current user has enough credits and deducts them if so.

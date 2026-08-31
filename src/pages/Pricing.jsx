@@ -31,7 +31,7 @@ const plans = [
     annual: 1790,
     credits: 200,
     desc: "For high-volume agents",
-    features: ["200 credits/month", "Everything in Premium", "Pro tier videos", "Faster render priority", "Dedicated support"],
+    features: ["200 credits/month", "Everything in Premium", "All video tiers included", "Faster render priority", "Dedicated support"],
     cta: "Start free trial",
     featured: false,
   },
@@ -48,10 +48,10 @@ const plans = [
 ];
 
 const pricingFaqs = [
-  { q: "How do credits work?", a: "Every plan gives you a monthly pool of credits. Photo tools (descriptions, AI photo edits, staging, furniture removal, twilight, social posts) cost 1 credit each, while AI videos cost 5-75 credits depending on the tier you choose." },
+  { q: "How do credits work?", a: "Every plan gives you a monthly pool of credits. Photo tools (descriptions, AI photo edits, staging, furniture removal, twilight, social posts) cost 1 credit each, while AI videos cost 5-150 credits depending on the tier and length you choose." },
   { q: "Is annual billing worth it?", a: "Yes! Annual billing gives you 1 month free compared to paying monthly." },
   { q: "What happens when I run out of credits?", a: "You'll be prompted to upgrade your plan. Unused credits don't roll over month to month." },
-  { q: "What's the difference between video tiers?", a: "Essential uses fast zoom/pan motion at 1080p. Social, Cinematic, Premium and Pro use AI-generated motion at increasing quality and render time, costing more credits accordingly." },
+  { q: "What's the difference between video tiers?", a: "Essential uses fast zoom/pan motion at 1080p (5-10 credits). Social and Cinematic use AI-generated motion at 720p (30-90 credits). Premium uses AI motion at 1080p (60-150 credits). Longer videos cost more credits." },
   { q: "What's the main difference between plans?", a: "Essential is for agents getting started. Premium and Pro add more monthly credits for higher volume. Agency is built for teams, with white-label branding and multiple seats." },
 ];
 

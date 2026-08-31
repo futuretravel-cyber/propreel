@@ -62,11 +62,11 @@ export default function StudioVideoGenerator({
   const [videoTier, setVideoTier] = useState(project?.video_tier || "essential");
   const [videoDuration, setVideoDuration] = useState(project?.video_duration || 30);
 
-  const maxImages = getMaxImages(videoDuration);
+  const maxImages = getMaxImages(videoTier, videoDuration);
 
   const handleSelectTier = (tierId) => {
     setVideoTier(tierId);
-    const tierDurations = VIDEO_TIERS.find(t => t.id === tierId)?.durations || [30];
+    const tierDurations = VIDEO_TIERS.find(t => t.id === tierId)?.configs.map(c => c.duration) || [30];
     const nextDuration = tierDurations.includes(videoDuration) ? videoDuration : tierDurations[0];
     setVideoDuration(nextDuration);
     base44.entities.Project.update(projectId, { video_tier: tierId, video_duration: nextDuration });

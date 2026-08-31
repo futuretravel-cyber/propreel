@@ -61,8 +61,7 @@
         "essential",
         "social",
         "cinematic",
-        "premium",
-        "pro"
+        "premium"
       ],
       "default": "essential",
       "description": "Selected AI Video Generator quality tier"
@@ -70,7 +69,9 @@
     "video_duration": {
       "type": "number",
       "enum": [
+        20,
         30,
+        40,
         60,
         90
       ],
