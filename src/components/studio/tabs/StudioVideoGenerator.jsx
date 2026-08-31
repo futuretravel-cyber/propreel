@@ -4,6 +4,7 @@ import {
   Check, Play, Loader2, Download, ChevronDown, ChevronRight, Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
@@ -21,6 +22,16 @@ const AI_VOICES = [
   { id: "claire",  name: "Claire",  gender: "Female", desc: "Neutral, Even, and Polished", elevenId: "cgSgspJ2msm6clMCkdW9" },
   { id: "crystal", name: "Crystal", gender: "Female", desc: "Casual conversationalist", elevenId: "XrExE9yKIg1WjnnlVkGX" },
   { id: "harry",   name: "Harry",   gender: "Male",   desc: "Fierce Warrior", elevenId: "SOYHLrjzK2X1ezoPC6cr" },
+];
+
+const POLLY_VOICES = [
+  { id: "Joanna", name: "Joanna", desc: "US Female" },
+  { id: "Kendra", name: "Kendra", desc: "US Female" },
+  { id: "Justin", name: "Justin", desc: "US Male Child" },
+  { id: "Kevin",  name: "Kevin",  desc: "Male Child" },
+  { id: "Amy",    name: "Amy",    desc: "British Female" },
+  { id: "Brian",  name: "Brian",  desc: "British Male" },
+  { id: "Ayanda", name: "Ayanda", desc: "South African English Female" },
 ];
 
 function Section({ sectionKey, label, icon: Icon, desc, children, defaultOpen = false }) {
@@ -88,7 +99,9 @@ export default function StudioVideoGenerator({
   const [musicTrack, setMusicTrack] = useState(null);
   const [voiceoverScript, setVoiceoverScript] = useState(project?.voiceover_script || "");
   const [voiceoverVoice, setVoiceoverVoice] = useState("mapendo");
+  const [narratorVoice, setNarratorVoice] = useState(project?.voiceover_voice || "Joanna");
   const [rendering, setRendering] = useState(false);
+  const [submittingRender, setSubmittingRender] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
 
   const handleUploadPhotos = async (e) => {
@@ -171,6 +184,60 @@ export default function StudioVideoGenerator({
   const handleMusicTrack = (track) => {
     setMusicTrack(track.id);
     setMusicUrl(track.file_url || "");
+  };
+
+  const handleSelectNarrator = (voiceId) => {
+    setNarratorVoice(voiceId);
+    base44.entities.Project.update(projectId, { voiceover_voice: voiceId });
+  };
+
+  const handleRenderVideo = async () => {
+    if (!photos.length) {
+      toast({ title: "No photos to render", variant: "destructive" });
+      return;
+    }
+    setSubmittingRender(true);
+    try {
+      const settings = await base44.entities.AppSetting.list();
+      const renderApiUrl = settings?.[0]?.aws_render_api_url;
+      if (!renderApiUrl) {
+        toast({ title: "Render API not configured", description: "Ask an admin to set the AWS Render API URL.", variant: "destructive" });
+        setSubmittingRender(false);
+        return;
+      }
+
+      const payload = {
+        project_id: projectId,
+        images: photos,
+        aspect_ratio: orientation,
+        video_tier: videoTier,
+        video_duration: videoDuration,
+        voice_id: narratorVoice || "Joanna",
+        voiceover_url: voiceoverUrl || "",
+        voiceover_script: voiceoverScript || "",
+        music_url: musicUrl || "",
+        headline_text: heading || project?.name || "",
+        agent_headshot: selectedBrandKit?.profile_photo_url || "",
+        company_logo: selectedBrandKit?.logo_url || "",
+        agent_name: selectedBrandKit?.agent_name || "",
+        agent_phone: selectedBrandKit?.phone || "",
+        intro_template: introTemplate,
+        outro_template: outroTemplate,
+      };
+
+      const res = await fetch(renderApiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+
+      await base44.entities.Project.update(projectId, { status: "processing" });
+      toast({ title: "✅ Render job submitted!" });
+    } catch (e) {
+      toast({ title: `Render failed: ${e.message}`, variant: "destructive" });
+    }
+    setSubmittingRender(false);
   };
 
   return (
@@ -303,6 +370,23 @@ export default function StudioVideoGenerator({
               })}
             </div>
           </div>
+          {/* Voiceover Narrator (AWS Polly) — used in final render */}
+          <div>
+            <label className="text-xs font-semibold text-gray-700 mb-2 block">Voiceover Narrator (AWS Polly)</label>
+            <p className="text-[10px] text-gray-400 mb-2">Select the narrator voice for the final rendered video.</p>
+            <Select value={narratorVoice} onValueChange={handleSelectNarrator}>
+              <SelectTrigger className="w-full rounded-xl h-10 text-sm">
+                <SelectValue placeholder="Select a narrator voice" />
+              </SelectTrigger>
+              <SelectContent>
+                {POLLY_VOICES.map(voice => (
+                  <SelectItem key={voice.id} value={voice.id}>
+                    {voice.name} · {voice.desc}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button onClick={handleRenderVoiceover} disabled={rendering || !voiceoverScript.trim()}
             className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-10">
             {rendering ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating voiceover...</> : <><Mic className="w-4 h-4" /> Generate Voiceover</>}
@@ -434,6 +518,17 @@ export default function StudioVideoGenerator({
         </div>
       </Section>
 
+      {/* Render Video */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <p className="text-sm font-semibold text-gray-900 mb-1">🎬 Render Video</p>
+        <p className="text-xs text-gray-400 mb-4">Submit to the AWS render pipeline to generate your final video.</p>
+        <Button onClick={handleRenderVideo} disabled={submittingRender || !photos.length}
+          className="w-full bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl gap-2 h-11">
+          {submittingRender
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
+            : <><Play className="w-4 h-4" /> Render Video</>}
+        </Button>
+      </div>
     </div>
   );
 }
