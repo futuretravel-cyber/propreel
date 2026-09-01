@@ -3,6 +3,8 @@ import { uploadToS3 } from "@/lib/awsS3";
 
 let cachedApiKey = null;
 
+const ARCHITECTURAL_LOCK_PROMPT = `[SYSTEM OVERRIDE: 100% PIXEL, WALL, & GEOMETRY LOCK]. Absolute coordinate lock: every pixel, object, window frame, staircase, fixture, and brick layout from the source image must remain strictly stationary in its exact original placement. ONLY apply the requested edit layer (e.g., paint existing walls fresh white while keeping all bricks, furniture, and structures completely untouched). 🚫 ABSOLUTELY FORBIDDEN: Changing room layout, replacing furniture, shifting windows, altering architecture, or generating a different room. `;
+
 async function getApiKey() {
   if (cachedApiKey) return cachedApiKey;
   const settings = await base44.entities.AppSetting.list();
@@ -34,9 +36,9 @@ export async function generateFalImage(imageUrl, prompt, strength, folder = "ai-
       Authorization: `Key ${apiKey}`,
     },
     body: JSON.stringify({
-      prompt,
+      prompt: ARCHITECTURAL_LOCK_PROMPT + prompt,
       image_url: imageUrl,
-      strength,
+      strength: 0.38,
       num_images: 1,
     }),
   });
