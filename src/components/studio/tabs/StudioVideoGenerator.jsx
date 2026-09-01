@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
+import { generatePollyVoiceover } from "@/lib/awsPolly";
 import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
@@ -15,13 +16,13 @@ import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studi
 const MODAL_RENDER_ENDPOINT = "https://futuretravel--propreel-render-engine-grok-tiers-fastapi-entry.modal.run/v1/api/render";
 
 const POLLY_VOICES = [
-  { id: "Joanna", name: "Joanna", desc: "US Female" },
-  { id: "Kendra", name: "Kendra", desc: "US Female" },
-  { id: "Justin", name: "Justin", desc: "US Male Child" },
-  { id: "Kevin",  name: "Kevin",  desc: "Male Child" },
-  { id: "Amy",    name: "Amy",    desc: "British Female" },
-  { id: "Brian",  name: "Brian",  desc: "British Male" },
-  { id: "Ayanda", name: "Ayanda", desc: "South African English Female" },
+  { id: "Joanna",  name: "Joanna",  desc: "US Female" },
+  { id: "Kendra",  name: "Kendra",  desc: "US Female" },
+  { id: "Gregory", name: "Gregory", desc: "US Male" },
+  { id: "Stephen", name: "Stephen", desc: "US Male" },
+  { id: "Amy",     name: "Amy",     desc: "British Female" },
+  { id: "Brian",   name: "Brian",   desc: "British Male" },
+  { id: "Ayanda",  name: "Ayanda",  desc: "South African Female" },
 ];
 
 function Section({ sectionKey, label, icon: Icon, desc, children, defaultOpen = false }) {
@@ -90,6 +91,7 @@ export default function StudioVideoGenerator({
   const [rendering, setRendering] = useState(false);
   const [submittingRender, setSubmittingRender] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
+  const [voiceoverApproved, setVoiceoverApproved] = useState(false);
 
   const handleUploadPhotos = async (e) => {
     const files = Array.from(e.target.files);
@@ -125,13 +127,13 @@ export default function StudioVideoGenerator({
     if (!voiceoverScript.trim()) return;
     setRendering(true);
     try {
-      const result = await base44.integrations.Core.GenerateSpeech({ text: voiceoverScript, language_code: "en" });
-      const audioUrl = result.url;
+      const audioUrl = await generatePollyVoiceover(voiceoverScript, narratorVoice);
       setVoiceoverUrl(audioUrl);
-      await base44.entities.Project.update(projectId, { voiceover_url: audioUrl, voiceover_script: voiceoverScript });
-      toast({ title: "Voiceover generated!" });
-    } catch {
-      toast({ title: "Voiceover failed", variant: "destructive" });
+      setVoiceoverApproved(false);
+      await base44.entities.Project.update(projectId, { voiceover_url: audioUrl, voiceover_script: voiceoverScript, voiceover_voice: narratorVoice });
+      toast({ title: "Voiceover generated! Preview and approve to continue." });
+    } catch (e) {
+      toast({ title: "Voiceover failed", description: e.message, variant: "destructive" });
     }
     setRendering(false);
   };
@@ -143,6 +145,7 @@ export default function StudioVideoGenerator({
         prompt: `Write a professional South African real estate voiceover script for: ${project?.name || "property listing"}. About ${photos.length * 4} seconds when read aloud. Use South African English. No stage directions. End with a call to action. Return ONLY the script text.`,
       });
       setVoiceoverScript(typeof result === "string" ? result.trim() : "");
+      setVoiceoverApproved(false);
     } catch {}
     setGeneratingScript(false);
   };
@@ -154,6 +157,7 @@ export default function StudioVideoGenerator({
 
   const handleSelectNarrator = (voiceId) => {
     setNarratorVoice(voiceId);
+    setVoiceoverApproved(false);
     base44.entities.Project.update(projectId, { voiceover_voice: voiceId });
   };
 
@@ -262,7 +266,7 @@ export default function StudioVideoGenerator({
         <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
           <p className="text-sm font-semibold text-purple-900 mb-2">📝 Property Description Available</p>
           <p className="text-xs text-purple-700 line-clamp-3">{propertyDescription}</p>
-          <button onClick={() => setVoiceoverScript(propertyDescription)} className="mt-2 text-xs text-purple-700 font-semibold hover:underline">
+          <button onClick={() => { setVoiceoverScript(propertyDescription); setVoiceoverApproved(false); }} className="mt-2 text-xs text-purple-700 font-semibold hover:underline">
             → Use as voiceover script
           </button>
         </div>
@@ -309,7 +313,7 @@ export default function StudioVideoGenerator({
                 {generatingScript ? "Generating..." : "AI Write"}
               </button>
             </div>
-            <textarea value={voiceoverScript} onChange={e => setVoiceoverScript(e.target.value)}
+            <textarea value={voiceoverScript} onChange={e => { setVoiceoverScript(e.target.value); setVoiceoverApproved(false); }}
               placeholder="Write or generate your voiceover script..."
               rows={4} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none outline-none focus:ring-1 focus:ring-purple-700 placeholder:text-gray-400" />
           </div>
@@ -336,9 +340,15 @@ export default function StudioVideoGenerator({
           </Button>
           {voiceoverUrl && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-              <p className="text-xs font-semibold text-emerald-800 mb-2">✓ Voiceover ready</p>
+              <p className="text-xs font-semibold text-emerald-800 mb-2">{voiceoverApproved ? "✓ Voiceover approved" : "✓ Voiceover ready — preview and approve"}</p>
               <audio controls src={voiceoverUrl} className="w-full" style={{ height: "36px" }} />
-              <a href={voiceoverUrl} download="voiceover.mp3" className="text-[10px] text-purple-700 underline mt-1 block">Download MP3</a>
+              <div className="flex items-center gap-3 mt-2">
+                <button onClick={() => setVoiceoverApproved(true)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${voiceoverApproved ? "bg-emerald-600 text-white" : "bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-50"}`}>
+                  <Check className="w-3.5 h-3.5" /> {voiceoverApproved ? "Approved" : "Approve Voiceover"}
+                </button>
+                <a href={voiceoverUrl} download="voiceover.mp3" className="text-[10px] text-purple-700 underline">Download MP3</a>
+              </div>
             </div>
           )}
         </div>
@@ -427,12 +437,15 @@ export default function StudioVideoGenerator({
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
         <p className="text-sm font-semibold text-gray-900 mb-1">🎬 Render Video</p>
         <p className="text-xs text-gray-400 mb-4">Submit to the Modal render engine to generate your final video.</p>
-        <Button onClick={handleRenderVideo} disabled={submittingRender || !photos.length}
+        <Button onClick={handleRenderVideo} disabled={submittingRender || !photos.length || (!!voiceoverUrl && !voiceoverApproved)}
           className="w-full bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl gap-2 h-11">
           {submittingRender
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
             : <><Play className="w-4 h-4" /> Render Video</>}
         </Button>
+        {voiceoverUrl && !voiceoverApproved && (
+          <p className="text-xs text-amber-600 mt-2 text-center">⚠️ Preview and approve the voiceover above before rendering.</p>
+        )}
       </div>
     </div>
   );
