@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { User, CreditCard, Bell, Zap, ExternalLink, Eye, EyeOff } from "lucide-react";
+import { User, CreditCard, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -9,7 +9,6 @@ import { useToast } from "@/components/ui/use-toast";
 
 const tabs = [
   { key: "profile", label: "Profile", icon: User },
-  { key: "integrations", label: "Integrations", icon: Zap },
   { key: "billing", label: "Billing", icon: CreditCard },
   { key: "notifications", label: "Notifications", icon: Bell },
 ];
@@ -21,17 +20,6 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState({ full_name: "", phone: "", company: "" });
   const [notifs, setNotifs] = useState({ video_ready: true, weekly_summary: false, product_updates: true });
-  const [showKeys, setShowKeys] = useState({});
-  const [keys, setKeys] = useState({
-    elevenlabs: localStorage.getItem("elevenlabs_api_key") || "",
-    heygen: localStorage.getItem("heygen_api_key") || "",
-  });
-
-  const saveKey = (service) => {
-    localStorage.setItem(`${service}_api_key`, keys[service]);
-    toast({ title: `${service.charAt(0).toUpperCase() + service.slice(1)} API key saved!` });
-  };
-
   useEffect(() => {
     if (user) {
       setProfile({ full_name: user.full_name || "", phone: user.phone || "", company: user.company || "" });
@@ -97,68 +85,6 @@ export default function Settings() {
           <Button onClick={saveProfile} disabled={saving} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl h-11 px-6">
             {saving ? "Saving..." : "Save changes"}
           </Button>
-        </div>
-      )}
-
-      {tab === "integrations" && (
-        <div className="space-y-4">
-          {[
-            {
-              key: "elevenlabs",
-              name: "ElevenLabs",
-              desc: "Ultra-realistic AI voice narration for property videos. Free plan includes 10,000 chars/month.",
-              link: "https://elevenlabs.io",
-              linkLabel: "Get API key at elevenlabs.io",
-              color: "#7c3aed",
-            },
-            {
-              key: "heygen",
-              name: "HeyGen",
-              desc: "AI talking avatar videos — a virtual presenter reads your voiceover on screen.",
-              link: "https://app.heygen.com/settings?nav=API",
-              linkLabel: "Get API key at heygen.com",
-              color: "#9333ea",
-            },
-          ].map(service => (
-            <div key={service.key} className="bg-white rounded-2xl border border-gray-100 p-6">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: service.color }}>
-                  <Zap className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-[#0F082B] text-sm">{service.name}</h3>
-                  <p className="text-xs text-[#606060]">{service.desc}</p>
-                </div>
-                {keys[service.key] && (
-                  <span className="ml-auto text-xs bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1 rounded-full">✓ Connected</span>
-                )}
-              </div>
-              <a href={service.link} target="_blank" rel="noreferrer" className="text-xs text-purple-700 flex items-center gap-1 hover:underline mb-3">
-                {service.linkLabel} <ExternalLink className="w-3 h-3" />
-              </a>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Input
-                    type={showKeys[service.key] ? "text" : "password"}
-                    value={keys[service.key]}
-                    onChange={e => setKeys(k => ({ ...k, [service.key]: e.target.value }))}
-                    placeholder={`Enter ${service.name} API key...`}
-                    className="rounded-xl h-10 pr-10 text-sm"
-                  />
-                  <button
-                    onClick={() => setShowKeys(s => ({ ...s, [service.key]: !s[service.key] }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showKeys[service.key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                <Button onClick={() => saveKey(service.key)} disabled={!keys[service.key]} className="bg-purple-700 hover:bg-purple-800 text-white rounded-xl px-5">
-                  Save
-                </Button>
-              </div>
-            </div>
-          ))}
-
         </div>
       )}
 
