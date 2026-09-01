@@ -84,11 +84,15 @@ export async function uploadToS3(file, keyPrefix = "uploads") {
   });
 
   try {
+    // Convert File/Blob to ArrayBuffer — avoids "e.getReader is not a function"
+    // TypeError that occurs when the SDK tries to treat the File as a ReadableStream
+    const bodyBuffer = await file.arrayBuffer();
+
     await s3.send(
       new PutObjectCommand({
         Bucket: config.bucket,
         Key: key,
-        Body: file,
+        Body: bodyBuffer,
         ContentType: contentType,
       })
     );
