@@ -119,7 +119,7 @@
     },
     "brand_kit_id": {
       "type": "string",
-      "description": "Applied brand kit ID"
+      "description": "Applied agent profile branding ID"
     },
     "intro_template": {
       "type": "string",
@@ -142,6 +142,10 @@
     "video_url": {
       "type": "string",
       "description": "Generated video URL (if server-rendered)"
+    },
+    "render_job_id": {
+      "type": "string",
+      "description": "Modal render engine job ID for status tracking"
     },
     "credits_used": {
       "type": "number",

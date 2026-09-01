@@ -32,6 +32,13 @@ export default function ProjectDetail() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    const unsubscribe = base44.entities.Project.subscribe((event) => {
+      if (event.id === id && event.type !== "delete") {
+        setProject((prev) => prev ? { ...prev, ...event.data } : prev);
+      }
+    });
+    return unsubscribe;
   }, [id]);
 
   if (loading) {
@@ -91,25 +98,38 @@ export default function ProjectDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Video / Slideshow player */}
         <div className="lg:col-span-2">
-          {project.status === "ready" && slideshowPhotos.length > 0 ? (
+          {project.status === "ready" && (project.video_url || slideshowPhotos.length > 0) ? (
             <>
-              <SlideshowPlayer
-                photos={slideshowPhotos}
-                voiceoverUrl={project.voiceover_url}
-                musicUrl={project.music_url}
-                brandKit={brandKit}
-                introTemplate={project.intro_template}
-                outroTemplate={project.outro_template}
-                heading={project.intro_heading || project.name}
-                subheading={project.intro_subheading}
-                orientation={project.orientation}
-                clipDuration={project.clip_duration || 5}
-              />
+              {project.video_url ? (
+                <div className="bg-black rounded-2xl overflow-hidden">
+                  <video controls src={project.video_url} className="w-full" />
+                </div>
+              ) : (
+                <SlideshowPlayer
+                  photos={slideshowPhotos}
+                  voiceoverUrl={project.voiceover_url}
+                  musicUrl={project.music_url}
+                  brandKit={brandKit}
+                  introTemplate={project.intro_template}
+                  outroTemplate={project.outro_template}
+                  heading={project.intro_heading || project.name}
+                  subheading={project.intro_subheading}
+                  orientation={project.orientation}
+                  clipDuration={project.clip_duration || 5}
+                />
+              )}
 
               {/* Download & Share */}
               <div className="mt-4 bg-white rounded-2xl border border-gray-100 p-4">
                 <h3 className="font-semibold text-[#0F082B] mb-3 text-sm">Download</h3>
                 <div className="flex flex-wrap gap-2">
+                  {project.video_url && (
+                    <a href={project.video_url} download="propreel-video.mp4" target="_blank" rel="noreferrer">
+                      <Button variant="outline" size="sm" className="rounded-xl gap-2">
+                        <Download className="w-4 h-4" /> Video (MP4)
+                      </Button>
+                    </a>
+                  )}
                   {project.voiceover_url && (
                     <a href={project.voiceover_url} download="voiceover.mp3" target="_blank" rel="noreferrer">
                       <Button variant="outline" size="sm" className="rounded-xl gap-2">
@@ -220,7 +240,7 @@ export default function ProjectDetail() {
               )}
               {brandKit && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-[#606060]">Brand Kit</span>
+                  <span className="text-[#606060]">Agent Profile Branding</span>
                   <span className="font-medium text-[#0F082B] truncate max-w-[120px]">{brandKit.name}</span>
                 </div>
               )}

@@ -12,6 +12,8 @@ import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
 
+const MODAL_RENDER_ENDPOINT = "https://futuretravel--propreel-render-engine-grok-tiers-fastapi-entry.modal.run/v1/api/render";
+
 const POLLY_VOICES = [
   { id: "Joanna", name: "Joanna", desc: "US Female" },
   { id: "Kendra", name: "Kendra", desc: "US Female" },
@@ -163,29 +165,24 @@ export default function StudioVideoGenerator({
     setSubmittingRender(true);
     try {
       const settings = await base44.entities.AppSetting.list();
-      const renderApiUrl = settings?.[0]?.aws_render_api_url;
-      if (!renderApiUrl) {
-        toast({ title: "Render API not configured", description: "Ask an admin to set the AWS Render API URL.", variant: "destructive" });
-        setSubmittingRender(false);
-        return;
-      }
+      const renderApiUrl = settings?.[0]?.aws_render_api_url || MODAL_RENDER_ENDPOINT;
 
       const payload = {
-        project_id: projectId,
+        record_id: projectId,
+        tier: videoTier,
+        orientation: orientation,
         images: photos,
-        aspect_ratio: orientation,
-        video_tier: videoTier,
-        video_duration: videoDuration,
+        voiceover_text: voiceoverScript || "",
         voice_id: narratorVoice || "Joanna",
+        include_agent_branding: selectedBrandKit?.include_agent_branding !== false,
+        video_duration: videoDuration,
         voiceover_url: voiceoverUrl || "",
-        voiceover_script: voiceoverScript || "",
         music_url: musicUrl || "",
         headline_text: heading || project?.name || "",
         agent_headshot: selectedBrandKit?.profile_photo_url || "",
         company_logo: selectedBrandKit?.logo_url || "",
         agent_name: selectedBrandKit?.agent_name || "",
         agent_phone: selectedBrandKit?.phone || "",
-        include_agent_branding: selectedBrandKit?.include_agent_branding !== false,
       };
 
       const res = await fetch(renderApiUrl, {
@@ -195,8 +192,14 @@ export default function StudioVideoGenerator({
       });
       if (!res.ok) throw new Error(`Status ${res.status}`);
 
-      await base44.entities.Project.update(projectId, { status: "processing" });
-      toast({ title: "✅ Render job submitted!" });
+      const responseData = await res.json().catch(() => ({}));
+      const jobId = responseData.job_id || responseData.task_id || responseData.id;
+
+      await base44.entities.Project.update(projectId, {
+        status: "processing",
+        ...(jobId ? { render_job_id: jobId } : {}),
+      });
+      toast({ title: "✅ Render job submitted!", description: jobId ? `Job ID: ${jobId}` : "Your video will appear here when ready." });
     } catch (e) {
       toast({ title: `Render failed: ${e.message}`, variant: "destructive" });
     }
@@ -423,7 +426,7 @@ export default function StudioVideoGenerator({
       {/* Render Video */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
         <p className="text-sm font-semibold text-gray-900 mb-1">🎬 Render Video</p>
-        <p className="text-xs text-gray-400 mb-4">Submit to the AWS render pipeline to generate your final video.</p>
+        <p className="text-xs text-gray-400 mb-4">Submit to the Modal render engine to generate your final video.</p>
         <Button onClick={handleRenderVideo} disabled={submittingRender || !photos.length}
           className="w-full bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl gap-2 h-11">
           {submittingRender
