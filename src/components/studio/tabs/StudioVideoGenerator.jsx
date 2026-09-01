@@ -9,11 +9,20 @@ import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
 import { generatePollyVoiceover } from "@/lib/awsPolly";
+import { callGrokVision } from "@/lib/grokVision";
 import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
 
 const MODAL_RENDER_ENDPOINT = "https://futuretravel--propreel-render-engine-grok-tiers-fastapi-entry.modal.run/v1/api/render";
+
+const DURATION_WORD_COUNTS = {
+  20: { min: 45, max: 50 },
+  30: { min: 68, max: 75 },
+  40: { min: 90, max: 100 },
+  60: { min: 135, max: 150 },
+  90: { min: 200, max: 225 },
+};
 
 const POLLY_VOICES = [
   { id: "Joanna",  name: "Joanna",  desc: "US Female" },
@@ -141,12 +150,26 @@ export default function StudioVideoGenerator({
   const handleGenerateScript = async () => {
     setGeneratingScript(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Write a professional South African real estate voiceover script for: ${project?.name || "property listing"}. About ${photos.length * 4} seconds when read aloud. Use South African English. No stage directions. End with a call to action. Return ONLY the script text.`,
-      });
-      setVoiceoverScript(typeof result === "string" ? result.trim() : "");
+      const wordCounts = DURATION_WORD_COUNTS[videoDuration] || { min: 68, max: 75 };
+      const targetWordCount = Math.round((wordCounts.min + wordCounts.max) / 2);
+
+      const systemPrompt = `You are a professional voiceover narrator for luxury real estate commercial videos. Analyze the property photos and specs. Write an elegant, captivating voiceover script intended for narration.
+STRICT REQUIREMENT: The script MUST be exactly ${targetWordCount} words long so that it fits a ${videoDuration}-second video when spoken naturally. Do not include camera directions, speaker labels, or scene notes—return ONLY the spoken script text.`;
+
+      const userPrompt = `Property: ${project?.name || "Property listing"}
+Video Duration: ${videoDuration} seconds
+Target Word Count: ${targetWordCount} words (range ${wordCounts.min}-${wordCounts.max})
+
+${propertyDescription ? `Property context: ${propertyDescription}` : ""}
+
+Write the voiceover script now. Return ONLY the spoken script text, exactly ${targetWordCount} words.`;
+
+      const text = await callGrokVision(systemPrompt, userPrompt, photos);
+      setVoiceoverScript(text);
       setVoiceoverApproved(false);
-    } catch {}
+    } catch (e) {
+      toast({ title: "Script generation failed", description: e.message, variant: "destructive" });
+    }
     setGeneratingScript(false);
   };
 

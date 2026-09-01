@@ -18,6 +18,7 @@ export default function AWSSettingsTab() {
   const [s3BucketOutputs, setS3BucketOutputs] = useState("");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [xaiApiKey, setXaiApiKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -35,6 +36,7 @@ export default function AWSSettingsTab() {
         setS3BucketOutputs(existing.aws_s3_bucket_outputs || "");
         setAccessKeyId(existing.aws_access_key_id || "");
         setSecretAccessKey(existing.aws_secret_access_key || "");
+        setXaiApiKey(existing.xai_api_key || "");
       }
     }).finally(() => setLoading(false));
   }, []);
@@ -42,7 +44,7 @@ export default function AWSSettingsTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_url: webhookUrl, aws_webhook_secret: webhookSecret, aws_s3_region: s3Region, aws_s3_bucket_raw: s3BucketRaw, aws_s3_bucket_outputs: s3BucketOutputs, aws_access_key_id: accessKeyId, aws_secret_access_key: secretAccessKey };
+      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_url: webhookUrl, aws_webhook_secret: webhookSecret, aws_s3_region: s3Region, aws_s3_bucket_raw: s3BucketRaw, aws_s3_bucket_outputs: s3BucketOutputs, aws_access_key_id: accessKeyId, aws_secret_access_key: secretAccessKey, xai_api_key: xaiApiKey };
       if (settingId) {
         await base44.entities.AppSetting.update(settingId, data);
       } else {
@@ -141,6 +143,18 @@ export default function AWSSettingsTab() {
             <Label htmlFor="aws_secret_access_key" className="text-xs font-semibold text-[#0F082B]">AWS Secret Access Key</Label>
             <Input id="aws_secret_access_key" type="password" value={secretAccessKey} onChange={(e) => setSecretAccessKey(e.target.value)} placeholder="Secret access key" className="mt-1.5 rounded-xl" />
           </div>
+        </div>
+      </div>
+
+      {/* xAI Grok API Configuration */}
+      <div className="border-t border-gray-100 pt-5 mt-5">
+        <h4 className="text-xs font-bold text-[#0F082B] mb-1 flex items-center gap-2">
+          <Server className="w-3.5 h-3.5 text-[#21ABB5]" /> xAI Grok Vision API
+        </h4>
+        <p className="text-xs text-[#606060] mb-4">API key for Grok Vision-powered AI generation (descriptions, social media, voiceover scripts).</p>
+        <div>
+          <Label htmlFor="xai_api_key" className="text-xs font-semibold text-[#0F082B]">xAI API Key</Label>
+          <Input id="xai_api_key" type="password" value={xaiApiKey} onChange={(e) => setXaiApiKey(e.target.value)} placeholder="xai-..." className="mt-1.5 rounded-xl" />
         </div>
       </div>
 

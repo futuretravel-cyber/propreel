@@ -14,7 +14,7 @@ import MusicLibrary from "@/components/admin/MusicLibrary";
 import AIVideoTest from "@/components/admin/AIVideoTest";
 import AWSSettingsTab from "@/components/admin/AWSSettingsTab";
 
-const TABS = ["Overview", "Projects", "Users", "Reviews", "Music Library", "Contact Submissions", "AI Video Test", "AWS Settings"];
+const TABS = ["Overview", "Projects", "Users", "Reviews", "Music Library", "Contact Submissions", "AI Video Test", "API & AWS Settings"];
 
 const reviewStatusConfig = {
   pending: { label: "Pending", color: "bg-amber-100 text-amber-700" },
@@ -358,7 +358,7 @@ export default function Admin() {
           {tab === "AI Video Test" && <AIVideoTest />}
 
           {/* AWS Settings Tab */}
-          {tab === "AWS Settings" && <AWSSettingsTab />}
+          {tab === "API & AWS Settings" && <AWSSettingsTab />}
 
           {/* Contact Submissions Tab */}
           {tab === "Contact Submissions" && (

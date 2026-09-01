@@ -6,6 +6,7 @@ import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
+import { callGrokVision } from "@/lib/grokVision";
 
 const PLATFORMS = [
   { key: "facebook",   label: "Facebook",   emoji: "📘", maxChars: 500,  desc: "Engaging post for Facebook property groups.", imagePrompt: "Facebook post image 1200x630px landscape, premium South African real estate marketing graphic, clean modern design" },
@@ -69,29 +70,38 @@ export default function StudioSocialMedia({ photos: projectPhotos, project, list
     }
     setGenerating(true);
     const plat = PLATFORMS.find(p => p.key === selectedPlatform);
-    const prompt = `Write a compelling ${plat.label} social media post for a South African real estate listing.
+
+    const platformRules = {
+      instagram: "Max 300 chars. Punchy caption with line breaks. Include 5-8 relevant real estate hashtags.",
+      facebook: "Max 500 chars. Engaging story-style post for community groups. Include a call to action.",
+      whatsapp: "Max 400 chars. Direct, personal broadcast message format with key highlights and emoji bullet points.",
+      linkedin: "Max 700 chars. Professional announcement tone. Focus on investment and market potential.",
+      twitter: "Max 240 chars. Concise tweet with price, location, beds/baths, and one key highlight.",
+      tiktok: "Max 300 chars. Casual, trendy, youthful voiceover-style caption.",
+      newsletter: "Max 1000 chars. Comprehensive property feature section for monthly email blasts.",
+    };
+
+    const systemPrompt = `You are an expert South African real estate social media copywriter. You create platform-optimized posts that drive engagement and enquiries. STRICTLY validate that your response does not exceed the platform's character limit before returning it.`;
+
+    const userPrompt = `Write a ${plat.label} post for a South African real estate listing.
 
 ${buildPropertyDetails()}
 
-Platform: ${plat.label} | Max characters: ${plat.maxChars}
-Requirements: ${plat.desc}
+Platform: ${plat.label}
+${platformRules[plat.key] || `Max ${plat.maxChars} chars`}
 
 RULES:
 - Write in South African English
 - Do NOT mention the street address
-- Include relevant SA property hashtags for Instagram and TikTok
-- For WhatsApp: feel personal, like from an agent to a client
-- For LinkedIn: professional tone, mention investment value
-- For Facebook: engaging, include a question
+- STRICTLY ensure the response does NOT exceed ${plat.maxChars} characters
 - Return ONLY the post text`;
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({ prompt });
-      const text = typeof result === "string" ? result.trim() : "";
+      const text = await callGrokVision(systemPrompt, userPrompt, allPhotos);
       setPosts(prev => ({ ...prev, [selectedPlatform]: text }));
       setEditedPost(text);
-    } catch {
-      toast({ title: "Generation failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Generation failed", description: e.message, variant: "destructive" });
     }
     setGenerating(false);
   };

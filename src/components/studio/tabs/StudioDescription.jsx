@@ -7,6 +7,7 @@ import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
+import { callGrokVision } from "@/lib/grokVision";
 
 const TONES = [
   { key: "professional", label: "👔 Professional",          desc: "Clear, factual and authoritative." },
@@ -127,28 +128,31 @@ export default function StudioDescription({ project, listing, onDescriptionGener
     setGenerating(true);
     const toneLabel = TONES.find(t => t.key === tone)?.label?.replace(/^[^\s]+ /, "") || "Professional";
     const amenityText = amenities.map(a => `${a.name} (${a.type}) — ${a.distance_km}km away`).join(", ");
-    const prompt = `You are a South African real estate copywriter. Write a compelling ${toneLabel}-tone property listing description.
 
-Property: ${propertyType} | Beds: ${bedrooms || "N/A"} | Baths: ${bathrooms || "N/A"} | Garages: ${garages || "N/A"} | Price: R${formatRand(price) || "POA"} | Erf: ${erfSize ? erfSize + "m²" : "N/A"} | Floor: ${floorSize ? floorSize + "m²" : "N/A"}
+    const systemPrompt = `You are an expert South African real estate copywriter. Analyze the provided property specs, features, attached image URLs, and specified tone. Write a compelling, highly converting listing description tailored for South African home buyers. Use local real estate terminology (e.g., braai area, erf size, security estate, Rand pricing). Structure the response with:
+- Catchy Headline
+- Engaging Intro Paragraph
+- Key Highlights & Features (bullet points)
+- Detailed Property Walkthrough
+- Call to Action.`;
+
+    const userPrompt = `Property: ${propertyType} | Beds: ${bedrooms || "N/A"} | Baths: ${bathrooms || "N/A"} | Garages: ${garages || "N/A"} | Price: R${formatRand(price) || "POA"} | Erf: ${erfSize ? erfSize + "m²" : "N/A"} | Floor: ${floorSize ? floorSize + "m²" : "N/A"}
 Features: ${features.join(", ") || "N/A"}
 Nearby: ${amenityText || "N/A"}
+Tone: ${toneLabel}
 ${aiPrompt ? `Agent instructions: ${aiPrompt}` : ""}
 
 RULES:
-- ${toneLabel} tone throughout
 - DO NOT mention the street address
 - South African English (metres, rand, braai, etc.)
-- 3-4 compelling paragraphs
-- End with a clear call to action
 - Return ONLY the description text`;
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({ prompt, ...(attachedPhotos.length > 0 ? { file_urls: attachedPhotos } : {}) });
-      const text = typeof result === "string" ? result.trim() : "";
+      const text = await callGrokVision(systemPrompt, userPrompt, attachedPhotos);
       setDescription(text);
       if (onDescriptionGenerated) onDescriptionGenerated(text);
-    } catch {
-      toast({ title: "Generation failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Generation failed", description: e.message, variant: "destructive" });
     }
     setGenerating(false);
   };
@@ -163,17 +167,49 @@ RULES:
   const toggleFeature = (f) => setFeatures(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
 
   const downloadPortal = (portal) => {
-    const lines = portal === "p24"
-      ? ["PROPERTY24 LISTING EXPORT","=========================",`Property Type: ${propertyType}`,`Bedrooms: ${bedrooms || "N/A"}`,`Bathrooms: ${bathrooms || "N/A"}`,`Garages: ${garages || "N/A"}`,`Erf Size: ${erfSize ? erfSize + " m²" : "N/A"}`,`Floor Size: ${floorSize ? floorSize + " m²" : "N/A"}`,`Asking Price: ${price ? "R " + formatRand(price) : "POA"}`,`Suburb: ${suburb}`,`City: ${city}`,`Province: ${province}`,"","FEATURES:",...features.map(f => `• ${f}`),"","LISTING DESCRIPTION:",description || "(No description generated yet)"]
-      : ["PRIVATE PROPERTY LISTING EXPORT","================================",`Type: ${propertyType}`,`Beds: ${bedrooms || "N/A"} | Baths: ${bathrooms || "N/A"} | Garages: ${garages || "N/A"}`,`Size: ${floorSize ? floorSize + "m² floor" : ""} ${erfSize ? "/ " + erfSize + "m² erf" : ""}`,`Price: ${price ? "R " + formatRand(price) : "POA"}`,`Location: ${[suburb, city, province].filter(Boolean).join(", ")}`,"",`Key Features: ${features.join(" | ") || "N/A"}`,"","Description:",description || "(No description generated yet)"];
-    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = portal === "p24" ? "property24-listing.txt" : "private-property-listing.txt";
-    a.click();
-    URL.revokeObjectURL(url);
-    toast({ title: portal === "p24" ? "Property24 export downloaded!" : "Private Property export downloaded!" });
+    if (portal === "p24") {
+      // Property24: stripped HTML, clean paragraph breaks, standardized bullets, no forbidden symbols
+      const cleanDesc = (description || "")
+        .replace(/<[^>]*>/g, "")
+        .replace(/[•●▪◆♦]/g, "-")
+        .replace(/\r\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      const blob = new Blob([cleanDesc || "(No description generated yet)"], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "property24-listing.txt";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Property24 export downloaded!" });
+    } else {
+      // Private Property: structured plain text with bold markdown headings and bulleted feature lists
+      const lines = [
+        `**${propertyType} for Sale in ${[suburb, city, province].filter(Boolean).join(", ")}**`,
+        "",
+        `**Price:** ${price ? "R " + formatRand(price) : "POA"}`,
+        `**Bedrooms:** ${bedrooms || "N/A"}`,
+        `**Bathrooms:** ${bathrooms || "N/A"}`,
+        `**Garages:** ${garages || "N/A"}`,
+        `**Erf Size:** ${erfSize ? erfSize + " m²" : "N/A"}`,
+        `**Floor Size:** ${floorSize ? floorSize + " m²" : "N/A"}`,
+        "",
+        "**Key Features:**",
+        ...(features.length ? features.map(f => `- ${f}`) : ["- N/A"]),
+        "",
+        "**Property Description:**",
+        description || "(No description generated yet)",
+      ];
+      const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "private-property-listing.txt";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Private Property export downloaded!" });
+    }
   };
 
   return (

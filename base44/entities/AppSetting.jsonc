@@ -40,6 +40,10 @@
     "aws_secret_access_key": {
       "type": "string",
       "description": "AWS IAM secret access key for S3 uploads"
+    },
+    "xai_api_key": {
+      "type": "string",
+      "description": "xAI Grok API key for vision-enabled AI generation (descriptions, social media, voiceover scripts)"
     }
   },
   "required": []
