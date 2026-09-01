@@ -3,12 +3,11 @@ import { uploadToS3 } from "@/lib/awsS3";
 
 let cachedApiKey = null;
 
-const ARCHITECTURAL_LOCK_PROMPT = "Architectural photography of the exact provided interior. STRICTLY PRESERVE all existing walls, brickwork, windows, stairs, and permanent fixtures. Only apply the requested surface change or virtual staging within the open floor space. ";
+const ARCHITECTURAL_LOCK_PROMPT = "[SYSTEM OVERRIDE: 100% PIXEL & GEOMETRY LOCK] Architectural preservation. Retain every original wall, brickwork, window frame, staircase, and fixture precisely. ";
 
-const NEGATIVE_PROMPT = "text, watermarks, signatures, letters, words, blurry, distorted geometry, extra rooms, structural mutation, changing staircases, shifting windows, hallucinated furniture.";
+const NEGATIVE_PROMPT = "text, watermarks, signatures, letters, words, blurry, distorted geometry, extra rooms, structural mutation, changing staircases, shifting windows, hallucinated built-in furniture, cupboards.";
 
-const MIN_STRENGTH = 0.25;
-const MAX_STRENGTH = 0.35;
+const FORCED_STRENGTH = 0.28;
 
 async function getApiKey() {
   if (cachedApiKey) return cachedApiKey;
@@ -44,7 +43,7 @@ export async function generateFalImage(imageUrl, prompt, strength, folder = "ai-
       prompt: ARCHITECTURAL_LOCK_PROMPT + prompt,
       negative_prompt: NEGATIVE_PROMPT,
       image_url: imageUrl,
-      strength: Math.min(MAX_STRENGTH, Math.max(MIN_STRENGTH, strength)),
+      strength: FORCED_STRENGTH,
       num_images: 1,
     }),
   });
