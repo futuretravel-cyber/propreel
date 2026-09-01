@@ -29,6 +29,8 @@ async function getS3Client() {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
       },
+      forcePathStyle: false, // Virtual-hosted style: https://<bucket>.s3.<region>.amazonaws.com
+      // AWS SDK v3 uses SigV4 signing by default — required for af-south-1
     });
   }
   return s3Client;
@@ -95,20 +97,36 @@ export async function uploadToS3(file, keyPrefix = "uploads") {
     console.log("[S3 Upload] Success:", url);
     return url;
   } catch (error) {
-    console.error("[S3 Upload] FAILED:", {
+    // Extract the exact AWS S3 error code and XML body for debugging
+    const awsErrorCode = error.name || error.Code || "Unknown";
+    const rawBody = error.$response?.body;
+    let xmlError = null;
+    if (rawBody) {
+      try { xmlError = typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody); } catch { xmlError = "(unparseable)"; }
+    }
+
+    console.error("[S3 Upload] FAILED — AWS Error Details:", {
+      // AWS error code: AccessDenied, SignatureDoesNotMatch, InvalidAccessKeyId, etc.
+      awsErrorCode,
+      awsErrorMessage: error.message,
+      // Full SDK metadata: httpStatusCode, requestId, cfId, extendedRequestId, attempts
+      metadata: error.$metadata,
+      // Raw S3 XML error body if available
+      rawXmlError: xmlError,
+      rawResponse: error.$response ? {
+        statusCode: error.$response.statusCode,
+        headers: error.$response.headers,
+      } : null,
+      // Full error for deep inspection
+      fullError: error,
+      // Request context
       bucket: config.bucket,
       region: config.region,
+      endpoint: `https://${config.bucket}.s3.${config.region}.amazonaws.com/${key}`,
       key,
       contentType,
       fileName: file.name,
       fileSize: file.size,
-      errorName: error.name,
-      errorMessage: error.message,
-      httpStatusCode: error.$metadata?.httpStatusCode,
-      requestId: error.$metadata?.requestId,
-      cfId: error.$metadata?.cfId,
-      extendedRequestId: error.$metadata?.extendedRequestId,
-      errorStack: error.stack,
     });
 
     const status = error.$metadata?.httpStatusCode;
@@ -116,11 +134,11 @@ export async function uploadToS3(file, keyPrefix = "uploads") {
     if (!status || status === 0 || error.name === "NetworkError") {
       friendlyMessage = "Upload failed: S3 CORS or network error. Ensure S3 CORS includes https://propreel.co.za, https://www.propreel.co.za, and https://propreel.base44.app.";
     } else if (status === 403) {
-      friendlyMessage = "Upload failed: Please check AWS credentials / S3 permissions.";
+      friendlyMessage = `Upload failed (${awsErrorCode}): Please check AWS credentials / S3 permissions.`;
     } else if (status === 404) {
       friendlyMessage = "Upload failed: S3 bucket not found. Check bucket name in Admin settings.";
     } else {
-      friendlyMessage = `Upload failed (${status}): ${error.message || "Please check AWS credentials / S3 permissions."}`;
+      friendlyMessage = `Upload failed (${status} ${awsErrorCode}): ${error.message || "Please check AWS credentials / S3 permissions."}`;
     }
     throw new Error(friendlyMessage);
   }
