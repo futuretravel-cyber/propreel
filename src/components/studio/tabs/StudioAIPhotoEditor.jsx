@@ -71,7 +71,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const s3Url = await generateFalImage(originalPhoto, prompt, 0.70, "ai-edits");
+      const s3Url = await generateFalImage(originalPhoto, prompt, 0.25, "ai-edits");
       setResultPhoto(s3Url);
       toast({ title: "Edit complete!" });
     } catch (e) {

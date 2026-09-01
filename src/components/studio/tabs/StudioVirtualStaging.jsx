@@ -67,7 +67,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const s3Url = await generateFalImage(originalPhoto, style.prompt, 0.875, "virtual-staging");
+      const s3Url = await generateFalImage(originalPhoto, style.prompt, 0.30, "virtual-staging");
       setResultPhoto(s3Url);
       toast({ title: "Staging complete!" });
     } catch (e) {

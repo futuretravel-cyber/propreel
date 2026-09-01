@@ -3,11 +3,11 @@ import { uploadToS3 } from "@/lib/awsS3";
 
 let cachedApiKey = null;
 
-const ARCHITECTURAL_LOCK_PROMPT = `[SYSTEM OVERRIDE: 100% PIXEL, WALL, & GEOMETRY LOCK]. Absolute coordinate lock: every pixel, object, window frame, staircase, fixture, and brick layout from the source image must remain strictly stationary in its exact original placement. ONLY apply the requested edit layer (e.g., paint existing walls fresh white while keeping all bricks, furniture, and structures completely untouched). 🚫 ABSOLUTELY FORBIDDEN: Changing room layout, replacing furniture, shifting windows, altering architecture, or generating a different room. `;
+const ARCHITECTURAL_LOCK_PROMPT = "Architectural photography of the exact provided interior. STRICTLY PRESERVE all existing walls, brickwork, windows, stairs, and permanent fixtures. Only apply the requested surface change or virtual staging within the open floor space. ";
 
-const NEGATIVE_PROMPT = "text, watermarks, signatures, letters, words, blurry, distorted geometry, extra rooms, structural mutation, changing staircases, shifting windows, hallucinated built-in furniture.";
+const NEGATIVE_PROMPT = "text, watermarks, signatures, letters, words, blurry, distorted geometry, extra rooms, structural mutation, changing staircases, shifting windows, hallucinated furniture.";
 
-const MIN_STRENGTH = 0.28;
+const MIN_STRENGTH = 0.25;
 const MAX_STRENGTH = 0.35;
 
 async function getApiKey() {
