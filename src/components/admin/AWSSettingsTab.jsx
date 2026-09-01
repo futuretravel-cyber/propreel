@@ -13,6 +13,11 @@ export default function AWSSettingsTab() {
   const [cdnUrl, setCdnUrl] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
+  const [s3Region, setS3Region] = useState("");
+  const [s3BucketRaw, setS3BucketRaw] = useState("");
+  const [s3BucketOutputs, setS3BucketOutputs] = useState("");
+  const [accessKeyId, setAccessKeyId] = useState("");
+  const [secretAccessKey, setSecretAccessKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -25,6 +30,11 @@ export default function AWSSettingsTab() {
         setCdnUrl(existing.aws_cdn_base_url || "");
         setWebhookUrl(existing.aws_webhook_url || "");
         setWebhookSecret(existing.aws_webhook_secret || "");
+        setS3Region(existing.aws_s3_region || "");
+        setS3BucketRaw(existing.aws_s3_bucket_raw || "");
+        setS3BucketOutputs(existing.aws_s3_bucket_outputs || "");
+        setAccessKeyId(existing.aws_access_key_id || "");
+        setSecretAccessKey(existing.aws_secret_access_key || "");
       }
     }).finally(() => setLoading(false));
   }, []);
@@ -32,7 +42,7 @@ export default function AWSSettingsTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_url: webhookUrl, aws_webhook_secret: webhookSecret };
+      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_url: webhookUrl, aws_webhook_secret: webhookSecret, aws_s3_region: s3Region, aws_s3_bucket_raw: s3BucketRaw, aws_s3_bucket_outputs: s3BucketOutputs, aws_access_key_id: accessKeyId, aws_secret_access_key: secretAccessKey };
       if (settingId) {
         await base44.entities.AppSetting.update(settingId, data);
       } else {
@@ -101,6 +111,36 @@ export default function AWSSettingsTab() {
             placeholder="Shared secret for validating render-status callbacks"
             className="mt-1.5 rounded-xl"
           />
+        </div>
+      </div>
+
+      {/* S3 Storage Configuration */}
+      <div className="border-t border-gray-100 pt-5 mt-5">
+        <h4 className="text-xs font-bold text-[#0F082B] mb-1 flex items-center gap-2">
+          <Server className="w-3.5 h-3.5 text-[#21ABB5]" /> S3 Storage Configuration
+        </h4>
+        <p className="text-xs text-[#606060] mb-4">Credentials and bucket assignments for direct-to-S3 file uploads.</p>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="aws_s3_region" className="text-xs font-semibold text-[#0F082B]">S3 Region</Label>
+            <Input id="aws_s3_region" value={s3Region} onChange={(e) => setS3Region(e.target.value)} placeholder="af-south-1" className="mt-1.5 rounded-xl" />
+          </div>
+          <div>
+            <Label htmlFor="aws_s3_bucket_raw" className="text-xs font-semibold text-[#0F082B]">Raw Assets Bucket</Label>
+            <Input id="aws_s3_bucket_raw" value={s3BucketRaw} onChange={(e) => setS3BucketRaw(e.target.value)} placeholder="propreel-raw-assets" className="mt-1.5 rounded-xl" />
+          </div>
+          <div>
+            <Label htmlFor="aws_s3_bucket_outputs" className="text-xs font-semibold text-[#0F082B]">Video Outputs Bucket</Label>
+            <Input id="aws_s3_bucket_outputs" value={s3BucketOutputs} onChange={(e) => setS3BucketOutputs(e.target.value)} placeholder="propreel-video-outputs-sa" className="mt-1.5 rounded-xl" />
+          </div>
+          <div>
+            <Label htmlFor="aws_access_key_id" className="text-xs font-semibold text-[#0F082B]">AWS Access Key ID</Label>
+            <Input id="aws_access_key_id" value={accessKeyId} onChange={(e) => setAccessKeyId(e.target.value)} placeholder="AKIA..." className="mt-1.5 rounded-xl" />
+          </div>
+          <div>
+            <Label htmlFor="aws_secret_access_key" className="text-xs font-semibold text-[#0F082B]">AWS Secret Access Key</Label>
+            <Input id="aws_secret_access_key" type="password" value={secretAccessKey} onChange={(e) => setSecretAccessKey(e.target.value)} placeholder="Secret access key" className="mt-1.5 rounded-xl" />
+          </div>
         </div>
       </div>
 

@@ -17,6 +17,29 @@
     "aws_webhook_secret": {
       "type": "string",
       "description": "Shared secret used to validate incoming render-status webhook calls from AWS back to Base44"
+    },
+    "aws_s3_region": {
+      "type": "string",
+      "description": "AWS region for S3 storage operations",
+      "default": "af-south-1"
+    },
+    "aws_s3_bucket_raw": {
+      "type": "string",
+      "description": "S3 bucket for raw uploads: input images, photos, headshots, logos, and video source frames",
+      "default": "propreel-raw-assets"
+    },
+    "aws_s3_bucket_outputs": {
+      "type": "string",
+      "description": "S3 bucket for final rendered MP4 video outputs",
+      "default": "propreel-video-outputs-sa"
+    },
+    "aws_access_key_id": {
+      "type": "string",
+      "description": "AWS IAM access key ID for S3 uploads"
+    },
+    "aws_secret_access_key": {
+      "type": "string",
+      "description": "AWS IAM secret access key for S3 uploads"
     }
   },
   "required": []

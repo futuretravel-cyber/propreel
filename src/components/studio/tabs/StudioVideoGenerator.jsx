@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
@@ -105,7 +106,7 @@ export default function StudioVideoGenerator({
     setUploading(true);
     try {
       const urls = await Promise.all(filesToUpload.map(async f => {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file: f });
+        const file_url = await uploadToS3(f, "video-frames");
         return file_url;
       }));
       setUploadedPhotos(prev => [...prev, ...urls]);
