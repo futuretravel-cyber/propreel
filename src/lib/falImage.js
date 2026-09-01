@@ -5,6 +5,11 @@ let cachedApiKey = null;
 
 const ARCHITECTURAL_LOCK_PROMPT = `[SYSTEM OVERRIDE: 100% PIXEL, WALL, & GEOMETRY LOCK]. Absolute coordinate lock: every pixel, object, window frame, staircase, fixture, and brick layout from the source image must remain strictly stationary in its exact original placement. ONLY apply the requested edit layer (e.g., paint existing walls fresh white while keeping all bricks, furniture, and structures completely untouched). 🚫 ABSOLUTELY FORBIDDEN: Changing room layout, replacing furniture, shifting windows, altering architecture, or generating a different room. `;
 
+const NEGATIVE_PROMPT = "text, watermarks, signatures, letters, words, blurry, distorted geometry, extra rooms, structural mutation, changing staircases, shifting windows, hallucinated built-in furniture.";
+
+const MIN_STRENGTH = 0.28;
+const MAX_STRENGTH = 0.35;
+
 async function getApiKey() {
   if (cachedApiKey) return cachedApiKey;
   const settings = await base44.entities.AppSetting.list();
@@ -37,8 +42,9 @@ export async function generateFalImage(imageUrl, prompt, strength, folder = "ai-
     },
     body: JSON.stringify({
       prompt: ARCHITECTURAL_LOCK_PROMPT + prompt,
+      negative_prompt: NEGATIVE_PROMPT,
       image_url: imageUrl,
-      strength: 0.38,
+      strength: Math.min(MAX_STRENGTH, Math.max(MIN_STRENGTH, strength)),
       num_images: 1,
     }),
   });

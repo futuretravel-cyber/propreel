@@ -11,7 +11,7 @@ async function getApiKey() {
 }
 
 /**
- * Calls the xAI Grok Vision API (model: grok-2-vision-1212) with a system prompt,
+ * Calls the xAI Grok Vision API (model: grok-4.6) with a system prompt,
  * user text, and optional image URLs for vision analysis.
  *
  * @param {string} systemPrompt - System message directing the AI's behaviour
@@ -37,7 +37,7 @@ export async function callGrokVision(systemPrompt, userPrompt, imageUrls = []) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "grok-2-vision-1212",
+      model: "grok-4.6",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent },
