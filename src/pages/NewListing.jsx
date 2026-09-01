@@ -4,6 +4,7 @@ import { ArrowRight, ArrowLeft, Check, Upload, X, Wand2, Sparkles, Loader2, MapP
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { base44 } from "@/api/base44Client";
+import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import BulkPhotoEditor from "@/components/listings/BulkPhotoEditor";
 
@@ -177,8 +178,8 @@ IMPORTANT RULES:
     try {
       const uploaded = [];
       for (const file of files) {
-        const res = await base44.integrations.Core.UploadFile({ file });
-        uploaded.push(res.file_url);
+        const file_url = await uploadToS3(file, "listing-photos");
+        uploaded.push(file_url);
       }
       setPhotos(prev => [...prev, ...uploaded]);
     } catch {

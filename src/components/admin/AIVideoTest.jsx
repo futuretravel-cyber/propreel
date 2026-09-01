@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { Upload, Loader2, Download, Film, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
+import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 
 const MOTIONS = {
@@ -42,7 +43,7 @@ export default function AIVideoTest() {
     setImagePreview(URL.createObjectURL(file));
     setUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const file_url = await uploadToS3(file, "ai-video-test");
       setImageUrl(file_url);
       setImageFile(file);
     } catch {

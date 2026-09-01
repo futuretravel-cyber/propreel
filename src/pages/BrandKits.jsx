@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { base44 } from "@/api/base44Client";
+import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 
 export default function BrandKits() {
@@ -58,8 +59,8 @@ export default function BrandKits() {
     e.target.value = "";
     setUploadingAvatar(true);
     try {
-      const res = await base44.integrations.Core.UploadFile({ file });
-      setForm((f) => ({ ...f, profile_photo_url: res.file_url }));
+      const file_url = await uploadToS3(file, "headshots");
+      setForm((f) => ({ ...f, profile_photo_url: file_url }));
       toast({ title: "Avatar uploaded" });
     } catch {
       toast({ title: "Upload failed", variant: "destructive" });
@@ -73,8 +74,8 @@ export default function BrandKits() {
     e.target.value = "";
     setUploadingLogo(true);
     try {
-      const res = await base44.integrations.Core.UploadFile({ file });
-      setForm((f) => ({ ...f, logo_url: res.file_url }));
+      const file_url = await uploadToS3(file, "logos");
+      setForm((f) => ({ ...f, logo_url: file_url }));
       toast({ title: "Logo uploaded" });
     } catch {
       toast({ title: "Upload failed", variant: "destructive" });

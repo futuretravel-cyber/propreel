@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { Wand2, Loader2, Check, X, Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
+import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
@@ -44,7 +45,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     setUploading(true);
     try {
       const urls = await Promise.all(files.map(async f => {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file: f });
+        const file_url = await uploadToS3(f, "images");
         return file_url;
       }));
       setUploadedPhotos(prev => [...prev, ...urls]);

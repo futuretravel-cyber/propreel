@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { uploadToS3 } from "@/lib/awsS3";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
@@ -34,7 +35,7 @@ export default function MusicLibrary() {
     if (!pendingFile || !newName.trim()) return;
     setUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: pendingFile });
+      const file_url = await uploadToS3(pendingFile, "music");
       const track = await base44.entities.MusicTrack.create({
         name: newName.trim(),
         genre: newGenre.trim() || "General",

@@ -3,6 +3,7 @@ import { Sparkles, Loader2, Copy, Check, RefreshCw, MapPin, CheckCircle2, AlertC
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { base44 } from "@/api/base44Client";
+import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
@@ -66,7 +67,7 @@ export default function StudioDescription({ project, listing, onDescriptionGener
     setUploadingPhoto(true);
     try {
       const urls = await Promise.all(files.map(async (file) => {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        const file_url = await uploadToS3(file, "images");
         return file_url;
       }));
       setAttachedPhotos(prev => [...prev, ...urls]);

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Mic, Play, Check, Sparkles, ChevronDown, ChevronUp, Loader2, ExternalLink, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
+import { uploadToS3 } from "@/lib/awsS3";
 
 // ElevenLabs voice IDs — curated for SA English use
 const ELEVENLABS_VOICES = [
@@ -64,9 +65,8 @@ export default function ElevenLabsVoiceover({ script, setScript, selectedVoice, 
     setGenerating(true);
     try {
       const blob = await generateWithElevenLabs(apiKey, selectedVoice, script);
-      // Upload to Base44 storage
       const file = new File([blob], "voiceover.mp3", { type: "audio/mpeg" });
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const file_url = await uploadToS3(file, "voiceovers");
       onVoiceoverReady(file_url);
     } catch (e) {
       alert("Generation failed: " + e.message);
