@@ -14,7 +14,7 @@ export default function BrandKits() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", agent_name: "", email: "", phone: "", is_default: false, profile_photo_url: "", logo_url: "" });
+  const [form, setForm] = useState({ name: "", agent_name: "", email: "", phone: "", is_default: false, include_agent_branding: true, profile_photo_url: "", logo_url: "" });
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -33,7 +33,7 @@ export default function BrandKits() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: "", agent_name: "", email: "", phone: "", is_default: false, profile_photo_url: "", logo_url: "" });
+    setForm({ name: "", agent_name: "", email: "", phone: "", is_default: false, include_agent_branding: true, profile_photo_url: "", logo_url: "" });
     setUploadTab("info");
     setModalOpen(true);
   };
@@ -46,6 +46,7 @@ export default function BrandKits() {
       email: kit.email || "",
       phone: kit.phone || "",
       is_default: kit.is_default || false,
+      include_agent_branding: kit.include_agent_branding !== false,
       profile_photo_url: kit.profile_photo_url || "",
       logo_url: kit.logo_url || "",
     });
@@ -99,7 +100,7 @@ export default function BrandKits() {
       }
       setModalOpen(false);
       load();
-      toast({ title: editing ? "Brand kit updated" : "Brand kit created" });
+      toast({ title: editing ? "Agent profile updated" : "Agent profile created" });
     } catch {
       toast({ title: "Failed to save", variant: "destructive" });
     }
@@ -110,7 +111,7 @@ export default function BrandKits() {
     try {
       await base44.entities.BrandKit.delete(id);
       setKits((prev) => prev.filter((k) => k.id !== id));
-      toast({ title: "Brand kit deleted" });
+      toast({ title: "Agent profile deleted" });
     } catch {
       toast({ title: "Failed to delete", variant: "destructive" });
     }
@@ -120,11 +121,11 @@ export default function BrandKits() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#0F082B]">Brand Kits</h1>
+          <h1 className="text-2xl font-bold text-[#0F082B]">Agent Profile Branding</h1>
           <p className="text-sm text-[#606060] mt-1">Save your branding once — auto-apply to every video.</p>
         </div>
         <Button onClick={openNew} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl h-11 px-6 gap-2">
-          <Plus className="w-4 h-4" /> New Brand Kit
+          <Plus className="w-4 h-4" /> New Agent Profile
         </Button>
       </div>
 
@@ -137,10 +138,10 @@ export default function BrandKits() {
           <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mx-auto mb-4">
           <Star className="w-8 h-8 text-purple-700" />
           </div>
-          <h3 className="font-bold text-[#0F082B] mb-2">No brand kits yet</h3>
-          <p className="text-sm text-[#606060] mb-6">Create a brand kit to auto-apply your branding to every video.</p>
+          <h3 className="font-bold text-[#0F082B] mb-2">No agent profiles yet</h3>
+          <p className="text-sm text-[#606060] mb-6">Create an agent profile to auto-apply your branding to every video.</p>
           <Button onClick={openNew} className="bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl px-8 h-11 gap-2">
-            <Plus className="w-4 h-4" /> Create Brand Kit
+            <Plus className="w-4 h-4" /> Create Agent Profile
           </Button>
         </div>
       ) : (
@@ -192,7 +193,7 @@ export default function BrandKits() {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Brand Kit" : "Create Brand Kit"}</DialogTitle>
+            <DialogTitle>{editing ? "Edit Agent Profile" : "Create Agent Profile"}</DialogTitle>
           </DialogHeader>
 
           {/* Tabs */}
@@ -215,7 +216,7 @@ export default function BrandKits() {
           {uploadTab === "info" && (
             <div className="space-y-4 mt-2">
               <div>
-                <label className="text-sm font-medium text-[#0F082B] mb-1.5 block">Brand Kit name</label>
+                <label className="text-sm font-medium text-[#0F082B] mb-1.5 block">Profile name</label>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Smit Properties – Johan" className="rounded-xl h-10" />
               </div>
               <div>
@@ -231,8 +232,15 @@ export default function BrandKits() {
                 <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+27 82 123 4567" className="rounded-xl h-10" />
               </div>
               <div className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
-                <span className="text-sm text-[#0F082B]">Set as default brand kit</span>
+                <span className="text-sm text-[#0F082B]">Set as default agent profile</span>
                 <Switch checked={form.is_default} onCheckedChange={(v) => setForm({ ...form, is_default: v })} />
+              </div>
+              <div className="flex items-center justify-between bg-purple-50 border border-purple-100 rounded-xl p-4">
+                <div>
+                  <span className="text-sm font-semibold text-[#0F082B] block">Include Agent Branding in Video</span>
+                  <span className="text-xs text-[#606060] mt-0.5 block">When enabled, your photo, logo, and contact details will appear in the final video output.</span>
+                </div>
+                <Switch checked={form.include_agent_branding} onCheckedChange={(v) => setForm({ ...form, include_agent_branding: v })} />
               </div>
             </div>
           )}
@@ -299,7 +307,7 @@ export default function BrandKits() {
             disabled={!form.name || !form.agent_name || saving}
             className="w-full bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl h-11 mt-2"
           >
-            {saving ? "Saving..." : "Save Brand Kit"}
+            {saving ? "Saving..." : "Save Agent Profile"}
           </Button>
         </DialogContent>
       </Dialog>

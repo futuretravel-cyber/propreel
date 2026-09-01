@@ -185,6 +185,7 @@ export default function StudioVideoGenerator({
         company_logo: selectedBrandKit?.logo_url || "",
         agent_name: selectedBrandKit?.agent_name || "",
         agent_phone: selectedBrandKit?.phone || "",
+        include_agent_branding: selectedBrandKit?.include_agent_branding !== false,
       };
 
       const res = await fetch(renderApiUrl, {
@@ -365,12 +366,12 @@ export default function StudioVideoGenerator({
       </Section>
 
       {/* Brand Kit */}
-      <Section sectionKey="brandkit" label="Brand Kit" icon={Star} desc="Apply your logo, profile photo and contact info">
+      <Section sectionKey="brandkit" label="Agent Profile Branding" icon={Star} desc="Apply your logo, profile photo and contact info">
         <div className="space-y-2">
           {brandKits.length === 0 ? (
             <div className="text-center py-4">
-              <p className="text-sm text-gray-500 mb-2">No brand kits set up yet.</p>
-              <Link to="/brand-kits" className="text-sm text-purple-700 underline">Create a Brand Kit →</Link>
+              <p className="text-sm text-gray-500 mb-2">No agent profiles set up yet.</p>
+              <Link to="/brand-kits" className="text-sm text-purple-700 underline">Create Agent Profile →</Link>
             </div>
           ) : (
             brandKits.map(kit => (

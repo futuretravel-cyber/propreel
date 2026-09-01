@@ -9,7 +9,7 @@ const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Home, label: "Listings", path: "/listings" },
   { icon: FolderOpen, label: "My Projects", path: "/projects" },
-  { icon: CreditCard, label: "Brand Kits", path: "/brand-kits" },
+  { icon: CreditCard, label: "Agent Profile Branding", path: "/brand-kits" },
   { icon: Settings, label: "Settings", path: "/settings" },
   { icon: HelpCircle, label: "Help", path: "/contact" },
 ];

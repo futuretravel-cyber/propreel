@@ -4,7 +4,7 @@
   "properties": {
     "name": {
       "type": "string",
-      "description": "Brand kit name"
+      "description": "Agent profile branding name"
     },
     "agent_name": {
       "type": "string",
@@ -29,6 +29,11 @@
     "is_default": {
       "type": "boolean",
       "default": false
+    },
+    "include_agent_branding": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to include agent branding (photo, logo, contact info) in the final video output"
     }
   },
   "required": [
