@@ -8,14 +8,15 @@ import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
+import StrengthSlider from "@/components/studio/StrengthSlider";
 
 const TWILIGHT_STYLES = [
-  { key: "blue_hour",    label: "🌆 Blue Hour",            prompt: "Convert to blue hour twilight exterior photography, deep blue sky, warm glowing interior lights." },
-  { key: "golden_dusk",  label: "🌅 Golden Dusk",          prompt: "Convert to golden dusk exterior, warm sunset sky, glowing windows." },
-  { key: "night_lights", label: "🌃 Night Lights",         prompt: "Night time exterior real estate photography, dark sky, brilliantly illuminated house lights." },
-  { key: "sunset_sky",   label: "🔴 Dramatic Sunset",      prompt: "Dramatic vibrant red and purple sunset sky, silhouette and glowing lights." },
-  { key: "moody_dusk",   label: "🌫️ Moody & Atmospheric",  prompt: "Moody twilight, soft fog, atmospheric exterior lighting, architectural digest." },
-  { key: "christmas",    label: "🎄 Festive Evening",      prompt: "Twilight evening with warm festive string lights or subtle holiday lighting glow." },
+  { key: "blue_hour",    label: "🌆 Blue Hour",            prompt: "Convert this daytime exterior real estate photo into a blue hour twilight shot. Replace the sky with a deep, rich blue twilight sky. Turn on all interior and exterior lights so they glow warm and inviting against the blue hour backdrop. Ensure professional architectural twilight photography quality." },
+  { key: "golden_dusk",  label: "🌅 Golden Dusk",          prompt: "Convert this daytime exterior real estate photo into a golden dusk scene. Replace the sky with a warm, golden sunset sky with soft cloud formations. Turn on all interior lights so they glow warmly. Apply golden ambient lighting across the entire scene." },
+  { key: "night_lights", label: "🌃 Night Lights",         prompt: "Convert this daytime exterior real estate photo into a nighttime shot. Replace the sky with a dark night sky. Turn on all interior and exterior house lights so the property is brilliantly illuminated against the dark sky. Ensure professional nighttime real estate photography quality." },
+  { key: "sunset_sky",   label: "🔴 Dramatic Sunset",      prompt: "Convert this daytime exterior real estate photo to feature a dramatic, vibrant sunset sky. Replace the sky with rich reds, oranges, and purples. Turn on all interior lights for a warm glow. Create a striking silhouette effect with the property." },
+  { key: "moody_dusk",   label: "🌫️ Moody & Atmospheric",  prompt: "Convert this daytime exterior real estate photo into a moody, atmospheric twilight scene. Add soft fog or mist, muted twilight tones, and gentle exterior lighting. Apply an architectural-digest-quality atmospheric mood to the entire scene." },
+  { key: "christmas",    label: "🎄 Festive Evening",      prompt: "Convert this daytime exterior real estate photo into a festive twilight evening scene. Add warm string lights or subtle holiday lighting glow around the property. Turn on all interior lights. Apply a cozy, inviting evening atmosphere." },
 ];
 
 export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -26,7 +27,8 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
   const allPhotos = [...projectPhotos, ...uploadedPhotos];
 
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [selectedStyle, setSelectedStyle] = useState(null);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [strength, setStrength] = useState(0.45);
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
   const [appliedEdits, setAppliedEdits] = useState({});
@@ -52,11 +54,14 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setSelectedStyle(null); };
+  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
+
+  const selectStyle = (style) => {
+    setCustomPrompt(style.prompt);
+  };
 
   const runTwilight = async () => {
-    const style = TWILIGHT_STYLES.find(s => s.key === selectedStyle);
-    if (!style) return;
+    if (!customPrompt.trim()) return;
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
       notifyOutOfCredits(toast, PHOTO_TOOL_CREDIT_COST);
@@ -65,7 +70,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const s3Url = await generateFalImage(originalPhoto, style.prompt, 0.825, "twilight");
+      const s3Url = await generateFalImage(originalPhoto, customPrompt, strength, "twilight");
       setResultPhoto(s3Url);
       toast({ title: "Twilight conversion complete!" });
     } catch (e) {
@@ -86,7 +91,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
         original_url: originalPhoto,
         result_url: resultPhoto,
         photo_index: selectedIdx,
-        prompt: TWILIGHT_STYLES.find(s => s.key === selectedStyle)?.prompt || "",
+        prompt: customPrompt,
       }).catch(() => {});
     }
     setResultPhoto(null);
@@ -181,17 +186,26 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
       )}
 
       {allPhotos.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <p className="text-sm font-semibold text-gray-900 mb-4">Choose Twilight Style</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-            {TWILIGHT_STYLES.map(style => (
-              <button key={style.key} onClick={() => setSelectedStyle(style.key)}
-                className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight ${selectedStyle === style.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"}`}>
-                {style.label}
-              </button>
-            ))}
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-900 mb-3">Choose Twilight Style</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {TWILIGHT_STYLES.map(style => (
+                <button key={style.key} onClick={() => selectStyle(style)}
+                  className="text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800">
+                  {style.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <Button onClick={runTwilight} disabled={processing || !selectedStyle} className="w-full bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl gap-2 h-11">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Custom Twilight Instructions — describe exact changes for this image</label>
+            <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
+              placeholder="e.g. Convert to a warm dusk scene with all interior lights glowing, a soft purple sky, and gentle mist around the garden..."
+              rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
+          </div>
+          <StrengthSlider value={strength} onChange={setStrength} />
+          <Button onClick={runTwilight} disabled={processing || !customPrompt.trim()} className="w-full bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Converting to twilight...</> : <>🌆 Convert to Twilight</>}
           </Button>
         </div>

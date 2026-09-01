@@ -8,16 +8,17 @@ import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
+import StrengthSlider from "@/components/studio/StrengthSlider";
 
 const STYLES = [
-  { key: "luxury",       label: "🛋️ Luxury Modern",        prompt: "Virtually stage this empty room with high-end luxury modern furniture, neutral tones, sleek design, photorealistic." },
-  { key: "minimal",      label: "✨ Scandinavian Minimal",  prompt: "Virtually stage with Scandinavian minimalist furniture, light wood, white textures, clean open space." },
-  { key: "contemporary", label: "🖤 Contemporary Dark",     prompt: "Stage with contemporary dark furniture, moody elegance, black and charcoal tones." },
-  { key: "coastal",      label: "🌊 Coastal Relaxed",       prompt: "Stage with coastal relaxed furniture, light blues, whites, natural textures, breezy feel." },
-  { key: "family",       label: "👨‍👩‍👧 Family Comfortable",  prompt: "Stage with cozy, comfortable family-friendly furniture, warm textiles." },
-  { key: "bedroom_lux",  label: "🛏️ Luxury Bedroom",       prompt: "Stage as a luxury master bedroom, plush king bed, high-end linens, elegant nightstands." },
-  { key: "office",       label: "💼 Home Office",           prompt: "Stage as a premium home office, modern desk, ergonomic chair, stylish bookshelves." },
-  { key: "industrial",   label: "⚙️ Industrial Loft",       prompt: "Stage with industrial loft furniture, leather, metal accents, raw wood textures." },
+  { key: "luxury",       label: "🛋️ Luxury Modern",        prompt: "Virtually stage this empty room with high-end luxury modern furniture. Add a sleek contemporary sofa in neutral tones, a glass coffee table, designer accent chairs, and elegant decor pieces. Use a refined color palette of whites, grays, and warm metallics. Ensure photorealistic quality with natural shadows and reflections." },
+  { key: "minimal",      label: "✨ Scandinavian Minimal",  prompt: "Virtually stage this empty room with Scandinavian minimalist furniture. Add light wood furniture pieces, white textured fabrics, a simple low-profile sofa, and clean open space. Use a bright, airy color palette with natural materials. Ensure photorealistic quality." },
+  { key: "contemporary", label: "🖤 Contemporary Dark",     prompt: "Virtually stage this empty room with contemporary dark furniture. Add a moody, elegant sofa in charcoal or black, dark wood accents, and sophisticated decor. Use deep, rich tones with subtle metallic highlights. Ensure photorealistic quality with dramatic lighting." },
+  { key: "coastal",      label: "🌊 Coastal Relaxed",       prompt: "Virtually stage this empty room with coastal relaxed furniture. Add light blue and white upholstered pieces, natural rattan or wicker accents, and breezy textiles. Use a fresh, airy color palette inspired by the seaside. Ensure photorealistic quality." },
+  { key: "family",       label: "👨‍👩‍👧 Family Comfortable",  prompt: "Virtually stage this empty room with cozy, comfortable family-friendly furniture. Add a plush sectional sofa, warm textile throws, soft accent pillows, and a welcoming coffee table. Use warm, inviting tones. Ensure photorealistic quality." },
+  { key: "bedroom_lux",  label: "🛏️ Luxury Bedroom",       prompt: "Virtually stage this empty room as a luxury master bedroom. Add a plush king-sized bed with high-end linens and layered pillows, elegant nightstands with lamps, and a sophisticated area rug. Use premium fabrics and a refined color palette. Ensure photorealistic quality." },
+  { key: "office",       label: "💼 Home Office",           prompt: "Virtually stage this empty room as a premium home office. Add a modern desk, an ergonomic designer chair, stylish bookshelves, and professional decor. Use a productive yet elegant color scheme. Ensure photorealistic quality with natural lighting." },
+  { key: "industrial",   label: "⚙️ Industrial Loft",       prompt: "Virtually stage this empty room with industrial loft furniture. Add a leather sofa, metal and wood accent tables, and raw-textured decor pieces. Use a palette of browns, blacks, and grays with exposed material textures. Ensure photorealistic quality." },
 ];
 
 export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -28,7 +29,8 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
   const allPhotos = [...projectPhotos, ...uploadedPhotos];
 
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [selectedStyle, setSelectedStyle] = useState(null);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [strength, setStrength] = useState(0.40);
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
   const [appliedEdits, setAppliedEdits] = useState({});
@@ -54,11 +56,14 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setSelectedStyle(null); };
+  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
+
+  const selectStyle = (style) => {
+    setCustomPrompt(style.prompt);
+  };
 
   const runStaging = async () => {
-    const style = STYLES.find(s => s.key === selectedStyle);
-    if (!style) return;
+    if (!customPrompt.trim()) return;
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
       notifyOutOfCredits(toast, PHOTO_TOOL_CREDIT_COST);
@@ -67,7 +72,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const s3Url = await generateFalImage(originalPhoto, style.prompt, 0.30, "virtual-staging");
+      const s3Url = await generateFalImage(originalPhoto, customPrompt, strength, "virtual-staging");
       setResultPhoto(s3Url);
       toast({ title: "Staging complete!" });
     } catch (e) {
@@ -88,7 +93,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
         original_url: originalPhoto,
         result_url: resultPhoto,
         photo_index: selectedIdx,
-        furniture_style: selectedStyle,
+        prompt: customPrompt,
       }).catch(() => {});
     }
     setResultPhoto(null);
@@ -104,7 +109,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
     <div className="space-y-6">
       <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
         <p className="text-sm font-semibold text-purple-900 mb-1">💡 How Virtual Staging Works</p>
-        <p className="text-sm text-purple-700">Select a photo, choose a staging style, then click Stage. AI furnishes the empty space with realistic furniture. Works best on empty or sparsely furnished rooms.</p>
+        <p className="text-sm text-purple-700">Select a photo, choose a staging style or write custom instructions, then click Stage. AI furnishes the empty space with realistic furniture. Works best on empty or sparsely furnished rooms.</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 p-4">
@@ -183,17 +188,26 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
       )}
 
       {allPhotos.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <p className="text-sm font-semibold text-gray-900 mb-4">Choose a Staging Style</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
-            {STYLES.map(style => (
-              <button key={style.key} onClick={() => setSelectedStyle(style.key)}
-                className={`text-xs font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight ${selectedStyle === style.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"}`}>
-                {style.label}
-              </button>
-            ))}
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-900 mb-3">Choose a Staging Style</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {STYLES.map(style => (
+                <button key={style.key} onClick={() => selectStyle(style)}
+                  className="text-xs font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800">
+                  {style.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <Button onClick={runStaging} disabled={processing || !selectedStyle} className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Custom Staging Instructions — describe exact changes for this image</label>
+            <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
+              placeholder="e.g. Stage as a modern dining room with a dark wood table for 6, pendant lights, and a statement rug..."
+              rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
+          </div>
+          <StrengthSlider value={strength} onChange={setStrength} />
+          <Button onClick={runStaging} disabled={processing || !customPrompt.trim()} className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Staging room...</> : <><Sofa className="w-4 h-4" /> Stage This Room</>}
           </Button>
         </div>

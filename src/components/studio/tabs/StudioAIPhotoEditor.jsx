@@ -8,19 +8,20 @@ import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
+import StrengthSlider from "@/components/studio/StrengthSlider";
 
 const AI_EDITS = [
-  { key: "sky_golden",   label: "🌅 Golden Sunset Sky",  prompt: "Enhance real estate photo, replace sky with a beautiful golden sunset, warm inviting lighting." },
-  { key: "sky_blue",     label: "☀️ Clear Blue Sky",      prompt: "Enhance real estate photo, replace sky with a clear sunny blue sky, vibrant colors." },
-  { key: "lawn",         label: "🌿 Lush Green Lawn",     prompt: "Make the grass lush, vibrant, and green. Fix bare spots on the lawn." },
-  { key: "brighten",     label: "💡 Brighten & Warm",     prompt: "Increase brightness, add warm inviting lighting, professional real estate photography." },
-  { key: "declutter",    label: "🧹 Declutter & Clean",   prompt: "Remove small clutter, clean surfaces, straighten items, make room look pristine." },
-  { key: "hdr",          label: "🌈 HDR Boost",           prompt: "High dynamic range, crisp details, balanced shadows and highlights, professional architectural photography." },
-  { key: "remove_car",   label: "🚗 Remove Cars",         prompt: "Remove all cars from the driveway and street, replace with clean pavement." },
-  { key: "pool_sparkle", label: "💧 Crystal Pool",        prompt: "Make the swimming pool water crystal clear, bright cyan blue, pristine." },
-  { key: "paint_walls",  label: "🎨 Fresh White Walls",   prompt: "Paint walls fresh clean white, make the room bright." },
-  { key: "magic_hour",   label: "🌤️ Magic Hour",          prompt: "Magic hour lighting, warm twilight, soft shadows." },
-  { key: "fix_lighting", label: "🔆 Fix Dark Corners",    prompt: "Brighten dark areas, even lighting, well-lit room." },
+  { key: "sky_golden",   label: "🌅 Golden Sunset Sky",  prompt: "Enhance this real estate photograph by replacing the current sky with a breathtaking golden sunset sky. Add warm, inviting amber and honey-toned lighting across the entire scene. Ensure the property remains the focal point while the sky transitions into rich golden hues with soft cloud formations." },
+  { key: "sky_blue",     label: "☀️ Clear Blue Sky",      prompt: "Replace the sky in this real estate photo with a crystal-clear, vibrant blue sky. Remove any clouds or haze. Ensure professional real estate photography quality with crisp, bright lighting that makes the property look inviting and well-lit." },
+  { key: "lawn",         label: "🌿 Lush Green Lawn",     prompt: "Restore and enhance the lawn and grass areas in this real estate photo. Make the grass lush, vibrant green, and healthy. Fill in any bare or patchy spots with thick, manicured turf. Ensure the lawn looks professionally maintained and well-watered." },
+  { key: "brighten",     label: "💡 Brighten & Warm",     prompt: "Brighten and warm this real estate photograph. Increase overall exposure slightly, add warm golden ambient lighting, and ensure all rooms appear well-lit and inviting. Apply professional real estate photography color grading with soft, natural tones." },
+  { key: "declutter",    label: "🧹 Declutter & Clean",   prompt: "Declutter and clean this real estate photo. Remove all small personal items, clutter, and unnecessary objects from surfaces. Straighten remaining items, make beds look pristine, and ensure the space looks like a professionally staged model home." },
+  { key: "hdr",          label: "🌈 HDR Boost",           prompt: "Apply high dynamic range (HDR) processing to this real estate photo. Enhance crisp details, balance deep shadows and bright highlights, and produce professional architectural photography quality with rich, true-to-life colors and sharp focus throughout." },
+  { key: "remove_car",   label: "🚗 Remove Cars",         prompt: "Remove all vehicles, cars, and trucks from the driveway and street in this real estate photo. Replace the removed areas with clean, matching pavement or road surface. Ensure the ground blends naturally with the surrounding environment." },
+  { key: "pool_sparkle", label: "💧 Crystal Pool",        prompt: "Enhance the swimming pool in this real estate photo. Make the pool water crystal clear, bright cyan-blue, and pristine. Add gentle sparkle and reflection to the water surface. Ensure the pool deck and surrounding area remain unchanged." },
+  { key: "paint_walls",  label: "🎨 Fresh White Walls",   prompt: "Repaint all walls in this room to a fresh, clean, bright white. Remove any wallpaper, stains, or discoloration. Ensure the new white paint looks smooth and professional while preserving all architectural details, trim, and fixtures exactly as they are." },
+  { key: "magic_hour",   label: "🌤️ Magic Hour",          prompt: "Transform this real estate photo to capture magic hour lighting. Apply warm, soft twilight tones with gentle golden light, soft shadows, and an inviting atmosphere. Maintain all structural elements while enhancing the mood." },
+  { key: "fix_lighting", label: "🔆 Fix Dark Corners",    prompt: "Fix dark corners and uneven lighting in this real estate photo. Brighten shadowed areas, balance the exposure throughout the room, and ensure every corner is well-lit and visible. Apply even, natural-looking illumination." },
 ];
 
 export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -31,8 +32,8 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
   const allPhotos = [...projectPhotos, ...uploadedPhotos];
 
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [selectedEdit, setSelectedEdit] = useState(null);
   const [customPrompt, setCustomPrompt] = useState("");
+  const [strength, setStrength] = useState(0.28);
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
   const [appliedEdits, setAppliedEdits] = useState({});
@@ -58,11 +59,14 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setSelectedEdit(null); setCustomPrompt(""); };
+  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
+
+  const selectPreset = (edit) => {
+    setCustomPrompt(edit.prompt);
+  };
 
   const runEdit = async () => {
-    const prompt = selectedEdit === "custom" ? customPrompt : AI_EDITS.find(e => e.key === selectedEdit)?.prompt || "";
-    if (!prompt.trim()) return;
+    if (!customPrompt.trim()) return;
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
       notifyOutOfCredits(toast, PHOTO_TOOL_CREDIT_COST);
@@ -71,7 +75,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const s3Url = await generateFalImage(originalPhoto, prompt, 0.25, "ai-edits");
+      const s3Url = await generateFalImage(originalPhoto, customPrompt, strength, "ai-edits");
       setResultPhoto(s3Url);
       toast({ title: "Edit complete!" });
     } catch (e) {
@@ -92,7 +96,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
         original_url: originalPhoto,
         result_url: resultPhoto,
         photo_index: selectedIdx,
-        prompt: selectedEdit === "custom" ? customPrompt : AI_EDITS.find(e => e.key === selectedEdit)?.prompt || "",
+        prompt: customPrompt,
       }).catch(() => {});
     }
     setResultPhoto(null);
@@ -182,25 +186,26 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
       )}
 
       {allPhotos.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <p className="text-sm font-semibold text-gray-900 mb-4">Choose an AI Edit</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
-            {AI_EDITS.map(edit => (
-              <button key={edit.key} onClick={() => setSelectedEdit(edit.key)}
-                className={`text-xs font-medium rounded-xl px-3 py-2.5 border-2 text-left transition-all leading-tight ${selectedEdit === edit.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"}`}>
-                {edit.label}
-              </button>
-            ))}
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-900 mb-3">Choose a Preset Edit</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {AI_EDITS.map(edit => (
+                <button key={edit.key} onClick={() => selectPreset(edit)}
+                  className="text-xs font-medium rounded-xl px-3 py-2.5 border-2 text-left transition-all leading-tight border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800">
+                  {edit.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className={`border-2 rounded-xl p-3 mb-4 transition-all ${selectedEdit === "custom" ? "border-purple-700 bg-purple-50" : "border-gray-100"}`}>
-            <button onClick={() => setSelectedEdit("custom")} className="w-full text-left mb-2">
-              <p className={`text-xs font-semibold ${selectedEdit === "custom" ? "text-purple-700" : "text-gray-600"}`}>✏️ Custom Edit — describe exactly what you want</p>
-            </button>
-            <textarea value={customPrompt} onChange={e => { setCustomPrompt(e.target.value); setSelectedEdit("custom"); }}
-              placeholder="e.g. Add a sparkling pool to the backyard, paint the front door navy blue..."
-              rows={2} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-purple-700 resize-none bg-white" />
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Custom Edit Instructions — describe exact changes for this image</label>
+            <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
+              placeholder="e.g. Add a sparkling pool to the backyard, paint the front door navy blue, remove the parked car from the driveway..."
+              rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
           </div>
-          <Button onClick={runEdit} disabled={processing || !selectedEdit || (selectedEdit === "custom" && !customPrompt.trim())}
+          <StrengthSlider value={strength} onChange={setStrength} />
+          <Button onClick={runEdit} disabled={processing || !customPrompt.trim()}
             className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Editing photo...</> : <><Wand2 className="w-4 h-4" /> Apply AI Edit</>}
           </Button>

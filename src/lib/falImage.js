@@ -7,7 +7,8 @@ const ARCHITECTURAL_LOCK_PROMPT = "[SYSTEM OVERRIDE: 100% PIXEL & GEOMETRY LOCK]
 
 const NEGATIVE_PROMPT = "text, watermarks, signatures, letters, words, blurry, distorted geometry, extra rooms, structural mutation, changing staircases, shifting windows, hallucinated built-in furniture, cupboards.";
 
-const FORCED_STRENGTH = 0.28;
+const MIN_STRENGTH = 0.15;
+const MAX_STRENGTH = 0.75;
 
 async function getApiKey() {
   if (cachedApiKey) return cachedApiKey;
@@ -43,7 +44,7 @@ export async function generateFalImage(imageUrl, prompt, strength, folder = "ai-
       prompt: ARCHITECTURAL_LOCK_PROMPT + prompt,
       negative_prompt: NEGATIVE_PROMPT,
       image_url: imageUrl,
-      strength: FORCED_STRENGTH,
+      strength: Math.min(MAX_STRENGTH, Math.max(MIN_STRENGTH, strength)),
       num_images: 1,
     }),
   });
