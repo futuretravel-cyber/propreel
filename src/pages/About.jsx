@@ -9,13 +9,6 @@ const stats = [
   { value: "9", label: "SA provinces served" },
 ];
 
-const team = [
-  { name: "Pieter van Zyl", role: "CEO & Co-founder", initials: "PZ" },
-  { name: "Lindiwe Dlamini", role: "CTO", initials: "LD" },
-  { name: "Marco Bianchi", role: "Head of Product", initials: "MB" },
-  { name: "Zandile Khumalo", role: "Head of Growth", initials: "ZK" },
-];
-
 export default function About() {
   return (
     <div className="pt-28 pb-20 px-4">
@@ -56,21 +49,6 @@ export default function About() {
               <div className="text-sm text-[#606060]">{s.label}</div>
             </div>
           ))}
-        </div>
-
-        <div className="mb-16">
-          <h2 className="text-2xl font-bold text-[#0F082B] text-center mb-10">Leadership Team</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {team.map((t) => (
-              <div key={t.name} className="text-center">
-                <div className="w-20 h-20 rounded-2xl bg-[#DEF5F7] flex items-center justify-center mx-auto mb-3">
-                  <span className="text-xl font-bold text-[#21ABB5]">{t.initials}</span>
-                </div>
-                <p className="font-semibold text-[#0F082B] text-sm">{t.name}</p>
-                <p className="text-xs text-[#606060]">{t.role}</p>
-              </div>
-            ))}
-          </div>
         </div>
 
         <div className="bg-[#0F082B] rounded-3xl p-10 sm:p-14 text-center">
