@@ -125,8 +125,8 @@ export default function StudioVideoGenerator({
       setUploadedPhotos(prev => [...prev, ...urls]);
       setPhotoSource("uploaded");
       toast({ title: `${urls.length} photo(s) added to video` });
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     }
     setUploading(false);
     e.target.value = "";

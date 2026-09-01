@@ -182,8 +182,8 @@ IMPORTANT RULES:
         uploaded.push(file_url);
       }
       setPhotos(prev => [...prev, ...uploaded]);
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     }
     setLoading(false);
   };

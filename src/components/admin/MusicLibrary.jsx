@@ -47,8 +47,8 @@ export default function MusicLibrary() {
       setNewGenre("");
       setPendingFile(null);
       toast({ title: "Track uploaded successfully" });
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     }
     setUploading(false);
   };

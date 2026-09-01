@@ -51,8 +51,8 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
       }));
       setUploadedPhotos(prev => [...prev, ...urls]);
       toast({ title: `${urls.length} photo(s) uploaded` });
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     }
     setUploading(false);
     e.target.value = "";

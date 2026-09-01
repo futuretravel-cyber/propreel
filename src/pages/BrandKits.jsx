@@ -63,8 +63,8 @@ export default function BrandKits() {
       const file_url = await uploadToS3(file, "headshots");
       setForm((f) => ({ ...f, profile_photo_url: file_url }));
       toast({ title: "Avatar uploaded" });
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     }
     setUploadingAvatar(false);
   };
@@ -78,8 +78,8 @@ export default function BrandKits() {
       const file_url = await uploadToS3(file, "logos");
       setForm((f) => ({ ...f, logo_url: file_url }));
       toast({ title: "Logo uploaded" });
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     }
     setUploadingLogo(false);
   };

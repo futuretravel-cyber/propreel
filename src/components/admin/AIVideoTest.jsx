@@ -46,8 +46,8 @@ export default function AIVideoTest() {
       const file_url = await uploadToS3(file, "ai-video-test");
       setImageUrl(file_url);
       setImageFile(file);
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     }
     setUploading(false);
   };

@@ -73,8 +73,8 @@ export default function StudioDescription({ project, listing, onDescriptionGener
       }));
       setAttachedPhotos(prev => [...prev, ...urls]);
       toast({ title: `${urls.length} photo(s) attached` });
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     }
     setUploadingPhoto(false);
     e.target.value = "";
