@@ -9,19 +9,20 @@ import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 import StrengthSlider from "@/components/studio/StrengthSlider";
+import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const AI_EDITS = [
-  { key: "sky_golden",   label: "🌅 Golden Sunset Sky",  prompt: "Enhance this real estate photograph by replacing the current sky with a breathtaking golden sunset sky. Add warm, inviting amber and honey-toned lighting across the entire scene. Ensure the property remains the focal point while the sky transitions into rich golden hues with soft cloud formations." },
-  { key: "sky_blue",     label: "☀️ Clear Blue Sky",      prompt: "Replace the sky in this real estate photo with a crystal-clear, vibrant blue sky. Remove any clouds or haze. Ensure professional real estate photography quality with crisp, bright lighting that makes the property look inviting and well-lit." },
-  { key: "lawn",         label: "🌿 Lush Green Lawn",     prompt: "Restore and enhance the lawn and grass areas in this real estate photo. Make the grass lush, vibrant green, and healthy. Fill in any bare or patchy spots with thick, manicured turf. Ensure the lawn looks professionally maintained and well-watered." },
-  { key: "brighten",     label: "💡 Brighten & Warm",     prompt: "Brighten and warm this real estate photograph. Increase overall exposure slightly, add warm golden ambient lighting, and ensure all rooms appear well-lit and inviting. Apply professional real estate photography color grading with soft, natural tones." },
-  { key: "declutter",    label: "🧹 Declutter & Clean",   prompt: "Declutter and clean this real estate photo. Remove all small personal items, clutter, and unnecessary objects from surfaces. Straighten remaining items, make beds look pristine, and ensure the space looks like a professionally staged model home." },
-  { key: "hdr",          label: "🌈 HDR Boost",           prompt: "Apply high dynamic range (HDR) processing to this real estate photo. Enhance crisp details, balance deep shadows and bright highlights, and produce professional architectural photography quality with rich, true-to-life colors and sharp focus throughout." },
-  { key: "remove_car",   label: "🚗 Remove Cars",         prompt: "Remove all vehicles, cars, and trucks from the driveway and street in this real estate photo. Replace the removed areas with clean, matching pavement or road surface. Ensure the ground blends naturally with the surrounding environment." },
-  { key: "pool_sparkle", label: "💧 Crystal Pool",        prompt: "Enhance the swimming pool in this real estate photo. Make the pool water crystal clear, bright cyan-blue, and pristine. Add gentle sparkle and reflection to the water surface. Ensure the pool deck and surrounding area remain unchanged." },
-  { key: "paint_walls",  label: "🎨 Fresh White Walls",   prompt: "Repaint all walls in this room to a fresh, clean, bright white. Remove any wallpaper, stains, or discoloration. Ensure the new white paint looks smooth and professional while preserving all architectural details, trim, and fixtures exactly as they are." },
-  { key: "magic_hour",   label: "🌤️ Magic Hour",          prompt: "Transform this real estate photo to capture magic hour lighting. Apply warm, soft twilight tones with gentle golden light, soft shadows, and an inviting atmosphere. Maintain all structural elements while enhancing the mood." },
-  { key: "fix_lighting", label: "🔆 Fix Dark Corners",    prompt: "Fix dark corners and uneven lighting in this real estate photo. Brighten shadowed areas, balance the exposure throughout the room, and ensure every corner is well-lit and visible. Apply even, natural-looking illumination." },
+  { key: "sky_golden",   label: "🌅 Golden Sunset Sky" },
+  { key: "sky_blue",     label: "☀️ Clear Blue Sky" },
+  { key: "lawn",         label: "🌿 Lush Green Lawn" },
+  { key: "brighten",     label: "💡 Brighten & Warm" },
+  { key: "declutter",    label: "🧹 Declutter & Clean" },
+  { key: "hdr",          label: "🌈 HDR Boost" },
+  { key: "remove_car",   label: "🚗 Remove Cars" },
+  { key: "pool_sparkle", label: "💧 Crystal Pool" },
+  { key: "paint_walls",  label: "🎨 Fresh White Walls" },
+  { key: "magic_hour",   label: "🌤️ Magic Hour" },
+  { key: "fix_lighting", label: "🔆 Fix Dark Corners" },
 ];
 
 export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -34,6 +35,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [customPrompt, setCustomPrompt] = useState("");
   const [strength, setStrength] = useState(0.28);
+  const { getTemplate } = usePromptRegistry();
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
   const [appliedEdits, setAppliedEdits] = useState({});
@@ -62,7 +64,8 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
   const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
 
   const selectPreset = (edit) => {
-    setCustomPrompt(edit.prompt);
+    const t = getTemplate(edit.key);
+    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); }
   };
 
   const runEdit = async () => {

@@ -48,6 +48,11 @@
     "fal_api_key": {
       "type": "string",
       "description": "Fal.ai API key for FLUX Dev image-to-image generation (AI Photo Editor, Virtual Staging, Furniture Removal, Twilight)"
+    },
+    "prompt_templates": {
+      "type": "object",
+      "description": "Admin-locked master prompt templates and optimal denoiser strengths for every AI photo edit option. JSON map of option_key -> { prompt: string, strength: number }. Only admins can view or modify via the Admin settings page.",
+      "default": {}
     }
   },
   "required": []

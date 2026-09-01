@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { Save, Server } from "lucide-react";
+import PromptTemplateEditor from "@/components/admin/PromptTemplateEditor";
 
 export default function AWSSettingsTab() {
   const { toast } = useToast();
@@ -171,6 +172,8 @@ export default function AWSSettingsTab() {
           <Input id="fal_api_key" type="password" value={falApiKey} onChange={(e) => setFalApiKey(e.target.value)} placeholder="fal-..." className="mt-1.5 rounded-xl" />
         </div>
       </div>
+
+      <PromptTemplateEditor settingId={settingId} onSaved={setSettingId} />
 
       <Button onClick={handleSave} disabled={saving} className="mt-6 rounded-xl gap-2 bg-purple-700 hover:bg-purple-800">
         <Save className="w-4 h-4" /> {saving ? "Saving..." : "Save Settings"}

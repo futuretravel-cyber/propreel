@@ -9,16 +9,17 @@ import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 import StrengthSlider from "@/components/studio/StrengthSlider";
+import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const STYLES = [
-  { key: "luxury",       label: "🛋️ Luxury Modern",        prompt: "Virtually stage this empty room with high-end luxury modern furniture. Add a sleek contemporary sofa in neutral tones, a glass coffee table, designer accent chairs, and elegant decor pieces. Use a refined color palette of whites, grays, and warm metallics. Ensure photorealistic quality with natural shadows and reflections." },
-  { key: "minimal",      label: "✨ Scandinavian Minimal",  prompt: "Virtually stage this empty room with Scandinavian minimalist furniture. Add light wood furniture pieces, white textured fabrics, a simple low-profile sofa, and clean open space. Use a bright, airy color palette with natural materials. Ensure photorealistic quality." },
-  { key: "contemporary", label: "🖤 Contemporary Dark",     prompt: "Virtually stage this empty room with contemporary dark furniture. Add a moody, elegant sofa in charcoal or black, dark wood accents, and sophisticated decor. Use deep, rich tones with subtle metallic highlights. Ensure photorealistic quality with dramatic lighting." },
-  { key: "coastal",      label: "🌊 Coastal Relaxed",       prompt: "Virtually stage this empty room with coastal relaxed furniture. Add light blue and white upholstered pieces, natural rattan or wicker accents, and breezy textiles. Use a fresh, airy color palette inspired by the seaside. Ensure photorealistic quality." },
-  { key: "family",       label: "👨‍👩‍👧 Family Comfortable",  prompt: "Virtually stage this empty room with cozy, comfortable family-friendly furniture. Add a plush sectional sofa, warm textile throws, soft accent pillows, and a welcoming coffee table. Use warm, inviting tones. Ensure photorealistic quality." },
-  { key: "bedroom_lux",  label: "🛏️ Luxury Bedroom",       prompt: "Virtually stage this empty room as a luxury master bedroom. Add a plush king-sized bed with high-end linens and layered pillows, elegant nightstands with lamps, and a sophisticated area rug. Use premium fabrics and a refined color palette. Ensure photorealistic quality." },
-  { key: "office",       label: "💼 Home Office",           prompt: "Virtually stage this empty room as a premium home office. Add a modern desk, an ergonomic designer chair, stylish bookshelves, and professional decor. Use a productive yet elegant color scheme. Ensure photorealistic quality with natural lighting." },
-  { key: "industrial",   label: "⚙️ Industrial Loft",       prompt: "Virtually stage this empty room with industrial loft furniture. Add a leather sofa, metal and wood accent tables, and raw-textured decor pieces. Use a palette of browns, blacks, and grays with exposed material textures. Ensure photorealistic quality." },
+  { key: "luxury",       label: "🛋️ Luxury Modern" },
+  { key: "minimal",      label: "✨ Scandinavian Minimal" },
+  { key: "contemporary", label: "🖤 Contemporary Dark" },
+  { key: "coastal",      label: "🌊 Coastal Relaxed" },
+  { key: "family",       label: "👨‍👩‍👧 Family Comfortable" },
+  { key: "bedroom_lux",  label: "🛏️ Luxury Bedroom" },
+  { key: "office",       label: "💼 Home Office" },
+  { key: "industrial",   label: "⚙️ Industrial Loft" },
 ];
 
 export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -31,6 +32,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [customPrompt, setCustomPrompt] = useState("");
   const [strength, setStrength] = useState(0.40);
+  const { getTemplate } = usePromptRegistry();
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
   const [appliedEdits, setAppliedEdits] = useState({});
@@ -59,7 +61,8 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
   const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
 
   const selectStyle = (style) => {
-    setCustomPrompt(style.prompt);
+    const t = getTemplate(style.key);
+    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); }
   };
 
   const runStaging = async () => {

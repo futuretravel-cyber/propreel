@@ -9,14 +9,15 @@ import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 import StrengthSlider from "@/components/studio/StrengthSlider";
+import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const TWILIGHT_STYLES = [
-  { key: "blue_hour",    label: "🌆 Blue Hour",            prompt: "Convert this daytime exterior real estate photo into a blue hour twilight shot. Replace the sky with a deep, rich blue twilight sky. Turn on all interior and exterior lights so they glow warm and inviting against the blue hour backdrop. Ensure professional architectural twilight photography quality." },
-  { key: "golden_dusk",  label: "🌅 Golden Dusk",          prompt: "Convert this daytime exterior real estate photo into a golden dusk scene. Replace the sky with a warm, golden sunset sky with soft cloud formations. Turn on all interior lights so they glow warmly. Apply golden ambient lighting across the entire scene." },
-  { key: "night_lights", label: "🌃 Night Lights",         prompt: "Convert this daytime exterior real estate photo into a nighttime shot. Replace the sky with a dark night sky. Turn on all interior and exterior house lights so the property is brilliantly illuminated against the dark sky. Ensure professional nighttime real estate photography quality." },
-  { key: "sunset_sky",   label: "🔴 Dramatic Sunset",      prompt: "Convert this daytime exterior real estate photo to feature a dramatic, vibrant sunset sky. Replace the sky with rich reds, oranges, and purples. Turn on all interior lights for a warm glow. Create a striking silhouette effect with the property." },
-  { key: "moody_dusk",   label: "🌫️ Moody & Atmospheric",  prompt: "Convert this daytime exterior real estate photo into a moody, atmospheric twilight scene. Add soft fog or mist, muted twilight tones, and gentle exterior lighting. Apply an architectural-digest-quality atmospheric mood to the entire scene." },
-  { key: "christmas",    label: "🎄 Festive Evening",      prompt: "Convert this daytime exterior real estate photo into a festive twilight evening scene. Add warm string lights or subtle holiday lighting glow around the property. Turn on all interior lights. Apply a cozy, inviting evening atmosphere." },
+  { key: "blue_hour",    label: "🌆 Blue Hour" },
+  { key: "golden_dusk",  label: "🌅 Golden Dusk" },
+  { key: "night_lights", label: "🌃 Night Lights" },
+  { key: "sunset_sky",   label: "🔴 Dramatic Sunset" },
+  { key: "moody_dusk",   label: "🌫️ Moody & Atmospheric" },
+  { key: "christmas",    label: "🎄 Festive Evening" },
 ];
 
 export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -29,6 +30,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [customPrompt, setCustomPrompt] = useState("");
   const [strength, setStrength] = useState(0.45);
+  const { getTemplate } = usePromptRegistry();
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
   const [appliedEdits, setAppliedEdits] = useState({});
@@ -57,7 +59,8 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
   const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
 
   const selectStyle = (style) => {
-    setCustomPrompt(style.prompt);
+    const t = getTemplate(style.key);
+    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); }
   };
 
   const runTwilight = async () => {

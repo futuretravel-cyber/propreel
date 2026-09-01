@@ -9,12 +9,13 @@ import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 import StrengthSlider from "@/components/studio/StrengthSlider";
+import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const REMOVAL_MODES = [
-  { key: "all",      label: "🗑️ Remove All Furniture",   prompt: "Empty this room completely. Remove all furniture, decor, rugs, and personal items. Leave a clean, empty floor with blank walls. Ensure the room looks like a vacant property ready for new occupants. Maintain all architectural features, windows, and fixtures exactly as they are." },
-  { key: "clutter",  label: "🧹 Remove Clutter Only",    prompt: "Remove all small clutter and personal items from this room. Clear countertops, tables, and surfaces of papers, magazines, toys, and decorative clutter. Leave the main furniture pieces in place. Ensure the room looks clean, tidy, and professionally presented." },
-  { key: "personal", label: "👤 Remove Personal Items",  prompt: "Remove all personal photographs, framed pictures, clothes, toys, and private items from this room. Make it look like a depersonalized model home. Keep the main furniture and decor but strip away anything that identifies the current occupant." },
-  { key: "cars",     label: "🚗 Remove Vehicles",        prompt: "Remove all vehicles, cars, and trucks from the driveway and street in this real estate exterior photo. Replace the removed vehicle areas with clean, matching pavement or road surface. Ensure the ground blends naturally with the surrounding environment." },
+  { key: "all",      label: "🗑️ Remove All Furniture" },
+  { key: "clutter",  label: "🧹 Remove Clutter Only" },
+  { key: "personal", label: "👤 Remove Personal Items" },
+  { key: "cars",     label: "🚗 Remove Vehicles" },
 ];
 
 export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -27,6 +28,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [customPrompt, setCustomPrompt] = useState("");
   const [strength, setStrength] = useState(0.35);
+  const { getTemplate } = usePromptRegistry();
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
   const [appliedEdits, setAppliedEdits] = useState({});
@@ -55,7 +57,8 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
   const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
 
   const selectMode = (mode) => {
-    setCustomPrompt(mode.prompt);
+    const t = getTemplate(mode.key);
+    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); }
   };
 
   const runRemoval = async () => {
