@@ -1,9 +1,7 @@
 import React, { useState, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Play, Star, ArrowRight, GripVertical, X } from "lucide-react";
+import { Play, ArrowRight, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const DEMO_VIDEO = "https://media.base44.com/videos/public/6a3d034ac0fe750276476665/58b14a718_generated_video.mp4";
 
 const HERO_VIDEO = "https://media.base44.com/videos/public/6a3d034ac0fe750276476665/58d86fd5e_generated_video.mp4";
 
@@ -29,7 +27,6 @@ const previewCards = [
 
 export default function HeroSection() {
   const [sliderPos, setSliderPos] = useState(50);
-  const [showDemo, setShowDemo] = useState(false);
   const sliderRef = useRef(null);
   const dragging = useRef(false);
 
@@ -56,28 +53,12 @@ export default function HeroSection() {
           Create videos 100× faster from just photos. Built for South African estate agents, photographers, and property media companies.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-3 justify-center mb-4">
+        <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
           <Link to="/register">
             <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-8 h-12 rounded-xl text-base gap-2">
               Get started free <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
-          <Button variant="outline" onClick={() => setShowDemo(true)} className="h-12 rounded-xl text-base gap-2 border-gray-200 px-8">
-            <Play className="w-4 h-4 fill-purple-700 text-purple-700" /> Watch demo
-          </Button>
-        </div>
-
-        <p className="text-xs text-[#606060] mb-10">No credit card required</p>
-
-        <div className="flex flex-wrap items-center justify-center gap-6 mb-12">
-          <div className="flex gap-0.5">
-            {[...Array(5)].map((_, i) => (
-              <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
-            ))}
-          </div>
-          <span className="text-sm text-[#606060]">4.9 on Trustpilot</span>
-          <span className="text-sm text-[#606060]">•</span>
-          <span className="text-sm font-semibold text-[#0F082B]">150,000+ videos created</span>
         </div>
 
         {/* Before/After Slider */}
@@ -136,27 +117,6 @@ export default function HeroSection() {
           <div className="absolute top-3 right-3 bg-purple-700 text-white text-[10px] font-semibold px-2 py-1 rounded-md z-20">After</div>
         </div>
       </div>
-
-      {/* Demo video modal */}
-      {showDemo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setShowDemo(false)}>
-          <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setShowDemo(false)}
-              className="absolute -top-10 right-0 text-white/70 hover:text-white flex items-center gap-1 text-sm"
-            >
-              <X className="w-4 h-4" /> Close
-            </button>
-            <video
-              src={DEMO_VIDEO}
-              autoPlay
-              controls
-              className="w-full rounded-2xl shadow-2xl"
-              style={{ aspectRatio: "16/9" }}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Scrolling preview strip */}
       <div className="relative overflow-hidden py-4">
