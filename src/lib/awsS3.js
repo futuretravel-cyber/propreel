@@ -94,6 +94,7 @@ export async function uploadToS3(file, keyPrefix = "uploads") {
         Key: key,
         Body: bodyBuffer,
         ContentType: contentType,
+        ACL: "public-read", // Makes the object publicly accessible via its S3 URL
       })
     );
 
