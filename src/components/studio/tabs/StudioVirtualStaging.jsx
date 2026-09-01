@@ -1,22 +1,23 @@
 import React, { useState, useRef } from "react";
-import { Sofa, Loader2, Check, X, Upload, Download } from "lucide-react";
+import { Sofa, Loader2, Check, X, Upload, Download, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
+import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 
 const STYLES = [
-  { key: "luxury",       label: "🛋️ Luxury Modern",        prompt: "Virtually stage this empty room with modern luxury South African furniture. Add a stylish sofa, coffee table, artwork, floor lamp, plants, and a designer rug. Warm neutral tones, high-end finishes." },
-  { key: "minimal",      label: "✨ Scandinavian Minimal",  prompt: "Virtually stage this empty room with minimal Scandinavian furniture. Clean lines, white oak, neutral tones, uncluttered." },
-  { key: "contemporary", label: "🖤 Contemporary Dark",     prompt: "Virtually stage this room with contemporary dark furniture. Deep charcoal sofa, black accents, brass fixtures, moody lighting." },
-  { key: "coastal",      label: "🌊 Coastal Relaxed",       prompt: "Virtually stage this room in a relaxed coastal style. Light blue and white tones, natural textures, rattan, linen fabrics." },
-  { key: "family",       label: "👨‍👩‍👧 Family Comfortable",  prompt: "Virtually stage this room for a family. Comfortable L-shaped sofa, coffee table, warm rugs, family-friendly decor." },
-  { key: "bedroom_lux",  label: "🛏️ Luxury Bedroom",       prompt: "Virtually stage this bedroom with luxury hotel-quality white linen, upholstered headboard, bedside lamps, artwork." },
-  { key: "office",       label: "💼 Home Office",           prompt: "Virtually stage this room as a stylish home office. Desk, ergonomic chair, bookshelves, a plant, and good lighting." },
-  { key: "industrial",   label: "⚙️ Industrial Loft",       prompt: "Virtually stage this room in industrial loft style. Exposed brick effect, leather sofa, metal shelving, Edison bulb lighting." },
+  { key: "luxury",       label: "🛋️ Luxury Modern",        prompt: "Virtually stage this empty room with high-end luxury modern furniture, neutral tones, sleek design, photorealistic." },
+  { key: "minimal",      label: "✨ Scandinavian Minimal",  prompt: "Virtually stage with Scandinavian minimalist furniture, light wood, white textures, clean open space." },
+  { key: "contemporary", label: "🖤 Contemporary Dark",     prompt: "Stage with contemporary dark furniture, moody elegance, black and charcoal tones." },
+  { key: "coastal",      label: "🌊 Coastal Relaxed",       prompt: "Stage with coastal relaxed furniture, light blues, whites, natural textures, breezy feel." },
+  { key: "family",       label: "👨‍👩‍👧 Family Comfortable",  prompt: "Stage with cozy, comfortable family-friendly furniture, warm textiles." },
+  { key: "bedroom_lux",  label: "🛏️ Luxury Bedroom",       prompt: "Stage as a luxury master bedroom, plush king bed, high-end linens, elegant nightstands." },
+  { key: "office",       label: "💼 Home Office",           prompt: "Stage as a premium home office, modern desk, ergonomic chair, stylish bookshelves." },
+  { key: "industrial",   label: "⚙️ Industrial Loft",       prompt: "Stage with industrial loft furniture, leather, metal accents, raw wood textures." },
 ];
 
 export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -66,14 +67,11 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const result = await base44.integrations.Core.GenerateImage({
-        prompt: `Professional real estate virtual staging for South African property marketing. ${style.prompt} Photorealistic result. Do not change room structure, windows, floors or walls.`,
-        existing_image_urls: [originalPhoto],
-      });
-      setResultPhoto(result.url);
+      const s3Url = await generateFalImage(originalPhoto, style.prompt, 0.875, "virtual-staging");
+      setResultPhoto(s3Url);
       toast({ title: "Staging complete!" });
-    } catch {
-      toast({ title: "Staging failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Staging failed", description: e.message, variant: "destructive" });
     }
     setProcessing(false);
   };
@@ -175,6 +173,13 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
             </div>
           </div>
         </div>
+      )}
+
+      {resultPhoto && (
+        <Button onClick={() => { onAddPhoto?.(resultPhoto); toast({ title: "✓ Added to Video Project" }); }}
+          className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          <Video className="w-4 h-4" /> Add to Video Project
+        </Button>
       )}
 
       {allPhotos.length > 0 && (

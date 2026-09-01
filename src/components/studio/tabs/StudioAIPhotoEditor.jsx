@@ -1,25 +1,26 @@
 import React, { useState, useRef } from "react";
-import { Wand2, Loader2, Check, X, Upload, Download } from "lucide-react";
+import { Wand2, Loader2, Check, X, Upload, Download, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
+import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 
 const AI_EDITS = [
-  { key: "sky_golden",   label: "🌅 Golden Sunset Sky",  prompt: "Replace the sky with a dramatic golden sunset sky with warm orange and pink clouds. Keep the property and foreground exactly as-is." },
-  { key: "sky_blue",     label: "☀️ Clear Blue Sky",      prompt: "Replace the sky with a perfect clear blue sky with fluffy white clouds. Keep all property structures and landscaping identical." },
-  { key: "lawn",         label: "🌿 Lush Green Lawn",     prompt: "Make all grass and lawn areas lush, vibrant green as if freshly watered in spring. Keep all structures identical." },
-  { key: "brighten",     label: "💡 Brighten & Warm",     prompt: "Significantly brighten this photo. Make it look well-lit, warm, and inviting. Eliminate harsh shadows." },
-  { key: "declutter",    label: "🧹 Declutter & Clean",   prompt: "Remove ALL clutter, personal items, and mess from this photo. Make it look clean, minimal, and professionally staged." },
-  { key: "hdr",          label: "🌈 HDR Boost",           prompt: "Apply HDR-style enhancement. Rich colours, deep blacks, bright highlights, dramatic detail. Photorealistic." },
-  { key: "remove_car",   label: "🚗 Remove Cars",         prompt: "Remove all cars and vehicles from this photo. Replace with clean driveway or street." },
-  { key: "pool_sparkle", label: "💧 Crystal Pool",        prompt: "Make the swimming pool water crystal clear, bright blue, sparkling. Keep all surroundings identical." },
-  { key: "paint_walls",  label: "🎨 Fresh White Walls",   prompt: "Change all wall colours to a clean, fresh off-white. Keep all furniture, floors, and fixtures exactly the same." },
-  { key: "magic_hour",   label: "🌤️ Magic Hour",          prompt: "Convert to magic hour/golden hour lighting. Warm orange-gold sunlight, long shadows, highly cinematic." },
-  { key: "fix_lighting", label: "🔆 Fix Dark Corners",    prompt: "Fix all dark corners and shadows. Add realistic ambient fill lighting so the entire space is evenly lit." },
+  { key: "sky_golden",   label: "🌅 Golden Sunset Sky",  prompt: "Enhance real estate photo, replace sky with a beautiful golden sunset, warm inviting lighting." },
+  { key: "sky_blue",     label: "☀️ Clear Blue Sky",      prompt: "Enhance real estate photo, replace sky with a clear sunny blue sky, vibrant colors." },
+  { key: "lawn",         label: "🌿 Lush Green Lawn",     prompt: "Make the grass lush, vibrant, and green. Fix bare spots on the lawn." },
+  { key: "brighten",     label: "💡 Brighten & Warm",     prompt: "Increase brightness, add warm inviting lighting, professional real estate photography." },
+  { key: "declutter",    label: "🧹 Declutter & Clean",   prompt: "Remove small clutter, clean surfaces, straighten items, make room look pristine." },
+  { key: "hdr",          label: "🌈 HDR Boost",           prompt: "High dynamic range, crisp details, balanced shadows and highlights, professional architectural photography." },
+  { key: "remove_car",   label: "🚗 Remove Cars",         prompt: "Remove all cars from the driveway and street, replace with clean pavement." },
+  { key: "pool_sparkle", label: "💧 Crystal Pool",        prompt: "Make the swimming pool water crystal clear, bright cyan blue, pristine." },
+  { key: "paint_walls",  label: "🎨 Fresh White Walls",   prompt: "Paint walls fresh clean white, make the room bright." },
+  { key: "magic_hour",   label: "🌤️ Magic Hour",          prompt: "Magic hour lighting, warm twilight, soft shadows." },
+  { key: "fix_lighting", label: "🔆 Fix Dark Corners",    prompt: "Brighten dark areas, even lighting, well-lit room." },
 ];
 
 export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -70,14 +71,11 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const result = await base44.integrations.Core.GenerateImage({
-        prompt: `Professional real estate photo edit for South African property marketing. ${prompt} Maintain photorealistic style.`,
-        existing_image_urls: [originalPhoto],
-      });
-      setResultPhoto(result.url);
+      const s3Url = await generateFalImage(originalPhoto, prompt, 0.70, "ai-edits");
+      setResultPhoto(s3Url);
       toast({ title: "Edit complete!" });
-    } catch {
-      toast({ title: "Edit failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Edit failed", description: e.message, variant: "destructive" });
     }
     setProcessing(false);
   };
@@ -174,6 +172,13 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
             </div>
           </div>
         </div>
+      )}
+
+      {resultPhoto && (
+        <Button onClick={() => { onAddPhoto?.(resultPhoto); toast({ title: "✓ Added to Video Project" }); }}
+          className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          <Video className="w-4 h-4" /> Add to Video Project
+        </Button>
       )}
 
       {allPhotos.length > 0 && (

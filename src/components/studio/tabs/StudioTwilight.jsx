@@ -1,20 +1,21 @@
 import React, { useState, useRef } from "react";
-import { Loader2, Check, X, Upload, Download } from "lucide-react";
+import { Loader2, Check, X, Upload, Download, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
+import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 
 const TWILIGHT_STYLES = [
-  { key: "blue_hour",    label: "🌆 Blue Hour",            prompt: "Convert this property photo to a stunning blue hour twilight shot. Deep blue-purple sky, warm interior lights glowing through windows, exterior lights on. Dramatic and luxurious. Photorealistic." },
-  { key: "golden_dusk",  label: "🌅 Golden Dusk",          prompt: "Convert to golden dusk. Orange and pink horizon, last rays of sunlight, warm glow on the facade, exterior lights starting to appear. Warm and inviting." },
-  { key: "night_lights", label: "🌃 Night Lights",         prompt: "Convert to a full night shot. Dark sky with stars, all interior lights glowing warmly through windows, exterior pathway and landscape lighting. Premium feel." },
-  { key: "sunset_sky",   label: "🔴 Dramatic Sunset",      prompt: "Replace the sky with a dramatic red-orange sunset. Vivid clouds, warm light bathing the whole property. Keep the property structure identical." },
-  { key: "moody_dusk",   label: "🌫️ Moody & Atmospheric",  prompt: "Create a moody atmospheric dusk shot. Soft purple-blue tones, subtle mist, warm interior glows, cinematic feel." },
-  { key: "christmas",    label: "🎄 Festive Evening",      prompt: "Convert to a festive evening shot with warm Christmas fairy lights on the exterior, glowing windows, and a dark twilight sky." },
+  { key: "blue_hour",    label: "🌆 Blue Hour",            prompt: "Convert to blue hour twilight exterior photography, deep blue sky, warm glowing interior lights." },
+  { key: "golden_dusk",  label: "🌅 Golden Dusk",          prompt: "Convert to golden dusk exterior, warm sunset sky, glowing windows." },
+  { key: "night_lights", label: "🌃 Night Lights",         prompt: "Night time exterior real estate photography, dark sky, brilliantly illuminated house lights." },
+  { key: "sunset_sky",   label: "🔴 Dramatic Sunset",      prompt: "Dramatic vibrant red and purple sunset sky, silhouette and glowing lights." },
+  { key: "moody_dusk",   label: "🌫️ Moody & Atmospheric",  prompt: "Moody twilight, soft fog, atmospheric exterior lighting, architectural digest." },
+  { key: "christmas",    label: "🎄 Festive Evening",      prompt: "Twilight evening with warm festive string lights or subtle holiday lighting glow." },
 ];
 
 export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -64,14 +65,11 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const result = await base44.integrations.Core.GenerateImage({
-        prompt: `Professional real estate twilight photography for South African property marketing. ${style.prompt} Maintain all architectural features and property structure unchanged. High quality photorealistic result.`,
-        existing_image_urls: [originalPhoto],
-      });
-      setResultPhoto(result.url);
+      const s3Url = await generateFalImage(originalPhoto, style.prompt, 0.825, "twilight");
+      setResultPhoto(s3Url);
       toast({ title: "Twilight conversion complete!" });
-    } catch {
-      toast({ title: "Conversion failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Conversion failed", description: e.message, variant: "destructive" });
     }
     setProcessing(false);
   };
@@ -173,6 +171,13 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
             </div>
           </div>
         </div>
+      )}
+
+      {resultPhoto && (
+        <Button onClick={() => { onAddPhoto?.(resultPhoto); toast({ title: "✓ Added to Video Project" }); }}
+          className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          <Video className="w-4 h-4" /> Add to Video Project
+        </Button>
       )}
 
       {allPhotos.length > 0 && (

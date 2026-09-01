@@ -1,19 +1,19 @@
 import React, { useState, useRef } from "react";
-import { Trash2, Loader2, Check, X, Upload, Download } from "lucide-react";
+import { Trash2, Loader2, Check, X, Upload, Download, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
+import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 
 const REMOVAL_MODES = [
-  { key: "all",      label: "🗑️ Remove All Furniture",   prompt: "Remove ALL furniture, decor, rugs, curtains, and movable items from this room. Leave only the empty room — floors, walls, windows, built-in units. Do not add anything." },
-  { key: "clutter",  label: "🧹 Remove Clutter Only",    prompt: "Remove all clutter, personal items, mess, and temporary items. Keep the main furniture but make the space look spotlessly clean." },
-  { key: "personal", label: "👤 Remove Personal Items",  prompt: "Remove all personal items: photos, children's toys, clothing, paperwork, and personal decor. Keep structural furniture only." },
-  { key: "cars",     label: "🚗 Remove Vehicles",        prompt: "Remove all cars, motorcycles, and vehicles from the driveway and street. Replace with clean empty driveway or road surface." },
-  { key: "objects",  label: "📦 Remove Specific Objects", prompt: "Remove any temporary or unwanted objects that detract from the property's appeal. Clean up the space professionally." },
+  { key: "all",      label: "🗑️ Remove All Furniture",   prompt: "Empty room, remove all furniture and decor, clean empty floor, blank walls, real estate photography." },
+  { key: "clutter",  label: "🧹 Remove Clutter Only",    prompt: "Remove all small clutter and personal items, leave main furniture, clean and tidy room." },
+  { key: "personal", label: "👤 Remove Personal Items",  prompt: "Remove personal photographs, clothes, toys, and private items. Make it look like a model home." },
+  { key: "cars",     label: "🚗 Remove Vehicles",        prompt: "Remove all vehicles from the driveway and street, show clean paving and road." },
 ];
 
 export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
@@ -54,8 +54,14 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
   const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setSelectedMode(null); setCustomPrompt(""); };
 
   const runRemoval = async () => {
-    const mode = REMOVAL_MODES.find(m => m.key === selectedMode);
-    const prompt = selectedMode === "custom" ? customPrompt : mode?.prompt;
+    let prompt;
+    if (selectedMode === "custom") {
+      prompt = customPrompt;
+    } else if (selectedMode === "objects") {
+      prompt = customPrompt.trim() + " remove these objects, blend background naturally.";
+    } else {
+      prompt = REMOVAL_MODES.find(m => m.key === selectedMode)?.prompt;
+    }
     if (!prompt?.trim()) return;
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
@@ -65,14 +71,11 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const result = await base44.integrations.Core.GenerateImage({
-        prompt: `Professional real estate photo for South African property marketing. ${prompt} Maintain photorealistic quality and keep all architectural features unchanged.`,
-        existing_image_urls: [originalPhoto],
-      });
-      setResultPhoto(result.url);
+      const s3Url = await generateFalImage(originalPhoto, prompt, 0.90, "furniture-removal");
+      setResultPhoto(s3Url);
       toast({ title: "Removal complete!" });
-    } catch {
-      toast({ title: "Processing failed", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Processing failed", description: e.message, variant: "destructive" });
     }
     setProcessing(false);
   };
@@ -89,7 +92,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
         original_url: originalPhoto,
         result_url: resultPhoto,
         photo_index: selectedIdx,
-        prompt: selectedMode === "custom" ? customPrompt : REMOVAL_MODES.find(m => m.key === selectedMode)?.prompt || "",
+        prompt: selectedMode === "custom" ? customPrompt : selectedMode === "objects" ? `${customPrompt} remove these objects, blend background naturally.` : REMOVAL_MODES.find(m => m.key === selectedMode)?.prompt || "",
       }).catch(() => {});
     }
     setResultPhoto(null);
@@ -176,6 +179,13 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
         </div>
       )}
 
+      {resultPhoto && (
+        <Button onClick={() => { onAddPhoto?.(resultPhoto); toast({ title: "✓ Added to Video Project" }); }}
+          className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          <Video className="w-4 h-4" /> Add to Video Project
+        </Button>
+      )}
+
       {allPhotos.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
           <p className="text-sm font-semibold text-gray-900 mb-4">Choose Removal Mode</p>
@@ -186,14 +196,18 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
                 {mode.label}
               </button>
             ))}
+            <button onClick={() => setSelectedMode("objects")}
+              className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all ${selectedMode === "objects" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"}`}>
+              📦 Remove Specific Objects
+            </button>
             <button onClick={() => setSelectedMode("custom")}
               className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all ${selectedMode === "custom" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300"}`}>
               ✏️ Custom Removal
             </button>
           </div>
-          {selectedMode === "custom" && (
+          {(selectedMode === "custom" || selectedMode === "objects") && (
             <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
-              placeholder="Describe exactly what to remove, e.g. Remove the red couch and the ceiling fan..."
+              placeholder={selectedMode === "objects" ? "Describe what to remove, e.g. the red couch, ceiling fan, and lamp..." : "Describe exactly what to remove, e.g. Remove the red couch and the ceiling fan..."}
               rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none mb-4 bg-white" />
           )}
           <Button onClick={runRemoval} disabled={processing || !selectedMode || (selectedMode === "custom" && !customPrompt.trim())}

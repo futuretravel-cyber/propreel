@@ -44,6 +44,10 @@
     "xai_api_key": {
       "type": "string",
       "description": "xAI Grok API key for vision-enabled AI generation (descriptions, social media, voiceover scripts)"
+    },
+    "fal_api_key": {
+      "type": "string",
+      "description": "Fal.ai API key for FLUX Dev image-to-image generation (AI Photo Editor, Virtual Staging, Furniture Removal, Twilight)"
     }
   },
   "required": []

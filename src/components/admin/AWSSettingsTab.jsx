@@ -19,6 +19,7 @@ export default function AWSSettingsTab() {
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [xaiApiKey, setXaiApiKey] = useState("");
+  const [falApiKey, setFalApiKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -37,6 +38,7 @@ export default function AWSSettingsTab() {
         setAccessKeyId(existing.aws_access_key_id || "");
         setSecretAccessKey(existing.aws_secret_access_key || "");
         setXaiApiKey(existing.xai_api_key || "");
+        setFalApiKey(existing.fal_api_key || "");
       }
     }).finally(() => setLoading(false));
   }, []);
@@ -44,7 +46,7 @@ export default function AWSSettingsTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_url: webhookUrl, aws_webhook_secret: webhookSecret, aws_s3_region: s3Region, aws_s3_bucket_raw: s3BucketRaw, aws_s3_bucket_outputs: s3BucketOutputs, aws_access_key_id: accessKeyId, aws_secret_access_key: secretAccessKey, xai_api_key: xaiApiKey };
+      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_url: webhookUrl, aws_webhook_secret: webhookSecret, aws_s3_region: s3Region, aws_s3_bucket_raw: s3BucketRaw, aws_s3_bucket_outputs: s3BucketOutputs, aws_access_key_id: accessKeyId, aws_secret_access_key: secretAccessKey, xai_api_key: xaiApiKey, fal_api_key: falApiKey };
       if (settingId) {
         await base44.entities.AppSetting.update(settingId, data);
       } else {
@@ -155,6 +157,18 @@ export default function AWSSettingsTab() {
         <div>
           <Label htmlFor="xai_api_key" className="text-xs font-semibold text-[#0F082B]">xAI API Key</Label>
           <Input id="xai_api_key" type="password" value={xaiApiKey} onChange={(e) => setXaiApiKey(e.target.value)} placeholder="xai-..." className="mt-1.5 rounded-xl" />
+        </div>
+      </div>
+
+      {/* Fal.ai API Configuration */}
+      <div className="border-t border-gray-100 pt-5 mt-5">
+        <h4 className="text-xs font-bold text-[#0F082B] mb-1 flex items-center gap-2">
+          <Server className="w-3.5 h-3.5 text-[#21ABB5]" /> Fal.ai FLUX API
+        </h4>
+        <p className="text-xs text-[#606060] mb-4">API key for FLUX Dev image-to-image generation (AI Photo Editor, Virtual Staging, Furniture Removal, Twilight).</p>
+        <div>
+          <Label htmlFor="fal_api_key" className="text-xs font-semibold text-[#0F082B]">Fal.ai API Key</Label>
+          <Input id="fal_api_key" type="password" value={falApiKey} onChange={(e) => setFalApiKey(e.target.value)} placeholder="fal-..." className="mt-1.5 rounded-xl" />
         </div>
       </div>
 
