@@ -1,6 +1,6 @@
 import { base44 } from "@/api/base44Client";
 
-export const PHOTO_TOOL_CREDIT_COST = 1;
+export const PHOTO_TOOL_CREDIT_COST = 2;
 
 export const VIDEO_TIER_CREDITS = {
   essential: { 30: 5, 60: 10 },
