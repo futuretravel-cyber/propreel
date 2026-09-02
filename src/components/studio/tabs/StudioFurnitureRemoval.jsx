@@ -208,7 +208,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
           <StrengthSlider value={strength} onChange={setStrength} />
           <Button onClick={runRemoval} disabled={processing || !customPrompt.trim()}
             className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
-            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : <><Trash2 className="w-4 h-4" /> Remove Items</>}
+            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : <><Trash2 className="w-4 h-4" /> Remove Items ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>
         </div>
       )}

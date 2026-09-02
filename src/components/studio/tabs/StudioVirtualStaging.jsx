@@ -211,7 +211,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
           </div>
           <StrengthSlider value={strength} onChange={setStrength} />
           <Button onClick={runStaging} disabled={processing || !customPrompt.trim()} className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
-            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Staging room...</> : <><Sofa className="w-4 h-4" /> Stage This Room</>}
+            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Staging room...</> : <><Sofa className="w-4 h-4" /> Stage This Room ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>
         </div>
       )}

@@ -209,7 +209,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
           </div>
           <StrengthSlider value={strength} onChange={setStrength} />
           <Button onClick={runTwilight} disabled={processing || !customPrompt.trim()} className="w-full bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl gap-2 h-11">
-            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Converting to twilight...</> : <>🌆 Convert to Twilight</>}
+            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Converting to twilight...</> : <>🌆 Convert to Twilight ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>
         </div>
       )}
