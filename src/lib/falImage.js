@@ -3,20 +3,6 @@ import { uploadToS3 } from "@/lib/awsS3";
 
 let cachedApiKey = null;
 
-// Hard architectural lock prefix injected into every single request
-const ARCHITECTURAL_LOCK_PROMPT = 
-  "[CRITICAL SYSTEM OVERRIDE: 100% GEOMETRY & STRUCTURAL LOCK] " +
-  "Preserve the exact building architecture, staircases, rooflines, windows, doors, and permanent structures from the source image. " +
-  "Do not add, remove, or alter any permanent architectural elements unless explicitly instructed. ";
-
-const NEGATIVE_PROMPT = 
-  "altered building structure, moved architectural elements, changed staircases, " +
-  "shifted windows, warped walls, distorted proportions, extra rooms, structural mutation, " +
-  "text, watermarks, signatures, letters, words, blurry, low resolution.";
-
-const MIN_STRENGTH = 0.20;
-const MAX_STRENGTH = 0.42; // Capped strictly at 0.42 to prevent full-frame hallucinations!
-
 async function getApiKey() {
   if (cachedApiKey) return cachedApiKey;
   const settings = await base44.entities.AppSetting.list();
@@ -25,30 +11,36 @@ async function getApiKey() {
   return cachedApiKey;
 }
 
+/**
+ * Calls Fal.ai FLUX.2 Turbo Edit API, downloads the generated image,
+ * and re-uploads it to the propreel-raw-assets S3 bucket.
+ *
+ * @param {string} imageUrl - Source image URL (must be publicly accessible)
+ * @param {string} prompt - Edit/transformation prompt
+ * @param {number} strength - Transformation strength / guidance adjustment
+ * @param {string} folder - S3 folder for the re-uploaded result
+ * @returns {Promise<string>} S3 URL of the generated image
+ */
 export async function generateFalImage(imageUrl, prompt, strength, folder = "ai-edits") {
   const apiKey = await getApiKey();
   if (!apiKey) {
-    throw new Error("Fal.ai API key not configured. Set it in Admin → API & AWS Settings.");
+    throw new Error("Fal.ai API key not configured. Ask an admin to set it in Admin → API & AWS Settings.");
   }
 
-  // Force strength to respect safe boundaries so the house doesn't get redrawn
-  const safeStrength = Math.min(MAX_STRENGTH, Math.max(MIN_STRENGTH, strength || 0.30));
-
-  const response = await fetch("https://fal.run/fal-ai/flux/dev/image-to-image", {
+  const response = await fetch("https://fal.run/fal-ai/flux-2/turbo/edit", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Key ${apiKey}`,
     },
     body: JSON.stringify({
-      prompt: ARCHITECTURAL_LOCK_PROMPT + prompt,
-      negative_prompt: NEGATIVE_PROMPT,
-      image_url: imageUrl,
-      strength: safeStrength,
+      prompt: prompt,
+      image_urls: [imageUrl],
       image_size: {
         width: 1920,
         height: 1080
       },
+      guidance_scale: strength ? strength * 10 : 3.0, // Maps registry scale to FLUX.2 turbo range
       num_images: 1,
     }),
   });
@@ -64,6 +56,7 @@ export async function generateFalImage(imageUrl, prompt, strength, folder = "ai-
     throw new Error("Fal.ai returned no image URL.");
   }
 
+  // Download the generated image and re-upload to S3
   const imgResponse = await fetch(falImageUrl);
   if (!imgResponse.ok) {
     throw new Error("Failed to download generated image from Fal.ai.");
