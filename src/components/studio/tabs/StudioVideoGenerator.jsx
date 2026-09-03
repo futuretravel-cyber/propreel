@@ -11,7 +11,6 @@ import { uploadToS3 } from "@/lib/awsS3";
 import { generatePollyVoiceover } from "@/lib/awsPolly";
 import { generateScriptWithRetry } from "@/lib/scriptRetryHandler";
 import { useToast } from "@/components/ui/use-toast";
-import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
 
 const MODAL_RENDER_ENDPOINT = "https://futuretravel--propreel-render-engine-grok-tiers-fastapi-entry.modal.run/v1/api/render";
@@ -315,35 +314,6 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
           <button onClick={() => { setVoiceoverScript(propertyDescription); setVoiceoverApproved(false); }} className="mt-2 text-xs text-purple-700 font-semibold hover:underline">
             → Use as voiceover script
           </button>
-        </div>
-      )}
-
-      {/* Live Preview */}
-      {photos.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-semibold text-gray-900">Live Preview</p>
-            <div className="flex gap-1 bg-gray-100 rounded-xl p-0.5">
-              <button onClick={() => setOrientation("landscape")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${orientation === "landscape" ? "bg-purple-700 text-white" : "text-gray-500"}`}>
-                <Monitor className="w-3.5 h-3.5" /> Landscape
-              </button>
-              <button onClick={() => setOrientation("portrait")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${orientation === "portrait" ? "bg-purple-700 text-white" : "text-gray-500"}`}>
-                <Smartphone className="w-3.5 h-3.5" /> Portrait
-              </button>
-            </div>
-          </div>
-          <SlideshowPlayer
-            photos={photos}
-            voiceoverUrl={voiceoverUrl}
-            musicUrl={musicUrl}
-            brandKit={selectedBrandKit}
-            heading={heading || project?.name}
-            subheading={subheading}
-            orientation={orientation}
-            clipDuration={project?.clip_duration || 5}
-          />
         </div>
       )}
 
