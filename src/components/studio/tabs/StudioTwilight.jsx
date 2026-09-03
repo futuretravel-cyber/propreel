@@ -8,7 +8,7 @@ import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
-import StrengthSlider from "@/components/studio/StrengthSlider";
+
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const TWILIGHT_STYLES = [
@@ -207,7 +207,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
               placeholder="e.g. Convert to a warm dusk scene with all interior lights glowing, a soft purple sky, and gentle mist around the garden..."
               rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
           </div>
-          <StrengthSlider value={strength} onChange={setStrength} />
+
           <Button onClick={runTwilight} disabled={processing || !customPrompt.trim()} className="w-full bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Converting to twilight...</> : <>🌆 Convert to Twilight ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>

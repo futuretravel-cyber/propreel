@@ -8,7 +8,7 @@ import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
-import StrengthSlider from "@/components/studio/StrengthSlider";
+
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const STYLES = [
@@ -209,7 +209,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
               placeholder="e.g. Stage as a modern dining room with a dark wood table for 6, pendant lights, and a statement rug..."
               rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
           </div>
-          <StrengthSlider value={strength} onChange={setStrength} />
+
           <Button onClick={runStaging} disabled={processing || !customPrompt.trim()} className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Staging room...</> : <><Sofa className="w-4 h-4" /> Stage This Room ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>

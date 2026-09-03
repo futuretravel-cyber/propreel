@@ -20,12 +20,12 @@ import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import AIDisclaimerNotice from "@/components/shared/AIDisclaimerNotice";
 
 const TABS = [
-  { key: "description",   label: "Property Description",       icon: FileText,  short: "Description", creditNote: "1 credit per generation" },
-  { key: "ai_editor",     label: "AI Photo Editor",            icon: Camera,    short: "AI Editor",    creditNote: "1 credit per photo render" },
-  { key: "staging",       label: "Virtual Staging",            icon: Sofa,      short: "Staging",      creditNote: "1 credit per photo render" },
-  { key: "furniture",     label: "Furniture Removal",          icon: Trash2,    short: "Furniture",    creditNote: "1 credit per photo render" },
-  { key: "twilight",      label: "Twilight Photography",       icon: Sunset,    short: "Twilight",     creditNote: "1 credit per photo render" },
-  { key: "social",        label: "Social Media",               icon: Share,     short: "Social",       creditNote: "1 credit per post render" },
+  { key: "description",   label: "Property Description",       icon: FileText,  short: "Description", creditNote: "2 credits per generation" },
+  { key: "ai_editor",     label: "AI Photo Editor",            icon: Camera,    short: "AI Editor",    creditNote: "2 credits per photo render" },
+  { key: "staging",       label: "Virtual Staging",            icon: Sofa,      short: "Staging",      creditNote: "2 credits per photo render" },
+  { key: "furniture",     label: "Furniture Removal",          icon: Trash2,    short: "Furniture",    creditNote: "2 credits per photo render" },
+  { key: "twilight",      label: "Twilight Photography",       icon: Sunset,    short: "Twilight",     creditNote: "2 credits per photo render" },
+  { key: "social",        label: "Social Media",               icon: Share,     short: "Social",       creditNote: "2 credits per post render" },
   { key: "video",         label: "AI Video Generator",         icon: Video,     short: "Video" },
 ];
 

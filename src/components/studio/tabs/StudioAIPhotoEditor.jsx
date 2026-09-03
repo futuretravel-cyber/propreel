@@ -8,7 +8,7 @@ import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
-import StrengthSlider from "@/components/studio/StrengthSlider";
+
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const AI_EDITS = [
@@ -207,7 +207,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
               placeholder="e.g. Add a sparkling pool to the backyard, paint the front door navy blue, remove the parked car from the driveway..."
               rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
           </div>
-          <StrengthSlider value={strength} onChange={setStrength} />
+
           <Button onClick={runEdit} disabled={processing || !customPrompt.trim()}
             className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Editing photo...</> : <><Wand2 className="w-4 h-4" /> Apply AI Edit ({PHOTO_TOOL_CREDIT_COST} credits)</>}
