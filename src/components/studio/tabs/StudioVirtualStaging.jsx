@@ -32,6 +32,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [customPrompt, setCustomPrompt] = useState("");
   const [strength, setStrength] = useState(0.40);
+  const [selectedStyleKey, setSelectedStyleKey] = useState(null);
   const { getTemplate } = usePromptRegistry();
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
@@ -58,11 +59,11 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
+  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); setSelectedStyleKey(null); };
 
   const selectStyle = (style) => {
     const t = getTemplate(style.key);
-    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); }
+    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); setSelectedStyleKey(style.key); }
   };
 
   const runStaging = async () => {
@@ -197,7 +198,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
               {STYLES.map(style => (
                 <button key={style.key} onClick={() => selectStyle(style)}
-                  className="text-xs font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800">
+                  className={`text-xs font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight ${selectedStyleKey === style.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800"}`}>
                   {style.label}
                 </button>
               ))}

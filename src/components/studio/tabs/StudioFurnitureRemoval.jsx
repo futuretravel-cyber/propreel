@@ -28,6 +28,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [customPrompt, setCustomPrompt] = useState("");
   const [strength, setStrength] = useState(0.35);
+  const [selectedModeKey, setSelectedModeKey] = useState(null);
   const { getTemplate } = usePromptRegistry();
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
@@ -54,11 +55,11 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
+  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); setSelectedModeKey(null); };
 
   const selectMode = (mode) => {
     const t = getTemplate(mode.key);
-    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); }
+    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); setSelectedModeKey(mode.key); }
   };
 
   const runRemoval = async () => {
@@ -193,7 +194,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {REMOVAL_MODES.map(mode => (
                 <button key={mode.key} onClick={() => selectMode(mode)}
-                  className="text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800">
+                  className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all ${selectedModeKey === mode.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800"}`}>
                   {mode.label}
                 </button>
               ))}

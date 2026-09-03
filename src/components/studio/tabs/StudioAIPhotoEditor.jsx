@@ -35,6 +35,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [customPrompt, setCustomPrompt] = useState("");
   const [strength, setStrength] = useState(0.28);
+  const [selectedPresetKey, setSelectedPresetKey] = useState(null);
   const { getTemplate } = usePromptRegistry();
   const [processing, setProcessing] = useState(false);
   const [resultPhoto, setResultPhoto] = useState(null);
@@ -61,11 +62,11 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); };
+  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); setSelectedPresetKey(null); };
 
   const selectPreset = (edit) => {
     const t = getTemplate(edit.key);
-    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); }
+    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); setSelectedPresetKey(edit.key); }
   };
 
   const runEdit = async () => {
@@ -195,7 +196,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
               {AI_EDITS.map(edit => (
                 <button key={edit.key} onClick={() => selectPreset(edit)}
-                  className="text-xs font-medium rounded-xl px-3 py-2.5 border-2 text-left transition-all leading-tight border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800">
+                  className={`text-xs font-medium rounded-xl px-3 py-2.5 border-2 text-left transition-all leading-tight ${selectedPresetKey === edit.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800"}`}>
                   {edit.label}
                 </button>
               ))}
