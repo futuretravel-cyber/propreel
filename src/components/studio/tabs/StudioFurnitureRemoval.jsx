@@ -58,12 +58,18 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
   const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); setSelectedModeKey(null); };
 
   const selectMode = (mode) => {
+    setSelectedModeKey(mode.key);
     const t = getTemplate(mode.key);
-    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); setSelectedModeKey(mode.key); }
+    if (t) { setStrength(t.strength); }
   };
 
   const runRemoval = async () => {
-    if (!customPrompt.trim()) return;
+    let prompt = customPrompt.trim();
+    if (!prompt && selectedModeKey) {
+      const t = getTemplate(selectedModeKey);
+      prompt = t?.prompt || "";
+    }
+    if (!prompt) return;
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
       notifyOutOfCredits(toast, PHOTO_TOOL_CREDIT_COST);
@@ -72,7 +78,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const s3Url = await generateFalImage(originalPhoto, customPrompt, strength, "furniture-removal");
+      const s3Url = await generateFalImage(originalPhoto, prompt, strength, "furniture-removal");
       setResultPhoto(s3Url);
       toast({ title: "Removal complete!" });
     } catch (e) {
@@ -207,7 +213,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
               rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
           </div>
 
-          <Button onClick={runRemoval} disabled={processing || !customPrompt.trim()}
+          <Button onClick={runRemoval} disabled={processing || (!customPrompt.trim() && !selectedModeKey)}
             className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : <><Trash2 className="w-4 h-4" /> Remove Items ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>

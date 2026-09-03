@@ -60,12 +60,18 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
   const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); setSelectedStyleKey(null); };
 
   const selectStyle = (style) => {
+    setSelectedStyleKey(style.key);
     const t = getTemplate(style.key);
-    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); setSelectedStyleKey(style.key); }
+    if (t) { setStrength(t.strength); }
   };
 
   const runTwilight = async () => {
-    if (!customPrompt.trim()) return;
+    let prompt = customPrompt.trim();
+    if (!prompt && selectedStyleKey) {
+      const t = getTemplate(selectedStyleKey);
+      prompt = t?.prompt || "";
+    }
+    if (!prompt) return;
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
       notifyOutOfCredits(toast, PHOTO_TOOL_CREDIT_COST);
@@ -74,7 +80,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const s3Url = await generateFalImage(originalPhoto, customPrompt, strength, "twilight");
+      const s3Url = await generateFalImage(originalPhoto, prompt, strength, "twilight");
       setResultPhoto(s3Url);
       toast({ title: "Twilight conversion complete!" });
     } catch (e) {
@@ -209,7 +215,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
               rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
           </div>
 
-          <Button onClick={runTwilight} disabled={processing || !customPrompt.trim()} className="w-full bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl gap-2 h-11">
+          <Button onClick={runTwilight} disabled={processing || (!customPrompt.trim() && !selectedStyleKey)} className="w-full bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Converting to twilight...</> : <>🌆 Convert to Twilight ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>
         </div>

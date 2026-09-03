@@ -65,12 +65,18 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
   const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); setSelectedPresetKey(null); };
 
   const selectPreset = (edit) => {
+    setSelectedPresetKey(edit.key);
     const t = getTemplate(edit.key);
-    if (t) { setCustomPrompt(t.prompt); setStrength(t.strength); setSelectedPresetKey(edit.key); }
+    if (t) { setStrength(t.strength); }
   };
 
   const runEdit = async () => {
-    if (!customPrompt.trim()) return;
+    let prompt = customPrompt.trim();
+    if (!prompt && selectedPresetKey) {
+      const t = getTemplate(selectedPresetKey);
+      prompt = t?.prompt || "";
+    }
+    if (!prompt) return;
     const { success } = await spendCredits(PHOTO_TOOL_CREDIT_COST);
     if (!success) {
       notifyOutOfCredits(toast, PHOTO_TOOL_CREDIT_COST);
@@ -79,7 +85,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     setProcessing(true);
     setResultPhoto(null);
     try {
-      const s3Url = await generateFalImage(originalPhoto, customPrompt, strength, "ai-edits");
+      const s3Url = await generateFalImage(originalPhoto, prompt, strength, "ai-edits");
       setResultPhoto(s3Url);
       toast({ title: "Edit complete!" });
     } catch (e) {
@@ -209,7 +215,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
               rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
           </div>
 
-          <Button onClick={runEdit} disabled={processing || !customPrompt.trim()}
+          <Button onClick={runEdit} disabled={processing || (!customPrompt.trim() && !selectedPresetKey)}
             className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Editing photo...</> : <><Wand2 className="w-4 h-4" /> Apply AI Edit ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>
