@@ -6,7 +6,7 @@ import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
-import { callGrokVision } from "@/lib/grokVision";
+import { generateScriptWithRetry } from "@/lib/scriptRetryHandler";
 import PhotoThumbnailStrip from "@/components/studio/PhotoThumbnailStrip";
 
 const PLATFORMS = [
@@ -110,7 +110,7 @@ RULES:
 - Return ONLY the post text`;
 
     try {
-      const text = await callGrokVision(systemPrompt, userPrompt, allPhotos);
+      const text = await generateScriptWithRetry(systemPrompt, userPrompt, allPhotos);
       setPosts(prev => ({ ...prev, [selectedPlatform]: text }));
       setEditedPost(text);
     } catch (e) {

@@ -7,7 +7,7 @@ import { uploadToS3 } from "@/lib/awsS3";
 import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
-import { callGrokVision } from "@/lib/grokVision";
+import { generateScriptWithRetry } from "@/lib/scriptRetryHandler";
 import PhotoThumbnailStrip from "@/components/studio/PhotoThumbnailStrip";
 
 const TONES = [
@@ -163,7 +163,7 @@ RULES:
 - Return ONLY the description text`;
 
     try {
-      const text = await callGrokVision(systemPrompt, userPrompt, allPhotos);
+      const text = await generateScriptWithRetry(systemPrompt, userPrompt, allPhotos);
       setDescription(text);
       if (onDescriptionGenerated) onDescriptionGenerated(text);
     } catch (e) {

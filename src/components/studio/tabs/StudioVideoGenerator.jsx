@@ -9,7 +9,7 @@ import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
 import { generatePollyVoiceover } from "@/lib/awsPolly";
-import { callGrokVision } from "@/lib/grokVision";
+import { generateScriptWithRetry } from "@/lib/scriptRetryHandler";
 import { useToast } from "@/components/ui/use-toast";
 import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
@@ -100,6 +100,7 @@ export default function StudioVideoGenerator({
   const [rendering, setRendering] = useState(false);
   const [submittingRender, setSubmittingRender] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
+  const [retryInfo, setRetryInfo] = useState(null);
   const [voiceoverApproved, setVoiceoverApproved] = useState(false);
 
   const handleUploadPhotos = async (e) => {
@@ -157,6 +158,7 @@ export default function StudioVideoGenerator({
 
   const handleGenerateScript = async () => {
     setGeneratingScript(true);
+    setRetryInfo(null);
     try {
       const wordCounts = DURATION_WORD_COUNTS[videoDuration] || { min: 68, max: 75 };
       const targetWordCount = Math.round((wordCounts.min + wordCounts.max) / 2);
@@ -172,12 +174,16 @@ ${propertyDescription ? `Property context: ${propertyDescription}` : ""}
 
 Write the voiceover script now. Return ONLY the spoken script text, exactly ${targetWordCount} words.`;
 
-      const text = await callGrokVision(systemPrompt, userPrompt, photos);
+      const text = await generateScriptWithRetry(systemPrompt, userPrompt, photos, (info) => {
+        setRetryInfo(info);
+        toast({ title: `AI service busy — retrying (${info.attempt}/${info.maxRetries})...` });
+      });
       setVoiceoverScript(text);
       setVoiceoverApproved(false);
     } catch (e) {
       toast({ title: "Script generation failed", description: e.message, variant: "destructive" });
     }
+    setRetryInfo(null);
     setGeneratingScript(false);
   };
 
@@ -350,7 +356,7 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
               <button onClick={handleGenerateScript} disabled={generatingScript}
                 className="flex items-center gap-1 text-xs text-purple-700 font-medium hover:underline">
                 {generatingScript ? <Loader2 className="w-3 h-3 animate-spin" /> : "✨"}
-                {generatingScript ? "Generating..." : "AI Write"}
+                {generatingScript ? (retryInfo ? `Retrying (${retryInfo.attempt}/${retryInfo.maxRetries})...` : "Generating...") : "AI Write"}
               </button>
             </div>
             <textarea value={voiceoverScript} onChange={e => { setVoiceoverScript(e.target.value); setVoiceoverApproved(false); }}
