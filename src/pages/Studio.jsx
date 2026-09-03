@@ -138,7 +138,7 @@ export default function Studio() {
   const renderTabContent = () => {
     switch (activeTab) {
       case "description":
-        return <StudioDescription project={project} listing={listing} onDescriptionGenerated={(text) => setPropertyDescription(text)} />;
+        return <StudioDescription project={project} listing={listing} photos={photos} onPhotoDeleted={handlePhotoDeleted} onDescriptionGenerated={(text) => setPropertyDescription(text)} />;
       case "ai_editor":
         return <StudioAIPhotoEditor {...sharedPhotoProps} projectId={id} />;
       case "staging":
@@ -148,13 +148,14 @@ export default function Studio() {
       case "twilight":
         return <StudioTwilight {...sharedPhotoProps} projectId={id} />;
       case "social":
-        return <StudioSocialMedia photos={photos} project={project} listing={listing} />;
+        return <StudioSocialMedia photos={photos} project={project} listing={listing} onPhotoDeleted={handlePhotoDeleted} />;
       case "video":
         return (
           <StudioVideoGenerator
             project={project}
             projectId={id}
             photos={photos}
+            onPhotoDeleted={handlePhotoDeleted}
             editedPhotos={photos}
             brandKits={brandKits}
             musicTracks={musicTracks}

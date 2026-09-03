@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import {
   Music, Mic, User, Star, Monitor, Smartphone,
-  Check, Play, Loader2, Download, ChevronDown, ChevronRight, Upload
+  Check, Play, Loader2, Download, ChevronDown, ChevronRight, Upload, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -57,7 +57,7 @@ function Section({ sectionKey, label, icon: Icon, desc, children, defaultOpen = 
 }
 
 export default function StudioVideoGenerator({
-  project, projectId, photos: projectPhotos,
+  project, projectId, photos: projectPhotos, onPhotoDeleted,
   brandKits, musicTracks,
   selectedBrandKitId, setSelectedBrandKitId,
   voiceoverUrl, setVoiceoverUrl,
@@ -130,6 +130,14 @@ export default function StudioVideoGenerator({
     }
     setUploading(false);
     e.target.value = "";
+  };
+
+  const handleDeletePhoto = (idx) => {
+    if (photoSource === "uploaded" && uploadedPhotos.length > 0) {
+      setUploadedPhotos(prev => prev.filter((_, i) => i !== idx));
+    } else {
+      onPhotoDeleted?.(idx);
+    }
   };
 
   const handleRenderVoiceover = async () => {
@@ -276,8 +284,17 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         {photos.length > 0 && (
           <div className="flex gap-1.5 overflow-x-auto pb-1">
             {photos.map((url, i) => (
-              <div key={i} className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border border-gray-200">
-                <img src={url} alt="" className="w-full h-full object-cover" />
+              <div key={i} className="relative flex-shrink-0">
+                <div className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200">
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                </div>
+                <button
+                  onClick={() => handleDeletePhoto(i)}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors z-10"
+                  title="Remove photo"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
               </div>
             ))}
           </div>

@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { callGrokVision } from "@/lib/grokVision";
+import PhotoThumbnailStrip from "@/components/studio/PhotoThumbnailStrip";
 
 const TONES = [
   { key: "professional", label: "👔 Professional",          desc: "Clear, factual and authoritative." },
@@ -28,7 +29,7 @@ function formatRand(val) {
   return Number(val).toLocaleString("en-ZA");
 }
 
-export default function StudioDescription({ project, listing, onDescriptionGenerated }) {
+export default function StudioDescription({ project, listing, photos: projectPhotos, onPhotoDeleted, onDescriptionGenerated }) {
   const { toast } = useToast();
   const fileInputRef = useRef(null);
 
@@ -59,6 +60,20 @@ export default function StudioDescription({ project, listing, onDescriptionGener
 
   const [attachedPhotos, setAttachedPhotos] = useState([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  const allPhotos = [...projectPhotos, ...attachedPhotos];
+
+  const handleDeletePhoto = (idx) => {
+    if (idx < projectPhotos.length) {
+      onPhotoDeleted?.(idx);
+    } else {
+      const uploadIdx = idx - projectPhotos.length;
+      setAttachedPhotos(prev => prev.filter((_, i) => i !== uploadIdx));
+    }
+    if (allPhotos.length <= 1) setSelectedIdx(0);
+    else if (idx <= selectedIdx) setSelectedIdx(Math.max(0, selectedIdx - 1));
+  };
 
   const fullAddress = [streetAddress, suburb, city, province].filter(Boolean).join(", ");
 
@@ -148,7 +163,7 @@ RULES:
 - Return ONLY the description text`;
 
     try {
-      const text = await callGrokVision(systemPrompt, userPrompt, attachedPhotos);
+      const text = await callGrokVision(systemPrompt, userPrompt, allPhotos);
       setDescription(text);
       if (onDescriptionGenerated) onDescriptionGenerated(text);
     } catch (e) {
@@ -286,31 +301,19 @@ RULES:
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="text-sm font-semibold text-gray-900">📎 Attach Property Photos</p>
-            <p className="text-xs text-gray-400 mt-0.5">AI will analyse these photos when generating your description</p>
-          </div>
-          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
-          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingPhoto} className="rounded-xl gap-1.5 text-xs">
-            {uploadingPhoto ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-            {uploadingPhoto ? "Uploading..." : "Upload Photos"}
-          </Button>
-        </div>
-        {attachedPhotos.length > 0 ? (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {attachedPhotos.map((url, i) => (
-              <div key={i} className="relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-gray-200 group">
-                <img src={url} alt="" className="w-full h-full object-cover" />
-                <button onClick={() => setAttachedPhotos(prev => prev.filter((_, j) => j !== i))}
-                  className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs transition-opacity">✕</button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400">No photos attached. Upload photos to enhance AI description quality.</p>
-        )}
+      <div>
+        <p className="text-sm font-semibold text-gray-900 mb-1">📎 Property Photos</p>
+        <p className="text-xs text-gray-400 mb-2">AI will analyse these photos when generating your description</p>
+        <PhotoThumbnailStrip
+          photos={allPhotos}
+          selectedIdx={selectedIdx}
+          onSelect={setSelectedIdx}
+          onDelete={handleDeletePhoto}
+          uploading={uploadingPhoto}
+          onUpload={handlePhotoUpload}
+          fileInputRef={fileInputRef}
+          label="Property Photos"
+        />
       </div>
 
       {suburb && (

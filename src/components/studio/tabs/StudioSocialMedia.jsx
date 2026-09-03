@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { callGrokVision } from "@/lib/grokVision";
+import PhotoThumbnailStrip from "@/components/studio/PhotoThumbnailStrip";
 
 const PLATFORMS = [
   { key: "facebook",   label: "Facebook",   emoji: "📘", maxChars: 500,  desc: "Engaging post for Facebook property groups.", imagePrompt: "Facebook post image 1200x630px landscape, premium South African real estate marketing graphic, clean modern design" },
@@ -18,13 +19,25 @@ const PLATFORMS = [
   { key: "newsletter", label: "Newsletter", emoji: "📧", maxChars: 1000, desc: "Full newsletter section for your monthly property email.", imagePrompt: "Email newsletter header 600x400px, professional South African real estate property listing banner" },
 ];
 
-export default function StudioSocialMedia({ photos: projectPhotos, project, listing }) {
+export default function StudioSocialMedia({ photos: projectPhotos, project, listing, onPhotoDeleted }) {
   const { toast } = useToast();
   const fileInputRef = useRef(null);
 
   const [uploadedPhotos, setUploadedPhotos] = useState([]);
   const allPhotos = [...projectPhotos, ...uploadedPhotos];
   const [uploading, setUploading] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  const handleDeletePhoto = (idx) => {
+    if (idx < projectPhotos.length) {
+      onPhotoDeleted?.(idx);
+    } else {
+      const uploadIdx = idx - projectPhotos.length;
+      setUploadedPhotos(prev => prev.filter((_, i) => i !== uploadIdx));
+    }
+    if (allPhotos.length <= 1) setSelectedIdx(0);
+    else if (idx <= selectedIdx) setSelectedIdx(Math.max(0, selectedIdx - 1));
+  };
 
   const [selectedPlatform, setSelectedPlatform] = useState("instagram");
   const [generating, setGenerating] = useState(false);
@@ -129,7 +142,7 @@ RULES:
   };
 
   const generateSocialImage = async () => {
-    const referencePhoto = allPhotos[0];
+    const referencePhoto = allPhotos[selectedIdx] || allPhotos[0];
     if (!referencePhoto) return;
     setGeneratingImage(true);
     try {
@@ -205,29 +218,16 @@ RULES:
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Listing Photos</p>
-          <div>
-            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleUpload} className="hidden" />
-            <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="rounded-xl gap-1.5 text-xs">
-              {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-              {uploading ? "Uploading..." : "Upload Photos"}
-            </Button>
-          </div>
-        </div>
-        {allPhotos.length > 0 ? (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {allPhotos.map((url, i) => (
-              <div key={i} className="relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-gray-200">
-                <img src={url} alt="" className="w-full h-full object-cover" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400">No photos yet. Upload photos to generate social media images.</p>
-        )}
-      </div>
+      <PhotoThumbnailStrip
+        photos={allPhotos}
+        selectedIdx={selectedIdx}
+        onSelect={setSelectedIdx}
+        onDelete={handleDeletePhoto}
+        uploading={uploading}
+        onUpload={handleUpload}
+        fileInputRef={fileInputRef}
+        label="Listing Photos"
+      />
     </div>
   );
 }
