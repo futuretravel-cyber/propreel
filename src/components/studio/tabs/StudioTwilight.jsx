@@ -12,12 +12,12 @@ import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const TWILIGHT_STYLES = [
-  { key: "blue_hour",    label: "🌆 Blue Hour" },
-  { key: "golden_dusk",  label: "🌅 Golden Dusk" },
-  { key: "night_lights", label: "🌃 Night Lights" },
-  { key: "sunset_sky",   label: "🔴 Dramatic Sunset" },
-  { key: "moody_dusk",   label: "🌫️ Moody & Atmospheric" },
-  { key: "christmas",    label: "🎄 Festive Evening" },
+  { key: "tw_blue_hour",    label: "🌆 Blue Hour" },
+  { key: "tw_golden_dusk",  label: "🌅 Golden Dusk" },
+  { key: "tw_night_lights", label: "🌃 Night Lights" },
+  { key: "tw_sunset_sky",   label: "🔴 Dramatic Sunset" },
+  { key: "tw_moody_dusk",   label: "🌫️ Moody & Atmospheric" },
+  { key: "tw_christmas",    label: "🎄 Festive Evening" },
 ];
 
 export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {

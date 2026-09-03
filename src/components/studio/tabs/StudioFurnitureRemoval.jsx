@@ -12,10 +12,10 @@ import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const REMOVAL_MODES = [
-  { key: "all",      label: "🗑️ Remove All Furniture" },
-  { key: "clutter",  label: "🧹 Remove Clutter Only" },
-  { key: "personal", label: "👤 Remove Personal Items" },
-  { key: "cars",     label: "🚗 Remove Vehicles" },
+  { key: "fr_all",      label: "🗑️ Remove All Furniture" },
+  { key: "fr_clutter",  label: "🧹 Remove Clutter Only" },
+  { key: "fr_personal", label: "👤 Remove Personal Items" },
+  { key: "fr_cars",     label: "🚗 Remove Vehicles" },
 ];
 
 export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {

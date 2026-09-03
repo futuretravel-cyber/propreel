@@ -12,14 +12,14 @@ import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const STYLES = [
-  { key: "luxury",       label: "🛋️ Luxury Modern" },
-  { key: "minimal",      label: "✨ Scandinavian Minimal" },
-  { key: "contemporary", label: "🖤 Contemporary Dark" },
-  { key: "coastal",      label: "🌊 Coastal Relaxed" },
-  { key: "family",       label: "👨‍👩‍👧 Family Comfortable" },
-  { key: "bedroom_lux",  label: "🛏️ Luxury Bedroom" },
-  { key: "office",       label: "💼 Home Office" },
-  { key: "industrial",   label: "⚙️ Industrial Loft" },
+  { key: "vs_luxury",       label: "🛋️ Luxury Modern" },
+  { key: "vs_minimal",      label: "✨ Scandinavian Minimal" },
+  { key: "vs_contemporary", label: "🖤 Contemporary Dark" },
+  { key: "vs_coastal",      label: "🌊 Coastal Relaxed" },
+  { key: "vs_family",       label: "👨‍👩‍👧 Family Comfortable" },
+  { key: "vs_bedroom_lux",  label: "🛏️ Luxury Bedroom" },
+  { key: "vs_office",       label: "💼 Home Office" },
+  { key: "vs_industrial",   label: "⚙️ Industrial Loft" },
 ];
 
 export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
