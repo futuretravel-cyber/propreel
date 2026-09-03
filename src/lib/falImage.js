@@ -3,6 +3,8 @@ import { uploadToS3 } from "@/lib/awsS3";
 
 let cachedApiKey = null;
 
+const NEGATIVE_PROMPT = "text, watermarks, signatures, letters, words, blurry, distorted geometry, extra rooms, structural mutation, changing staircases, shifting windows, hallucinated built-in furniture, cupboards.";
+
 async function getApiKey() {
   if (cachedApiKey) return cachedApiKey;
   const settings = await base44.entities.AppSetting.list();
@@ -35,6 +37,7 @@ export async function generateFalImage(imageUrl, prompt, strength, folder = "ai-
     },
     body: JSON.stringify({
       prompt: prompt,
+      negative_prompt: NEGATIVE_PROMPT,
       image_urls: [imageUrl],
       image_size: {
         width: 1920,
