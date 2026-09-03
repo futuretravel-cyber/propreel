@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { appParams } from "@/lib/app-params";
 import { uploadToS3 } from "@/lib/awsS3";
 import { generatePollyVoiceover } from "@/lib/awsPolly";
 import { generateScriptWithRetry } from "@/lib/scriptRetryHandler";
@@ -14,6 +15,8 @@ import { useToast } from "@/components/ui/use-toast";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
 
 const MODAL_RENDER_ENDPOINT = "https://futuretravel--propreel-render-engine-grok-tiers-fastapi-entry.modal.run/v1/api/render";
+
+const AWS_RENDER_ENDPOINT = "https://vpyz75mmlg.execute-api.af-south-1.amazonaws.com/v1/api/render";
 
 const DURATION_WORD_COUNTS = {
   20: { min: 45, max: 50 },
@@ -205,7 +208,7 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
     setSubmittingRender(true);
     try {
       const settings = await base44.entities.AppSetting.list();
-      const renderApiUrl = settings?.[0]?.aws_render_api_url || MODAL_RENDER_ENDPOINT;
+      const renderApiUrl = settings?.[0]?.aws_render_api_url || AWS_RENDER_ENDPOINT;
 
       const payload = {
         record_id: projectId,
@@ -225,12 +228,38 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         agent_phone: selectedBrandKit?.phone || "",
       };
 
-      const res = await fetch(renderApiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
+      // Attach the active user's auth token if available
+      const headers = { "Content-Type": "application/json" };
+      if (appParams?.token) {
+        headers["Authorization"] = `Bearer ${appParams.token}`;
+      }
+
+      let res;
+      try {
+        res = await fetch(renderApiUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+        });
+      } catch (networkErr) {
+        // Network/CORS failures surface as a generic "Failed to fetch"
+        throw new Error(
+          networkErr?.message === "Failed to fetch"
+            ? "Network error: unable to reach the render service. This may be due to a network issue or CORS restriction."
+            : `Network error: ${networkErr?.message || "Unknown"}`
+        );
+      }
+
+      if (!res.ok) {
+        let serverMsg = `Status ${res.status}`;
+        try {
+          const errBody = await res.json();
+          serverMsg = errBody?.message || errBody?.error || errBody?.detail || JSON.stringify(errBody);
+        } catch {
+          try { serverMsg = await res.text(); } catch {}
+        }
+        throw new Error(serverMsg);
+      }
 
       const responseData = await res.json().catch(() => ({}));
       const jobId = responseData.job_id || responseData.task_id || responseData.id;
