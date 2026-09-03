@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Wand2, Loader2, Check, X, Upload, Download, Video } from "lucide-react";
+import { Wand2, Loader2, Check, X, Download, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
@@ -8,7 +8,8 @@ import { spendCredits, PHOTO_TOOL_CREDIT_COST } from "@/lib/credits";
 import { notifyOutOfCredits } from "@/lib/creditsToast";
 import { generateFalImage } from "@/lib/falImage";
 import AIDisclaimerBadge from "@/components/shared/AIDisclaimerBadge";
-
+import PhotoThumbnailStrip from "@/components/studio/PhotoThumbnailStrip";
+import { usePhotoWorkState } from "@/hooks/usePhotoWorkState";
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const AI_EDITS = [
@@ -25,21 +26,25 @@ const AI_EDITS = [
   { key: "fix_lighting", label: "🔆 Fix Dark Corners" },
 ];
 
-export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, projectId }) {
+export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, onPhotoDeleted, projectId }) {
   const { toast } = useToast();
   const fileInputRef = useRef(null);
 
   const [uploadedPhotos, setUploadedPhotos] = useState([]);
   const allPhotos = [...projectPhotos, ...uploadedPhotos];
 
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [customPrompt, setCustomPrompt] = useState("");
-  const [strength, setStrength] = useState(0.28);
-  const [selectedPresetKey, setSelectedPresetKey] = useState(null);
+  const {
+    selectedIdx, setSelectedIdx,
+    customPrompt, setCustomPrompt,
+    selectedStyleKey: selectedPresetKey,
+    setSelectedStyleKey: setSelectedPresetKey,
+    resultPhoto, setResultPhoto,
+    strength, setStrength,
+    appliedEdit, setAppliedEdit,
+    getApplied, deleteWork,
+  } = usePhotoWorkState(allPhotos, 0.28);
   const { getTemplate } = usePromptRegistry();
   const [processing, setProcessing] = useState(false);
-  const [resultPhoto, setResultPhoto] = useState(null);
-  const [appliedEdits, setAppliedEdits] = useState({});
   const [uploading, setUploading] = useState(false);
 
   const originalPhoto = allPhotos[selectedIdx];
@@ -62,7 +67,20 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
     e.target.value = "";
   };
 
-  const selectPhoto = (idx) => { setSelectedIdx(idx); setResultPhoto(null); setCustomPrompt(""); setSelectedPresetKey(null); };
+  const selectPhoto = (idx) => setSelectedIdx(idx);
+
+  const handleDeletePhoto = (idx) => {
+    const urlToDelete = allPhotos[idx];
+    deleteWork(urlToDelete);
+    if (idx < projectPhotos.length) {
+      onPhotoDeleted?.(idx);
+    } else {
+      const uploadIdx = idx - projectPhotos.length;
+      setUploadedPhotos(prev => prev.filter((_, i) => i !== uploadIdx));
+    }
+    if (allPhotos.length <= 1) setSelectedIdx(0);
+    else if (idx <= selectedIdx) setSelectedIdx(Math.max(0, selectedIdx - 1));
+  };
 
   const selectPreset = (edit) => {
     setSelectedPresetKey(edit.key);
@@ -96,7 +114,7 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
 
   const applyEdit = () => {
     if (!resultPhoto) return;
-    setAppliedEdits(prev => ({ ...prev, [selectedIdx]: resultPhoto }));
+    setAppliedEdit(resultPhoto);
     if (selectedIdx < projectPhotos.length) onPhotoReplaced(selectedIdx, resultPhoto);
     else onAddPhoto?.(resultPhoto);
     if (projectId) {
@@ -109,7 +127,6 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
         prompt: customPrompt,
       }).catch(() => {});
     }
-    setResultPhoto(null);
     toast({ title: "✓ Photo updated!" });
   };
 
@@ -120,28 +137,16 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select Photo ({allPhotos.length ? selectedIdx + 1 : 0} of {allPhotos.length})</p>
-          <div>
-            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleUpload} className="hidden" />
-            <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="rounded-xl gap-1.5 text-xs">
-              {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-              {uploading ? "Uploading..." : "Upload Photos"}
-            </Button>
-          </div>
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {allPhotos.map((url, i) => (
-            <button key={i} onClick={() => selectPhoto(i)}
-              className={`relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all ${selectedIdx === i ? "border-purple-700 shadow-md" : "border-transparent opacity-50 hover:opacity-80"}`}>
-              <img src={appliedEdits[i] || url} alt="" className="w-full h-full object-cover" />
-              {appliedEdits[i] && <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-purple-700 rounded-full flex items-center justify-center"><Check className="w-2.5 h-2.5 text-white" /></div>}
-            </button>
-          ))}
-          {allPhotos.length === 0 && <p className="text-sm text-gray-400">Upload photos to get started.</p>}
-        </div>
-      </div>
+      <PhotoThumbnailStrip
+        photos={allPhotos}
+        selectedIdx={selectedIdx}
+        onSelect={selectPhoto}
+        onDelete={handleDeletePhoto}
+        getApplied={getApplied}
+        uploading={uploading}
+        onUpload={handleUpload}
+        fileInputRef={fileInputRef}
+      />
 
       {allPhotos.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -157,8 +162,8 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">AI Result</p>
-              {(resultPhoto || appliedEdits[selectedIdx]) && (
-                <button onClick={() => downloadPhoto(resultPhoto || appliedEdits[selectedIdx], `edited-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
+              {(resultPhoto || appliedEdit) && (
+                <button onClick={() => downloadPhoto(resultPhoto || appliedEdit, `edited-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
               )}
@@ -175,10 +180,10 @@ export default function StudioAIPhotoEditor({ photos: projectPhotos, onPhotoRepl
                     <Button size="sm" variant="outline" onClick={() => setResultPhoto(null)} className="rounded-lg text-xs"><X className="w-3 h-3" /></Button>
                   </div>
                 </>
-              ) : appliedEdits[selectedIdx] ? (
+              ) : appliedEdit ? (
                 <>
                   <AIDisclaimerBadge />
-                  <img src={appliedEdits[selectedIdx]} alt="Applied" className="w-full h-full object-cover" />
+                  <img src={appliedEdit} alt="Applied" className="w-full h-full object-cover" />
                 </>
               ) : (
                 <p className="text-sm text-gray-400">Apply an edit to see the result here</p>

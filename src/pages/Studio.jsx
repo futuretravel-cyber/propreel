@@ -89,6 +89,10 @@ export default function Studio() {
     setPhotos(prev => (prev.includes(url) ? prev : [...prev, url]));
   };
 
+  const handlePhotoDeleted = (idx) => {
+    setPhotos(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -128,6 +132,7 @@ export default function Studio() {
     photos,
     onPhotoReplaced: handlePhotoReplaced,
     onAddPhoto: handleAddPhoto,
+    onPhotoDeleted: handlePhotoDeleted,
   };
 
   const renderTabContent = () => {
