@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Trash2, Loader2, Check, X, Download, Video } from "lucide-react";
+import { Trash2, Loader2, Check, X, Download, Video, Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
@@ -13,10 +13,10 @@ import { usePhotoWorkState } from "@/hooks/usePhotoWorkState";
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const REMOVAL_MODES = [
-  { key: "fr_all",      label: "🗑️ Remove All Furniture" },
-  { key: "fr_clutter",  label: "🧹 Remove Clutter Only" },
-  { key: "fr_personal", label: "👤 Remove Personal Items" },
-  { key: "fr_cars",     label: "🚗 Remove Vehicles" },
+  { key: "fr_all",      label: "Remove All Furniture", icon: "🗑️", desc: "Clear the entire space" },
+  { key: "fr_clutter",  label: "Remove Clutter Only", icon: "🧹", desc: "Tidy up loose items" },
+  { key: "fr_personal", label: "Remove Personal Items", icon: "👤", desc: "Photos, toiletries, etc." },
+  { key: "fr_cars",     label: "Remove Vehicles", icon: "🚗", desc: "Clear the driveway" },
 ];
 
 export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, onPhotoDeleted, projectId }) {
@@ -130,9 +130,12 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
 
   return (
     <div className="space-y-6">
-      <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4">
-        <p className="text-sm font-semibold text-orange-900 mb-1">🗑️ AI Furniture & Object Removal</p>
-        <p className="text-sm text-orange-700">Remove furniture, clutter, vehicles, or personal items from property photos. Great for presenting a clean, neutral space to buyers.</p>
+      <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Eraser className="w-4 h-4 text-orange-400" />
+          <p className="text-sm font-semibold text-orange-200">AI Furniture & Object Removal</p>
+        </div>
+        <p className="text-sm text-orange-300/80">Remove furniture, clutter, vehicles, or personal items from property photos. Great for presenting a clean, neutral space to buyers.</p>
       </div>
 
       <PhotoThumbnailStrip
@@ -148,34 +151,40 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
 
       {allPhotos.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Before</p>
-              <button onClick={() => downloadPhoto(originalPhoto, `before-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-700">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Before</p>
+              <button onClick={() => downloadPhoto(originalPhoto, `before-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-400">
                 <Download className="w-3.5 h-3.5" /> Download
               </button>
             </div>
-            <div className="aspect-video"><img src={originalPhoto} alt="" className="w-full h-full object-cover" /></div>
+            <div className="aspect-video bg-slate-800"><img src={originalPhoto} alt="" className="w-full h-full object-cover" /></div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
-              <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">After Removal</p>
+              <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">After Removal</p>
               {(resultPhoto || appliedEdit) && (
-                <button onClick={() => downloadPhoto(resultPhoto || appliedEdit, `after-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
+                <button onClick={() => downloadPhoto(resultPhoto || appliedEdit, `after-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
               )}
             </div>
-            <div className="relative aspect-video bg-gray-50 flex items-center justify-center">
+            <div className="relative aspect-video bg-slate-800 flex items-center justify-center">
               {processing ? (
-                <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 text-purple-700 animate-spin" /><p className="text-sm text-gray-500">AI is removing items...</p></div>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="relative">
+                    <div className="w-12 h-12 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin" />
+                    <Eraser className="w-5 h-5 text-indigo-400 absolute inset-0 m-auto" />
+                  </div>
+                  <p className="text-sm text-slate-400">AI is removing items...</p>
+                </div>
               ) : resultPhoto ? (
                 <>
                   <AIDisclaimerBadge />
                   <img src={resultPhoto} alt="Result" className="w-full h-full object-cover" />
                   <div className="absolute bottom-3 left-3 right-3 flex gap-2">
-                    <Button size="sm" onClick={applyEdit} className="flex-1 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs gap-1"><Check className="w-3 h-3" /> Use This Photo</Button>
-                    <Button size="sm" variant="outline" onClick={() => setResultPhoto(null)} className="rounded-lg text-xs"><X className="w-3 h-3" /></Button>
+                    <Button size="sm" onClick={applyEdit} className="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-lg text-xs gap-1"><Check className="w-3 h-3" /> Use This Photo</Button>
+                    <Button size="sm" variant="outline" onClick={() => setResultPhoto(null)} className="rounded-lg text-xs bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"><X className="w-3 h-3" /></Button>
                   </div>
                 </>
               ) : appliedEdit ? (
@@ -184,7 +193,7 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
                   <img src={appliedEdit} alt="Applied" className="w-full h-full object-cover" />
                 </>
               ) : (
-                <p className="text-sm text-gray-400">Result will appear here</p>
+                <p className="text-sm text-slate-500">Result will appear here</p>
               )}
             </div>
           </div>
@@ -193,33 +202,37 @@ export default function StudioFurnitureRemoval({ photos: projectPhotos, onPhotoR
 
       {resultPhoto && (
         <Button onClick={() => { onAddPhoto?.(resultPhoto); toast({ title: "✓ Added to Video Project" }); }}
-          className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          className="w-full bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 rounded-xl gap-2 h-11">
           <Video className="w-4 h-4" /> Add to Video Project
         </Button>
       )}
 
       {allPhotos.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 space-y-4">
           <div>
-            <p className="text-sm font-semibold text-gray-900 mb-3">Choose Removal Mode</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            <p className="text-sm font-semibold text-slate-200 mb-3">Choose Removal Mode</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {REMOVAL_MODES.map(mode => (
                 <button key={mode.key} onClick={() => selectMode(mode)}
-                  className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all ${selectedModeKey === mode.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800"}`}>
-                  {mode.label}
+                  className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${selectedModeKey === mode.key ? "border-indigo-500/50 bg-indigo-500/15" : "border-slate-800 bg-slate-800/40 hover:border-slate-700"}`}>
+                  <span className="text-lg">{mode.icon}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-100">{mode.label}</p>
+                    <p className="text-xs text-slate-500">{mode.desc}</p>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Custom Removal Instructions — describe exactly what to remove from this image</label>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">Custom Removal Instructions — describe exactly what to remove from this image</label>
             <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
               placeholder="e.g. Remove the red couch, the ceiling fan, and the floor lamp. Blend the background naturally to fill the gaps..."
-              rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
+              rows={3} className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none text-slate-100 placeholder:text-slate-500" />
           </div>
 
           <Button onClick={runRemoval} disabled={processing || (!customPrompt.trim() && !selectedModeKey)}
-            className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+            className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl gap-2 h-11 shadow-lg shadow-indigo-600/25">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : <><Trash2 className="w-4 h-4" /> Remove Items ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>
         </div>

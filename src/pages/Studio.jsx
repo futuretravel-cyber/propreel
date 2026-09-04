@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft, Save, Share2, Loader2, FileText, Camera, Sofa,
-  Trash2, Sunset, Share, Video, Check, ChevronLeft, ChevronRight, Menu, X
+  Trash2, Sunset, Share, Video, Check, ChevronLeft, ChevronRight, Menu, X, Clapperboard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
@@ -109,8 +109,8 @@ export default function Studio() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-white">
-        <div className="w-8 h-8 border-4 border-gray-200 border-t-purple-700 rounded-full animate-spin" />
+      <div className="fixed inset-0 flex items-center justify-center bg-slate-950">
+        <div className="w-8 h-8 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -118,8 +118,8 @@ export default function Studio() {
   if (!project) {
     return (
       <div className="text-center py-20">
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Project not found</h2>
-        <Link to="/projects" className="text-purple-700 text-sm hover:underline">Back to projects</Link>
+        <h2 className="text-xl font-bold text-slate-100 mb-2">Project not found</h2>
+        <Link to="/projects" className="text-indigo-400 text-sm hover:underline">Back to projects</Link>
       </div>
     );
   }
@@ -172,28 +172,28 @@ export default function Studio() {
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-50 flex flex-col z-50">
+    <div className="fixed inset-0 bg-slate-950 flex flex-col z-50">
       {/* ── TOP BAR ── */}
-      <header className="flex items-center justify-between px-4 lg:px-6 h-14 bg-white border-b border-gray-100 flex-shrink-0 z-30">
+      <header className="flex items-center justify-between px-4 lg:px-6 h-14 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 flex-shrink-0 z-30">
         <div className="flex items-center gap-3 min-w-0">
-          <Link to={`/projects/${id}`} className="text-gray-400 hover:text-gray-700 transition-colors flex-shrink-0">
+          <Link to={`/projects/${id}`} className="text-slate-500 hover:text-slate-200 transition-colors flex-shrink-0">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-6 h-6 rounded-md bg-purple-700 flex items-center justify-center flex-shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-600/20">
               <span className="text-white font-bold text-[10px]">PR</span>
             </div>
-            <span className="text-sm font-semibold text-gray-900 truncate max-w-[160px] lg:max-w-xs">{project.name}</span>
+            <span className="text-sm font-semibold text-slate-100 truncate max-w-[160px] lg:max-w-xs">{project.name}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving} className="rounded-lg gap-1.5 text-xs hidden sm:flex">
+          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving}
+            className="rounded-lg gap-1.5 text-xs hidden sm:flex bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:text-white">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {saving ? "Saving..." : "Save"}
           </Button>
-          {/* Mobile panel toggle — only on small screens */}
           <button
-            className="md:hidden p-2 rounded-lg bg-gray-100 hover:bg-gray-200"
+            className="md:hidden p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700"
             onClick={() => setMobilePanelOpen(o => !o)}
           >
             {mobilePanelOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
@@ -204,7 +204,7 @@ export default function Studio() {
       <div className="flex flex-1 overflow-hidden min-h-0 min-w-0">
 
         {/* ── VERTICAL TAB RAIL (tablet+) ── */}
-        <nav className="hidden md:flex flex-col w-[52px] lg:w-[200px] bg-white border-r border-gray-100 flex-shrink-0 overflow-y-auto">
+        <nav className="hidden md:flex flex-col w-[56px] lg:w-[220px] bg-slate-900/60 backdrop-blur-xl border-r border-slate-800 flex-shrink-0 overflow-y-auto">
           <div className="p-2 lg:p-3 space-y-1">
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -216,8 +216,8 @@ export default function Studio() {
                   title={tab.label}
                   className={`w-full flex items-center gap-2.5 px-2 lg:px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all ${
                     active
-                      ? "bg-purple-700 text-white shadow-sm"
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                      ? "bg-gradient-to-r from-indigo-600/20 to-violet-600/10 text-indigo-300 border border-indigo-500/30"
+                      : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100 border border-transparent"
                   }`}
                 >
                   <Icon className="w-4 h-4 flex-shrink-0" />
@@ -231,11 +231,11 @@ export default function Studio() {
         {/* ── MOBILE TAB DRAWER ── */}
         {mobilePanelOpen && (
           <div className="fixed inset-0 z-50 md:hidden">
-            <div className="absolute inset-0 bg-black/40" onClick={() => setMobilePanelOpen(false)} />
-            <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-xl overflow-y-auto">
-              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                <span className="font-bold text-gray-900 text-sm">Studio Tools</span>
-                <button onClick={() => setMobilePanelOpen(false)}><X className="w-4 h-4" /></button>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setMobilePanelOpen(false)} />
+            <aside className="absolute left-0 top-0 bottom-0 w-72 bg-slate-900 border-r border-slate-800 shadow-2xl overflow-y-auto">
+              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                <span className="font-bold text-slate-100 text-sm">Studio Tools</span>
+                <button onClick={() => setMobilePanelOpen(false)} className="text-slate-400 hover:text-slate-100"><X className="w-4 h-4" /></button>
               </div>
               <div className="p-3 space-y-1">
                 {TABS.map((tab) => {
@@ -246,7 +246,9 @@ export default function Studio() {
                       key={tab.key}
                       onClick={() => { setActiveTab(tab.key); setMobilePanelOpen(false); }}
                       className={`w-full flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm font-medium text-left transition-all ${
-                        active ? "bg-purple-700 text-white" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                        active
+                          ? "bg-indigo-600/20 text-indigo-300 border border-indigo-500/30"
+                          : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100 border border-transparent"
                       }`}
                     >
                       <Icon className="w-4 h-4 flex-shrink-0" />
@@ -260,7 +262,7 @@ export default function Studio() {
         )}
 
         {/* ── MOBILE horizontal tab strip ── */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-40 flex overflow-x-auto">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 z-40 flex overflow-x-auto">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
@@ -269,7 +271,7 @@ export default function Studio() {
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex flex-col items-center gap-0.5 px-3 py-2 flex-shrink-0 text-[10px] font-medium transition-colors ${
-                  active ? "text-purple-700 border-t-2 border-purple-700" : "text-gray-400"
+                  active ? "text-indigo-400 border-t-2 border-indigo-500" : "text-slate-500"
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -286,10 +288,12 @@ export default function Studio() {
             <div className="flex items-center gap-2 mb-5">
               {activeTabData && (
                 <>
-                  <activeTabData.icon className="w-5 h-5 text-purple-700" />
-                  <h1 className="text-lg font-bold text-gray-900">{activeTabData.label}</h1>
+                  <div className="w-8 h-8 rounded-lg bg-indigo-500/15 border border-indigo-500/20 flex items-center justify-center">
+                    <activeTabData.icon className="w-4 h-4 text-indigo-400" />
+                  </div>
+                  <h1 className="text-lg font-bold text-slate-100">{activeTabData.label}</h1>
                   {activeTabData.creditNote && (
-                    <span className="text-[11px] font-semibold text-purple-700 bg-purple-50 border border-purple-100 rounded-full px-2.5 py-1">
+                    <span className="text-[11px] font-semibold text-indigo-300 bg-indigo-500/15 border border-indigo-500/20 rounded-full px-2.5 py-1">
                       ⚡ {activeTabData.creditNote}
                     </span>
                   )}
@@ -302,16 +306,6 @@ export default function Studio() {
           </div>
         </main>
       </div>
-    </div>
-  );
-}
-
-function EmptyPhotos() {
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
-      <Camera className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-      <h3 className="font-semibold text-gray-700 mb-1">No photos in this project</h3>
-      <p className="text-sm text-gray-400">Upload photos first from the Project Details page.</p>
     </div>
   );
 }

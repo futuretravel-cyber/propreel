@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Share, Loader2, Copy, Check, Download, Upload } from "lucide-react";
+import { Share, Loader2, Copy, Check, Download, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
@@ -11,12 +11,12 @@ import PhotoThumbnailStrip from "@/components/studio/PhotoThumbnailStrip";
 
 const PLATFORMS = [
   { key: "facebook",   label: "Facebook",   emoji: "📘", maxChars: 500,  desc: "Engaging post for Facebook property groups.", imagePrompt: "Facebook post image 1200x630px landscape, premium South African real estate marketing graphic, clean modern design" },
-  { key: "instagram",  label: "Instagram",  emoji: "📸", maxChars: 300,  desc: "Punchy caption with hashtags for Instagram.", imagePrompt: "Instagram square post 1080x1080px, stunning South African property marketing photo, bold elegant estate agency aesthetic, deep purple accent colours" },
+  { key: "instagram",  label: "Instagram",   emoji: "📸", maxChars: 300,  desc: "Punchy caption with hashtags for Instagram.", imagePrompt: "Instagram square post 1080x1080px, stunning South African property marketing photo, bold elegant estate agency aesthetic, deep purple accent colours" },
   { key: "whatsapp",   label: "WhatsApp",   emoji: "💬", maxChars: 400,  desc: "Short, personal message to send to your buyer database.", imagePrompt: "WhatsApp status image 1280x720px landscape, South African property for sale, clean professional real estate graphic" },
-  { key: "linkedin",   label: "LinkedIn",   emoji: "💼", maxChars: 700,  desc: "Professional property announcement for LinkedIn.", imagePrompt: "LinkedIn post image 1200x627px, corporate professional South African real estate property announcement" },
-  { key: "twitter",    label: "Twitter/X",  emoji: "🐦", maxChars: 240,  desc: "Concise tweet-style post with key highlights.", imagePrompt: "Twitter/X post image 1600x900px wide landscape, South African property listing graphic, modern bold design" },
-  { key: "tiktok",     label: "TikTok",     emoji: "🎵", maxChars: 300,  desc: "Trendy, youthful caption for TikTok property tours.", imagePrompt: "TikTok thumbnail 1080x1920px vertical portrait, trendy South African property tour cover, vibrant modern design" },
-  { key: "newsletter", label: "Newsletter", emoji: "📧", maxChars: 1000, desc: "Full newsletter section for your monthly property email.", imagePrompt: "Email newsletter header 600x400px, professional South African real estate property listing banner" },
+  { key: "linkedin",   label: "LinkedIn",    emoji: "💼", maxChars: 700,  desc: "Professional property announcement for LinkedIn.", imagePrompt: "LinkedIn post image 1200x627px, corporate professional South African real estate property announcement" },
+  { key: "twitter",    label: "Twitter/X",   emoji: "🐦", maxChars: 240,  desc: "Concise tweet-style post with key highlights.", imagePrompt: "Twitter/X post image 1600x900px wide landscape, South African property listing graphic, modern bold design" },
+  { key: "tiktok",     label: "TikTok",       emoji: "🎵", maxChars: 300,  desc: "Trendy, youthful caption for TikTok property tours.", imagePrompt: "TikTok thumbnail 1080x1920px vertical portrait, trendy South African property tour cover, vibrant modern design" },
+  { key: "newsletter", label: "Newsletter",  emoji: "📧", maxChars: 1000, desc: "Full newsletter section for your monthly property email.", imagePrompt: "Email newsletter header 600x400px, professional South African real estate property listing banner" },
 ];
 
 export default function StudioSocialMedia({ photos: projectPhotos, project, listing, onPhotoDeleted }) {
@@ -161,56 +161,62 @@ RULES:
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-        <p className="text-sm font-semibold text-gray-900 mb-3">Select Platform</p>
+      {/* Platform selector */}
+      <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-5">
+        <p className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2"><Share className="w-4 h-4 text-indigo-400" /> Select Platform</p>
         <div className="flex flex-wrap gap-2">
           {PLATFORMS.map(p => (
             <button key={p.key} onClick={() => handlePlatformChange(p.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border-2 transition-all ${selectedPlatform === p.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}>
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium border transition-all ${selectedPlatform === p.key ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300" : "border-slate-800 bg-slate-800/40 text-slate-400 hover:border-slate-700 hover:text-slate-200"}`}>
               <span>{p.emoji}</span> {p.label}
             </button>
           ))}
         </div>
-        {platform && <p className="text-xs text-gray-400 mt-3">{platform.desc} · Max {platform.maxChars} chars</p>}
+        {platform && <p className="text-xs text-slate-500 mt-3">{platform.desc} · Max {platform.maxChars} chars</p>}
       </div>
 
+      {/* Action buttons */}
       <div className="flex gap-3">
-        <Button onClick={generatePost} disabled={generating} className="flex-1 bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
-          {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Share className="w-4 h-4" /> Generate {platform?.label} Post</>}
+        <Button onClick={generatePost} disabled={generating}
+          className="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl gap-2 h-11 shadow-lg shadow-indigo-600/25">
+          {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> Generate {platform?.label} Post</>}
         </Button>
         {allPhotos.length > 0 && (
-          <Button onClick={generateSocialImage} disabled={generatingImage} variant="outline" className="rounded-xl gap-2 h-11">
-            {generatingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : "🖼️"}
+          <Button onClick={generateSocialImage} disabled={generatingImage} variant="outline"
+            className="rounded-xl gap-2 h-11 bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:text-white">
+            {generatingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {generatingImage ? "Creating..." : "Make Image"}
           </Button>
         )}
       </div>
 
+      {/* Generated post */}
       {currentPost && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-3">
+        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-900">{platform?.emoji} {platform?.label} Post</p>
+            <p className="text-sm font-semibold text-slate-100">{platform?.emoji} {platform?.label} Post</p>
             <div className="flex items-center gap-3">
-              <span className={`text-xs font-medium ${currentPost.length > (platform?.maxChars || 999) ? "text-red-500" : "text-gray-400"}`}>{currentPost.length} / {platform?.maxChars}</span>
-              <button onClick={copy} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
+              <span className={`text-xs font-medium ${currentPost.length > (platform?.maxChars || 999) ? "text-red-400" : "text-slate-500"}`}>{currentPost.length} / {platform?.maxChars}</span>
+              <button onClick={copy} className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300">
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? "Copied!" : "Copy"}
               </button>
-              <button onClick={downloadPost} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
+              <button onClick={downloadPost} className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300">
                 <Download className="w-3.5 h-3.5" /> Download
               </button>
             </div>
           </div>
           <textarea value={currentPost} onChange={e => setEditedPost(e.target.value)} rows={8}
-            className="w-full border border-purple-100 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none leading-relaxed bg-white" />
+            className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none leading-relaxed text-slate-100 placeholder:text-slate-500" />
         </div>
       )}
 
+      {/* Generated image */}
       {generatedImageUrl && (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
           <div className="flex items-center justify-between px-4 pt-3 pb-2">
-            <p className="text-sm font-semibold text-gray-900">{platform?.emoji} {platform?.label} Image</p>
-            <a href={generatedImageUrl} download={`${selectedPlatform}-image.jpg`} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
+            <p className="text-sm font-semibold text-slate-100">{platform?.emoji} {platform?.label} Image</p>
+            <a href={generatedImageUrl} download={`${selectedPlatform}-image.jpg`} className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300">
               <Download className="w-3.5 h-3.5" /> Download
             </a>
           </div>

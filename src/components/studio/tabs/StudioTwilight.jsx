@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Loader2, Check, X, Download, Video } from "lucide-react";
+import { Loader2, Check, X, Download, Video, Sunset } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { uploadToS3 } from "@/lib/awsS3";
@@ -13,12 +13,12 @@ import { usePhotoWorkState } from "@/hooks/usePhotoWorkState";
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const TWILIGHT_STYLES = [
-  { key: "tw_blue_hour",    label: "🌆 Blue Hour" },
-  { key: "tw_golden_dusk",  label: "🌅 Golden Dusk" },
-  { key: "tw_night_lights", label: "🌃 Night Lights" },
-  { key: "tw_sunset_sky",   label: "🔴 Dramatic Sunset" },
-  { key: "tw_moody_dusk",   label: "🌫️ Moody & Atmospheric" },
-  { key: "tw_christmas",    label: "🎄 Festive Evening" },
+  { key: "tw_blue_hour",    label: "Blue Hour", icon: "🌆", desc: "Deep blue sky, soft glow" },
+  { key: "tw_golden_dusk",  label: "Golden Dusk", icon: "🌅", desc: "Warm golden light" },
+  { key: "tw_night_lights", label: "Night Lights", icon: "🌃", desc: "Interior glow, dark sky" },
+  { key: "tw_sunset_sky",   label: "Dramatic Sunset", icon: "🔴", desc: "Vibrant orange-red sky" },
+  { key: "tw_moody_dusk",   label: "Moody & Atmospheric", icon: "🌫️", desc: "Soft mist, dramatic" },
+  { key: "tw_christmas",    label: "Festive Evening", icon: "🎄", desc: "Warm holiday lights" },
 ];
 
 export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, onPhotoDeleted, projectId }) {
@@ -131,9 +131,12 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
 
   return (
     <div className="space-y-6">
-      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
-        <p className="text-sm font-semibold text-indigo-900 mb-1">🌆 Twilight Photography</p>
-        <p className="text-sm text-indigo-700">Convert daytime exterior shots to stunning twilight or dusk photos. Twilight photos consistently outperform daytime photos on property portals — attracting 3x more enquiries.</p>
+      <div className="bg-gradient-to-r from-indigo-500/10 to-violet-500/10 border border-indigo-500/20 rounded-2xl p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Sunset className="w-4 h-4 text-indigo-400" />
+          <p className="text-sm font-semibold text-indigo-200">Twilight Photography</p>
+        </div>
+        <p className="text-sm text-indigo-300/80">Convert daytime exterior shots to stunning twilight or dusk photos. Twilight photos consistently outperform daytime photos on property portals — attracting 3x more enquiries.</p>
       </div>
 
       <PhotoThumbnailStrip
@@ -150,34 +153,40 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
 
       {allPhotos.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Day Shot (Original)</p>
-              <button onClick={() => downloadPhoto(originalPhoto, `original-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-700">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Day Shot (Original)</p>
+              <button onClick={() => downloadPhoto(originalPhoto, `original-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-400">
                 <Download className="w-3.5 h-3.5" /> Download
               </button>
             </div>
-            <div className="aspect-video"><img src={originalPhoto} alt="" className="w-full h-full object-cover" /></div>
+            <div className="aspect-video bg-slate-800"><img src={originalPhoto} alt="" className="w-full h-full object-cover" /></div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
-              <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Twilight Conversion</p>
+              <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Twilight Conversion</p>
               {(resultPhoto || appliedEdit) && (
-                <button onClick={() => downloadPhoto(resultPhoto || appliedEdit, `twilight-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                <button onClick={() => downloadPhoto(resultPhoto || appliedEdit, `twilight-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
               )}
             </div>
-            <div className="relative aspect-video bg-gradient-to-br from-indigo-950 to-indigo-800 flex items-center justify-center">
+            <div className="relative aspect-video bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
               {processing ? (
-                <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 text-indigo-300 animate-spin" /><p className="text-sm text-indigo-200">Converting to twilight...</p></div>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="relative">
+                    <div className="w-12 h-12 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin" />
+                    <Sunset className="w-5 h-5 text-indigo-400 absolute inset-0 m-auto" />
+                  </div>
+                  <p className="text-sm text-slate-400">Converting to twilight...</p>
+                </div>
               ) : resultPhoto ? (
                 <>
                   <AIDisclaimerBadge />
                   <img src={resultPhoto} alt="Twilight" className="w-full h-full object-cover" />
                   <div className="absolute bottom-3 left-3 right-3 flex gap-2">
-                    <Button size="sm" onClick={applyEdit} className="flex-1 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs gap-1"><Check className="w-3 h-3" /> Use This Photo</Button>
-                    <Button size="sm" variant="outline" onClick={() => setResultPhoto(null)} className="rounded-lg text-xs bg-white"><X className="w-3 h-3" /></Button>
+                    <Button size="sm" onClick={applyEdit} className="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-lg text-xs gap-1"><Check className="w-3 h-3" /> Use This Photo</Button>
+                    <Button size="sm" variant="outline" onClick={() => setResultPhoto(null)} className="rounded-lg text-xs bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"><X className="w-3 h-3" /></Button>
                   </div>
                 </>
               ) : appliedEdit ? (
@@ -186,7 +195,7 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
                   <img src={appliedEdit} alt="Applied" className="w-full h-full object-cover" />
                 </>
               ) : (
-                <p className="text-sm text-indigo-300">Twilight result will appear here</p>
+                <p className="text-sm text-slate-500">Twilight result will appear here</p>
               )}
             </div>
           </div>
@@ -195,33 +204,35 @@ export default function StudioTwilight({ photos: projectPhotos, onPhotoReplaced,
 
       {resultPhoto && (
         <Button onClick={() => { onAddPhoto?.(resultPhoto); toast({ title: "✓ Added to Video Project" }); }}
-          className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          className="w-full bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 rounded-xl gap-2 h-11">
           <Video className="w-4 h-4" /> Add to Video Project
         </Button>
       )}
 
       {allPhotos.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 space-y-4">
           <div>
-            <p className="text-sm font-semibold text-gray-900 mb-3">Choose Twilight Style</p>
+            <p className="text-sm font-semibold text-slate-200 mb-3">Choose Twilight Style</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {TWILIGHT_STYLES.map(style => (
                 <button key={style.key} onClick={() => selectStyle(style)}
-                  className={`text-sm font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight ${selectedStyleKey === style.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800"}`}>
-                  {style.label}
+                  className={`p-3 rounded-xl border text-left transition-all leading-tight ${selectedStyleKey === style.key ? "border-indigo-500/50 bg-indigo-500/15" : "border-slate-800 bg-slate-800/40 hover:border-slate-700"}`}>
+                  <p className="text-sm font-semibold text-slate-100 flex items-center gap-1.5"><span>{style.icon}</span> {style.label}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{style.desc}</p>
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Custom Twilight Instructions — describe exact changes for this image</label>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">Custom Twilight Instructions — describe exact changes for this image</label>
             <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
               placeholder="e.g. Convert to a warm dusk scene with all interior lights glowing, a soft purple sky, and gentle mist around the garden..."
-              rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
+              rows={3} className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none text-slate-100 placeholder:text-slate-500" />
           </div>
 
-          <Button onClick={runTwilight} disabled={processing || (!customPrompt.trim() && !selectedStyleKey)} className="w-full bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl gap-2 h-11">
-            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Converting to twilight...</> : <>🌆 Convert to Twilight ({PHOTO_TOOL_CREDIT_COST} credits)</>}
+          <Button onClick={runTwilight} disabled={processing || (!customPrompt.trim() && !selectedStyleKey)}
+            className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl gap-2 h-11 shadow-lg shadow-indigo-600/25">
+            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Converting to twilight...</> : <><Sunset className="w-4 h-4" /> Convert to Twilight ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>
         </div>
       )}

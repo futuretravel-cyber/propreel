@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import {
   Music, Mic, Monitor, Smartphone, Star,
-  Check, Play, Loader2, Trash2, ImagePlus, Wand2, Clapperboard
+  Check, Play, Loader2, Trash2, ImagePlus, Wand2, Clapperboard, ChevronDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -36,23 +36,23 @@ const POLLY_VOICES = [
 function Section({ label, icon: Icon, desc, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden">
+    <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
       <button onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-6 py-5 hover:bg-gray-50/60 transition-colors">
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-800/40 transition-colors">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-purple-50 flex items-center justify-center">
-            <Icon className="w-4 h-4 text-purple-700" />
+          <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/20 flex items-center justify-center">
+            <Icon className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="text-left">
-            <p className="text-sm font-semibold text-gray-900">{label}</p>
-            <p className="text-xs text-gray-400">{desc}</p>
+            <p className="text-sm font-semibold text-slate-100">{label}</p>
+            <p className="text-xs text-slate-500">{desc}</p>
           </div>
         </div>
-        <div className={`w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center transition-transform ${open ? "rotate-180" : ""}`}>
-          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        <div className={`w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center transition-transform ${open ? "rotate-180" : ""}`}>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
         </div>
       </button>
-      {open && <div className="border-t border-gray-100 px-6 py-5">{children}</div>}
+      {open && <div className="border-t border-slate-800 px-5 py-5">{children}</div>}
     </div>
   );
 }
@@ -278,14 +278,14 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
       />
 
       {/* ── Drag & Drop Photos ── */}
-      <div className="bg-white rounded-3xl border border-gray-100 p-6">
+      <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-6">
         <div className="flex items-center justify-between mb-1">
-          <p className="text-sm font-semibold text-gray-900">Property Photos</p>
-          <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full">
+          <p className="text-sm font-semibold text-slate-100">Property Photos</p>
+          <span className="text-xs font-semibold text-indigo-400 bg-indigo-500/15 border border-indigo-500/20 px-2.5 py-1 rounded-full">
             {photos.length} / {maxImages}
           </span>
         </div>
-        <p className="text-xs text-gray-400 mb-4">Drag & drop your listing photos here, or click to browse.</p>
+        <p className="text-xs text-slate-500 mb-4">Drag & drop your listing photos here, or click to browse.</p>
 
         {/* Drop zone */}
         <div
@@ -295,23 +295,23 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
           onClick={() => fileInputRef.current?.click()}
           className={`relative rounded-2xl border-2 border-dashed transition-all cursor-pointer ${
             dragOver
-              ? "border-purple-700 bg-purple-50 scale-[1.01]"
-              : "border-gray-200 bg-gray-50/50 hover:border-purple-300 hover:bg-purple-50/30"
+              ? "border-indigo-500 bg-indigo-500/10 scale-[1.01]"
+              : "border-slate-700 bg-slate-800/40 hover:border-indigo-500/50 hover:bg-slate-800/60"
           }`}
         >
           <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleUploadPhotos} className="hidden" />
           <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 transition-colors ${dragOver ? "bg-purple-700" : "bg-purple-100"}`}>
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 transition-colors ${dragOver ? "bg-gradient-to-br from-indigo-500 to-violet-600" : "bg-slate-800 border border-slate-700"}`}>
               {uploading ? (
-                <Loader2 className="w-6 h-6 text-purple-700 animate-spin" />
+                <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
               ) : (
-                <ImagePlus className={`w-6 h-6 ${dragOver ? "text-white" : "text-purple-700"}`} />
+                <ImagePlus className={`w-6 h-6 ${dragOver ? "text-white" : "text-indigo-400"}`} />
               )}
             </div>
-            <p className="text-sm font-semibold text-gray-900">
+            <p className="text-sm font-semibold text-slate-100">
               {uploading ? "Uploading..." : dragOver ? "Drop photos here" : "Drag & drop or click to upload"}
             </p>
-            <p className="text-xs text-gray-400 mt-1">JPG, PNG · Max {maxImages} images for {videoDuration}s video</p>
+            <p className="text-xs text-slate-500 mt-1">JPG, PNG · Max {maxImages} images for {videoDuration}s video</p>
           </div>
         </div>
 
@@ -319,11 +319,11 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         {projectPhotos.length > 0 && uploadedPhotos.length > 0 && (
           <div className="flex gap-2 mt-3">
             <button onClick={() => setPhotoSource("project")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${photoSource === "project" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${photoSource === "project" ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300" : "border-slate-700 text-slate-400 hover:border-slate-600"}`}>
               📁 Project Photos ({projectPhotos.length})
             </button>
             <button onClick={() => setPhotoSource("uploaded")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${photoSource === "uploaded" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${photoSource === "uploaded" ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300" : "border-slate-700 text-slate-400 hover:border-slate-600"}`}>
               ⬆️ Uploaded ({uploadedPhotos.length})
             </button>
           </div>
@@ -334,7 +334,7 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
           <div className="flex gap-2.5 overflow-x-auto pb-1 mt-4">
             {photos.map((url, i) => (
               <div key={i} className="relative flex-shrink-0 group">
-                <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-700 shadow-sm">
                   <img src={url} alt="" className="w-full h-full object-cover" />
                 </div>
                 <span className="absolute bottom-1 left-1 text-[9px] font-bold text-white bg-black/50 rounded px-1">{i + 1}</span>
@@ -352,72 +352,72 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
       </div>
 
       {/* ── Orientation Toggle ── */}
-      <div className="bg-white rounded-3xl border border-gray-100 p-6">
-        <p className="text-sm font-semibold text-gray-900 mb-1">Orientation</p>
-        <p className="text-xs text-gray-400 mb-4">Choose the aspect ratio for your video.</p>
+      <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-6">
+        <p className="text-sm font-semibold text-slate-100 mb-1">Orientation</p>
+        <p className="text-xs text-slate-500 mb-4">Choose the aspect ratio for your video.</p>
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => setOrientation("landscape")}
-            className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${orientation === "landscape" ? "border-purple-700 bg-purple-50" : "border-gray-200 hover:border-gray-300"}`}>
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${orientation === "landscape" ? "bg-purple-700 text-white" : "bg-gray-100 text-gray-400"}`}>
+            className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${orientation === "landscape" ? "border-indigo-500/50 bg-indigo-500/10" : "border-slate-700 bg-slate-800/40 hover:border-slate-600"}`}>
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${orientation === "landscape" ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white" : "bg-slate-700 text-slate-400"}`}>
               <Monitor className="w-5 h-5" />
             </div>
             <div className="text-left flex-1">
-              <p className="text-sm font-semibold text-gray-900">Landscape</p>
-              <p className="text-xs text-gray-500">16:9 · YouTube, Facebook</p>
+              <p className="text-sm font-semibold text-slate-100">Landscape</p>
+              <p className="text-xs text-slate-500">16:9 · YouTube, Facebook</p>
             </div>
-            {orientation === "landscape" && <Check className="w-4 h-4 text-purple-700" />}
+            {orientation === "landscape" && <Check className="w-4 h-4 text-indigo-400" />}
           </button>
           <button onClick={() => setOrientation("portrait")}
-            className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${orientation === "portrait" ? "border-purple-700 bg-purple-50" : "border-gray-200 hover:border-gray-300"}`}>
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${orientation === "portrait" ? "bg-purple-700 text-white" : "bg-gray-100 text-gray-400"}`}>
+            className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${orientation === "portrait" ? "border-indigo-500/50 bg-indigo-500/10" : "border-slate-700 bg-slate-800/40 hover:border-slate-600"}`}>
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${orientation === "portrait" ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white" : "bg-slate-700 text-slate-400"}`}>
               <Smartphone className="w-5 h-5" />
             </div>
             <div className="text-left flex-1">
-              <p className="text-sm font-semibold text-gray-900">Portrait</p>
-              <p className="text-xs text-gray-500">9:16 · Reels, TikTok, Stories</p>
+              <p className="text-sm font-semibold text-slate-100">Portrait</p>
+              <p className="text-xs text-slate-500">9:16 · Reels, TikTok, Stories</p>
             </div>
-            {orientation === "portrait" && <Check className="w-4 h-4 text-purple-700" />}
+            {orientation === "portrait" && <Check className="w-4 h-4 text-indigo-400" />}
           </button>
         </div>
       </div>
 
       {/* ── Streamlined Script Input ── */}
-      <div className="bg-white rounded-3xl border border-gray-100 p-6">
+      <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-6">
         <div className="flex items-center justify-between mb-1">
-          <p className="text-sm font-semibold text-gray-900">Voiceover Script</p>
+          <p className="text-sm font-semibold text-slate-100">Voiceover Script</p>
           <button onClick={handleGenerateScript} disabled={generatingScript || !photos.length}
-            className="flex items-center gap-1.5 text-xs text-purple-700 font-semibold hover:underline disabled:opacity-40 disabled:no-underline">
+            className="flex items-center gap-1.5 text-xs text-indigo-400 font-semibold hover:text-indigo-300 disabled:opacity-40 disabled:no-underline">
             {generatingScript ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
             {generatingScript ? (retryInfo ? `Retrying (${retryInfo.attempt}/${retryInfo.maxRetries})...` : "AI Writing...") : "AI Write Script"}
           </button>
         </div>
-        <p className="text-xs text-gray-400 mb-3">Write your own or let AI craft the narration — sent automatically with your render.</p>
+        <p className="text-xs text-slate-500 mb-3">Write your own or let AI craft the narration — sent automatically with your render.</p>
         <textarea
           value={voiceoverScript}
           onChange={e => setVoiceoverScript(e.target.value)}
           placeholder="Write or generate your voiceover script here..."
           rows={5}
-          className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm resize-none outline-none focus:ring-2 focus:ring-purple-700/30 placeholder:text-gray-400 leading-relaxed"
+          className="w-full bg-slate-800/60 border border-slate-700 rounded-2xl px-4 py-3 text-sm resize-none outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-100 placeholder:text-slate-500 leading-relaxed"
         />
         {propertyDescription && !voiceoverScript && (
           <button onClick={() => setVoiceoverScript(propertyDescription)}
-            className="mt-2 text-xs text-purple-700 font-semibold hover:underline">
+            className="mt-2 text-xs text-indigo-400 font-semibold hover:text-indigo-300">
             → Use property description as script
           </button>
         )}
 
         {/* Narrator voice */}
         <div className="mt-4">
-          <label className="text-xs font-semibold text-gray-700 mb-2 block flex items-center gap-1.5">
-            <Mic className="w-3.5 h-3.5 text-purple-700" /> Narrator Voice
+          <label className="text-xs font-semibold text-slate-300 mb-2 block flex items-center gap-1.5">
+            <Mic className="w-3.5 h-3.5 text-indigo-400" /> Narrator Voice
           </label>
           <Select value={narratorVoice} onValueChange={handleSelectNarrator}>
-            <SelectTrigger className="w-full rounded-xl h-11 text-sm">
+            <SelectTrigger className="w-full rounded-xl h-11 text-sm bg-slate-800/60 border-slate-700 text-slate-100">
               <SelectValue placeholder="Select a narrator voice" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-slate-900 border-slate-800">
               {POLLY_VOICES.map(voice => (
-                <SelectItem key={voice.id} value={voice.id}>
+                <SelectItem key={voice.id} value={voice.id} className="text-slate-200 focus:bg-slate-800">
                   {voice.name} · {voice.desc}
                 </SelectItem>
               ))}
@@ -431,23 +431,23 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         <div className="space-y-2">
           {brandKits.length === 0 ? (
             <div className="text-center py-4">
-              <p className="text-sm text-gray-500 mb-2">No agent profiles set up yet.</p>
-              <Link to="/brand-kits" className="text-sm text-purple-700 underline">Create Agent Profile →</Link>
+              <p className="text-sm text-slate-400 mb-2">No agent profiles set up yet.</p>
+              <Link to="/brand-kits" className="text-sm text-indigo-400 underline">Create Agent Profile →</Link>
             </div>
           ) : (
             brandKits.map(kit => (
               <button key={kit.id} onClick={() => setSelectedBrandKitId(kit.id)}
-                className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-purple-700 bg-purple-50" : "border-gray-100 hover:border-gray-200"}`}>
+                className={`w-full flex items-center gap-3 p-3 rounded-2xl border transition-all text-left ${selectedBrandKitId === kit.id ? "border-indigo-500/50 bg-indigo-500/10" : "border-slate-700 bg-slate-800/40 hover:border-slate-600"}`}>
                 {kit.profile_photo_url ? (
                   <img src={kit.profile_photo_url} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-sm font-bold text-purple-700 flex-shrink-0">{kit.agent_name?.[0]}</div>
+                  <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center text-sm font-bold text-indigo-400 flex-shrink-0">{kit.agent_name?.[0]}</div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{kit.name}</p>
-                  <p className="text-xs text-gray-500 truncate">{kit.agent_name}</p>
+                  <p className="text-sm font-semibold text-slate-100 truncate">{kit.name}</p>
+                  <p className="text-xs text-slate-500 truncate">{kit.agent_name}</p>
                 </div>
-                {selectedBrandKitId === kit.id && <Check className="w-4 h-4 text-purple-700 flex-shrink-0" />}
+                {selectedBrandKitId === kit.id && <Check className="w-4 h-4 text-indigo-400 flex-shrink-0" />}
               </button>
             ))
           )}
@@ -459,22 +459,22 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         <div className="space-y-2">
           {musicTracks.length === 0 ? (
             <div className="text-center py-4">
-              <Music className="w-6 h-6 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No music tracks available. Add tracks from the Admin panel.</p>
+              <Music className="w-6 h-6 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm text-slate-400">No music tracks available. Add tracks from the Admin panel.</p>
             </div>
           ) : (
             musicTracks.map(track => (
               <button key={track.id} onClick={() => handleMusicTrack(track)}
-                className={`w-full flex items-center gap-3 p-3 rounded-2xl border transition-all ${musicTrack === track.id ? "border-purple-700 bg-purple-50" : "border-gray-100 bg-gray-50 hover:border-gray-200"}`}>
+                className={`w-full flex items-center gap-3 p-3 rounded-2xl border transition-all ${musicTrack === track.id ? "border-indigo-500/50 bg-indigo-500/10" : "border-slate-700 bg-slate-800/40 hover:border-slate-600"}`}>
                 <button onClick={e => { e.stopPropagation(); new Audio(track.file_url).play(); }}
-                  className="w-9 h-9 rounded-full bg-purple-700 flex items-center justify-center flex-shrink-0 hover:bg-purple-800">
+                  className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center flex-shrink-0 hover:from-indigo-400 hover:to-violet-500 transition-colors">
                   <Play className="w-3.5 h-3.5 text-white fill-white ml-0.5" />
                 </button>
                 <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{track.name}</p>
-                  <p className="text-xs text-gray-500">{track.genre}{track.duration ? ` · ${track.duration}` : ""}</p>
+                  <p className="text-sm font-medium text-slate-100 truncate">{track.name}</p>
+                  <p className="text-xs text-slate-500">{track.genre}{track.duration ? ` · ${track.duration}` : ""}</p>
                 </div>
-                {musicTrack === track.id && <Check className="w-4 h-4 text-purple-700 flex-shrink-0" />}
+                {musicTrack === track.id && <Check className="w-4 h-4 text-indigo-400 flex-shrink-0" />}
               </button>
             ))
           )}
@@ -482,18 +482,20 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
       </Section>
 
       {/* ── Render ── */}
-      <div className="bg-gradient-to-br from-purple-700 to-purple-900 rounded-3xl p-6 text-center shadow-lg shadow-purple-700/20">
-        <Clapperboard className="w-8 h-8 text-white mx-auto mb-2" />
+      <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-6 text-center shadow-xl shadow-indigo-600/25">
+        <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center mx-auto mb-3">
+          <Clapperboard className="w-6 h-6 text-white" />
+        </div>
         <p className="text-base font-bold text-white mb-1">Render Your Video</p>
-        <p className="text-xs text-purple-200 mb-4">Your script and photos are finalized automatically and sent to the render engine.</p>
+        <p className="text-xs text-indigo-200 mb-4">Your script and photos are finalized automatically and sent to the render engine.</p>
         <Button onClick={handleRenderVideo} disabled={submittingRender || !photos.length}
-          className="w-full bg-white text-purple-700 hover:bg-purple-50 font-bold rounded-2xl gap-2 h-12 text-sm">
+          className="w-full bg-white text-indigo-700 hover:bg-indigo-50 font-bold rounded-2xl gap-2 h-12 text-sm">
           {submittingRender
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
-            : <><Play className="w-4 h-4 fill-purple-700" /> Render Video</>}
+            : <><Play className="w-4 h-4 fill-indigo-700" /> Render Video</>}
         </Button>
         {!photos.length && (
-          <p className="text-xs text-purple-200 mt-2">Add at least one photo to render.</p>
+          <p className="text-xs text-indigo-200 mt-2">Add at least one photo to render.</p>
         )}
       </div>
     </div>

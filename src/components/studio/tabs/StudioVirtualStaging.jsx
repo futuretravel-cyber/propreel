@@ -13,14 +13,14 @@ import { usePhotoWorkState } from "@/hooks/usePhotoWorkState";
 import { usePromptRegistry } from "@/hooks/usePromptRegistry";
 
 const STYLES = [
-  { key: "vs_luxury",       label: "🛋️ Luxury Modern" },
-  { key: "vs_minimal",      label: "✨ Scandinavian Minimal" },
-  { key: "vs_contemporary", label: "🖤 Contemporary Dark" },
-  { key: "vs_coastal",      label: "🌊 Coastal Relaxed" },
-  { key: "vs_family",       label: "👨‍👩‍👧 Family Comfortable" },
-  { key: "vs_bedroom_lux",  label: "🛏️ Luxury Bedroom" },
-  { key: "vs_office",       label: "💼 Home Office" },
-  { key: "vs_industrial",   label: "⚙️ Industrial Loft" },
+  { key: "vs_luxury",       label: "Luxury Modern", icon: "🛋️" },
+  { key: "vs_minimal",      label: "Scandinavian Minimal", icon: "✨" },
+  { key: "vs_contemporary", label: "Contemporary Dark", icon: "🖤" },
+  { key: "vs_coastal",      label: "Coastal Relaxed", icon: "🌊" },
+  { key: "vs_family",       label: "Family Comfortable", icon: "👨‍👩‍👧" },
+  { key: "vs_bedroom_lux",  label: "Luxury Bedroom", icon: "🛏️" },
+  { key: "vs_office",       label: "Home Office", icon: "💼" },
+  { key: "vs_industrial",   label: "Industrial Loft", icon: "⚙️" },
 ];
 
 export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoReplaced, onAddPhoto, onPhotoDeleted, projectId }) {
@@ -133,9 +133,12 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
 
   return (
     <div className="space-y-6">
-      <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
-        <p className="text-sm font-semibold text-purple-900 mb-1">💡 How Virtual Staging Works</p>
-        <p className="text-sm text-purple-700">Select a photo, choose a staging style or write custom instructions, then click Stage. AI furnishes the empty space with realistic furniture. Works best on empty or sparsely furnished rooms.</p>
+      <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Sofa className="w-4 h-4 text-indigo-400" />
+          <p className="text-sm font-semibold text-indigo-200">How Virtual Staging Works</p>
+        </div>
+        <p className="text-sm text-indigo-300/80">Select a photo, choose a staging style or write custom instructions, then click Stage. AI furnishes the empty space with realistic furniture. Works best on empty or sparsely furnished rooms.</p>
       </div>
 
       <PhotoThumbnailStrip
@@ -151,34 +154,40 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
 
       {allPhotos.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Original</p>
-              <button onClick={() => downloadPhoto(originalPhoto, `original-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-700">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Original</p>
+              <button onClick={() => downloadPhoto(originalPhoto, `original-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-400">
                 <Download className="w-3.5 h-3.5" /> Download
               </button>
             </div>
-            <div className="aspect-video"><img src={originalPhoto} alt="" className="w-full h-full object-cover" /></div>
+            <div className="aspect-video bg-slate-800"><img src={originalPhoto} alt="" className="w-full h-full object-cover" /></div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
-              <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">Staged Result</p>
+              <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Staged Result</p>
               {(resultPhoto || appliedEdit) && (
-                <button onClick={() => downloadPhoto(resultPhoto || appliedEdit, `staged-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-purple-700 hover:underline">
+                <button onClick={() => downloadPhoto(resultPhoto || appliedEdit, `staged-${selectedIdx + 1}.jpg`)} className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
               )}
             </div>
-            <div className="relative aspect-video bg-gray-50 flex items-center justify-center">
+            <div className="relative aspect-video bg-slate-800 flex items-center justify-center">
               {processing ? (
-                <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 text-purple-700 animate-spin" /><p className="text-sm text-gray-500">AI is staging the room...</p></div>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="relative">
+                    <div className="w-12 h-12 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin" />
+                    <Sofa className="w-5 h-5 text-indigo-400 absolute inset-0 m-auto" />
+                  </div>
+                  <p className="text-sm text-slate-400">AI is staging the room...</p>
+                </div>
               ) : resultPhoto ? (
                 <>
                   <AIDisclaimerBadge />
                   <img src={resultPhoto} alt="Staged" className="w-full h-full object-cover" />
                   <div className="absolute bottom-3 left-3 right-3 flex gap-2">
-                    <Button size="sm" onClick={applyEdit} className="flex-1 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs gap-1"><Check className="w-3 h-3" /> Use This Photo</Button>
-                    <Button size="sm" variant="outline" onClick={() => setResultPhoto(null)} className="rounded-lg text-xs"><X className="w-3 h-3" /></Button>
+                    <Button size="sm" onClick={applyEdit} className="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-lg text-xs gap-1"><Check className="w-3 h-3" /> Use This Photo</Button>
+                    <Button size="sm" variant="outline" onClick={() => setResultPhoto(null)} className="rounded-lg text-xs bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"><X className="w-3 h-3" /></Button>
                   </div>
                 </>
               ) : appliedEdit ? (
@@ -187,7 +196,7 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
                   <img src={appliedEdit} alt="Applied" className="w-full h-full object-cover" />
                 </>
               ) : (
-                <p className="text-sm text-gray-400">Staged result will appear here</p>
+                <p className="text-sm text-slate-500">Staged result will appear here</p>
               )}
             </div>
           </div>
@@ -196,32 +205,33 @@ export default function StudioVirtualStaging({ photos: projectPhotos, onPhotoRep
 
       {resultPhoto && (
         <Button onClick={() => { onAddPhoto?.(resultPhoto); toast({ title: "✓ Added to Video Project" }); }}
-          className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          className="w-full bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 rounded-xl gap-2 h-11">
           <Video className="w-4 h-4" /> Add to Video Project
         </Button>
       )}
 
       {allPhotos.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 space-y-4">
           <div>
-            <p className="text-sm font-semibold text-gray-900 mb-3">Choose a Staging Style</p>
+            <p className="text-sm font-semibold text-slate-200 mb-3">Choose a Staging Style</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
               {STYLES.map(style => (
                 <button key={style.key} onClick={() => selectStyle(style)}
-                  className={`text-xs font-medium rounded-xl px-3 py-3 border-2 text-left transition-all leading-tight ${selectedStyleKey === style.key ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-100 bg-gray-50 text-gray-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-800"}`}>
-                  {style.label}
+                  className={`text-xs font-medium rounded-xl px-3 py-3 border text-left transition-all leading-tight flex items-center gap-1.5 ${selectedStyleKey === style.key ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300" : "border-slate-800 bg-slate-800/40 text-slate-400 hover:border-slate-700 hover:text-slate-200"}`}>
+                  <span>{style.icon}</span> {style.label}
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Custom Staging Instructions — describe exact changes for this image</label>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">Custom Staging Instructions — describe exact changes for this image</label>
             <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
               placeholder="e.g. Stage as a modern dining room with a dark wood table for 6, pendant lights, and a statement rug..."
-              rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-700/30 resize-none bg-white" />
+              rows={3} className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none text-slate-100 placeholder:text-slate-500" />
           </div>
 
-          <Button onClick={runStaging} disabled={processing || (!customPrompt.trim() && !selectedStyleKey)} className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-11">
+          <Button onClick={runStaging} disabled={processing || (!customPrompt.trim() && !selectedStyleKey)}
+            className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl gap-2 h-11 shadow-lg shadow-indigo-600/25">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Staging room...</> : <><Sofa className="w-4 h-4" /> Stage This Room ({PHOTO_TOOL_CREDIT_COST} credits)</>}
           </Button>
         </div>
