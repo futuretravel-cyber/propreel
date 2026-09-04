@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Video, CreditCard, Zap, MoreVertical, Clock, CheckCircle2, FileEdit, FolderOpen, Home, TrendingUp, Coins } from "lucide-react";
+import { Plus, Video, CreditCard, Zap, MoreVertical, Clock, CheckCircle2, FileEdit, FolderOpen, Home, TrendingUp, Coins, Clapperboard, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
@@ -53,6 +53,28 @@ export default function Dashboard() {
       </div>
 
       <AIDisclaimerNotice />
+
+      {/* Create Reel hero CTA */}
+      <Link to="/projects/new" className="block mb-8">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-700 via-purple-800 to-indigo-900 p-6 sm:p-8 text-white shadow-lg shadow-purple-700/20 group">
+          <div className="absolute -right-8 -top-8 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
+          <div className="absolute right-12 bottom-0 w-24 h-24 bg-purple-400/20 rounded-full blur-xl" />
+          <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
+                <Clapperboard className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold">Create a Reel</h2>
+                <p className="text-sm text-purple-200 mt-0.5">Jump straight into the Studio and turn your listing photos into a cinematic video.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 bg-white text-purple-700 font-semibold px-5 py-2.5 rounded-xl text-sm whitespace-nowrap group-hover:gap-3 transition-all">
+              Open Studio <ArrowRight className="w-4 h-4" />
+            </div>
+          </div>
+        </div>
+      </Link>
 
       {/* Credits */}
       <div className="flex items-center justify-between gap-4 bg-purple-50 border border-purple-100 rounded-2xl px-5 py-4 mb-8">

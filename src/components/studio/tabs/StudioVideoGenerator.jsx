@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import {
-  Music, Mic, User, Star, Monitor, Smartphone,
-  Check, Play, Loader2, Download, ChevronDown, ChevronRight, Upload, Trash2
+  Music, Mic, Monitor, Smartphone, Star,
+  Check, Play, Loader2, Trash2, ImagePlus, Wand2, Clapperboard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,12 +9,9 @@ import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { appParams } from "@/lib/app-params";
 import { uploadToS3 } from "@/lib/awsS3";
-import { generatePollyVoiceover } from "@/lib/awsPolly";
 import { generateScriptWithRetry } from "@/lib/scriptRetryHandler";
 import { useToast } from "@/components/ui/use-toast";
 import VideoTierSelector, { VIDEO_TIERS, getMaxImages } from "@/components/studio/tabs/VideoTierSelector";
-
-const MODAL_RENDER_ENDPOINT = "https://futuretravel--propreel-render-engine-grok-tiers-fastapi-entry.modal.run/v1/api/render";
 
 const AWS_RENDER_ENDPOINT = "https://vpyz75mmlg.execute-api.af-south-1.amazonaws.com/v1/api/render";
 
@@ -36,14 +33,14 @@ const POLLY_VOICES = [
   { id: "Ayanda",  name: "Ayanda",  desc: "South African Female" },
 ];
 
-function Section({ sectionKey, label, icon: Icon, desc, children, defaultOpen = false }) {
+function Section({ label, icon: Icon, desc, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+    <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden">
       <button onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">
+        className="w-full flex items-center justify-between px-6 py-5 hover:bg-gray-50/60 transition-colors">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-2xl bg-purple-50 flex items-center justify-center">
             <Icon className="w-4 h-4 text-purple-700" />
           </div>
           <div className="text-left">
@@ -51,9 +48,11 @@ function Section({ sectionKey, label, icon: Icon, desc, children, defaultOpen = 
             <p className="text-xs text-gray-400">{desc}</p>
           </div>
         </div>
-        {open ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        <div className={`w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center transition-transform ${open ? "rotate-180" : ""}`}>
+          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </div>
       </button>
-      {open && <div className="border-t border-gray-100 p-5">{children}</div>}
+      {open && <div className="border-t border-gray-100 px-6 py-5">{children}</div>}
     </div>
   );
 }
@@ -62,7 +61,6 @@ export default function StudioVideoGenerator({
   project, projectId, photos: projectPhotos, onPhotoDeleted,
   brandKits, musicTracks,
   selectedBrandKitId, setSelectedBrandKitId,
-  voiceoverUrl, setVoiceoverUrl,
   musicUrl, setMusicUrl,
   selectedBrandKit,
   propertyDescription,
@@ -74,6 +72,7 @@ export default function StudioVideoGenerator({
   const [photoSource, setPhotoSource] = useState("project");
   const [videoTier, setVideoTier] = useState(project?.video_tier || "essential");
   const [videoDuration, setVideoDuration] = useState(project?.video_duration || 30);
+  const [dragOver, setDragOver] = useState(false);
 
   const maxImages = getMaxImages(videoTier, videoDuration);
 
@@ -99,20 +98,15 @@ export default function StudioVideoGenerator({
   const [musicTrack, setMusicTrack] = useState(null);
   const [voiceoverScript, setVoiceoverScript] = useState(project?.voiceover_script || "");
   const [narratorVoice, setNarratorVoice] = useState(project?.voiceover_voice || "Joanna");
-  const [rendering, setRendering] = useState(false);
   const [submittingRender, setSubmittingRender] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [retryInfo, setRetryInfo] = useState(null);
-  const [voiceoverApproved, setVoiceoverApproved] = useState(false);
 
-  const handleUploadPhotos = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
+  const uploadFiles = async (files) => {
     const currentCount = (photoSource === "uploaded" ? uploadedPhotos.length : 0);
     const remainingSlots = maxImages - currentCount;
     if (remainingSlots <= 0) {
       toast({ title: `Image limit reached`, description: `This video length allows a maximum of ${maxImages} images. Choose a longer length to add more.`, variant: "destructive" });
-      e.target.value = "";
       return;
     }
     const filesToUpload = files.slice(0, remainingSlots);
@@ -132,7 +126,21 @@ export default function StudioVideoGenerator({
       toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     }
     setUploading(false);
+  };
+
+  const handleUploadPhotos = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    await uploadFiles(files);
     e.target.value = "";
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+    if (!files.length) return;
+    await uploadFiles(files);
   };
 
   const handleDeletePhoto = (idx) => {
@@ -141,21 +149,6 @@ export default function StudioVideoGenerator({
     } else {
       onPhotoDeleted?.(idx);
     }
-  };
-
-  const handleRenderVoiceover = async () => {
-    if (!voiceoverScript.trim()) return;
-    setRendering(true);
-    try {
-      const audioUrl = await generatePollyVoiceover(voiceoverScript, narratorVoice);
-      setVoiceoverUrl(audioUrl);
-      setVoiceoverApproved(false);
-      await base44.entities.Project.update(projectId, { voiceover_url: audioUrl, voiceover_script: voiceoverScript, voiceover_voice: narratorVoice });
-      toast({ title: "Voiceover generated! Preview and approve to continue." });
-    } catch (e) {
-      toast({ title: "Voiceover failed", description: e.message, variant: "destructive" });
-    }
-    setRendering(false);
   };
 
   const handleGenerateScript = async () => {
@@ -181,7 +174,6 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         toast({ title: `AI service busy — retrying (${info.attempt}/${info.maxRetries})...` });
       });
       setVoiceoverScript(text);
-      setVoiceoverApproved(false);
     } catch (e) {
       toast({ title: "Script generation failed", description: e.message, variant: "destructive" });
     }
@@ -196,7 +188,6 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
 
   const handleSelectNarrator = (voiceId) => {
     setNarratorVoice(voiceId);
-    setVoiceoverApproved(false);
     base44.entities.Project.update(projectId, { voiceover_voice: voiceId });
   };
 
@@ -210,6 +201,7 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
       const settings = await base44.entities.AppSetting.list();
       const renderApiUrl = settings?.[0]?.aws_render_api_url || AWS_RENDER_ENDPOINT;
 
+      // The script is finalized automatically and sent directly in the payload
       const payload = {
         record_id: projectId,
         tier: videoTier,
@@ -219,7 +211,6 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         voice_id: narratorVoice || "Joanna",
         include_agent_branding: selectedBrandKit?.include_agent_branding !== false,
         video_duration: videoDuration,
-        voiceover_url: voiceoverUrl || "",
         music_url: musicUrl || "",
         headline_text: heading || project?.name || "",
         agent_headshot: selectedBrandKit?.profile_photo_url || "",
@@ -242,7 +233,6 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
           body: JSON.stringify(payload),
         });
       } catch (networkErr) {
-        // Network/CORS failures surface as a generic "Failed to fetch"
         throw new Error(
           networkErr?.message === "Failed to fetch"
             ? "Network error: unable to reach the render service. This may be due to a network issue or CORS restriction."
@@ -266,6 +256,8 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
 
       await base44.entities.Project.update(projectId, {
         status: "processing",
+        voiceover_script: voiceoverScript,
+        orientation,
         ...(jobId ? { render_job_id: jobId } : {}),
       });
       toast({ title: "✅ Render job submitted!", description: jobId ? `Job ID: ${jobId}` : "Your video will appear here when ready." });
@@ -276,8 +268,8 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
   };
 
   return (
-    <div className="space-y-4">
-      {/* Video Tier */}
+    <div className="space-y-5">
+      {/* ── Tier Cards ── */}
       <VideoTierSelector
         selectedTier={videoTier}
         onSelectTier={handleSelectTier}
@@ -285,43 +277,67 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         onSelectDuration={handleSelectDuration}
       />
 
-      {/* Photo Source */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-5">
-        <p className="text-sm font-semibold text-gray-900 mb-1">📸 Video Photos</p>
-        <p className="text-xs text-gray-400 mb-1">Use your project photos or upload new ones for the video.</p>
-        <p className="text-xs font-semibold text-purple-700 mb-3">Max {maxImages} images for {videoDuration}s video · Using {photos.length} of {maxImages}</p>
-        {allPhotos.length > maxImages && (
-          <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-3 text-xs text-amber-800">
-            Only the first {maxImages} photos will be used. Choose a longer video length to include more.
-          </div>
-        )}
-        <div className="flex flex-wrap gap-2 mb-3">
-          <button onClick={() => setPhotoSource("project")}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${photoSource === "project" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
-            📁 Project Photos ({projectPhotos.length})
-          </button>
-          {uploadedPhotos.length > 0 && (
-            <button onClick={() => setPhotoSource("uploaded")}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${photoSource === "uploaded" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
-              ⬆️ Uploaded Photos ({uploadedPhotos.length})
-            </button>
-          )}
-          <div>
-            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleUploadPhotos} className="hidden" />
-            <button onClick={() => fileInputRef.current?.click()} disabled={uploading || (photoSource === "uploaded" && uploadedPhotos.length >= maxImages)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border-2 border-dashed border-gray-300 text-gray-500 hover:border-purple-700 hover:text-purple-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-              {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-              {uploading ? "Uploading..." : "Upload New Photos"}
-            </button>
+      {/* ── Drag & Drop Photos ── */}
+      <div className="bg-white rounded-3xl border border-gray-100 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-semibold text-gray-900">Property Photos</p>
+          <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full">
+            {photos.length} / {maxImages}
+          </span>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">Drag & drop your listing photos here, or click to browse.</p>
+
+        {/* Drop zone */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`relative rounded-2xl border-2 border-dashed transition-all cursor-pointer ${
+            dragOver
+              ? "border-purple-700 bg-purple-50 scale-[1.01]"
+              : "border-gray-200 bg-gray-50/50 hover:border-purple-300 hover:bg-purple-50/30"
+          }`}
+        >
+          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleUploadPhotos} className="hidden" />
+          <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 transition-colors ${dragOver ? "bg-purple-700" : "bg-purple-100"}`}>
+              {uploading ? (
+                <Loader2 className="w-6 h-6 text-purple-700 animate-spin" />
+              ) : (
+                <ImagePlus className={`w-6 h-6 ${dragOver ? "text-white" : "text-purple-700"}`} />
+              )}
+            </div>
+            <p className="text-sm font-semibold text-gray-900">
+              {uploading ? "Uploading..." : dragOver ? "Drop photos here" : "Drag & drop or click to upload"}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">JPG, PNG · Max {maxImages} images for {videoDuration}s video</p>
           </div>
         </div>
+
+        {/* Source toggle */}
+        {projectPhotos.length > 0 && uploadedPhotos.length > 0 && (
+          <div className="flex gap-2 mt-3">
+            <button onClick={() => setPhotoSource("project")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${photoSource === "project" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+              📁 Project Photos ({projectPhotos.length})
+            </button>
+            <button onClick={() => setPhotoSource("uploaded")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${photoSource === "uploaded" ? "border-purple-700 bg-purple-50 text-purple-800" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+              ⬆️ Uploaded ({uploadedPhotos.length})
+            </button>
+          </div>
+        )}
+
+        {/* Thumbnail strip */}
         {photos.length > 0 && (
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
+          <div className="flex gap-2.5 overflow-x-auto pb-1 mt-4">
             {photos.map((url, i) => (
-              <div key={i} className="relative flex-shrink-0">
-                <div className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200">
+              <div key={i} className="relative flex-shrink-0 group">
+                <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
                   <img src={url} alt="" className="w-full h-full object-cover" />
                 </div>
+                <span className="absolute bottom-1 left-1 text-[9px] font-bold text-white bg-black/50 rounded px-1">{i + 1}</span>
                 <button
                   onClick={() => handleDeletePhoto(i)}
                   className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors z-10"
@@ -335,96 +351,83 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         )}
       </div>
 
-      {/* Property Description shortcut */}
-      {propertyDescription && (
-        <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
-          <p className="text-sm font-semibold text-purple-900 mb-2">📝 Property Description Available</p>
-          <p className="text-xs text-purple-700 line-clamp-3">{propertyDescription}</p>
-          <button onClick={() => { setVoiceoverScript(propertyDescription); setVoiceoverApproved(false); }} className="mt-2 text-xs text-purple-700 font-semibold hover:underline">
-            → Use as voiceover script
-          </button>
-        </div>
-      )}
-
-      {/* AI Voice */}
-      <Section sectionKey="voiceover" label="AI Voiceover" icon={Mic} desc="Generate professional AI narration for your video">
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-gray-700">Voiceover Script</label>
-              <button onClick={handleGenerateScript} disabled={generatingScript}
-                className="flex items-center gap-1 text-xs text-purple-700 font-medium hover:underline">
-                {generatingScript ? <Loader2 className="w-3 h-3 animate-spin" /> : "✨"}
-                {generatingScript ? (retryInfo ? `Retrying (${retryInfo.attempt}/${retryInfo.maxRetries})...` : "Generating...") : "AI Write"}
-              </button>
-            </div>
-            <textarea value={voiceoverScript} onChange={e => { setVoiceoverScript(e.target.value); setVoiceoverApproved(false); }}
-              placeholder="Write or generate your voiceover script..."
-              rows={4} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none outline-none focus:ring-1 focus:ring-purple-700 placeholder:text-gray-400" />
-          </div>
-          {/* Voiceover Narrator — used in final render */}
-          <div>
-            <label className="text-xs font-semibold text-gray-700 mb-2 block">Voiceover Narrator</label>
-            <p className="text-[10px] text-gray-400 mb-2">Select the narrator voice for the final rendered video.</p>
-            <Select value={narratorVoice} onValueChange={handleSelectNarrator}>
-              <SelectTrigger className="w-full rounded-xl h-10 text-sm">
-                <SelectValue placeholder="Select a narrator voice" />
-              </SelectTrigger>
-              <SelectContent>
-                {POLLY_VOICES.map(voice => (
-                  <SelectItem key={voice.id} value={voice.id}>
-                    {voice.name} · {voice.desc}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button onClick={handleRenderVoiceover} disabled={rendering || !voiceoverScript.trim()}
-            className="w-full bg-purple-700 hover:bg-purple-800 text-white rounded-xl gap-2 h-10">
-            {rendering ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating voiceover...</> : <><Mic className="w-4 h-4" /> Generate Voiceover</>}
-          </Button>
-          {voiceoverUrl && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-              <p className="text-xs font-semibold text-emerald-800 mb-2">{voiceoverApproved ? "✓ Voiceover approved" : "✓ Voiceover ready — preview and approve"}</p>
-              <audio controls src={voiceoverUrl} className="w-full" style={{ height: "36px" }} />
-              <div className="flex items-center gap-3 mt-2">
-                <button onClick={() => setVoiceoverApproved(true)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${voiceoverApproved ? "bg-emerald-600 text-white" : "bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-50"}`}>
-                  <Check className="w-3.5 h-3.5" /> {voiceoverApproved ? "Approved" : "Approve Voiceover"}
-                </button>
-                <a href={voiceoverUrl} download="voiceover.mp3" className="text-[10px] text-purple-700 underline">Download MP3</a>
-              </div>
-            </div>
-          )}
-        </div>
-      </Section>
-
-      {/* Format */}
-      <Section sectionKey="format" label="Landscape / Portrait" icon={Monitor} desc="Choose your video orientation">
+      {/* ── Orientation Toggle ── */}
+      <div className="bg-white rounded-3xl border border-gray-100 p-6">
+        <p className="text-sm font-semibold text-gray-900 mb-1">Orientation</p>
+        <p className="text-xs text-gray-400 mb-4">Choose the aspect ratio for your video.</p>
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => setOrientation("landscape")}
-            className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${orientation === "landscape" ? "border-purple-700 bg-purple-50" : "border-gray-200 hover:border-gray-300"}`}>
-            <Monitor className={`w-8 h-8 ${orientation === "landscape" ? "text-purple-700" : "text-gray-400"}`} />
-            <div className="text-center">
+            className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${orientation === "landscape" ? "border-purple-700 bg-purple-50" : "border-gray-200 hover:border-gray-300"}`}>
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${orientation === "landscape" ? "bg-purple-700 text-white" : "bg-gray-100 text-gray-400"}`}>
+              <Monitor className="w-5 h-5" />
+            </div>
+            <div className="text-left flex-1">
               <p className="text-sm font-semibold text-gray-900">Landscape</p>
               <p className="text-xs text-gray-500">16:9 · YouTube, Facebook</p>
             </div>
             {orientation === "landscape" && <Check className="w-4 h-4 text-purple-700" />}
           </button>
           <button onClick={() => setOrientation("portrait")}
-            className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${orientation === "portrait" ? "border-purple-700 bg-purple-50" : "border-gray-200 hover:border-gray-300"}`}>
-            <Smartphone className={`w-8 h-8 ${orientation === "portrait" ? "text-purple-700" : "text-gray-400"}`} />
-            <div className="text-center">
+            className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${orientation === "portrait" ? "border-purple-700 bg-purple-50" : "border-gray-200 hover:border-gray-300"}`}>
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${orientation === "portrait" ? "bg-purple-700 text-white" : "bg-gray-100 text-gray-400"}`}>
+              <Smartphone className="w-5 h-5" />
+            </div>
+            <div className="text-left flex-1">
               <p className="text-sm font-semibold text-gray-900">Portrait</p>
               <p className="text-xs text-gray-500">9:16 · Reels, TikTok, Stories</p>
             </div>
             {orientation === "portrait" && <Check className="w-4 h-4 text-purple-700" />}
           </button>
         </div>
-      </Section>
+      </div>
 
-      {/* Brand Kit */}
-      <Section sectionKey="brandkit" label="Agent Profile Branding" icon={Star} desc="Apply your logo, profile photo and contact info">
+      {/* ── Streamlined Script Input ── */}
+      <div className="bg-white rounded-3xl border border-gray-100 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-semibold text-gray-900">Voiceover Script</p>
+          <button onClick={handleGenerateScript} disabled={generatingScript || !photos.length}
+            className="flex items-center gap-1.5 text-xs text-purple-700 font-semibold hover:underline disabled:opacity-40 disabled:no-underline">
+            {generatingScript ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+            {generatingScript ? (retryInfo ? `Retrying (${retryInfo.attempt}/${retryInfo.maxRetries})...` : "AI Writing...") : "AI Write Script"}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mb-3">Write your own or let AI craft the narration — sent automatically with your render.</p>
+        <textarea
+          value={voiceoverScript}
+          onChange={e => setVoiceoverScript(e.target.value)}
+          placeholder="Write or generate your voiceover script here..."
+          rows={5}
+          className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm resize-none outline-none focus:ring-2 focus:ring-purple-700/30 placeholder:text-gray-400 leading-relaxed"
+        />
+        {propertyDescription && !voiceoverScript && (
+          <button onClick={() => setVoiceoverScript(propertyDescription)}
+            className="mt-2 text-xs text-purple-700 font-semibold hover:underline">
+            → Use property description as script
+          </button>
+        )}
+
+        {/* Narrator voice */}
+        <div className="mt-4">
+          <label className="text-xs font-semibold text-gray-700 mb-2 block flex items-center gap-1.5">
+            <Mic className="w-3.5 h-3.5 text-purple-700" /> Narrator Voice
+          </label>
+          <Select value={narratorVoice} onValueChange={handleSelectNarrator}>
+            <SelectTrigger className="w-full rounded-xl h-11 text-sm">
+              <SelectValue placeholder="Select a narrator voice" />
+            </SelectTrigger>
+            <SelectContent>
+              {POLLY_VOICES.map(voice => (
+                <SelectItem key={voice.id} value={voice.id}>
+                  {voice.name} · {voice.desc}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* ── Brand Kit ── */}
+      <Section label="Agent Profile Branding" icon={Star} desc="Apply your logo, profile photo and contact info" defaultOpen={false}>
         <div className="space-y-2">
           {brandKits.length === 0 ? (
             <div className="text-center py-4">
@@ -434,7 +437,7 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
           ) : (
             brandKits.map(kit => (
               <button key={kit.id} onClick={() => setSelectedBrandKitId(kit.id)}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-purple-700 bg-purple-50" : "border-gray-100 hover:border-gray-200"}`}>
+                className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left ${selectedBrandKitId === kit.id ? "border-purple-700 bg-purple-50" : "border-gray-100 hover:border-gray-200"}`}>
                 {kit.profile_photo_url ? (
                   <img src={kit.profile_photo_url} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
                 ) : (
@@ -451,8 +454,8 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         </div>
       </Section>
 
-      {/* Music */}
-      <Section sectionKey="music" label="Music" icon={Music} desc="Background music track for your video">
+      {/* ── Music ── */}
+      <Section label="Music Track" icon={Music} desc="Background music for your video" defaultOpen={false}>
         <div className="space-y-2">
           {musicTracks.length === 0 ? (
             <div className="text-center py-4">
@@ -462,9 +465,9 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
           ) : (
             musicTracks.map(track => (
               <button key={track.id} onClick={() => handleMusicTrack(track)}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${musicTrack === track.id ? "border-purple-700 bg-purple-50" : "border-gray-100 bg-gray-50 hover:border-gray-200"}`}>
+                className={`w-full flex items-center gap-3 p-3 rounded-2xl border transition-all ${musicTrack === track.id ? "border-purple-700 bg-purple-50" : "border-gray-100 bg-gray-50 hover:border-gray-200"}`}>
                 <button onClick={e => { e.stopPropagation(); new Audio(track.file_url).play(); }}
-                  className="w-8 h-8 rounded-full bg-purple-700 flex items-center justify-center flex-shrink-0 hover:bg-purple-800">
+                  className="w-9 h-9 rounded-full bg-purple-700 flex items-center justify-center flex-shrink-0 hover:bg-purple-800">
                   <Play className="w-3.5 h-3.5 text-white fill-white ml-0.5" />
                 </button>
                 <div className="flex-1 text-left min-w-0">
@@ -478,18 +481,19 @@ Write the voiceover script now. Return ONLY the spoken script text, exactly ${ta
         </div>
       </Section>
 
-      {/* Render Video */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-5">
-        <p className="text-sm font-semibold text-gray-900 mb-1">🎬 Render Video</p>
-        <p className="text-xs text-gray-400 mb-4">Submit to the Modal render engine to generate your final video.</p>
-        <Button onClick={handleRenderVideo} disabled={submittingRender || !photos.length || (!!voiceoverUrl && !voiceoverApproved)}
-          className="w-full bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl gap-2 h-11">
+      {/* ── Render ── */}
+      <div className="bg-gradient-to-br from-purple-700 to-purple-900 rounded-3xl p-6 text-center shadow-lg shadow-purple-700/20">
+        <Clapperboard className="w-8 h-8 text-white mx-auto mb-2" />
+        <p className="text-base font-bold text-white mb-1">Render Your Video</p>
+        <p className="text-xs text-purple-200 mb-4">Your script and photos are finalized automatically and sent to the render engine.</p>
+        <Button onClick={handleRenderVideo} disabled={submittingRender || !photos.length}
+          className="w-full bg-white text-purple-700 hover:bg-purple-50 font-bold rounded-2xl gap-2 h-12 text-sm">
           {submittingRender
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
-            : <><Play className="w-4 h-4" /> Render Video</>}
+            : <><Play className="w-4 h-4 fill-purple-700" /> Render Video</>}
         </Button>
-        {voiceoverUrl && !voiceoverApproved && (
-          <p className="text-xs text-amber-600 mt-2 text-center">⚠️ Preview and approve the voiceover above before rendering.</p>
+        {!photos.length && (
+          <p className="text-xs text-purple-200 mt-2">Add at least one photo to render.</p>
         )}
       </div>
     </div>

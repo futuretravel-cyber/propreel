@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Clapperboard, label: "Studio", path: "/projects" },
+  { icon: Clapperboard, label: "Create Reel", path: "/projects/new" },
   { icon: Home, label: "Listings", path: "/listings" },
   { icon: FolderOpen, label: "My Projects", path: "/projects" },
   { icon: CreditCard, label: "Agent Profile Branding", path: "/brand-kits" },
@@ -106,18 +106,18 @@ export default function StudioLayout() {
 
         <div className="mt-4 mx-3 space-y-2">
           <Link
-            to="/listings/new"
+            to="/projects/new"
             onClick={() => setSidebarOpen(false)}
-            className="flex items-center justify-center gap-2 bg-purple-700 hover:bg-purple-800 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-purple-700 to-purple-800 hover:from-purple-800 hover:to-purple-900 text-white font-semibold py-3 rounded-xl text-sm transition-all shadow-md shadow-purple-700/20"
           >
-            <Plus className="w-4 h-4" /> New Listing
+            <Clapperboard className="w-4 h-4" /> Create Reel
           </Link>
           <Link
-            to="/projects/new"
+            to="/listings/new"
             onClick={() => setSidebarOpen(false)}
             className="flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-[#0F082B] font-semibold py-2.5 rounded-xl text-sm transition-colors"
           >
-            <Plus className="w-4 h-4" /> New Video
+            <Plus className="w-4 h-4" /> New Listing
           </Link>
         </div>
 

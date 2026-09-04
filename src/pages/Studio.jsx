@@ -16,7 +16,6 @@ import StudioFurnitureRemoval from "@/components/studio/tabs/StudioFurnitureRemo
 import StudioTwilight from "@/components/studio/tabs/StudioTwilight";
 import StudioSocialMedia from "@/components/studio/tabs/StudioSocialMedia";
 import StudioVideoGenerator from "@/components/studio/tabs/StudioVideoGenerator";
-import SlideshowPlayer from "@/components/studio/SlideshowPlayer";
 import AIDisclaimerNotice from "@/components/shared/AIDisclaimerNotice";
 
 const TABS = [
@@ -161,8 +160,6 @@ export default function Studio() {
             musicTracks={musicTracks}
             selectedBrandKitId={selectedBrandKitId}
             setSelectedBrandKitId={setSelectedBrandKitId}
-            voiceoverUrl={voiceoverUrl}
-            setVoiceoverUrl={setVoiceoverUrl}
             musicUrl={musicUrl}
             setMusicUrl={setMusicUrl}
             selectedBrandKit={selectedBrandKit}
