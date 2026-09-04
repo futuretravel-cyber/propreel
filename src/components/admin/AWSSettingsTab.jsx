@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { Save, Server } from "lucide-react";
+import { Save, Server, CreditCard } from "lucide-react";
 import PromptTemplateEditor from "@/components/admin/PromptTemplateEditor";
 
 export default function AWSSettingsTab() {
@@ -21,6 +21,8 @@ export default function AWSSettingsTab() {
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [xaiApiKey, setXaiApiKey] = useState("");
   const [falApiKey, setFalApiKey] = useState("");
+  const [paystackPublicKey, setPaystackPublicKey] = useState("");
+  const [paystackSecretKey, setPaystackSecretKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -40,6 +42,8 @@ export default function AWSSettingsTab() {
         setSecretAccessKey(existing.aws_secret_access_key || "");
         setXaiApiKey(existing.xai_api_key || "");
         setFalApiKey(existing.fal_api_key || "");
+        setPaystackPublicKey(existing.paystack_public_key || "");
+        setPaystackSecretKey(existing.paystack_secret_key || "");
       }
     }).finally(() => setLoading(false));
   }, []);
@@ -47,7 +51,7 @@ export default function AWSSettingsTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_url: webhookUrl, aws_webhook_secret: webhookSecret, aws_s3_region: s3Region, aws_s3_bucket_raw: s3BucketRaw, aws_s3_bucket_outputs: s3BucketOutputs, aws_access_key_id: accessKeyId, aws_secret_access_key: secretAccessKey, xai_api_key: xaiApiKey, fal_api_key: falApiKey };
+      const data = { aws_render_api_url: apiUrl, aws_cdn_base_url: cdnUrl, aws_webhook_url: webhookUrl, aws_webhook_secret: webhookSecret, aws_s3_region: s3Region, aws_s3_bucket_raw: s3BucketRaw, aws_s3_bucket_outputs: s3BucketOutputs, aws_access_key_id: accessKeyId, aws_secret_access_key: secretAccessKey, xai_api_key: xaiApiKey, fal_api_key: falApiKey, paystack_public_key: paystackPublicKey, paystack_secret_key: paystackSecretKey };
       if (settingId) {
         await base44.entities.AppSetting.update(settingId, data);
       } else {
@@ -170,6 +174,24 @@ export default function AWSSettingsTab() {
         <div>
           <Label htmlFor="fal_api_key" className="text-xs font-semibold text-[#0F082B]">Fal.ai API Key</Label>
           <Input id="fal_api_key" type="password" value={falApiKey} onChange={(e) => setFalApiKey(e.target.value)} placeholder="fal-..." className="mt-1.5 rounded-xl" />
+        </div>
+      </div>
+
+      {/* Paystack Payment Configuration */}
+      <div className="border-t border-gray-100 pt-5 mt-5">
+        <h4 className="text-xs font-bold text-[#0F082B] mb-1 flex items-center gap-2">
+          <CreditCard className="w-3.5 h-3.5 text-[#21ABB5]" /> Paystack Payment Gateway
+        </h4>
+        <p className="text-xs text-[#606060] mb-4">Paystack API keys for processing credit purchases and subscriptions. Find these in your Paystack dashboard under Settings → API Keys & Webhooks.</p>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="paystack_public_key" className="text-xs font-semibold text-[#0F082B]">Paystack Public Key</Label>
+            <Input id="paystack_public_key" value={paystackPublicKey} onChange={(e) => setPaystackPublicKey(e.target.value)} placeholder="pk_test_..." className="mt-1.5 rounded-xl" />
+          </div>
+          <div>
+            <Label htmlFor="paystack_secret_key" className="text-xs font-semibold text-[#0F082B]">Paystack Secret Key</Label>
+            <Input id="paystack_secret_key" type="password" value={paystackSecretKey} onChange={(e) => setPaystackSecretKey(e.target.value)} placeholder="sk_test_..." className="mt-1.5 rounded-xl" />
+          </div>
         </div>
       </div>
 
