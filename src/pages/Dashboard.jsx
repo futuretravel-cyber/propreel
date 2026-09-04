@@ -44,14 +44,14 @@ export default function Dashboard() {
     { icon: Home, label: "Active Listings", value: activeListings.toLocaleString("en-ZA"), accent: "from-indigo-500 to-blue-500", link: "/listings" },
     { icon: Film, label: "Reels Generated", value: reelsGenerated.toLocaleString("en-ZA"), accent: "from-violet-500 to-purple-500", link: "/projects" },
     { icon: Eye, label: "Total Views", value: totalViews.toLocaleString("en-ZA"), accent: "from-emerald-500 to-teal-500", link: "/analytics" },
-    { icon: Coins, label: "Credits Balance", value: credits.toLocaleString("en-ZA"), accent: "from-amber-500 to-orange-500", link: "/pricing" },
+    { icon: Coins, label: "Credits Balance", value: credits.toLocaleString("en-ZA"), accent: "from-amber-500 to-orange-500", link: "/billing" },
   ];
 
   const quickActions = [
     { icon: Clapperboard, label: "Create a Reel", desc: "Studio — turn photos into a cinematic video", link: "/studio", accent: "from-indigo-600 to-violet-600" },
     { icon: Plus, label: "New Listing", desc: "Add a property with AI descriptions", link: "/listings/new", accent: "from-slate-700 to-slate-800" },
     { icon: BarChart3, label: "View Analytics", desc: "Track performance & engagement", link: "/analytics", accent: "from-slate-700 to-slate-800" },
-    { icon: CreditCard, label: "Top Up Credits", desc: "Choose a plan or buy credit packs", link: "/pricing", accent: "from-slate-700 to-slate-800" },
+    { icon: CreditCard, label: "Top Up Credits", desc: "Choose a plan or buy credit packs", link: "/billing", accent: "from-slate-700 to-slate-800" },
   ];
 
   return (
@@ -112,7 +112,7 @@ export default function Dashboard() {
             <p className="text-xs text-slate-400 mt-0.5">Photo tools cost 1 credit · AI videos cost 5–75 credits depending on tier</p>
           </div>
         </div>
-        <Link to="/pricing">
+        <Link to="/billing">
           <Button variant="outline" size="sm" className="rounded-xl text-xs border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white">Upgrade plan</Button>
         </Link>
       </div>

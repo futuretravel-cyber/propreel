@@ -95,7 +95,7 @@ export default function StudioLayout() {
         )}
 
         <Link
-          to="/pricing"
+          to="/billing"
           onClick={() => setSidebarOpen(false)}
           className="flex items-center justify-between gap-2 mx-3 mt-4 px-3 py-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-indigo-500/40 transition-colors"
         >
@@ -128,7 +128,7 @@ export default function StudioLayout() {
             <span className="text-xs font-semibold text-slate-100">Upgrade to Pro</span>
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed mb-3">Unlock unlimited videos, AI staging, and more.</p>
-          <Link to="/pricing" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300">
+          <Link to="/billing" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300">
             View plans →
           </Link>
         </div>
@@ -208,7 +208,7 @@ export default function StudioLayout() {
                     <Link to="/settings" className="cursor-pointer">Settings</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to="/pricing" className="cursor-pointer">Billing</Link>
+                    <Link to="/billing" className="cursor-pointer">Billing</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem

@@ -10,7 +10,7 @@ export function notifyOutOfCredits(toast, cost) {
     action: (
       <ToastAction altText="Upgrade plan">
         <a
-          href="/pricing"
+          href="/billing"
           className="inline-block text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-700 text-white hover:bg-purple-800 whitespace-nowrap"
         >
           Upgrade

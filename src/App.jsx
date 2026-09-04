@@ -31,6 +31,7 @@ import ProjectDetail from '@/pages/ProjectDetail';
 import QuickEdit from '@/pages/QuickEdit';
 import Studio from '@/pages/Studio';
 import StudioPage from '@/pages/StudioPage';
+import Billing from '@/pages/Billing';
 import Analytics from '@/pages/Analytics';
 import BrandKits from '@/pages/BrandKits';
 import Settings from '@/pages/Settings';
@@ -82,6 +83,7 @@ const AuthenticatedApp = () => {
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<StudioLayout />}>
           <Route path="/studio" element={<StudioPage />} />
+          <Route path="/billing" element={<Billing />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/projects" element={<Projects />} />
