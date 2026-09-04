@@ -138,7 +138,7 @@ export default function Register() {
     <AuthLayout
       icon={UserPlus}
       title="Create your account"
-      subtitle="Sign up and get 5 free credits — no card required"
+      subtitle="Sign up and get 5 free credits"
       footer={
         <>
           Already have an account?{" "}

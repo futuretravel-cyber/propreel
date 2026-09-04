@@ -12,10 +12,10 @@ export default function CTABanner() {
         </h2>
         <Link to="/register">
           <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-10 h-14 rounded-xl text-lg gap-2">
-            Get started for free <ArrowRight className="w-5 h-5" />
+            Get Started <ArrowRight className="w-5 h-5" />
           </Button>
         </Link>
-        <p className="text-sm text-gray-400 mt-4">No credit card required · Cancel anytime · Priced in ZAR</p>
+        <p className="text-sm text-gray-400 mt-4">Priced in ZAR</p>
       </div>
     </section>
   );

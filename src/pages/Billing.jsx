@@ -192,7 +192,7 @@ export default function Billing() {
         </div>
         <div>
           <p className="text-sm font-bold text-emerald-200">New here? Get {FREE_SIGNUP_CREDITS} free credits on us!</p>
-          <p className="text-xs text-emerald-300/70 mt-0.5">Every new subscriber receives {FREE_SIGNUP_CREDITS} complimentary credits to try PropReel — no card required.</p>
+          <p className="text-xs text-emerald-300/70 mt-0.5">Every new subscriber receives {FREE_SIGNUP_CREDITS} complimentary credits to try PropReel.</p>
         </div>
         {!user && (
           <Link to="/register" className="ml-auto text-xs font-semibold text-emerald-300 hover:text-emerald-200 whitespace-nowrap">

@@ -56,12 +56,12 @@ export default function HeroSection() {
         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
           <Link to="/register">
             <Button className="bg-purple-700 hover:bg-purple-800 text-white font-semibold px-8 h-12 rounded-xl text-base gap-2">
-              Get started free <ArrowRight className="w-4 h-4" />
+              Get Started <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
           <div className="flex items-center gap-2 text-sm text-[#606060]">
             <Gift className="w-4 h-4 text-emerald-500" />
-            <span>Get <span className="font-bold text-emerald-600">5 free credits</span> when you sign up — no card required</span>
+            <span>Get <span className="font-bold text-emerald-600">5 free credits</span> when you sign up</span>
           </div>
         </div>
 

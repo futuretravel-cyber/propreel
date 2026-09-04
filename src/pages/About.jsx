@@ -56,7 +56,7 @@ export default function About() {
           <p className="text-gray-400 mb-6">Join 2,500+ South African agents already using PropReel SA.</p>
           <Link to="/register">
             <Button className="bg-[#21ABB5] hover:bg-[#1a9da6] text-white font-semibold px-8 h-12 rounded-xl text-base gap-2">
-              Get started free <ArrowRight className="w-4 h-4" />
+              Get Started <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
         </div>
