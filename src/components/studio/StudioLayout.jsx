@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown, ShieldCheck, Home, Coins, Building2, Clapperboard } from "lucide-react";
+import { LayoutDashboard, FolderOpen, CreditCard, Settings, HelpCircle, Gem, LogOut, Menu, X, Plus, Bell, Search, ChevronDown, ShieldCheck, Home, Coins, Building2, Clapperboard, Film } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: Film, label: "Video Studio", path: "/studio" },
   { icon: Clapperboard, label: "Create Reel", path: "/projects/new" },
   { icon: Home, label: "Listings", path: "/listings" },
   { icon: FolderOpen, label: "My Projects", path: "/projects" },
