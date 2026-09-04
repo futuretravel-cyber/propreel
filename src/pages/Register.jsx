@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
+import { UserPlus, Mail, Lock, Loader2, Gift } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
@@ -49,6 +49,11 @@ export default function Register() {
       const result = await base44.auth.verifyOtp({ email, otpCode });
       if (result?.access_token) {
         base44.auth.setToken(result.access_token);
+        try {
+          await base44.auth.updateMe({ credits: 5 });
+        } catch (e) {
+          // Credits will be added on next login if this fails
+        }
       }
       window.location.href = "/dashboard";
     } catch (err) {
@@ -133,7 +138,7 @@ export default function Register() {
     <AuthLayout
       icon={UserPlus}
       title="Create your account"
-      subtitle="Sign up to get started"
+      subtitle="Sign up and get 5 free credits — no card required"
       footer={
         <>
           Already have an account?{" "}
@@ -166,6 +171,11 @@ export default function Register() {
           {error}
         </div>
       )}
+
+      <div className="flex items-center gap-2.5 mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+        <Gift className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+        <p className="text-xs font-medium text-emerald-700">Get <span className="font-bold">5 free credits</span> when you create your account!</p>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">

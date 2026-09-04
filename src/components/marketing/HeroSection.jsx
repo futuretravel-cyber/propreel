@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Play, ArrowRight, GripVertical } from "lucide-react";
+import { Play, ArrowRight, GripVertical, Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const HERO_VIDEO = "https://media.base44.com/videos/public/6a3d034ac0fe750276476665/58d86fd5e_generated_video.mp4";
@@ -59,6 +59,10 @@ export default function HeroSection() {
               Get started free <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
+          <div className="flex items-center gap-2 text-sm text-[#606060]">
+            <Gift className="w-4 h-4 text-emerald-500" />
+            <span>Get <span className="font-bold text-emerald-600">5 free credits</span> when you sign up — no card required</span>
+          </div>
         </div>
 
         {/* Before/After Slider */}

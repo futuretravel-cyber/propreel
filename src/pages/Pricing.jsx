@@ -1,58 +1,58 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Gift, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const plans = [
   {
-    name: "Essential",
-    monthly: 59,
-    annual: 590,
-    credits: 60,
+    name: "Starter",
+    monthly: 129,
+    annual: 1290,
+    credits: 130,
     desc: "Get started with AI property videos",
-    features: ["60 credits/month", "AI photo editor", "Virtual staging", "Furniture removal", "Twilight photography", "Property descriptions", "Essential tier videos"],
+    features: ["130 credits/month", "AI photo editor", "Virtual staging", "Furniture removal", "Twilight photography", "Property descriptions", "Essential tier videos"],
     cta: "Get started",
     featured: false,
   },
   {
-    name: "Premium",
-    monthly: 89,
-    annual: 890,
-    credits: 100,
+    name: "Professional",
+    monthly: 589,
+    annual: 5890,
+    credits: 600,
     desc: "For active estate agents",
-    features: ["100 credits/month", "Everything in Essential", "Social & Cinematic tier videos", "Premium tier videos", "Priority support"],
+    features: ["600 credits/month", "Everything in Starter", "Social & Cinematic tier videos", "Social media post generation", "Priority queue"],
     cta: "Start free trial",
     featured: true,
     badge: "Most popular",
   },
   {
-    name: "Pro",
-    monthly: 179,
-    annual: 1790,
-    credits: 200,
+    name: "Premium",
+    monthly: 1270,
+    annual: 12700,
+    credits: 1300,
     desc: "For high-volume agents",
-    features: ["200 credits/month", "Everything in Premium", "All video tiers included", "Faster render priority", "Dedicated support"],
+    features: ["1,300 credits/month", "Everything in Professional", "Premium tier HD videos", "Unlimited brand kits", "Priority support"],
     cta: "Start free trial",
     featured: false,
   },
   {
     name: "Agency",
-    monthly: 1200,
-    annual: 12000,
-    credits: 1500,
-    desc: "For agencies & media companies",
-    features: ["1,500 credits/month", "Everything in Pro", "White-label branding", "Multiple team seats", "Dedicated account manager"],
-    cta: "Contact sales",
+    monthly: 5000,
+    annual: 50000,
+    credits: 5000,
+    desc: "For agencies & teams",
+    features: ["5,000 credits/month", "Everything in Premium", "Add unlimited agents", "Shared credit pool", "Agency spending dashboard"],
+    cta: "Get started",
     featured: false,
   },
 ];
 
 const pricingFaqs = [
-  { q: "How do credits work?", a: "Every plan gives you a monthly pool of credits. Photo tools (descriptions, AI photo edits, staging, furniture removal, twilight, social posts) cost 1 credit each, while AI videos cost 5-150 credits depending on the tier and length you choose." },
-  { q: "Is annual billing worth it?", a: "Yes! Annual billing gives you 1 month free compared to paying monthly." },
-  { q: "What happens when I run out of credits?", a: "You'll be prompted to upgrade your plan. Unused credits don't roll over month to month." },
+  { q: "How do credits work?", a: "Every plan gives you a monthly pool of credits. 1 credit = R1. Photo tools (descriptions, AI photo edits, staging, furniture removal, twilight, social posts) cost 2 credits each, while AI videos cost 5-150 credits depending on the tier and length you choose." },
+  { q: "Do I get free credits to try?", a: "Yes! Every new subscriber receives 5 free credits upon sign-up — no card required. Use them to test any feature before committing to a plan." },
+  { q: "What happens when I run out of credits?", a: "You can buy custom credits on demand (R1 per credit) or upgrade to a higher plan. Unused credits don't roll over month to month." },
   { q: "What's the difference between video tiers?", a: "Essential uses fast zoom/pan motion at 1080p (5-10 credits). Social and Cinematic use AI-generated motion at 720p (30-90 credits). Premium uses AI motion at 1080p (60-150 credits). Longer videos cost more credits." },
-  { q: "What's the main difference between plans?", a: "Essential is for agents getting started. Premium and Pro add more monthly credits for higher volume. Agency is built for teams, with white-label branding and multiple seats." },
+  { q: "How does the Agency plan work?", a: "The Agency plan gives you a shared credit pool of 5,000 credits/month. You can add unlimited agents to your agency — each gets their own login but all spend from the one shared pool. Track spending per agent from the Agency dashboard." },
 ];
 
 const paymentMethods = ["Visa / Mastercard", "EFT / Instant EFT", "SnapScan", "PayFast", "PayGate", "Ozow"];
@@ -64,6 +64,19 @@ export default function Pricing() {
   return (
     <div className="pt-28 pb-20">
       <div className="max-w-6xl mx-auto px-4">
+        {/* Free credits banner */}
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <div className="flex items-center gap-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl px-5 py-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
+              <Gift className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-emerald-700">New here? Get 5 free credits on us!</p>
+              <p className="text-xs text-emerald-600">Every new subscriber gets 5 complimentary credits — no card required.</p>
+            </div>
+          </div>
+        </div>
+
         <div className="text-center mb-12">
           <h1 className="text-4xl sm:text-5xl font-extrabold text-[#0F082B] mb-4">
             Start for free, upgrade when you love it.
@@ -99,6 +112,11 @@ export default function Pricing() {
                   {plan.badge}
                 </span>
               )}
+              {plan.name === "Agency" && (
+                <div className="absolute -top-3 right-4 w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                </div>
+              )}
               <h3 className="text-xl font-bold text-[#0F082B] mb-1">{plan.name}</h3>
               <p className="text-sm text-[#606060] mb-4">{plan.desc}</p>
 
@@ -108,10 +126,10 @@ export default function Pricing() {
                 </span>
                 <span className="text-[#606060] text-sm">/month</span>
                 {annual && (
-                  <p className="text-xs text-[#606060] mt-1">Billed R{plan.annual}/year</p>
+                  <p className="text-xs text-[#606060] mt-1">Billed R{plan.annual.toLocaleString("en-ZA")}/year</p>
                 )}
               </div>
-              <p className="text-sm font-semibold text-purple-700 mb-6">{plan.credits} credits/month</p>
+              <p className="text-sm font-semibold text-purple-700 mb-6">{plan.credits.toLocaleString("en-ZA")} credits/month</p>
 
               <Link to="/register">
                 <Button
@@ -143,7 +161,7 @@ export default function Pricing() {
               <span key={m} className="text-xs bg-gray-100 text-[#606060] px-3 py-1.5 rounded-lg font-medium">{m}</span>
             ))}
           </div>
-          <p className="text-xs text-[#606060]">All prices exclude VAT. VAT-registered entities will have VAT applied at checkout.</p>
+          <p className="text-xs text-[#606060]">All prices exclude VAT. VAT-registered entities will have VAT applied at checkout. 1 credit = R1.</p>
         </div>
 
         <div className="max-w-3xl mx-auto">
