@@ -2,11 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const slides = [
-  { title: "Property24 One-Click Import", desc: "Import listing photos directly from Property24 URLs. No downloading, no hassle.", color: "from-[#21ABB5]/10 to-[#DEF5F7]" },
   { title: "ZAR Pricing & Local Payments", desc: "All pricing in South African Rand. Pay via PayFast, Ozow, SnapScan, EFT, or card.", color: "from-purple-50 to-purple-100/50" },
-  { title: "SA Voice Accents", desc: "AI voiceovers with authentic South African English accents for your property videos.", color: "from-amber-50 to-amber-100/50" },
-  { title: "Cape Dutch Virtual Staging", desc: "AI staging with SA furniture styles — from Cape Dutch to Modern Johannesburg.", color: "from-emerald-50 to-emerald-100/50" },
-  { title: "WhatsApp Sharing", desc: "Share finished videos directly to WhatsApp — the preferred platform for SA property.", color: "from-green-50 to-green-100/50" },
 ];
 
 export default function BuiltForSASection() {

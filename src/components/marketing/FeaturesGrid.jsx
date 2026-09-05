@@ -1,12 +1,11 @@
 import React from "react";
-import { Video, Download, Armchair, Image, Wand2, Mic, SlidersHorizontal } from "lucide-react";
+import { Video, Download, Armchair, Image, Mic, SlidersHorizontal } from "lucide-react";
 
 const features = [
   { icon: Video, title: "Photo to Video", desc: "Transform listing photos into captivating video tours.", wide: true },
   { icon: Download, title: "One-click Import", desc: "Pull listing photos from Property24 in seconds.", wide: false },
   { icon: Armchair, title: "AI Virtual Staging", desc: "Furnish empty rooms with AI — SA furniture styles.", wide: false },
   { icon: Image, title: "AI Photo Edits", desc: "Blue sky replacement, twilight conversion, lawn greening.", wide: true },
-  { icon: Wand2, title: "Viral Visual Effects", desc: "Cinematic transitions, VFX, lifestyle shots.", wide: true },
   { icon: Mic, title: "AI Voiceovers", desc: "Narrations in South African English. Choose your voice.", wide: false },
   { icon: SlidersHorizontal, title: "Studio Editor", desc: "Fine-tune transitions, captions, and branding.", wide: false },
 ];
