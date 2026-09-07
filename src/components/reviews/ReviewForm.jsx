@@ -1,40 +1,53 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { base44 } from "@/api/base44Client";
+import { useUser } from "@clerk/clerk-react";
 import StarRatingInput from "@/components/reviews/StarRatingInput";
 import { moderateReview } from "@/lib/reviewModeration";
 
-export default function ReviewForm({ user, onSubmitted }) {
+export default function ReviewForm({ onSubmitted }) {
   const { toast } = useToast();
+  const { user } = useUser();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const isPayingAgent = (user?.credits || 0) > 0;
+  // You can derive agent info or credits from Clerk user metadata or public metadata if applicable
+  const isPayingAgent = true; // Update based on your user metadata logic if needed
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!rating || !comment.trim()) return;
     setSubmitting(true);
+    
     try {
       const { status, flag_reason } = moderateReview(comment);
-      await base44.entities.Review.create({
-        agent_name: user.full_name || user.email,
-        rating,
-        comment: comment.trim(),
-        status,
-        flag_reason,
+      
+      // Replace this fetch call with your backend endpoint or database handler (e.g., Supabase / your API)
+      const response = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent_name: user?.fullName || user?.primaryEmailAddress?.emailAddress,
+          rating,
+          comment: comment.trim(),
+          status,
+          flag_reason,
+        }),
       });
+
+      if (!response.ok) throw new Error("Failed to submit review");
+
       setSubmitted(true);
       setRating(0);
       setComment("");
       if (onSubmitted) onSubmitted();
-    } catch {
-      toast({ title: "Failed to submit review", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Failed to submit review", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   if (!user) {
