@@ -17,9 +17,8 @@ export default function Signup() {
     try {
       setError('');
       setLoading(true);
-      // Create user with Firebase Auth
       await signup(email, password);
-      navigate('/');
+      navigate('/dashboard');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -31,7 +30,7 @@ export default function Signup() {
     try {
       setError('');
       await googleSignIn();
-      navigate('/');
+      navigate('/dashboard');
     } catch (err) {
       setError(err.message);
     }
@@ -39,61 +38,65 @@ export default function Signup() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
-      <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-8 shadow-lg">
+      <div className="w-full max-w-md space-y-8 rounded-2xl bg-white p-8 shadow-xl border border-gray-100">
         <div className="text-center">
-          <h2 className="text-3xl font-bold tracking-tight text-gray-900">Create your account</h2>
-          <p className="mt-2 text-sm text-gray-600">Start creating real estate videos with PropReel</p>
+          <h2 className="text-3xl font-extrabold text-[#0F082B]">Create your account</h2>
+          <p className="mt-2 text-sm text-[#606060]">Start creating real estate videos with PropReel</p>
         </div>
 
-        {error && <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+        {error && (
+          <div className="rounded-lg bg-rose-50 p-4 text-sm text-rose-700 border border-rose-200">
+            {error}
+          </div>
+        )}
 
         <form className="mt-8 space-y-6" onSubmit={handleSignup}>
-          <div className="space-y-4 rounded-md shadow-sm">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Email Address</label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#0F082B] mb-1">Email Address</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-[#21ABB5] focus:outline-none focus:ring-2 focus:ring-[#21ABB5]/20"
                 placeholder="you@example.com"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#0F082B] mb-1">Password</label>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-[#21ABB5] focus:outline-none focus:ring-2 focus:ring-[#21ABB5]/20"
                 placeholder="••••••••"
               />
             </div>
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full">
+          <Button type="submit" disabled={loading} className="w-full bg-[#21ABB5] hover:bg-[#1a8c94] text-white py-3 rounded-xl font-medium transition-all">
             {loading ? 'Creating account...' : 'Sign Up'}
           </Button>
 
-          <div className="relative my-4">
+          <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300" />
+              <div className="w-full border-t border-gray-200" />
             </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="bg-white px-2 text-gray-500">Or continue with</span>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-3 text-gray-400 font-medium">Or continue with</span>
             </div>
           </div>
 
-          <Button type="button" variant="outline" onClick={handleGoogleSignup} className="w-full">
+          <Button type="button" variant="outline" onClick={handleGoogleSignup} className="w-full py-3 rounded-xl border-gray-200 hover:bg-gray-50 flex items-center justify-center gap-2">
             Sign Up with Google
           </Button>
         </form>
 
-        <p className="text-center text-sm text-gray-600">
+        <p className="text-center text-sm text-[#606060] mt-6">
           Already have an account?{' '}
-          <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <Link to="/login" className="font-semibold text-[#21ABB5] hover:underline">
             Sign in
           </Link>
         </p>
