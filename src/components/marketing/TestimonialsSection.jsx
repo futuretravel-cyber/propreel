@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Star, ChevronLeft, ChevronRight } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/AuthContext";
 
 export default function TestimonialsSection() {
   const [reviews, setReviews] = useState([]);
@@ -8,9 +8,15 @@ export default function TestimonialsSection() {
   const perPage = 3;
 
   useEffect(() => {
-    base44.entities.Review.filter({ status: "approved" }, "-created_date", 12)
-      .then(setReviews)
-      .catch(() => {});
+    supabase
+      .from("reviews")
+      .select("*")
+      .eq("status", "approved")
+      .order("created_date", { ascending: false })
+      .limit(12)
+      .then(({ data, error }) => {
+        if (!error && data) setReviews(data);
+      });
   }, []);
 
   if (reviews.length === 0) return null;

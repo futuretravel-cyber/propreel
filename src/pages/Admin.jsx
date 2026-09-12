@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/AuthContext";
 import { useAuth } from "@/lib/AuthContext";
 import { Navigate } from "react-router-dom";
 import {
@@ -49,31 +49,37 @@ export default function Admin() {
     if (user?.role !== "admin") return;
     setLoading(true);
     Promise.all([
-      base44.entities.Project.list("-created_date", 100),
-      base44.entities.User.list(),
-      base44.entities.ContactSubmission.list("-created_date", 100),
-      base44.entities.Review.list("-created_date", 200),
+      supabase.from("projects").select("*").order("created_date", { ascending: false }),
+      supabase.from("users").select("*"),
+      supabase.from("contact_submissions").select("*").order("created_date", { ascending: false }),
+      supabase.from("reviews").select("*").order("created_date", { ascending: false }),
     ])
-      .then(([p, u, c, r]) => { setProjects(p); setUsers(u); setContacts(c); setReviews(r); })
+      .then(([p, u, c, r]) => { 
+        setProjects(p.data || []); 
+        setUsers(u.data || []); 
+        setContacts(c.data || []); 
+        setReviews(r.data || []); 
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [user]);
 
   const updateReviewStatus = async (id, status) => {
-    await base44.entities.Review.update(id, { status });
+    await supabase.from("reviews").update({ status }).eq("id", id);
     setReviews((prev) => prev.map((r) => r.id === id ? { ...r, status } : r));
+    toast({ title: `Review marked as ${status}` });
   };
 
   if (user?.role !== "admin") return <Navigate to="/dashboard" replace />;
 
   const deleteProject = async (id) => {
-    await base44.entities.Project.delete(id);
+    await supabase.from("projects").delete().eq("id", id);
     setProjects((prev) => prev.filter((p) => p.id !== id));
     toast({ title: "Project deleted" });
   };
 
   const updateContactStatus = async (id, status) => {
-    await base44.entities.ContactSubmission.update(id, { status });
+    await supabase.from("contact_submissions").update({ status }).eq("id", id);
     setContacts((prev) => prev.map((c) => c.id === id ? { ...c, status } : c));
   };
 
@@ -283,8 +289,9 @@ export default function Admin() {
                         variant="outline"
                         className="rounded-lg text-xs h-8"
                         onClick={async () => {
-                          await base44.entities.User.update(u.id, { credits: (u.credits || 0) + 100 });
-                          setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, credits: (x.credits || 0) + 100 } : x));
+                          const newCredits = (u.credits || 0) + 100;
+                          await supabase.from("users").update({ credits: newCredits }).eq("id", u.id);
+                          setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, credits: newCredits } : x));
                           toast({ title: `+100 credits added to ${u.full_name || u.email}` });
                         }}
                       >
