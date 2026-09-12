@@ -26,7 +26,7 @@ export default function Signup() {
     }
   };
 
-  const handleGoogleSignup = async () => {
+  const handleGoogleLogin = async () => {
     try {
       setError('');
       await googleSignIn();
