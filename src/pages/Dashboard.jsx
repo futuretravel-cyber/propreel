@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Video, CreditCard, Zap, MoreVertical, Clock, CheckCircle2, FileEdit, FolderOpen, Home, TrendingUp, Coins, Clapperboard, ArrowRight, Film, BarChart3, Eye, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/AuthContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -19,26 +19,36 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      base44.entities.Project.list("-created_date", 20),
-      base44.entities.Listing.list("-created_date", 50),
-    ]).then(([projs, lists]) => {
-      setProjects(projs);
-      setListings(lists);
-    }).catch(() => {}).finally(() => setLoading(false));
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const [projRes, listRes] = await Promise.all([
+          supabase.from("projects").select("*").order("created_date", { ascending: false }).limit(20),
+          supabase.from("listings").select("*").order("created_date", { ascending: false }).limit(50),
+        ]);
+
+        setProjects(projRes.data || []);
+        setListings(listRes.data || []);
+      } catch (err) {
+        console.error("Error loading dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
   }, []);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const firstName = user?.full_name?.split(" ")[0] || "there";
+  const firstName = user?.displayName?.split(" ")[0] || user?.email?.split("@")[0] || "there";
 
   const readyCount = projects.filter((p) => p.status === "ready").length;
   const processingCount = projects.filter((p) => p.status === "processing").length;
   const activeListings = listings.filter(l => l.status === "active").length;
   const reelsGenerated = projects.length;
   const totalViews = projects.reduce((s, p) => s + (p.views || 0), 0);
-  const credits = user?.credits ?? 0;
-  const monthlyRevenue = listings.filter(l => l.status === "active").reduce((s, l) => s + (l.monthly_revenue || 0), 0);
+  const credits = user?.credits ?? 100; // Fallback credits if user doc doesn't have it
 
   const metrics = [
     { icon: Home, label: "Active Listings", value: activeListings.toLocaleString("en-ZA"), accent: "from-indigo-500 to-blue-500", link: "/listings" },
@@ -177,7 +187,7 @@ export default function Dashboard() {
                       <div className="min-w-0">
                         <h3 className="font-semibold text-white text-sm truncate">{p.name}</h3>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          {new Date(p.created_date).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
+                          {new Date(p.created_date || Date.now()).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
                         </p>
                       </div>
                       <DropdownMenu>
