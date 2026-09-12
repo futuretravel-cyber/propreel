@@ -23,47 +23,22 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
-  const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
-  const signup = (email, password) => createUserWithEmailAndPassword(auth, email, password);
-  const logout = () => signOut(auth);
-  const googleSignIn = () => signInWithPopup(auth, new GoogleAuthProvider());
+  const login = (email, password) => {
+    return signInWithEmailAndPassword(auth, email, password);
+  };
 
-  return (
-    <AuthContext.Provider value={{ user, login, signup, logout, googleSignIn, loading }}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
-};
+  const signup = (email, password) => {
+    return createUserWithEmailAndPassword(auth, email, password);
+  };
 
-export const useAuth = () => useContext(AuthContext);import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
-  GoogleAuthProvider, 
-  signInWithPopup 
-} from 'firebase/auth';
-import { auth } from './firebase';
+  const logout = () => {
+    return signOut(auth);
+  };
 
-const AuthContext = createContext();
-
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
-  const signup = (email, password) => createUserWithEmailAndPassword(auth, email, password);
-  const logout = () => signOut(auth);
-  const googleSignIn = () => signInWithPopup(auth, new GoogleAuthProvider());
+  const googleSignIn = () => {
+    const provider = new GoogleAuthProvider();
+    return signInWithPopup(auth, provider);
+  };
 
   return (
     <AuthContext.Provider value={{ user, login, signup, logout, googleSignIn, loading }}>
@@ -73,4 +48,6 @@ export const AuthProvider = ({ children }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
+
+// Re-export supabase for legacy component compatibility
 export { supabase } from './supabaseClient';
