@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Star, ChevronLeft, ChevronRight } from "lucide-react";
-import { supabase } from "@/lib/AuthContext";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function TestimonialsSection() {
   const [reviews, setReviews] = useState([]);
