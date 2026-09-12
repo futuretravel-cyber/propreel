@@ -8,7 +8,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: false, // Disables automatic URL token parsing that causes the crash
   }
 });
 
@@ -20,18 +20,14 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Safely check active sessions and handle URL tokens
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (!error) {
-        setSession(session);
-        setUser(session?.user ?? null);
-      }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
       setLoading(false);
     }).catch(() => {
       setLoading(false);
     });
 
-    // Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -49,7 +45,6 @@ export const AuthProvider = ({ children }) => {
     user,
     session,
     loading,
-    // Compatibility properties for template components
     isLoadingAuth: loading,
     isLoadingPublicSettings: false,
     authError: null,
