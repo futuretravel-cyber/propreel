@@ -20,21 +20,37 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    // Check if there's a malformed token error in the URL hash and clean it if not on callback route
+    if (window.location.hash && window.location.hash.includes('error') && !window.location.pathname.includes('/auth/callback')) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
+    // Check active sessions safely
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (!error) {
+        setSession(session);
+        setUser(session?.user ?? null);
+      } else {
+        // Clear corrupted session storage if token error occurs
+        supabase.auth.signOut();
+      }
+      setLoading(false);
+    }).catch(() => {
       setLoading(false);
     });
 
-    // Listen for auth changes
+    // Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      if (subscription?.unsubscribe) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   const value = {
