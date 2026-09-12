@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { supabase } from "@/lib/AuthContext";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/AuthContext";
+import { checkIsAdmin } from "@/lib/adminCheck";
 import { Navigate } from "react-router-dom";
 import {
   Users, Video, Mail, TrendingUp, CheckCircle2, Clock, FileEdit,
@@ -36,7 +37,7 @@ const contactStatusConfig = {
 };
 
 export default function Admin() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [tab, setTab] = useState("Overview");
   const [projects, setProjects] = useState([]);
@@ -45,8 +46,10 @@ export default function Admin() {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const isAdmin = user && checkIsAdmin(user);
+
   useEffect(() => {
-    if (user?.role !== "admin") return;
+    if (!isAdmin) return;
     setLoading(true);
     Promise.all([
       supabase.from("projects").select("*").order("created_date", { ascending: false }),
@@ -62,7 +65,7 @@ export default function Admin() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [isAdmin]);
 
   const updateReviewStatus = async (id, status) => {
     await supabase.from("reviews").update({ status }).eq("id", id);
@@ -70,7 +73,13 @@ export default function Admin() {
     toast({ title: `Review marked as ${status}` });
   };
 
-  if (user?.role !== "admin") return <Navigate to="/dashboard" replace />;
+  if (authLoading) {
+    return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
+  }
 
   const deleteProject = async (id) => {
     await supabase.from("projects").delete().eq("id", id);
@@ -213,7 +222,9 @@ export default function Admin() {
                           <p className="text-xs text-[#606060] truncate">{u.email}</p>
                         </div>
                         <span className="text-xs text-[#606060]">{new Date(u.created_date).toLocaleDateString("en-ZA", { day: "numeric", month: "short" })}</span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>{u.role}</span>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${u.email?.toLowerCase() === 'futuretravel@gmail.com' ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
+                          {u.email?.toLowerCase() === 'futuretravel@gmail.com' ? 'admin' : 'user'}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -297,7 +308,9 @@ export default function Admin() {
                       >
                         +100 credits
                       </Button>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>{u.role}</span>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${u.email?.toLowerCase() === 'futuretravel@gmail.com' ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
+                        {u.email?.toLowerCase() === 'futuretravel@gmail.com' ? 'admin' : 'user'}
+                      </span>
                     </div>
                   </div>
                 ))}
