@@ -35,6 +35,11 @@ export const AuthProvider = ({ children }) => {
     user,
     session,
     loading,
+    // Compatibility properties for template components
+    isLoadingAuth: loading,
+    isLoadingPublicSettings: false,
+    authError: null,
+    navigateToLogin: () => { window.location.href = '/login'; },
     signIn: (email, password) => supabase.auth.signInWithPassword({ email, password }),
     signOut: () => supabase.auth.signOut(),
   };
