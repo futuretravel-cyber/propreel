@@ -3,19 +3,27 @@ import { supabase } from '@/lib/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 
-export default function Login() {
+export default function Signup() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: fullName }
+      }
+    });
+
     if (error) {
       setError(error.message);
     } else {
@@ -24,7 +32,7 @@ export default function Login() {
     setLoading(false);
   };
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleSignup = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -38,8 +46,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-[#0F082B]">Welcome Back</h1>
-          <p className="text-sm text-[#606060] mt-1">Sign in to your Propreel account</p>
+          <h1 className="text-2xl font-bold text-[#0F082B]">Create an Account</h1>
+          <p className="text-sm text-[#606060] mt-1">Start generating AI real estate tours</p>
         </div>
 
         {error && (
@@ -48,9 +56,8 @@ export default function Login() {
           </div>
         )}
 
-        {/* Google OAuth Button */}
         <button
-          onClick={handleGoogleLogin}
+          onClick={handleGoogleSignup}
           type="button"
           className="w-full mb-6 flex items-center justify-center gap-3 py-3 border border-gray-200 rounded-xl text-sm font-semibold text-[#0F082B] hover:bg-gray-50 transition-colors"
         >
@@ -69,7 +76,19 @@ export default function Login() {
           <div className="flex-grow border-t border-gray-200"></div>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleSignup} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-[#0F082B] mb-1">Full Name</label>
+            <input
+              type="text"
+              placeholder="John Doe"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#21ABB5]"
+              required
+            />
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-[#0F082B] mb-1">Email Address</label>
             <input
@@ -95,14 +114,14 @@ export default function Login() {
           </div>
 
           <Button type="submit" className="w-full py-3 rounded-xl bg-[#21ABB5] hover:bg-[#1a8b93] text-white font-semibold transition-colors" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? 'Creating Account...' : 'Sign Up'}
           </Button>
         </form>
 
         <p className="text-center text-xs text-[#606060] mt-6">
-          Don't have an account?{' '}
-          <Link to="/signup" className="text-[#21ABB5] font-semibold hover:underline">
-            Sign up
+          Already have an account?{' '}
+          <Link to="/login" className="text-[#21ABB5] font-semibold hover:underline">
+            Sign in
           </Link>
         </p>
       </div>
