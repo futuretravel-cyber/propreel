@@ -1,0 +1,32 @@
+import { errorOverlayCode } from "./ErrorOverlay.js";
+// Vite <=6 emits `class ErrorOverlay extends HTMLElement`, Vite >=7
+// `var ErrorOverlay = class extends HTMLElement`. This is Vite's bundled output,
+// not an API, so match the shape rather than the version; `\s` so a reformatted
+// or minified emit still matches.
+const VITE_OVERLAY_DECL = /class ErrorOverlay(?=\s+extends)|\b(var|let|const)\s+ErrorOverlay(?=\s*=\s*class)/;
+export function errorOverlayPlugin() {
+    return {
+        name: "error-overlay",
+        apply: (config) => config.mode === "development",
+        transform(code, id, opts = {}) {
+            if (opts?.ssr)
+                return;
+            if (!id.includes("vite/dist/client/client.mjs"))
+                return;
+            const patched = code.replace(VITE_OVERLAY_DECL, (_match, declaration) => errorOverlayCode +
+                "\n" +
+                (declaration ? `${declaration} OldErrorOverlay` : "class OldErrorOverlay"));
+            // replace() returns the input unchanged on a miss, so a new shape would
+            // silently restore Vite's red overlay — as it did for every Vite >=7.
+            if (patched === code) {
+                console.warn("[error-overlay] Could not find Vite's ErrorOverlay declaration in " +
+                    "client.mjs — Vite's own overlay stays active and app_error will not " +
+                    "be sent. @base44/vite-plugin needs updating for this Vite version.");
+                // Returning the identical string would still cost client.mjs its sourcemap.
+                return;
+            }
+            return patched;
+        },
+    };
+}
+//# sourceMappingURL=error-overlay-plugin.js.map
