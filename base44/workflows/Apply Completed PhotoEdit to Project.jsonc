@@ -1,0 +1,38 @@
+{
+  "name": "Apply Completed PhotoEdit to Project",
+  "description": "",
+  "trigger": {
+    "condition": "${ ((.trigger.data.result_url != null and .trigger.data.result_url != \"\" and .trigger.data.result_url != [] and .trigger.data.result_url != {}) and (.trigger.data.project_id != null and .trigger.data.project_id != \"\" and .trigger.data.project_id != [] and .trigger.data.project_id != {})) }",
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create",
+        "update"
+      ],
+      "entity_name": "PhotoEdit"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "apply_completed_photoedit_to_project",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "applyPhotoEditToProject",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "applyPhotoEditToProject"
+  }
+}
