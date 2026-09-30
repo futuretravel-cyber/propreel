@@ -148,10 +148,10 @@ async function createTables() {
       await client.send(command);
 
       // Wait for table to be created
-      await waitUntilTableExists({
-        client,
-        maxWaitTime: 60,
-      }, { tableName: table.name });
+      await waitUntilTableExists(
+        { client, maxWaitTime: 60 },
+        { TableName: table.name }
+      );
 
       console.log(`✓ Table created: ${table.name}\n`);
     } catch (error: any) {
