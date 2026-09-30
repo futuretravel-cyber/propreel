@@ -17,7 +17,13 @@ export const ddbClient = new DynamoDBClient({
   },
 });
 
-export const docClient = DynamoDBDocumentClient.from(ddbClient);
+export const docClient = DynamoDBDocumentClient.from(ddbClient, {
+  marshallOptions: {
+    // Items may carry optional fields (e.g. paystackSubscriptionCode) that are
+    // undefined at runtime; without this the SDK throws on marshall.
+    removeUndefinedValues: true,
+  },
+});
 
 // Table names
 export const TABLES = {

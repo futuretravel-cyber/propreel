@@ -85,24 +85,52 @@ export async function verifyPayment(reference: string) {
 
 /**
  * Create Paystack subscription
+ * Ensures the customer exists first — POST /subscription needs a customer
+ * record (code), which first-time subscribers won't have.
  */
 export async function createSubscription(email: string, planCode: string) {
   const secretKey = process.env.PAYSTACK_SECRET_KEY;
-  
+
   if (!secretKey) {
     throw new Error('Paystack secret key not configured');
   }
 
+  const headers = {
+    'Authorization': `Bearer ${secretKey}`,
+    'Content-Type': 'application/json',
+  };
+
+  // Find or create the customer, then use its customer_code
+  let customerCode: string | undefined;
+  const listRes = await fetch(`https://api.paystack.co/customer?email=${encodeURIComponent(email)}`, {
+    headers,
+  });
+  if (listRes.ok) {
+    const list = await listRes.json();
+    customerCode = list?.data?.[0]?.customer_code;
+  }
+  if (!customerCode) {
+    const createRes = await fetch('https://api.paystack.co/customer', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ email }),
+    });
+    if (createRes.ok) {
+      const created = await createRes.json();
+      customerCode = created?.data?.customer_code;
+    } else {
+      const err = await createRes.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to create Paystack customer');
+    }
+  }
+
   const response = await fetch('https://api.paystack.co/subscription', {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${secretKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers,
     body: JSON.stringify({
-      customer: email,
-      plan: planCode
-    })
+      customer: customerCode,
+      plan: planCode,
+    }),
   });
 
   if (!response.ok) {
