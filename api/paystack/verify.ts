@@ -28,28 +28,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const amount = Math.round((result.data.amount || 0) / 100); // Convert from kobo
     const email = result.data.customer_email;
 
-    // Find user by email
+    // Find user by email in our users table (webhook-style local lookup;
+    // supabase-js v2 has no auth.admin.getUserByEmail on GoTrueAdminApi)
     let userId: string | undefined;
-
-    // Try Supabase auth first
-    try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(
-        process.env.VITE_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      );
-      const { data: authUser } = await supabase.auth.getUserByEmail(email);
-      if (authUser?.id) {
-        const { getUserBySupabaseId } = await import('../../lib/userService');
-        const dbUser = await getUserBySupabaseId(authUser.id);
-        userId = dbUser?.id;
-      }
-    } catch (e) {
-      console.error('Supabase auth lookup failed:', e);
-    }
-
-    // Fallback: find by email in our users table
-    if (!userId) {
+    {
       const { getUserByEmail } = await import('../../lib/userService');
       const user = await getUserByEmail(email);
       userId = user?.id;

@@ -71,7 +71,7 @@ export const BackendAPI = {
    * Deduct credits from user account
    */
   async deductCredits(params: CreditDeductRequest) {
-    const response = await fetch(`${API_BASE}/api/credits/deduct`, {
+    const response = await fetch(`${API_BASE}/api/credits?action=deduct`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -89,7 +89,7 @@ export const BackendAPI = {
    * Add credits to user account
    */
   async addCredits(params: CreditAddRequest) {
-    const response = await fetch(`${API_BASE}/api/credits/add`, {
+    const response = await fetch(`${API_BASE}/api/credits?action=add`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -107,7 +107,7 @@ export const BackendAPI = {
    * Transfer credits between users
    */
   async transferCredits(params: CreditTransferRequest) {
-    const response = await fetch(`${API_BASE}/api/credits/transfer`, {
+    const response = await fetch(`${API_BASE}/api/credits?action=transfer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -125,7 +125,7 @@ export const BackendAPI = {
    * Get credit usage report
    */
   async getCreditReport(userId: string, period: string = '30d'): Promise<CreditReportResponse> {
-    const response = await fetch(`${API_BASE}/api/credits/report?user_id=${userId}&period=${period}`);
+    const response = await fetch(`${API_BASE}/api/credits?action=report&user_id=${userId}&period=${period}`);
 
     if (!response.ok) {
       const error = await response.json();
@@ -175,7 +175,7 @@ export const BackendAPI = {
    * Create subscription
    */
   async createSubscription(userId: string, planId: string, cycle: 'MONTHLY' | 'ANNUAL') {
-    const response = await fetch(`${API_BASE}/api/subscriptions/create`, {
+    const response = await fetch(`${API_BASE}/api/subscriptions?action=create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, plan_id: planId, cycle }),
@@ -193,7 +193,7 @@ export const BackendAPI = {
    * Cancel subscription
    */
   async cancelSubscription(userId: string, immediate: boolean = false) {
-    const response = await fetch(`${API_BASE}/api/subscriptions/cancel`, {
+    const response = await fetch(`${API_BASE}/api/subscriptions?action=cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, immediate }),

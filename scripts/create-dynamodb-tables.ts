@@ -10,7 +10,7 @@
  *   - AWS_REGION set in .env
  */
 
-import { DynamoDBClient, CreateTableCommand, waitUntilTableExists } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, CreateTableCommand, waitUntilTableExists, ScalarAttributeType, KeyType } from '@aws-sdk/client-dynamodb';
 import * as dotenv from 'dotenv';
 
 dotenv.config({ path: '.env' });
@@ -136,11 +136,11 @@ async function createTables() {
         TableName: table.name,
         AttributeDefinitions: table.attributes.map(a => ({
           AttributeName: a.name,
-          AttributeType: a.type,
+          AttributeType: a.type as ScalarAttributeType,
         })),
         KeySchema: table.keySchema.map(k => ({
           AttributeName: k.name,
-          KeyType: k.keyType,
+          KeyType: k.keyType as KeyType,
         })),
         BillingMode: table.billingMode,
       });

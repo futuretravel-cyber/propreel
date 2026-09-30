@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { getUser, updateUser, getUserByEmail } from '../../lib/userService';
+import { getUser, updateUser, getUserByEmail } from '../lib/userService';
 
 /**
  * GET    /api/users?email=xxx   → find user by email
@@ -89,11 +89,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedAt: now,
       } as any;
 
-      const created = await import('../../lib/userService').then(m => m.createUser(newUser));
+      const created = await import('../lib/userService').then(m => m.createUser(newUser));
 
       // Grant 5-credit signup bonus (best effort)
       try {
-        const { addCredits } = await import('../../lib/userService');
+        const { addCredits } = await import('../lib/userService');
         const bonusExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
         await addCredits(
           created.id,
