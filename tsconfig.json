@@ -12,5 +12,5 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "api", "lib", "scripts"]
+  "include": ["src", "scripts"]
 }
