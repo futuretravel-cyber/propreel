@@ -1,0 +1,208 @@
+import { Link } from 'react-router-dom';
+import { Shield, Check, AlertTriangle, Clock, CreditCard, ArrowLeft } from 'lucide-react';
+
+export default function RefundPolicyPage() {
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <Link to="/" className="inline-flex items-center gap-2 text-purple-700 hover:text-purple-800 mb-8">
+          <ArrowLeft className="w-4 h-4" /> Back to Home
+        </Link>
+
+        <h1 className="text-4xl font-black text-gray-900 mb-4">Credit & Cancellation Policy</h1>
+        <p className="text-lg text-gray-600 mb-12">Last updated: March 2025</p>
+
+        <div className="space-y-12">
+          {/* Non-Refundable Credits */}
+          <section>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                <Shield className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Credits Are Non-Refundable</h2>
+                <p className="text-gray-600 leading-relaxed mb-4">
+                  All credits are <strong>non-refundable once spent</strong>. This includes:
+                </p>
+                <ul className="space-y-2 text-gray-600">
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-600 mt-1">•</span>
+                    <span>Credits used for video generation</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-600 mt-1">•</span>
+                    <span>Credits used for AI photo editing</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-600 mt-1">•</span>
+                    <span>Credits used for virtual staging</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-600 mt-1">•</span>
+                    <span>Credits used for any other AI features</span>
+                  </li>
+                </ul>
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mt-4">
+                  <p className="text-sm text-purple-800">
+                    <strong>Important:</strong> By purchasing credits or subscribing to a plan, you acknowledge that all credits are non-refundable once used. 
+                    Please ensure you are satisfied with our free trial before making a purchase.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Subscription Cancellations */}
+          <section>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                <Clock className="w-6 h-6 text-yellow-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Subscription Cancellations</h2>
+                <p className="text-gray-600 leading-relaxed mb-4">
+                  When you cancel your subscription, you retain access to your remaining credits until the end of your current billing period. 
+                  <strong> No refunds are issued for the current period.</strong>
+                </p>
+                <ul className="space-y-2 text-gray-600">
+                  <li className="flex items-start gap-2">
+                    <span className="text-yellow-600 mt-1">•</span>
+                    <span>Monthly plans: Access continues until the end of the current month</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-yellow-600 mt-1">•</span>
+                    <span>Annual plans: Access continues until the end of the current year</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-yellow-600 mt-1">•</span>
+                    <span>Unused subscription credits expire at the end of the billing period</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          {/* Purchased Credits */}
+          <section>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <CreditCard className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Purchased Credits (Top-ups)</h2>
+                <p className="text-gray-600 leading-relaxed mb-4">
+                  Credits purchased as top-ups are <strong>non-refundable</strong> but <strong>never expire</strong> as long as your account remains active.
+                </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> If your account is inactive for 365 days, purchased credits will expire. 
+                    Simply log in once per year to keep them active.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Downgrades */}
+          <section>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Plan Downgrades</h2>
+                <p className="text-gray-600 leading-relaxed mb-4">
+                  If you downgrade your plan (e.g., from Premium to Starter), the change takes effect at your <strong>next renewal date</strong>, 
+                  not immediately. You keep your current plan's credits until then.
+                </p>
+                <ul className="space-y-2 text-gray-600">
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-600 mt-1">•</span>
+                    <span>No refund for the price difference</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-600 mt-1">•</span>
+                    <span>Current cycle credits are preserved</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-600 mt-1">•</span>
+                    <span>New (lower) credit allowance starts at next renewal</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          {/* Upgrades */}
+          <section>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                <Check className="w-6 h-6 text-green-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Plan Upgrades (Prorated)</h2>
+                <p className="text-gray-600 leading-relaxed mb-4">
+                  If you upgrade your plan mid-month (e.g., from Starter to Professional), you'll be charged a <strong>prorated amount</strong> for the remainder of the billing cycle.
+                </p>
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <p className="text-sm text-green-800">
+                    <strong>Example:</strong> Upgrading from Starter (R129/mo) to Professional (R589/mo) halfway through the month = 
+                    you pay the difference (R460) prorated for the remaining 15 days.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Credit Expiry */}
+          <section>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                <Clock className="w-6 h-6 text-gray-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Credit Expiry Policy</h2>
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">Subscription Credits</h3>
+                    <p className="text-gray-600 text-sm">
+                      Unused subscription credits roll over to the next month and expire at your next renewal date.
+                    </p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">Purchased Credits (Top-ups)</h3>
+                    <p className="text-gray-600 text-sm">
+                      Never expire as long as your account is active. Expire after 365 days of account inactivity.
+                    </p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">Gifted Credits</h3>
+                    <p className="text-gray-600 text-sm">
+                      Follow the same expiry rules as subscription credits (expire at next renewal).
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Contact */}
+          <section className="border-t border-gray-200 pt-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Questions?</h2>
+            <p className="text-gray-600 mb-4">
+              If you have questions about our refund policy or need assistance, please contact our support team.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <a href="mailto:support@propreel.co.za" className="btn bg-purple-700 text-white hover:bg-purple-800">
+                Email Support
+              </a>
+              <Link to="/contact" className="btn border border-gray-300 text-gray-700 hover:border-purple-300">
+                Contact Form
+              </Link>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}

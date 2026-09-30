@@ -1,0 +1,23 @@
+{
+  "name": "PropReel",
+  "short_name": "PropReel",
+  "description": "Create stunning property videos instantly with AI. Built for South African estate agents.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0d18",
+  "theme_color": "#800080",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+# PropReel robots.txt
+# https://propreel.co.za
+
+User-agent: *
+Allow: /
+
+# Allow all public pages
+Allow: /pricing
+Allow: /reviews
+Allow: /about
+Allow: /contact
+Allow: /login
+Allow: /register
+Allow: /terms
+Allow: /privacy
+Allow: /cookies
+Allow: /paia
+Allow: /refund-policy
+Allow: /dpa
+
+# Disallow authenticated areas
+Disallow: /dashboard
+Disallow: /studio
+Disallow: /admin
+Disallow: /payment
+Disallow: /api
+
+# Disallow static assets from being indexed
+Disallow: /*.js$
+Disallow: /*.css$
+
+# Sitemap location
+Sitemap: https://propreel.co.za/sitemap.xml
+
+# Crawl-delay for polite crawling
+Crawl-delay: 1
