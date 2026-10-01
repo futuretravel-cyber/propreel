@@ -133,58 +133,43 @@ export async function deductCredits(
   reason: string,
   metadata?: Record<string, any>
 ): Promise<{ success: boolean; newBalance: number; error?: string }> {
-  // Atomic conditional decrement — race-proof under concurrent renders.
-  // DynamoDB evaluates the condition server-side; a competing request that
-  // read the same balance will fail with ConditionalCheckFailedException
-  // instead of double-spending.
-  const maxRetries = 3;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
+  // Fully atomic server-side decrement: DynamoDB evaluates
+  // `credits = credits - :amount WHERE credits >= :amount` on the CURRENT
+  // item, so concurrent requests can never double-spend or go negative.
+  // The authoritative new balance comes back via ReturnValues.
+  try {
+    const result = await docClient.send(new UpdateCommand({
+      TableName: TABLES.USERS,
+      Key: { id: userId },
+      UpdateExpression: 'SET credits = credits - :amount, updatedAt = :now',
+      ConditionExpression: 'attribute_exists(id) AND credits >= :amount',
+      ExpressionAttributeValues: {
+        ':amount': amount,
+        ':now': new Date().toISOString(),
+      },
+      ReturnValues: 'UPDATED_NEW',
+    }));
+
+    const newBalance = Number(result.Attributes?.credits ?? 0);
+
+    await recordTransaction({
+      userId,
+      amount: -amount,
+      type: 'deduction',
+      description: reason,
+      metadata: metadata || {},
+    });
+
+    return { success: true, newBalance };
+  } catch (error: any) {
+    if (error?.name === 'ConditionalCheckFailedException') {
+      // Either the user doesn't exist or the balance is insufficient
       const user = await getUser(userId);
-      if (!user) {
-        return { success: false, newBalance: 0, error: 'User not found' };
-      }
-      if (user.credits < amount) {
-        return { success: false, newBalance: user.credits, error: 'Insufficient credits' };
-      }
-
-      const newBalance = user.credits - amount;
-      await docClient.send(new UpdateCommand({
-        TableName: TABLES.USERS,
-        Key: { id: userId },
-        UpdateExpression: 'SET credits = :newBalance, updatedAt = :now',
-        ConditionExpression: 'credits >= :amount',
-        ExpressionAttributeValues: {
-          ':newBalance': newBalance,
-          ':amount': amount,
-          ':now': new Date().toISOString(),
-        },
-      }));
-
-      await recordTransaction({
-        userId,
-        amount: -amount,
-        type: 'deduction',
-        description: reason,
-        metadata: metadata || {},
-      });
-
-      return { success: true, newBalance };
-    } catch (error: any) {
-      const conditionalFail = error?.name === 'ConditionalCheckFailedException';
-      if (conditionalFail && attempt < maxRetries - 1) {
-        // Another concurrent deduction won this round — re-read and retry
-        await new Promise(r => setTimeout(r, 25 * (attempt + 1) + Math.random() * 25));
-        continue;
-      }
-      if (conditionalFail) {
-        const user = await getUser(userId);
-        return { success: false, newBalance: user?.credits ?? 0, error: 'Insufficient credits' };
-      }
-      throw error;
+      if (!user) return { success: false, newBalance: 0, error: 'User not found' };
+      return { success: false, newBalance: user.credits, error: 'Insufficient credits' };
     }
+    throw error;
   }
-  return { success: false, newBalance: 0, error: 'Concurrent update conflict' };
 }
 
 // Add credits to user
