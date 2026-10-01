@@ -5,6 +5,9 @@ import { ArrowLeft, Play, Check, Clock, Sparkles, Video, Image, FileText, Share2
 export default function TutorialVideoPage() {
   const [currentStep, setCurrentStep] = useState(0);
 
+  // Step-by-step written walkthrough. (Video tutorials are produced
+  // separately; this page intentionally renders an interactive guide
+  // rather than embedding placeholder videos.)
   const steps = [
     {
       id: 1,
@@ -12,7 +15,7 @@ export default function TutorialVideoPage() {
       description: 'Sign up and get 5 free credits to start creating property videos.',
       icon: <Sparkles className="w-6 h-6" />,
       duration: '2 min',
-      videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', // Placeholder
+      detail: 'Click "Start Free", choose a plan (or skip to free credits), and sign in with Google or email. Your 5 bonus credits land in your dashboard immediately.',
     },
     {
       id: 2,
@@ -20,15 +23,15 @@ export default function TutorialVideoPage() {
       description: 'Upload high-quality photos of your property. We recommend at least 4-8 photos for best results.',
       icon: <Image className="w-6 h-6" />,
       duration: '3 min',
-      videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', // Placeholder
+      detail: 'In the Studio, drag photos into the upload area or click to browse. JPEG/PNG/WEBP up to 25MB. Landscape orientation works best for video.',
     },
     {
       id: 3,
       title: 'Choose Your Video Tier',
-      description: 'Select from Essential (15s), Social (30s), Cinematic (60s), or Premium (120s) based on your needs.',
+      description: 'Select from Essential (photo montage), Social, Cinematic, or Premium based on your needs.',
       icon: <Video className="w-6 h-6" />,
       duration: '2 min',
-      videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', // Placeholder
+      detail: 'Essential turns photos into a polished montage. Social/Cinematic/Premium use AI video generation at increasing resolution and duration — the credit cost is shown per option.',
     },
     {
       id: 4,
@@ -36,7 +39,7 @@ export default function TutorialVideoPage() {
       description: 'Let AI write a professional voiceover script or write your own. Choose from 7 different voices.',
       icon: <FileText className="w-6 h-6" />,
       duration: '4 min',
-      videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', // Placeholder
+      detail: 'Click "Generate Script" and the AI writes narration sized to your video length. Edit it freely, then pick a voice from the dropdown.',
     },
     {
       id: 5,
@@ -44,7 +47,7 @@ export default function TutorialVideoPage() {
       description: 'Click "Generate Video" and watch as AI creates your cinematic property reel in minutes.',
       icon: <Play className="w-6 h-6" />,
       duration: '5 min',
-      videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', // Placeholder
+      detail: 'Credits are deducted when the render starts. You can watch live progress (queued → processing → complete). If a render fails, your credits are refunded automatically.',
     },
     {
       id: 6,
@@ -52,7 +55,7 @@ export default function TutorialVideoPage() {
       description: 'Download your video or share directly to social media platforms with one click.',
       icon: <Share2 className="w-6 h-6" />,
       duration: '2 min',
-      videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', // Placeholder
+      detail: 'When the render completes, use the Share sheet for WhatsApp/email/copy-link, or download the MP4. Finished videos also appear on your Projects page.',
     },
   ];
 
@@ -72,16 +75,17 @@ export default function TutorialVideoPage() {
           </p>
         </div>
 
-        {/* Video Player */}
+        {/* Step Visual Panel (no placeholder videos — interactive written guide) */}
         <div className="mb-12">
-          <div className="aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-2xl">
-            <iframe
-              src={steps[currentStep].videoUrl}
-              title={steps[currentStep].title}
-              className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+          <div className="aspect-video bg-gradient-to-br from-purple-900 via-purple-800 to-purple-950 rounded-2xl shadow-2xl flex flex-col items-center justify-center text-center px-8">
+            <div className="w-20 h-20 rounded-2xl bg-white/10 flex items-center justify-center text-white mb-6">
+              {steps[currentStep].icon}
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">{steps[currentStep].title}</h2>
+            <p className="text-purple-100 max-w-xl">{steps[currentStep].detail}</p>
+            <p className="text-purple-300/70 text-sm mt-6 flex items-center gap-2">
+              <Clock className="w-4 h-4" /> Step {steps[currentStep].id} of {steps.length} · ~{steps[currentStep].duration}
+            </p>
           </div>
         </div>
 

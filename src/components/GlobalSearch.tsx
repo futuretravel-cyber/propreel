@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, X, Video, Image, FileText, CreditCard, Settings, ArrowRight, Clock, Star, TrendingUp } from 'lucide-react';
-import { mockProjects } from '../lib/mockData';
+import { PropReelAPI, Project } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { formatZar, formatRelative } from '../lib/utils';
 
 interface SearchResult {
@@ -19,6 +20,14 @@ export default function GlobalSearch() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const { user } = useAuth();
+
+  // Load the user's real projects for searching
+  useEffect(() => {
+    if (!user?.id) return;
+    PropReelAPI.listProjects(user.id).then(setProjects).catch(() => setProjects([]));
+  }, [user?.id]);
 
   // Keyboard shortcut to open search
   useEffect(() => {
@@ -46,20 +55,20 @@ export default function GlobalSearch() {
     const searchResults: SearchResult[] = [];
     const lowerQuery = query.toLowerCase();
 
-    // Search projects
-    mockProjects.forEach(project => {
+    // Search the user's real projects (DynamoDB)
+    projects.forEach(project => {
       if (
         project.title.toLowerCase().includes(lowerQuery) ||
-        project.suburb.toLowerCase().includes(lowerQuery) ||
-        project.city.toLowerCase().includes(lowerQuery)
+        (project.suburb || '').toLowerCase().includes(lowerQuery) ||
+        (project.city || '').toLowerCase().includes(lowerQuery)
       ) {
         searchResults.push({
           id: project.id,
           type: 'project',
           title: project.title,
-          subtitle: `${project.suburb}, ${project.city} • ${formatZar(project.price)}`,
+          subtitle: [project.suburb, project.city].filter(Boolean).join(', ') + (project.price ? ` • ${formatZar(project.price)}` : ''),
           icon: Video,
-          url: `/dashboard/projects/${project.id}`,
+          url: '/dashboard/listings',
           category: 'Projects'
         });
       }
@@ -83,14 +92,10 @@ export default function GlobalSearch() {
       }
     });
 
-    // Recent searches (mock)
-    const recentSearches = [
-      { id: 'recent-1', title: 'Luxury Villa Constantia', type: 'recent' as const, icon: Clock, category: 'Recent' },
-      { id: 'recent-2', title: 'Generate Video', type: 'recent' as const, icon: Clock, category: 'Recent' }
-    ];
+    // Quick links (static actions, not mock data)
 
     if (query.length < 3) {
-      searchResults.push(...recentSearches);
+      searchResults.push({ id: 'hint-1', title: 'Type to search your projects…', type: 'recent' as const, icon: Clock, category: 'Hint' });
     }
 
     setResults(searchResults.slice(0, 10));

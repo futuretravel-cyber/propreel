@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle, Trash2, XCircle, Check, Shield, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { PropReelAPI } from '../lib/api';
 
 export default function DeleteAccountPage() {
   const { user, logout } = useAuth();
@@ -12,14 +13,22 @@ export default function DeleteAccountPage() {
   const [password, setPassword] = useState('');
   const [exportData, setExportData] = useState(true);
   const [confirmText, setConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
-  const handleDelete = () => {
-    // In production, this would call your backend API
-    toast.success('Account deletion initiated. You will receive a confirmation email shortly.', 'Account Deletion Started');
-    setTimeout(() => {
-      logout();
+  // Real account deletion: removes the DynamoDB user row, the user's
+  // projects, and the Supabase auth identity via /api/users?action=delete.
+  const handleDelete = async () => {
+    if (!user) return;
+    setDeleting(true);
+    try {
+      await PropReelAPI.deleteAccount(user.id);
+      toast.success('Your account has been permanently deleted.', 'Account Deleted');
+      await logout();
       navigate('/');
-    }, 2000);
+    } catch (e: any) {
+      toast.error(e.message || 'Account deletion failed — please contact support');
+      setDeleting(false);
+    }
   };
 
   const handleExportData = () => {
@@ -215,10 +224,10 @@ export default function DeleteAccountPage() {
               </button>
               <button
                 onClick={handleDelete}
-                disabled={!password || confirmText !== 'DELETE'}
+                disabled={!password || confirmText !== 'DELETE' || deleting}
                 className="btn btn-danger flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Trash2 className="w-4 h-4" /> Permanently Delete Account
+                {deleting ? <><Trash2 className="w-4 h-4 animate-pulse" /> Deleting…</> : <><Trash2 className="w-4 h-4" /> Permanently Delete Account</>}
               </button>
             </div>
           </div>

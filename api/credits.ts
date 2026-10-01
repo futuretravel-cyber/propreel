@@ -1,9 +1,9 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { addCredits, deductCredits, getUser, getCreditReport } from '../lib/userService';
+import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail } from '../lib/userService';
 
 /**
  * Unified credits endpoint (Hobby plan has a 12-function limit).
- * Routes on ?action= : add | deduct | transfer | report
+ * Routes on ?action= : add | deduct | transfer | gift_email | report
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = (req.query.action as string) || '';
@@ -134,6 +134,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         amount,
         reason,
+      });
+    }
+
+    // ── POST /api/credits?action=gift_email ────────────────────────
+    // Gift credits to a recipient addressed by EMAIL (the client never knows
+    // the recipient's internal user id).
+    if (req.method === 'POST' && action === 'gift_email') {
+      const { from_user_id, to_email, amount, reason } = req.body;
+
+      if (!from_user_id || !to_email || !amount || amount <= 0) {
+        return res.status(400).json({ error: 'Invalid request parameters' });
+      }
+
+      const fromUser = await getUser(from_user_id);
+      if (!fromUser) return res.status(404).json({ error: 'Sender not found' });
+      if (fromUser.credits < amount) {
+        return res.status(400).json({
+          error: 'Insufficient credits',
+          current_balance: fromUser.credits,
+          required: amount,
+        });
+      }
+
+      const toUser = await getUserByEmail(String(to_email).toLowerCase());
+      if (!toUser) return res.status(404).json({ error: 'No PropReel account found for that email' });
+      if (toUser.id === from_user_id) {
+        return res.status(400).json({ error: 'Cannot gift credits to yourself' });
+      }
+
+      const ded = await deductCredits(from_user_id, amount, reason || 'Credit gift');
+      if (!ded.success) {
+        return res.status(400).json({ error: ded.error || 'Failed to deduct credits' });
+      }
+      await addCredits(toUser.id, amount, 'gift', reason || `Credit gift from ${fromUser.email}`);
+
+      return res.status(200).json({
+        success: true,
+        to_email: toUser.email,
+        new_balance: ded.newBalance,
+        amount,
       });
     }
 

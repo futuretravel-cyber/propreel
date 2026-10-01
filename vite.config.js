@@ -11,5 +11,14 @@ export default defineConfig({
     hmr: {
       port: 3000,
     },
+    proxy: {
+      // Local dev: forward /api to the deployed Vercel functions (prod serves
+      // them same-origin, so this only affects `npm run dev`)
+      "/api": {
+        target: "https://propreel-xi.vercel.app",
+        changeOrigin: true,
+        secure: true,
+      },
+    },
   },
 });

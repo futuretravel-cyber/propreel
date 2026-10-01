@@ -9,7 +9,7 @@ import { PublicLayout } from './PublicLayout';
 import { useTheme } from '../lib/theme';
 import { track } from '../lib/analytics';
 import { SmartImage } from './SmartMedia';
-import { mockReviews } from '../lib/mockData';
+import { useApprovedReviews } from '../lib/useReviews';
 
 const SIGNUP_BONUS = 5;
 
@@ -97,10 +97,10 @@ function Hero() {
         <Reveal delay={0.32}>
           <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto">
             {[
-              { label: 'Agents', value: '847+' },
-              { label: 'Reels Generated', value: '3,291' },
-              { label: 'Agencies', value: '42' },
-              { label: 'Avg. Views', value: '12.4K' },
+              { label: 'AI Video Tiers', value: '4' },
+              { label: 'AI Photo Presets', value: '29' },
+              { label: 'Free Credits on Signup', value: '5' },
+              { label: 'ZAR Pricing', value: 'R1/cr' },
             ].map(s => (
               <div key={s.label} className="glass rounded-2xl px-4 py-5">
                 <p className="text-2xl sm:text-3xl font-black text-purple-300">{s.value}</p>
@@ -320,26 +320,33 @@ function EditorDemo() {
 
 /* ── Social proof + FAQ + CTA ────────────────────────────────────── */
 function SocialProof() {
+  const { reviews } = useApprovedReviews();
   return (
     <section className="py-24 bg-ink-950/60">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <Reveal className="text-center mb-12">
           <h2 className="text-3xl sm:text-4xl font-black text-white">Loved by SA Agents</h2>
         </Reveal>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {mockReviews.slice(0, 3).map((r, i) => (
-            <Reveal key={r.id} delay={i * 0.07}>
-              <div className="glass rounded-2xl p-6 h-full">
-                <div className="flex gap-1 mb-3">
-                  {Array.from({ length: r.rating }).map((_, j) => <Star key={j} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
+        {reviews.length === 0 ? (
+          <Reveal className="text-center">
+            <p className="text-ink-400">Be the first to share your PropReel story.</p>
+          </Reveal>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {reviews.slice(0, 3).map((r, i) => (
+              <Reveal key={r.id} delay={i * 0.07}>
+                <div className="glass rounded-2xl p-6 h-full">
+                  <div className="flex gap-1 mb-3">
+                    {Array.from({ length: r.rating }).map((_, j) => <Star key={j} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
+                  </div>
+                  <p className="text-ink-200 text-sm mb-4">"{r.comment}"</p>
+                  <p className="font-semibold text-white text-sm">{r.fullName}</p>
+                  <p className="text-ink-400 text-xs">{r.agency}</p>
                 </div>
-                <p className="text-ink-200 text-sm mb-4">"{r.comment}"</p>
-                <p className="font-semibold text-white text-sm">{r.fullName}</p>
-                <p className="text-ink-400 text-xs">{r.agency}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
+              </Reveal>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -353,7 +360,7 @@ function FinalCta() {
       <div className="relative max-w-4xl mx-auto px-4 text-center">
         <Reveal>
           <h2 className="text-3xl sm:text-5xl font-black text-white">Ready to Transform Your Listings?</h2>
-          <p className="mt-4 text-lg text-purple-200/80">Join 847+ South African agents already using PropReel.</p>
+          <p className="mt-4 text-lg text-purple-200/80">Start free — your first 5 credits are on us.</p>
           <div className="mt-10">
             <Link to="/register" className="btn bg-white text-purple-900 hover:bg-purple-50 text-lg px-10 py-4 font-bold min-h-[52px] animate-pulse-soft">
               Get {SIGNUP_BONUS} Free Credits <ArrowRight className="w-5 h-5" />

@@ -1,5 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { getUser, updateUser, getUserByEmail } from '../lib/userService';
+import { getUser, updateUser, getUserByEmail, deleteUser } from '../lib/userService';
+import { TABLES, queryItems } from '../lib/db';
+import { deleteItem } from '../lib/db-helpers';
 
 // Admin accounts receive 1000 credits on first sign-in (spec doc)
 const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
@@ -15,6 +17,136 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   billingAlerts: true,
   marketingEmails: false,
 };
+
+/**
+ * Nested route: POST /api/users?action=delete — real account deletion.
+ * Removes the DynamoDB user row, the user's projects, and the Supabase auth
+ * identity (so the email can never sign in again). Credits are intentionally
+ * forfeited per the deletion flow the user confirms in the UI.
+ */
+async function deleteAccount(req: VercelRequest, res: VercelResponse) {
+  const { user_id } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
+
+  const user = await getUser(user_id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  // 1) Delete all of the user's projects
+  try {
+    const projects = await queryItems(TABLES.PROJECTS, { expression: 'userId = :u', values: { ':u': user_id } });
+    for (const p of projects) {
+      await deleteItem(TABLES.PROJECTS, { userId: user_id, id: (p as any).id });
+    }
+  } catch (e) {
+    console.error('Project deletion error during account delete:', e);
+  }
+
+  // 2) Delete the DynamoDB user row
+  await deleteUser(user_id);
+
+  // 3) Delete the Supabase auth identity (requires service role key)
+  try {
+    if (user.supabaseUserId && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.VITE_SUPABASE_URL) {
+      const { createClient } = await import('@supabase/supabase-js');
+      const admin = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+      const { error } = await admin.auth.admin.deleteUser(user.supabaseUserId);
+      if (error) console.error('Supabase auth user deletion error:', error);
+    }
+  } catch (e) {
+    console.error('Supabase deletion error:', e);
+  }
+
+  console.log(`Account deleted: ${user_id} (${user.email})`);
+  return res.status(200).json({ success: true, message: 'Account permanently deleted' });
+}
+
+/**
+ * Nested route: POST /api/users?action=update — whitelisted profile updates.
+ */
+async function updateUserFields(req: VercelRequest, res: VercelResponse) {
+  const { user_id, updates } = req.body || {};
+  if (!user_id || typeof updates !== 'object' || updates === null) {
+    return res.status(400).json({ error: 'Missing user_id or updates' });
+  }
+  const user = await getUser(user_id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  // Only allow safe, self-service fields through
+  const allowed = [
+    'fullName', 'phone', 'avatarUrl', 'agencyName',
+    'autoTopup', 'notificationPreferences', 'businessProfile',
+  ] as const;
+  const clean: Record<string, any> = {};
+  for (const key of allowed) {
+    if (key in updates) clean[key] = updates[key as keyof typeof updates];
+  }
+  if (Object.keys(clean).length === 0) {
+    return res.status(400).json({ error: 'No updatable fields provided' });
+  }
+
+  await updateUser(user_id, clean as any);
+  const updated = await getUser(user_id);
+  return res.status(200).json({ success: true, user: updated });
+}
+
+/**
+ * Nested route: GET /api/users?action=admin_stats — real platform stats.
+ * Admin-only (server-side email check). Counts come from DynamoDB directly.
+ */
+async function adminStats(req: VercelRequest, res: VercelResponse) {
+  const email = String(req.query.email || '').toLowerCase();
+  if (!ADMIN_EMAILS.includes(email)) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const { scanItems } = await import('../lib/db');
+  const users = await scanItems<any>(TABLES.USERS, { limit: 500 });
+  const projects = await scanItems<any>(TABLES.PROJECTS, { limit: 1000 });
+
+  const creditsSpent = users.reduce((s: number, u: any) => s + Math.max(0, (u.totalSpent ?? 0)), 0);
+  const activeUsers = users.filter((u: any) =>
+    u.updatedAt && (Date.now() - new Date(u.updatedAt).getTime()) < 30 * 86400000
+  ).length;
+
+  return res.status(200).json({
+    success: true,
+    stats: {
+      userCount: users.length,
+      activeUsers,
+      agencyCount: new Set(users.map((u: any) => u.agencyId).filter(Boolean)).size,
+      projectCount: projects.length,
+      readyReels: projects.filter((p: any) => p.status === 'READY').length,
+      processingReels: projects.filter((p: any) => p.status === 'PROCESSING').length,
+      failedReels: projects.filter((p: any) => p.status === 'FAILED').length,
+      creditsSpent,
+    },
+  });
+}
+
+/**
+ * Nested route: GET /api/users?action=list_users — real user list (admin-only).
+ */
+async function listUsers(req: VercelRequest, res: VercelResponse) {
+  const email = String(req.query.email || '').toLowerCase();
+  if (!ADMIN_EMAILS.includes(email)) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  const { scanItems } = await import('../lib/db');
+  const users = await scanItems<any>(TABLES.USERS, { limit: 200 });
+  // Only return safe fields
+  const safe = users.map((u: any) => ({
+    id: u.id,
+    email: u.email,
+    fullName: u.fullName,
+    role: u.role || 'AGENT',
+    credits: u.credits ?? 0,
+    planId: u.planId || null,
+    createdAt: u.createdAt,
+    updatedAt: u.updatedAt,
+  }));
+  safe.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  return res.status(200).json({ success: true, users: safe });
+}
 
 /**
  * Nested route: GET/POST /api/users?action=preferences (moved from the retired
@@ -57,6 +189,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Nested routes (function consolidation)
   if (req.query.action === 'preferences') {
     return notificationPreferences(req, res);
+  }
+  if (req.query.action === 'update' && req.method === 'POST') {
+    return updateUserFields(req, res);
+  }
+  if (req.query.action === 'delete' && req.method === 'POST') {
+    return deleteAccount(req, res);
+  }
+  if (req.method === 'GET' && req.query.action === 'admin_stats') {
+    return adminStats(req, res);
+  }
+  if (req.method === 'GET' && req.query.action === 'list_users') {
+    return listUsers(req, res);
   }
 
   if (req.method === 'GET') {

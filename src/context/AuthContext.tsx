@@ -55,70 +55,6 @@ export interface Balance {
 
 const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
 
-// Mock admin users for demo (in production, these would come from the backend)
-const MOCK_ADMIN_USERS: Record<string, User> = {
-  'futuretravel@gmail.com': {
-    id: 'usr_admin_001',
-    email: 'futuretravel@gmail.com',
-    fullName: 'PropReel Administrator',
-    role: 'ADMIN',
-    credits: 1000,
-    creditExpiries: [],
-    subscription: null,
-    autoTopup: { enabled: false, threshold: 0, amount: 0 },
-    agencyId: null,
-    agencyName: null,
-    avatarUrl: null,
-    emailVerified: true,
-    lastLowCreditWarnedAt: null,
-    createdAt: '2025-01-01T00:00:00Z',
-  },
-  'ulric@propreel.co.za': {
-    id: 'usr_admin_002',
-    email: 'ulric@propreel.co.za',
-    fullName: 'Ulric - PropReel Admin',
-    role: 'ADMIN',
-    credits: 1000,
-    creditExpiries: [],
-    subscription: null,
-    autoTopup: { enabled: false, threshold: 0, amount: 0 },
-    agencyId: null,
-    agencyName: null,
-    avatarUrl: null,
-    emailVerified: true,
-    lastLowCreditWarnedAt: null,
-    createdAt: '2025-01-01T00:00:00Z',
-  },
-};
-
-// Demo user for when backend is not available
-const DEMO_USER: User = {
-  id: 'usr_demo_001',
-  email: 'demo@propreel.co.za',
-  fullName: 'Demo Agent',
-  role: 'AGENT',
-  credits: 125,
-  creditExpiries: [
-    { amount: 80, expiresAt: '2025-04-01T00:00:00Z', source: 'subscription' },
-    { amount: 45, expiresAt: '2025-05-15T00:00:00Z', source: 'purchase' },
-  ],
-  subscription: {
-    planId: 'PROFESSIONAL',
-    cycle: 'MONTHLY',
-    status: 'ACTIVE',
-    currentPeriodStart: '2025-03-01T00:00:00Z',
-    currentPeriodEnd: '2025-04-01T00:00:00Z',
-    nextChargeAmount: 589,
-  },
-  autoTopup: { enabled: false, threshold: 50, amount: 200 },
-  agencyId: null,
-  agencyName: 'Demo Realty SA',
-  avatarUrl: null,
-  emailVerified: true,
-  lastLowCreditWarnedAt: null,
-  createdAt: '2025-01-15T10:00:00Z',
-};
-
 interface CreditContextType {
   user: User | null;
   balance: Balance;
@@ -131,6 +67,7 @@ interface CreditContextType {
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  acceptPendingAgencyInvite: (userId: string) => Promise<void>;
   purchaseCredits: (amount: number) => Promise<{ authorizationUrl: string; reference: string }>;
   setAutoTopup: (config: AutoTopup) => void;
   giftCredits: (toEmail: string, amount: number) => Promise<void>;
@@ -164,29 +101,53 @@ export function CreditProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // Fetch user data from backend API
-  const fetchUserData = useCallback(async (userId: string) => {
+  // Agency invites: attach the user to any pending agency invite for their
+  // email (invited before they signed up)
+  const acceptPendingAgencyInvite = useCallback(async (userId: string) => {
     try {
-      // Get user from backend
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users/${userId}`);
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-        return userData;
-      }
-    } catch (error) {
-      console.error('Failed to fetch user data:', error);
+      await fetch(`${import.meta.env.VITE_API_URL || ''}/api/leads?action=agency_accept_pending`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId }),
+      });
+    } catch (e) {
+      console.error('Agency invite attach failed (non-critical):', e);
     }
-
-    // Fallback to demo user if backend unavailable
-    const demoUser = {
-      ...DEMO_USER,
-      id: userId,
-      email: supabase.auth.getSession().then(s => s.data.session?.user?.email || ''),
-    };
-    setUser(DEMO_USER);
-    return DEMO_USER;
   }, []);
+
+  // Ensure a backend user exists for the Supabase auth identity, then load it.
+  // The backend POST /api/users is an idempotent upsert: existing users are
+  // updated, new users are created with the 5-credit signup bonus (and the
+  // admin grant when the email is on the admin list).
+  const fetchUserData = useCallback(async (_authUserId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const authUser = session?.user;
+      if (!authUser?.email) throw new Error('No authenticated Supabase user');
+      const meta = (authUser.user_metadata || {}) as Record<string, any>;
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supabaseUserId: authUser.id,
+          email: authUser.email,
+          fullName: meta.full_name || meta.fullName || meta.name || authUser.email.split('@')[0],
+          agencyName: meta.agency_name || undefined,
+          planId: meta.plan_id || undefined,
+        }),
+      });
+      if (!response.ok) throw new Error(`Backend user lookup failed (${response.status})`);
+      const data = await response.json();
+      setUser(data.user);
+      // If this user was invited to an agency before signing up, attach them now
+      acceptPendingAgencyInvite(data.user.id).catch(() => {});
+      return data.user;
+    } catch (error) {
+      console.error('Failed to load user from backend:', error);
+      setUser(null);
+      return null;
+    }
+  }, [acceptPendingAgencyInvite]);
 
   useEffect(() => {
     const init = async () => {
@@ -194,18 +155,11 @@ export function CreditProvider({ children }: { children: ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (session?.user) {
-          // Check if admin
-          if (ADMIN_EMAILS.includes(session.user.email?.toLowerCase() || '')) {
-            setUser(MOCK_ADMIN_USERS[session.user.email!.toLowerCase() as keyof typeof MOCK_ADMIN_USERS] || DEMO_USER);
-          } else {
-            // Fetch user from backend
-            await fetchUserData(session.user.id);
-          }
+          await fetchUserData(session.user.id);
         }
       } catch (error) {
         console.error('Auth init error:', error);
-        // Fallback to demo user
-        setUser(DEMO_USER);
+        setUser(null);
       }
       setLoading(false);
       setIsInitialLoad(false);
@@ -216,11 +170,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
       if (session?.user) {
-        if (ADMIN_EMAILS.includes(session.user.email?.toLowerCase() || '')) {
-          setUser(MOCK_ADMIN_USERS[session.user.email!.toLowerCase() as keyof typeof MOCK_ADMIN_USERS] || DEMO_USER);
-        } else {
-          await fetchUserData(session.user.id);
-        }
+        await fetchUserData(session.user.id);
       } else {
         setUser(null);
       }
@@ -338,11 +288,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
-      if (ADMIN_EMAILS.includes(session.user.email?.toLowerCase() || '')) {
-        setUser(MOCK_ADMIN_USERS[session.user.email!.toLowerCase() as keyof typeof MOCK_ADMIN_USERS] || DEMO_USER);
-      } else {
-        await fetchUserData(session.user.id);
-      }
+      await fetchUserData(session.user.id);
     }
   }, [fetchUserData]);
 
@@ -359,20 +305,30 @@ export function CreditProvider({ children }: { children: ReactNode }) {
 
   const setAutoTopup = useCallback((config: AutoTopup) => {
     setUser(prev => prev ? { ...prev, autoTopup: config } : null);
-  }, []);
+    // Persist to the backend (best-effort; UI state is optimistic)
+    if (user) {
+      fetch(`${import.meta.env.VITE_API_URL || ''}/api/users?action=update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id, updates: { autoTopup: config } }),
+      }).catch(() => {});
+    }
+  }, [user]);
 
   const giftCredits = useCallback(async (toEmail: string, amount: number) => {
     if (!user || user.credits < amount) throw new Error('Insufficient credits');
 
-    await BackendAPI.transferCredits({
-      from_user_id: user.id,
-      to_user_id: toEmail, // Would need to look up user ID by email
-      amount,
-      reason: `Gift from ${user.email}`,
+    const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/credits?action=gift_email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_user_id: user.id, to_email: toEmail, amount, reason: `Gift from ${user.email}` }),
     });
-
-    setUser(prev => prev ? { ...prev, credits: prev.credits - amount } : null);
-  }, [user]);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Gift failed');
+    }
+    await refresh();
+  }, [user, refresh]);
 
   const upgradePlan = useCallback(async (planId: PlanId, cycle: BillingCycle) => {
     if (!user) throw new Error('Not logged in');
@@ -389,7 +345,12 @@ export function CreditProvider({ children }: { children: ReactNode }) {
       ...prev,
       subscription: { ...prev.subscription, status: 'DOWNGRADE_PENDING' as const, pendingDowngrade: planId },
     } : null);
-  }, []);
+    // Mark the Paystack subscription for cancellation at period end (real effect;
+    // the plan switch itself is applied by billing support/cron at renewal).
+    if (user) {
+      BackendAPI.cancelSubscription(user.id, false).catch(console.error);
+    }
+  }, [user]);
 
   const acknowledgeLowCredit = useCallback(() => {
     setUser(prev => prev ? { ...prev, lastLowCreditWarnedAt: new Date().toISOString() } : null);
@@ -436,13 +397,15 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  // Backend sets role=ADMIN (see api/users.ts); the email list is a fallback
+  // for accounts created before role provisioning existed.
   const isAdmin = user?.role === 'ADMIN' || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
   const isAgencyOwner = user?.role === 'AGENCY_OWNER';
 
   return (
     <CreditContext.Provider value={{
       user, balance, loading: isInitialLoad, isAdmin, isAgencyOwner, lowCreditWarning,
-      login, register, loginWithGoogle, logout, refresh,
+      login, register, loginWithGoogle, logout, refresh, acceptPendingAgencyInvite,
       purchaseCredits, setAutoTopup, giftCredits,
       upgradePlan, downgradePlan, acknowledgeLowCredit,
       deductCredits, addCredits,

@@ -1,19 +1,18 @@
 /**
- * Fal.ai FLUX Dev image-to-image client.
+ * Fal.ai FLUX Dev image-to-image client (async job pattern).
  *
- * Model: fal-ai/flux/dev/image-to-image (called via the Modal web service's
- * /edit_image endpoint, which holds FAL_KEY server-side).
+ * POST /edit_image → { edit_id, poll_url } immediately
+ * GET  /edit_status?edit_id=… → { status: queued|processing|completed|failed, image_url?, error? }
  *
- * Strength/guidance come from the per-preset ranges in imagePrompts.ts
- * (e.g. Remove All Furniture 0.5–0.6, Brighten 0.2–0.3) — the prompt library
- * is the source of truth; no global clamp is applied here because presets
- * legitimately need up to 0.6 for removal tasks.
+ * The client polls until the job reaches a terminal state, so callers keep the
+ * same simple `await falEditImage(...)` contract while the browser no longer
+ * holds a single long HTTP connection through fal queue times.
  */
 
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
 export interface FalEditParams {
-  imageUrl: string;         // public URL or data URI accepted by Modal/Fal
+  imageUrl: string;         // public URL accepted by fal (S3 URLs in production)
   presetId: string;         // preset from imagePrompts.ts (server resolves prompt+negative)
   strength?: number;        // within the preset's min–max; server defaults to preset default
   guidanceScale?: number;
@@ -27,8 +26,12 @@ export interface FalEditResult {
   guidanceUsed: number;
 }
 
+const POLL_INTERVAL_MS = 3000;
+const MAX_WAIT_MS = 8 * 60 * 1000; // 8 minutes — fal queues can be long; UI shows live status
+
 export async function falEditImage(params: FalEditParams): Promise<FalEditResult> {
-  const response = await fetch(`${MODAL_ENDPOINT}/edit_image`, {
+  // 1) Submit the async job
+  const submitRes = await fetch(`${MODAL_ENDPOINT}/edit_image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -40,21 +43,53 @@ export async function falEditImage(params: FalEditParams): Promise<FalEditResult
     }),
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || err.error || `Image edit failed (${response.status})`);
+  if (!submitRes.ok) {
+    const err = await submitRes.json().catch(() => ({}));
+    throw new Error(err.detail || err.error || `Image edit failed (${submitRes.status})`);
   }
 
-  const data = await response.json();
-  const imageUrl = data.image_url || data.imageUrl || data.url || data.output?.image_url;
-  if (!imageUrl) throw new Error('Modal returned no image URL');
+  const submitted = await submitRes.json();
 
-  return {
-    imageUrl,
-    presetId: params.presetId,
-    strengthUsed: data.strength_used ?? params.strength ?? 0,
-    guidanceUsed: data.guidance_scale_used ?? params.guidanceScale ?? 0,
-  };
+  // Legacy synchronous response (?wait=true style) — job already done
+  if (submitted.status === 'completed' && submitted.image_url) {
+    return {
+      imageUrl: submitted.image_url,
+      presetId: params.presetId,
+      strengthUsed: submitted.strength ?? params.strength ?? 0,
+      guidanceUsed: submitted.guidance_scale ?? params.guidanceScale ?? 0,
+    };
+  }
+
+  const editId: string | undefined = submitted.edit_id;
+  if (!editId) throw new Error('Render service did not return an edit id');
+
+  // 2) Poll /edit_status until terminal
+  const deadline = Date.now() + MAX_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+
+    const statusRes = await fetch(`${MODAL_ENDPOINT}/edit_status?edit_id=${encodeURIComponent(editId)}`);
+    if (!statusRes.ok) {
+      // Transient 404/5xx right after submit — retry until deadline
+      continue;
+    }
+    const job = await statusRes.json();
+
+    if (job.status === 'completed' && job.image_url) {
+      return {
+        imageUrl: job.image_url,
+        presetId: params.presetId,
+        strengthUsed: job.strength ?? params.strength ?? 0,
+        guidanceUsed: job.guidance_scale ?? params.guidanceScale ?? 0,
+      };
+    }
+    if (job.status === 'failed') {
+      throw new Error(job.error || 'Image edit failed — your 2 credits were refunded');
+    }
+    // queued | processing → keep polling
+  }
+
+  throw new Error('Image edit timed out — please try again (credits refunded)');
 }
 
 /** Clamp a user-chosen strength into the preset's recommended range. */

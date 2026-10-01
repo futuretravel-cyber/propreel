@@ -69,3 +69,9 @@ legacy-monorepo/
 
 .vercel
 .env*
+
+# Python / test artifacts
+modal/__pycache__/
+scripts/tmp-media/
+.tuid.txt
+.purl.txt

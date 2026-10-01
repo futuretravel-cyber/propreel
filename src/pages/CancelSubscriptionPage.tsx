@@ -4,19 +4,31 @@ import { ArrowLeft, AlertTriangle, Trash2, XCircle, Check, Clock, CreditCard, Sh
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar } from '../lib/utils';
+import { BackendAPI } from '../lib/backendAPI';
 
 export default function CancelSubscriptionPage() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [showConfirm, setShowConfirm] = useState(false);
   const [reason, setReason] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
-  const handleCancel = () => {
-    // In production, this would call your backend API
-    toast.success('Subscription cancelled successfully. You will retain access until the end of your billing period.', 'Subscription Cancelled');
-    setTimeout(() => navigate('/dashboard/billing'), 2000);
+  // Real cancellation: disables the Paystack subscription (at period end)
+  // and marks the local subscription DOWNGRADE_PENDING/CANCELLED.
+  const handleCancel = async () => {
+    if (!user) return;
+    setCancelling(true);
+    try {
+      await BackendAPI.cancelSubscription(user.id, false);
+      await refresh();
+      toast.success('Subscription cancelled. You retain access until the end of your billing period.', 'Subscription Cancelled');
+      setTimeout(() => navigate('/dashboard/billing'), 1500);
+    } catch (e: any) {
+      toast.error(e.message || 'Cancellation failed — please contact support');
+      setCancelling(false);
+    }
   };
 
   return (

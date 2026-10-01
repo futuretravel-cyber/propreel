@@ -1,54 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar, formatRelative } from '../lib/utils';
-import { mockProjects } from '../lib/mockData';
+import { PropReelAPI, Project } from '../lib/api';
 import {
   Search, Grid, List as ListIcon, FolderOpen, FolderPlus, Pencil, Trash2,
-  MoreHorizontal, Copy, Archive, Download, Plus, Star, Share2,
-  AlertCircle, FileText, X, FolderInput
+  Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2,
 } from 'lucide-react';
-
-// Extended project data (demo data carries folder/tag/favorite metadata)
-interface ProjectRow {
-  id: string;
-  recordId: string;
-  title: string;
-  address: string;
-  suburb: string;
-  city: string;
-  province: string;
-  price: number;
-  bedrooms: number;
-  bathrooms: number;
-  garages: number;
-  status: 'READY' | 'PROCESSING' | 'DRAFT' | 'FAILED';
-  videoTier: string;
-  videoUrl: string | null;
-  thumbnailUrl: string;
-  createdAt: string;
-  folder?: string;
-  tags?: string[];
-  favorite?: boolean;
-}
-
-const allProjects: ProjectRow[] = [
-  ...(mockProjects as ProjectRow[]),
-  { id: 'prj_006', recordId: 'pr_x1', title: 'Penthouse in V&A Waterfront', address: '1 Quay Lane', suburb: 'V&A Waterfront', city: 'Cape Town', province: 'Western Cape', price: 25000000, bedrooms: 3, bathrooms: 3, garages: 2, status: 'READY' as const, videoTier: 'PREMIUM', videoUrl: null, thumbnailUrl: 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=400', createdAt: '2025-03-05T10:00:00Z', folder: 'Luxury', tags: ['penthouse', 'waterfront'], favorite: true },
-  { id: 'prj_007', recordId: 'pr_x2', title: 'Smallholding in Muldersdrift', address: '45 Krugersdorp Rd', suburb: 'Muldersdrift', city: 'Johannesburg', province: 'Gauteng', price: 4200000, bedrooms: 4, bathrooms: 2, garages: 4, status: 'READY' as const, videoTier: 'CINEMATIC', videoUrl: null, thumbnailUrl: 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?w=400', createdAt: '2025-03-01T14:00:00Z', folder: 'Residential', tags: ['smallholding', 'country'], favorite: false },
-  { id: 'prj_008', recordId: 'pr_x3', title: 'Office Park in Sandton', address: '100 West Street', suburb: 'Sandton', city: 'Johannesburg', province: 'Gauteng', price: 45000000, bedrooms: 0, bathrooms: 8, garages: 20, status: 'PROCESSING' as const, videoTier: 'CINEMATIC', videoUrl: null, thumbnailUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=400', createdAt: '2025-03-13T08:00:00Z', folder: 'Commercial', tags: ['office', 'sandton'], favorite: false },
-];
-
-// Project templates
-const templates = [
-  { id: 1, name: 'Family Home', description: 'Standard template for 3-4 bed family homes', icon: '🏡' },
-  { id: 2, name: 'Luxury Villa', description: 'Premium template with cinematic tier', icon: '💎' },
-  { id: 3, name: 'Apartment/Flat', description: 'Compact template for urban living', icon: '🏢' },
-  { id: 4, name: 'Commercial', description: 'Office/retail property template', icon: '🏪' },
-  { id: 5, name: 'Vacant Land', description: 'Land/erf listing template', icon: '🌍' },
-  { id: 6, name: 'New Development', description: 'Off-plan/development template', icon: '🏗️' },
-];
 
 interface Folder {
   id: string;
@@ -56,9 +15,6 @@ interface Folder {
   icon: string;
   createdAt?: string;
 }
-
-const LS_FOLDERS = 'propreel:projectFolders';
-const LS_ASSIGNMENTS = 'propreel:projectFolderAssignments';
 
 const BUILTIN_FOLDERS = [
   { id: 'all', name: 'All Projects', icon: '📁' },
@@ -74,10 +30,21 @@ const DEFAULT_FOLDERS: Folder[] = [
 
 const FOLDER_ICONS = ['📁', '💎', '🏡', '🏢', '📦', '🌍', '🏗️', '⭐', '🏷️', '🔥', '🌊', '⛰️', '🌴', '🌆'];
 
+const templates = [
+  { id: 1, name: 'Family Home', description: 'Standard template for 3-4 bed family homes', icon: '🏡', defaults: { bedrooms: 4, bathrooms: 2, propertyType: 'House' } },
+  { id: 2, name: 'Luxury Villa', description: 'Premium template with cinematic tier', icon: '💎', defaults: { bedrooms: 5, bathrooms: 5, propertyType: 'Villa', videoTier: 'PREMIUM' } },
+  { id: 3, name: 'Apartment/Flat', description: 'Compact template for urban living', icon: '🏢', defaults: { bedrooms: 2, bathrooms: 1, propertyType: 'Apartment' } },
+  { id: 4, name: 'Commercial', description: 'Office/retail property template', icon: '🏪', defaults: { bedrooms: 0, bathrooms: 2, propertyType: 'Commercial' } },
+  { id: 5, name: 'Vacant Land', description: 'Land/erf listing template', icon: '🌍', defaults: { bedrooms: 0, bathrooms: 0, propertyType: 'Vacant Land' } },
+  { id: 6, name: 'New Development', description: 'Off-plan/development template', icon: '🏗️', defaults: { bedrooms: 3, bathrooms: 2, propertyType: 'Development' } },
+];
+
 export default function EnhancedProjects() {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [selectedFolder, setSelectedFolder] = useState('all');
@@ -87,7 +54,6 @@ export default function EnhancedProjects() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [showTemplates, setShowTemplates] = useState(false);
   const [folders, setFolders] = useState<Folder[]>(DEFAULT_FOLDERS);
-  const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderIcon, setNewFolderIcon] = useState('📁');
@@ -95,61 +61,96 @@ export default function EnhancedProjects() {
   const [renameValue, setRenameValue] = useState('');
   const [moveTarget, setMoveTarget] = useState<string[] | null>(null);
 
-  // ── Load folders + assignments (localStorage first, then backend sync) ──
-  useEffect(() => {
-    try {
-      const rawF = localStorage.getItem(LS_FOLDERS);
-      if (rawF) {
-        const parsed = JSON.parse(rawF);
-        if (Array.isArray(parsed) && parsed.length > 0) setFolders(parsed);
-      }
-      const rawA = localStorage.getItem(LS_ASSIGNMENTS);
-      if (rawA) {
-        const parsed = JSON.parse(rawA);
-        if (parsed && typeof parsed === 'object') setAssignments(parsed);
-      }
-    } catch { /* corrupt storage — keep defaults */ }
-  }, []);
-
-  // Backend sync (server folders win; merge with local-only folders)
-  useEffect(() => {
+  // ── Real data: load projects + folders from backend ────────────────────
+  const reload = useCallback(async () => {
     if (!user?.id) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/projects/folders?user_id=${encodeURIComponent(user.id)}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled && Array.isArray(data.folders) && data.folders.length > 0) {
-          setFolders(prev => {
-            const serverIds = new Set(data.folders.map((f: Folder) => f.id));
-            const localOnly = prev.filter(f => !serverIds.has(f.id));
-            return [...data.folders, ...localOnly];
-          });
-        }
-      } catch { /* endpoint not deployed yet or offline — localStorage still works */ }
-    })();
-    return () => { cancelled = true; };
-  }, [user?.id]);
-
-  const persistFolders = useCallback((nextFolders: Folder[]) => {
-    setFolders(nextFolders);
-    try { localStorage.setItem(LS_FOLDERS, JSON.stringify(nextFolders)); } catch { /* ignore */ }
-    if (user?.id) {
-      fetch('/api/projects/folders', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, folders: nextFolders }),
-      }).catch(() => { /* best-effort backend sync */ });
+    setLoading(true);
+    try {
+      const [projects, foldersRes] = await Promise.all([
+        PropReelAPI.listProjects(user.id),
+        fetch(`/api/projects?action=folders&user_id=${encodeURIComponent(user.id)}`).then(r => (r.ok ? r.json() : { folders: [] })).catch(() => ({ folders: [] })),
+      ]);
+      setProjects(projects);
+      if (Array.isArray(foldersRes.folders) && foldersRes.folders.length > 0) {
+        setFolders(foldersRes.folders);
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to load projects');
+    } finally {
+      setLoading(false);
     }
   }, [user?.id]);
 
-  const persistAssignments = useCallback((next: Record<string, string>) => {
-    setAssignments(next);
-    try { localStorage.setItem(LS_ASSIGNMENTS, JSON.stringify(next)); } catch { /* ignore */ }
-  }, []);
+  useEffect(() => { reload(); }, [reload]);
 
-  // ── Folder actions ──
+  const persistFolders = useCallback(async (nextFolders: Folder[]) => {
+    setFolders(nextFolders);
+    if (user?.id) {
+      try {
+        await fetch('/api/projects?action=folders', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.id, folders: nextFolders }),
+        });
+      } catch { /* non-fatal */ }
+    }
+  }, [user?.id]);
+
+  // ── Project actions (real CRUD) ────────────────────────────────────────
+  const createFromTemplate = async (tpl: typeof templates[number]) => {
+    if (!user?.id) return;
+    try {
+      await PropReelAPI.createProject({
+        userId: user.id,
+        title: `New ${tpl.name}`,
+        ...tpl.defaults,
+      } as any);
+      toast.success(`Project created from "${tpl.name}" template`);
+      setShowTemplates(false);
+      reload();
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to create project');
+    }
+  };
+
+  const deleteProjects = async (ids: string[]) => {
+    if (!user?.id || !ids.length) return;
+    if (!window.confirm(`Permanently delete ${ids.length} project(s)? This cannot be undone.`)) return;
+    try {
+      await Promise.all(ids.map(id => PropReelAPI.deleteProject(user.id, id)));
+      toast.success(`${ids.length} project(s) deleted`);
+      setSelected([]);
+      reload();
+    } catch (e: any) {
+      toast.error(e.message || 'Delete failed');
+    }
+  };
+
+  const toggleFavorite = async (p: Project) => {
+    if (!user?.id) return;
+    try {
+      await PropReelAPI.updateProject(user.id, p.id, { favorite: !p.favorite });
+      setProjects(prev => prev.map(x => x.id === p.id ? { ...x, favorite: !p.favorite } : x));
+    } catch {
+      toast.error('Could not update favorite');
+    }
+  };
+
+  const moveSelected = async (folderId: string | null) => {
+    if (!user?.id || !moveTarget?.length) return;
+    const folderName = folderId ? folders.find(f => f.id === folderId)?.name : null;
+    try {
+      await Promise.all(moveTarget.map(id => PropReelAPI.updateProject(user.id, id, { folder: folderName || '' })));
+      toast.success(`${moveTarget.length} project(s) moved to ${folderName || 'All Projects'}`);
+      setMoveTarget(null);
+      setSelected([]);
+      reload();
+    } catch {
+      toast.error('Move failed');
+    }
+  };
+
+  // ── Folder actions (real, backend-persisted) ───────────────────────────
   const createFolder = () => {
     const name = newFolderName.trim();
     if (!name) return;
@@ -157,8 +158,7 @@ export default function EnhancedProjects() {
       toast.error('A folder with that name already exists');
       return;
     }
-    const folder: Folder = { id: `fld_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, name, icon: newFolderIcon, createdAt: new Date().toISOString() };
-    persistFolders([...folders, folder]);
+    persistFolders([...folders, { id: `fld_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, name, icon: newFolderIcon, createdAt: new Date().toISOString() }]);
     setNewFolderName('');
     setNewFolderIcon('📁');
     setShowNewFolder(false);
@@ -182,79 +182,47 @@ export default function EnhancedProjects() {
   const deleteFolder = (folderId: string) => {
     const folder = folders.find(f => f.id === folderId);
     if (!folder) return;
-    const affected = Object.values(assignments).filter(fid => fid === folderId).length;
+    const affected = projects.filter(p => p.folder === folder.name).length;
     if (!window.confirm(`Delete folder "${folder.name}"?${affected > 0 ? ` ${affected} project(s) inside will move back to All Projects.` : ''}`)) return;
     persistFolders(folders.filter(f => f.id !== folderId));
-    const next = { ...assignments };
-    Object.keys(next).forEach(pid => { if (next[pid] === folderId) delete next[pid]; });
-    persistAssignments(next);
+    // Clear the folder assignment on affected projects (real update)
+    projects.filter(p => p.folder === folder.name).forEach(p => {
+      if (user?.id) PropReelAPI.updateProject(user.id, p.id, { folder: '' }).catch(() => {});
+    });
     if (selectedFolder === folderId) setSelectedFolder('all');
     toast.success(`Folder "${folder.name}" deleted`);
   };
 
-  const moveSelected = (folderId: string | null) => {
-    if (!moveTarget) return;
-    const next = { ...assignments };
-    moveTarget.forEach(pid => { if (folderId) next[pid] = folderId; else delete next[pid]; });
-    persistAssignments(next);
-    const label = folderId ? folders.find(f => f.id === folderId)?.name || 'folder' : 'All Projects';
-    toast.success(`${moveTarget.length} project(s) moved to ${label}`);
-    setMoveTarget(null);
-    setSelected([]);
-  };
-
-  // Resolve a project's display folder name (real assignment wins over demo seed)
-  const folderNameFor = (p: { id: string; folder?: string }): string | null => {
-    const fid = assignments[p.id];
-    if (fid) return folders.find(f => f.id === fid)?.name || null;
-    if (p.folder) {
-      const match = folders.find(f => f.name.toLowerCase() === String(p.folder).toLowerCase());
-      return match?.name || null;
-    }
-    return null;
-  };
-
-  // ── Derived data ──
-  const folderCounts = (() => {
+  // ── Derived data ───────────────────────────────────────────────────────
+  const folderCounts = useMemo(() => {
     const counts: Record<string, number> = {
-      all: allProjects.length,
-      favorites: allProjects.filter(p => p.favorite).length,
+      all: projects.length,
+      favorites: projects.filter(p => p.favorite).length,
     };
-    allProjects.forEach(p => {
-      const name = folderNameFor(p);
-      if (!name) return;
-      const match = folders.find(f => f.name === name);
+    projects.forEach(p => {
+      if (!p.folder) return;
+      const match = folders.find(f => f.name.toLowerCase() === String(p.folder).toLowerCase());
       if (match) counts[match.id] = (counts[match.id] || 0) + 1;
     });
     return counts;
-  })();
+  }, [projects, folders]);
 
-  const filtered = allProjects
+  const filtered = useMemo(() => projects
     .filter(p => {
-      if (search && !p.title.toLowerCase().includes(search.toLowerCase()) && !p.suburb.toLowerCase().includes(search.toLowerCase())) return false;
+      const q = search.toLowerCase();
+      if (q && !p.title.toLowerCase().includes(q) && !(p.suburb || '').toLowerCase().includes(q) && !(p.city || '').toLowerCase().includes(q)) return false;
       if (favoritesOnly && !p.favorite) return false;
       if (selectedFolder === 'all') return true;
       if (selectedFolder === 'favorites') return !!p.favorite;
-      const fid = assignments[p.id];
-      if (fid) return fid === selectedFolder;
-      const match = folders.find(f => f.name.toLowerCase() === String(p.folder || '').toLowerCase());
-      return match ? match.id === selectedFolder : false;
+      const match = folders.find(f => f.id === selectedFolder);
+      return match ? (p.folder || '').toLowerCase() === match.name.toLowerCase() : false;
     })
     .sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1;
-      if (sortBy === 'price') return (a.price - b.price) * dir;
+      if (sortBy === 'price') return ((a.price || 0) - (b.price || 0)) * dir;
       if (sortBy === 'name') return a.title.localeCompare(b.title) * dir;
       return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir;
-    });
-
-  const toggleSelect = (id: string) => {
-    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const toggleFavorite = (id: string) => {
-    const p = allProjects.find(x => x.id === id);
-    toast.success(p?.favorite ? 'Removed from favorites' : 'Added to favorites');
-  };
+    }), [projects, search, favoritesOnly, selectedFolder, folders, sortBy, sortDir]);
 
   const visibleFolders = [...BUILTIN_FOLDERS, ...folders];
 
@@ -264,9 +232,12 @@ export default function EnhancedProjects() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Projects</h1>
-          <p className="text-ink-400 mt-1">{filtered.length} projects {selected.length > 0 && `• ${selected.length} selected`}</p>
+          <p className="text-ink-400 mt-1">
+            {loading ? 'Loading…' : `${filtered.length} projects ${selected.length > 0 ? `• ${selected.length} selected` : ''}`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={reload} className="btn btn-secondary text-sm" title="Reload projects"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
           <button onClick={() => setShowTemplates(!showTemplates)} className="btn btn-secondary text-sm"><FileText className="w-4 h-4" /> Templates</button>
           <button onClick={() => navigate('/studio')} className="btn btn-primary text-sm"><Plus className="w-4 h-4" /> New Project</button>
         </div>
@@ -281,7 +252,7 @@ export default function EnhancedProjects() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {templates.map(t => (
-              <button key={t.id} onClick={() => { toast.success(`Creating project from "${t.name}" template...`); setShowTemplates(false); navigate('/studio'); }} className="p-4 rounded-xl bg-ink-800/50 hover:bg-ink-800 text-center transition">
+              <button key={t.id} onClick={() => createFromTemplate(t)} className="p-4 rounded-xl bg-ink-800/50 hover:bg-ink-800 text-center transition">
                 <span className="text-2xl">{t.icon}</span>
                 <p className="text-xs text-white font-medium mt-2">{t.name}</p>
                 <p className="text-[10px] text-ink-500 mt-1">{t.description}</p>
@@ -303,7 +274,6 @@ export default function EnhancedProjects() {
               </button>
             </div>
 
-            {/* New folder form */}
             {showNewFolder && (
               <div className="px-1 pb-2">
                 <input
@@ -329,7 +299,6 @@ export default function EnhancedProjects() {
               </div>
             )}
 
-            {/* Folder list */}
             <div className="space-y-1">
               {visibleFolders.map(f => {
                 const isBuiltin = BUILTIN_FOLDERS.some(b => b.id === f.id);
@@ -346,7 +315,7 @@ export default function EnhancedProjects() {
                       />
                     ) : (
                       <button onClick={() => setSelectedFolder(f.id)} className="flex items-center gap-2 flex-1 text-left min-w-0">
-                        <span className="flex-shrink-0">{(f as Folder).icon}</span>
+                        <span className="flex-shrink-0">{f.icon}</span>
                         <span className="truncate">{f.name}</span>
                       </button>
                     )}
@@ -385,7 +354,6 @@ export default function EnhancedProjects() {
               </div>
             </div>
 
-            {/* Favorites filter + sort */}
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5 flex-wrap">
               <button onClick={() => setFavoritesOnly(!favoritesOnly)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition ${favoritesOnly ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' : 'bg-white/5 text-ink-400 hover:text-white'}`}>
                 <Star className={`w-3 h-3 ${favoritesOnly ? 'fill-yellow-400' : ''}`} /> Favorites only
@@ -406,13 +374,10 @@ export default function EnhancedProjects() {
                 <span className="text-sm text-purple-300">{selected.length} project(s) selected</span>
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={() => setMoveTarget(selected)} className="btn btn-ghost text-xs py-1"><FolderInput className="w-3 h-3" /> Move to folder</button>
-                  <button onClick={() => { toast.success('Projects archived'); setSelected([]); }} className="btn btn-ghost text-xs py-1"><Archive className="w-3 h-3" /> Archive</button>
-                  <button onClick={() => { toast.success('Projects exported'); setSelected([]); }} className="btn btn-ghost text-xs py-1"><Download className="w-3 h-3" /> Export</button>
-                  <button onClick={() => { if (confirm('Delete selected projects?')) { toast.success('Projects deleted'); setSelected([]); } }} className="btn btn-ghost text-xs py-1 text-red-400"><Trash2 className="w-3 h-3" /> Delete</button>
+                  <button onClick={() => deleteProjects(selected)} className="btn btn-ghost text-xs py-1 text-red-400"><Trash2 className="w-3 h-3" /> Delete</button>
                   <button onClick={() => setSelected([])} className="btn btn-ghost text-xs py-1">Clear</button>
                 </div>
               </div>
-              {/* Move-to-folder panel */}
               {moveTarget && (
                 <div className="mt-3 pt-3 border-t border-white/5">
                   <p className="text-xs text-ink-400 mb-2">Move {moveTarget.length} project(s) to:</p>
@@ -422,9 +387,7 @@ export default function EnhancedProjects() {
                         <span>{f.icon}</span> {f.name}
                       </button>
                     ))}
-                    <button onClick={() => moveSelected(null)} className="px-3 py-1.5 rounded-lg bg-ink-800 text-xs text-ink-300 hover:bg-ink-700 transition">
-                      All Projects
-                    </button>
+                    <button onClick={() => moveSelected(null)} className="px-3 py-1.5 rounded-lg bg-ink-800 text-xs text-ink-300 hover:bg-ink-700 transition">All Projects</button>
                     <button onClick={() => setMoveTarget(null)} className="px-3 py-1.5 rounded-lg text-xs text-ink-400 hover:text-white transition">Cancel</button>
                   </div>
                 </div>
@@ -432,120 +395,123 @@ export default function EnhancedProjects() {
             </div>
           )}
 
+          {/* Empty / Loading states */}
+          {loading && (
+            <div className="card-dark p-12 text-center">
+              <Loader2 className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-3" />
+              <p className="text-ink-400 text-sm">Loading your projects…</p>
+            </div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div className="card-dark p-12 text-center">
+              <FolderOpen className="w-10 h-10 text-ink-500 mx-auto mb-3" />
+              <p className="text-white font-medium">No projects yet</p>
+              <p className="text-ink-400 text-sm mt-1 mb-4">Projects you create in the Studio will appear here.</p>
+              <button onClick={() => navigate('/studio')} className="btn btn-primary text-sm"><Plus className="w-4 h-4" /> Create in Studio</button>
+            </div>
+          )}
+
           {/* Projects Grid/List */}
-          {view === 'grid' ? (
+          {!loading && view === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filtered.map(p => (
                 <div key={p.id} className={`card-dark overflow-hidden group transition hover:border-purple-500/30 ${p.favorite ? 'ring-1 ring-yellow-500/20' : ''}`}>
                   <div className="aspect-video bg-ink-800 relative overflow-hidden">
-                    <img src={p.thumbnailUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    {p.thumbnailUrl ? (
+                      <img src={p.thumbnailUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl">🏡</div>
+                    )}
                     <div className="absolute top-2 left-2 flex gap-1">
                       <span className={`badge ${p.status === 'READY' ? 'badge-success' : p.status === 'PROCESSING' ? 'badge-warning' : p.status === 'FAILED' ? 'badge-danger' : 'badge-muted'}`}>
                         {p.status}
                       </span>
                       <span className="badge badge-brand text-[10px]">{p.videoTier}</span>
                     </div>
-                    <div className="absolute top-2 right-2 flex gap-1">
-                      <button onClick={(e) => { e.stopPropagation(); toggleFavorite(p.id); }} className="w-7 h-7 rounded-full bg-black/50 flex items-center justify-center hover:bg-black/70" aria-label={p.favorite ? 'Remove from favorites' : 'Add to favorites'}>
+                    <div className="absolute top-2 right-2">
+                      <button onClick={() => toggleFavorite(p)} className="w-7 h-7 rounded-full bg-black/50 flex items-center justify-center hover:bg-black/70" aria-label={p.favorite ? 'Remove from favorites' : 'Add to favorites'}>
                         <Star className={`w-3 h-3 ${p.favorite ? 'fill-yellow-400 text-yellow-400' : 'text-white'}`} />
                       </button>
                     </div>
                     <div className="absolute bottom-2 left-2">
-                      <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} onClick={e => e.stopPropagation()} className="w-4 h-4 rounded border-ink-600 bg-ink-800 text-purple-600" aria-label={`Select ${p.title}`} />
+                      <input type="checkbox" checked={selected.includes(p.id)} onChange={() => setSelected(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])} className="w-4 h-4 rounded border-ink-600 bg-ink-800 text-purple-600" aria-label={`Select ${p.title}`} />
                     </div>
                   </div>
                   <div className="p-4">
                     <div className="cursor-pointer" onClick={() => navigate('/studio')}>
                       <h3 className="font-semibold text-white text-sm truncate">{p.title}</h3>
-                      <p className="text-ink-400 text-xs mt-1">{p.suburb}, {p.city}</p>
-                      {(() => {
-                        const name = folderNameFor(p);
-                        return name ? (
-                          <p className="text-[10px] text-purple-300/80 mt-1 flex items-center gap-1">
-                            <FolderOpen className="w-3 h-3" /> {name}
-                          </p>
-                        ) : null;
-                      })()}
-                      {p.tags && (
+                      <p className="text-ink-400 text-xs mt-1">{[p.suburb, p.city].filter(Boolean).join(', ') || 'Location not set'}</p>
+                      {p.folder && (
+                        <p className="text-[10px] text-purple-300/80 mt-1 flex items-center gap-1">
+                          <FolderOpen className="w-3 h-3" /> {p.folder}
+                        </p>
+                      )}
+                      {p.tags && p.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
-                          {p.tags.map((t: string) => (
+                          {p.tags.map(t => (
                             <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-ink-400">#{t}</span>
                           ))}
                         </div>
                       )}
                       <div className="flex items-center justify-between mt-3">
-                        <p className="text-purple-400 font-semibold text-sm">{formatZar(p.price)}</p>
+                        <p className="text-purple-400 font-semibold text-sm">{p.price ? formatZar(p.price) : 'Price not set'}</p>
                         <p className="text-ink-500 text-xs">{formatRelative(p.createdAt)}</p>
                       </div>
                     </div>
                     <div className="flex gap-2 mt-3 pt-3 border-t border-white/5">
-                      <button onClick={(e) => { e.stopPropagation(); toast.success('Project duplicated'); }} className="flex-1 btn btn-ghost text-xs py-1.5" title="Duplicate this project">
-                        <Copy className="w-3 h-3" /> Duplicate
-                      </button>
-                      {p.status === 'READY' && (
+                      {p.videoUrl && p.status === 'READY' && (
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const shareUrl = `https://propreel.co.za/share/${p.id}`;
-                            const shareText = `Check out this property video: ${p.title}`;
-                            const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText + ' ' + shareUrl)}`;
-                            window.open(whatsappUrl, '_blank');
-                          }}
+                          onClick={() => window.open(p.videoUrl!, '_blank')}
                           className="flex-1 btn btn-ghost text-xs py-1.5 text-green-400 hover:text-green-300"
-                          title="Share on WhatsApp"
+                          title="Watch the rendered video"
                         >
-                          <Share2 className="w-3 h-3" /> WhatsApp
+                          <Share2 className="w-3 h-3" /> Video
                         </button>
                       )}
+                      <button onClick={() => deleteProjects([p.id])} className="flex-1 btn btn-ghost text-xs py-1.5 text-red-400 hover:text-red-300" title="Delete project">
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-          ) : (
+          )}
+
+          {!loading && view === 'list' && filtered.length > 0 && (
             <div className="card-dark overflow-hidden">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/5">
-                    <th className="px-4 py-3 w-8"><input type="checkbox" onChange={e => setSelected(e.target.checked ? filtered.map(p => p.id) : [])} className="w-4 h-4 rounded" aria-label="Select all projects" /></th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Property</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Price</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Status</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Folder</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Created</th>
-                    <th className="px-4 py-3 w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map(p => (
-                    <tr key={p.id} className="border-b border-white/5 hover:bg-white/[0.02]">
-                      <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} className="w-4 h-4 rounded" aria-label={`Select ${p.title}`} /></td>
+                    <tr key={p.id} className="border-b border-white/5 hover:bg-white/[0.02] cursor-pointer" onClick={() => navigate('/studio')}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <img src={p.thumbnailUrl} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                          <div className="w-10 h-10 rounded-lg bg-ink-800 flex items-center justify-center text-lg overflow-hidden">
+                            {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" className="w-full h-full object-cover" /> : '🏡'}
+                          </div>
                           <div>
-                            <p className="text-sm font-medium text-white flex items-center gap-1">{p.title} {p.favorite && <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />}</p>
-                            <p className="text-xs text-ink-400">{p.suburb}, {p.city}</p>
+                            <p className="text-sm font-medium text-white">{p.title}</p>
+                            <p className="text-xs text-ink-400">{[p.suburb, p.city].filter(Boolean).join(', ')}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-white">{formatZar(p.price)}</td>
+                      <td className="px-4 py-3 text-sm text-white">{p.price ? formatZar(p.price) : '—'}</td>
                       <td className="px-4 py-3"><span className={`badge ${p.status === 'READY' ? 'badge-success' : p.status === 'PROCESSING' ? 'badge-warning' : p.status === 'FAILED' ? 'badge-danger' : 'badge-muted'}`}>{p.status}</span></td>
-                      <td className="px-4 py-3 text-xs text-ink-300">{folderNameFor(p) || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-ink-400">{formatRelative(p.createdAt)}</td>
-                      <td className="px-4 py-3"><button className="text-ink-400 hover:text-white" aria-label="More actions for this project"><MoreHorizontal className="w-4 h-4" /></button></td>
+                      <td className="px-4 py-3 text-sm text-ink-400">{p.folder || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-ink-500">{formatRelative(p.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
-
-          {filtered.length === 0 && (
-            <div className="card-dark p-12 text-center">
-              <AlertCircle className="w-12 h-12 text-ink-500 mx-auto mb-4" />
-              <p className="text-ink-400">No projects match your filters</p>
-              <button onClick={() => { setSearch(''); setFavoritesOnly(false); setSelectedFolder('all'); }} className="btn btn-secondary mt-4 text-sm">Clear Filters</button>
             </div>
           )}
         </div>

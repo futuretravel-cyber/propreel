@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar } from '../lib/utils';
 import { PLANS } from '../lib/constants';
-import { CreditCard, Check, Shield, Lock, ArrowRight, Sparkles } from 'lucide-react';
+import { BackendAPI } from '../lib/backendAPI';
+import { CreditCard, Check, Shield, Lock } from 'lucide-react';
 
 export default function PaymentPage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const toast = useToast();
-  const { user, purchaseCredits } = useCredit();
+  const { user, refresh } = useCredit();
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -23,24 +23,29 @@ export default function PaymentPage() {
   const plan = PLANS.find(p => p.id === planId);
   const amount = isTopup ? topupAmount : priceParam;
 
+  // Real payment flow:
+  //  - Credit top-ups → Paystack hosted checkout (initialize → redirect).
+  //    Credits are credited server-side by /api/paystack/verify + webhook
+  //    after the customer pays.
+  //  - Plan subscriptions → /api/subscriptions?action=create (creates the
+  //    subscription, Paystack customer/plan, and allocates plan credits).
   const handlePaystack = async () => {
     setProcessing(true);
     try {
-      // In production, this would call the Paystack API
-      // For now, simulate the redirect
-      const reference = `PR_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      
-      // Simulate payment success after 2 seconds
-      setTimeout(() => {
-        setSuccess(true);
-        setProcessing(false);
-        toast.success(`Payment of ${formatZar(amount)} successful!`, 'Payment Complete');
-        
-        // Redirect to dashboard after 3 seconds
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 3000);
-      }, 2000);
+      if (!user) throw new Error('Please sign in to continue with payment');
+
+      if (isTopup) {
+        const response = await BackendAPI.initializePayment(user.id, topupAmount, user.email);
+        // Redirect to Paystack's hosted checkout page (real payment)
+        window.location.href = response.authorization_url;
+        return; // page navigates away
+      }
+
+      const response = await BackendAPI.createSubscription(user.id, planId, cycle as 'MONTHLY' | 'ANNUAL');
+      if (!response.success) throw new Error(response.message || 'Subscription could not be created');
+      await refresh();
+      setSuccess(true);
+      toast.success(`${plan?.name || planId} subscription activated — ${response.credits_allocated} credits loaded.`, 'Payment Complete');
     } catch (err: any) {
       toast.error(err.message || 'Payment failed');
       setProcessing(false);
@@ -56,17 +61,15 @@ export default function PaymentPage() {
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">Payment Successful!</h2>
           <p className="text-ink-400 mb-4">
-            {isTopup 
-              ? `${topupAmount} credits have been added to your account.`
-              : `Your ${plan?.name} subscription is now active. ${plan?.monthlyCredits} credits loaded.`
+            {isTopup
+              ? `${topupAmount} credits are being added to your account — refresh your dashboard in a moment.`
+              : `Your ${plan?.name} subscription is now active with ${user?.credits ?? 0} credits available.`
             }
           </p>
           <div className="bg-ink-800/50 rounded-xl p-4 mb-6">
-            <p className="text-sm text-ink-400">Amount Paid</p>
+            <p className="text-sm text-ink-400">Amount</p>
             <p className="text-2xl font-bold text-white">{formatZar(amount)}</p>
-            <p className="text-xs text-ink-500 mt-1">Reference: PR_{Date.now().toString(36)}</p>
           </div>
-          <p className="text-xs text-ink-500">Redirecting to dashboard...</p>
           <Link to="/dashboard" className="btn btn-primary mt-4 w-full">Go to Dashboard</Link>
         </div>
       </div>

@@ -28,8 +28,9 @@ import OnboardingTutorial from './components/OnboardingTutorial';
 import CollaborationPanel from './components/CollaborationPanel';
 import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS } from './lib/constants';
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
+import { PropReelAPI } from './lib/api';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
-import { mockProjects, mockReviews, mockTransactions, mockAgencyMembers, mockAdminStats } from './lib/mockData';
+import { useApprovedReviews } from './lib/useReviews';
 import EnhancedProjects from './components/EnhancedProjects';
 import SecuritySettings from './components/SecuritySettings';
 import AITalkingProfile from './components/AITalkingProfile';
@@ -265,6 +266,7 @@ function PricingPage() {
 }
 
 function ReviewsPage() {
+  const { reviews, loading } = useApprovedReviews();
   return (
     <PublicLayout>
       <section className="py-20 bg-gradient-to-b from-purple-50 to-white">
@@ -272,7 +274,13 @@ function ReviewsPage() {
           <h1 className="text-4xl font-black text-gray-900 text-center">What Our Agents Say</h1>
           <p className="text-center text-gray-600 mt-4">Verified reviews from paying South African estate agents.</p>
           <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {mockReviews.map(r => (
+            {loading && <p className="text-center text-gray-500 col-span-full">Loading reviews…</p>}
+            {!loading && reviews.length === 0 && (
+              <p className="text-center text-gray-500 col-span-full">
+                No published reviews yet — be the first to <Link to="/register" className="text-purple-700 underline">share your experience</Link>.
+              </p>
+            )}
+            {reviews.map(r => (
               <div key={r.id} className="card-light p-6">
                 <div className="flex gap-1 mb-3">
                   {Array.from({ length: r.rating }).map((_, i) => <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
@@ -305,9 +313,9 @@ function AboutPage() {
             Our platform is designed specifically for the South African property market, with local voices, Rand pricing, and seamless integration with Property24 and Private Property portals.
           </p>
           <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div><p className="text-3xl font-black text-purple-700">847+</p><p className="text-gray-600">Active Agents</p></div>
-            <div><p className="text-3xl font-black text-purple-700">3,291</p><p className="text-gray-600">Reels Generated</p></div>
-            <div><p className="text-3xl font-black text-purple-700">42</p><p className="text-gray-600">Partner Agencies</p></div>
+            <div><p className="text-3xl font-black text-purple-700">29</p><p className="text-gray-600">AI Photo Presets</p></div>
+            <div><p className="text-3xl font-black text-purple-700">4</p><p className="text-gray-600">AI Video Tiers</p></div>
+            <div><p className="text-3xl font-black text-purple-700">R1</p><p className="text-gray-600">Per Credit, VAT Included</p></div>
           </div>
         </div>
       </section>
@@ -339,10 +347,28 @@ function ContactPage() {
                   <p className="text-gray-600 mt-2">We'll get back to you within 24 hours.</p>
                 </div>
               ) : (
-                <form onSubmit={(e) => { e.preventDefault(); setSent(true); }} className="space-y-4">
-                  <div><label className="label text-gray-700">Name</label><input className="input-light" placeholder="Your name" required /></div>
-                  <div><label className="label text-gray-700">Email</label><input type="email" className="input-light" placeholder="you@example.com" required /></div>
-                  <div><label className="label text-gray-700">Message</label><textarea className="input-light min-h-[120px]" placeholder="How can we help?" required /></div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget);
+                  try {
+                    const res = await fetch('/api/leads?action=contact', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        name: fd.get('name'),
+                        email: fd.get('email'),
+                        message: fd.get('message'),
+                      }),
+                    });
+                    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to send');
+                    setSent(true);
+                  } catch {
+                    alert('Could not send your message — please email support@propreel.co.za directly.');
+                  }
+                }} className="space-y-4">
+                  <div><label className="label text-gray-700">Name</label><input name="name" className="input-light" placeholder="Your name" required /></div>
+                  <div><label className="label text-gray-700">Email</label><input name="email" type="email" className="input-light" placeholder="you@example.com" required /></div>
+                  <div><label className="label text-gray-700">Message</label><textarea name="message" className="input-light min-h-[120px]" placeholder="How can we help?" required /></div>
                   <button type="submit" className="btn btn-primary w-full">Send Message</button>
                 </form>
               )}
@@ -786,29 +812,38 @@ function DescriptionTab() {
   const [tone, setTone] = useState('Professional');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
+  const toast = useToast();
+  const [fields, setFields] = useState({ address: '', price: '', bedrooms: '', bathrooms: '', garages: '', propertyType: '', features: '' });
+  const setField = (k: string) => (e: any) => setFields(f => ({ ...f, [k]: e.target.value }));
 
-  const generate = () => {
+  // Real AI generation via fal-ai/any-llm (through the Modal worker)
+  const generate = async () => {
     setLoading(true);
-    setTimeout(() => {
-      setDescription(`Welcome to this exceptional 5-bedroom family residence nestled in the heart of Constantia. This stunning property offers an unparalleled lifestyle with panoramic views, meticulous finishes, and spacious living areas designed for both entertaining and everyday comfort.\n\nThe open-plan living area flows seamlessly onto a covered patio with built-in braai, perfect for South African outdoor living. The gourmet kitchen features granite countertops, a gas stove, and a walk-in pantry.\n\nThe master suite is a true retreat with a walk-in closet and en-suite bathroom featuring a freestanding bath and dual vanities. Four additional bedrooms, each with built-in cupboards, share two well-appointed bathrooms.\n\nSet on a generous 1,200m² erf with mature gardens, a sparkling pool, and triple garage with direct access. Located within walking distance of top schools and the Constantia Village shopping centre.`);
+    try {
+      const text = await PropReelAPI.generateText('description', { tone, ...fields });
+      setDescription(text.trim());
+      toast.success('Description generated', 'AI Copywriter');
+    } catch (e: any) {
+      toast.error(e.message || 'Description generation failed');
+    } finally {
       setLoading(false);
-    }, 2000);
+    }
   };
 
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="w-5 h-5 text-purple-400" /> Property Description</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div><label className="label">Address</label><input className="input" placeholder="15 Vineyard Road, Constantia" /></div>
-        <div><label className="label">Price (ZAR)</label><input className="input" type="number" placeholder="12500000" /></div>
-        <div><label className="label">Bedrooms</label><input className="input" type="number" placeholder="5" /></div>
-        <div><label className="label">Bathrooms</label><input className="input" type="number" placeholder="4" /></div>
-        <div><label className="label">Garages</label><input className="input" type="number" placeholder="3" /></div>
-        <div><label className="label">Property Type</label><input className="input" placeholder="House" /></div>
+        <div><label className="label">Address</label><input className="input" value={fields.address} onChange={setField('address')} placeholder="15 Vineyard Road, Constantia" /></div>
+        <div><label className="label">Price (ZAR)</label><input className="input" type="number" value={fields.price} onChange={setField('price')} placeholder="12500000" /></div>
+        <div><label className="label">Bedrooms</label><input className="input" type="number" value={fields.bedrooms} onChange={setField('bedrooms')} placeholder="5" /></div>
+        <div><label className="label">Bathrooms</label><input className="input" type="number" value={fields.bathrooms} onChange={setField('bathrooms')} placeholder="4" /></div>
+        <div><label className="label">Garages</label><input className="input" type="number" value={fields.garages} onChange={setField('garages')} placeholder="3" /></div>
+        <div><label className="label">Property Type</label><input className="input" value={fields.propertyType} onChange={setField('propertyType')} placeholder="House" /></div>
       </div>
       <div>
         <label className="label">Key Features (comma separated)</label>
-        <input className="input" placeholder="Pool, garden, panoramic views, gas stove, walk-in pantry" />
+        <input className="input" value={fields.features} onChange={setField('features')} placeholder="Pool, garden, panoramic views, gas stove, walk-in pantry" />
       </div>
       <div>
         <label className="label">Tone</label>
@@ -841,6 +876,7 @@ function DescriptionTab() {
 function PhotoEditorTab() {
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [strength, setStrength] = useState(0.30);
+  const [guidance, setGuidance] = useState(4.5);
   const [customPrompt, setCustomPrompt] = useState('');
   const photoPresets = IMAGE_PRESETS.filter(p => p.category === 'photo_editor');
   const active = photoPresets.find(p => p.id === selectedPreset);
@@ -860,7 +896,7 @@ function PhotoEditorTab() {
           {photoPresets.map(p => (
             <button
               key={p.id}
-              onClick={() => { setSelectedPreset(p.id); setStrength(p.strength.default); }}
+              onClick={() => { setSelectedPreset(p.id); setStrength(p.strength.default); setGuidance(p.guidanceScale.default); }}
               className={`p-4 rounded-xl text-center transition ${selectedPreset === p.id ? 'bg-purple-700/20 border border-purple-500/30 text-purple-300' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
             >
               <span className="text-2xl">{p.emoji}</span>
@@ -872,7 +908,7 @@ function PhotoEditorTab() {
       {active && (
         <div className="p-3 bg-ink-800/50 rounded-lg">
           <p className="text-xs text-ink-400">
-            <strong className="text-ink-300">{active.label}:</strong> Strength {active.strength.min.toFixed(2)}–{active.strength.max.toFixed(2)} (slider locked to range), Guidance {active.guidanceScale.min.toFixed(1)}–{active.guidanceScale.max.toFixed(1)}
+            <strong className="text-ink-300">{active.label}:</strong> Strength {active.strength.min.toFixed(2)}–{active.strength.max.toFixed(2)}, Guidance {active.guidanceScale.min.toFixed(1)}–{active.guidanceScale.max.toFixed(1)} (sliders locked to preset range)
           </p>
         </div>
       )}
@@ -891,6 +927,18 @@ function PhotoEditorTab() {
             />
           </div>
           <div>
+            <label className="label">Guidance scale: {guidance.toFixed(1)} <span className="text-ink-500 text-xs">(how strictly the AI follows the prompt)</span></label>
+            <input
+              type="range"
+              min={active!.guidanceScale.min}
+              max={active!.guidanceScale.max}
+              step={0.1}
+              value={guidance}
+              onChange={e => setGuidance(Number(e.target.value))}
+              className="w-full accent-purple-600"
+            />
+          </div>
+          <div>
             <label className="label">Custom prompt (optional — overrides the preset)</label>
             <textarea
               className="input min-h-[80px]"
@@ -902,6 +950,7 @@ function PhotoEditorTab() {
           <ImageWorkbench
             presetId={selectedPreset}
             strength={strength}
+            guidanceScale={guidance}
             customPrompt={customPrompt.trim() ? customPrompt : undefined}
             ctaLabel={`Enhance (2 credits)`}
             emptyHint="JPEG, PNG, WEBP up to 25MB"
@@ -1059,26 +1108,27 @@ function SocialTab() {
   const [platform, setPlatform] = useState('instagram');
   const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(false);
+  const toast = useToast();
+  const [socialFields, setSocialFields] = useState({ suburb: '', bedrooms: '', bathrooms: '', price: '', features: '' });
+  const setSf = (k: string) => (e: any) => setSocialFields(f => ({ ...f, [k]: e.target.value }));
 
-  const generate = () => {
+  const generate = async () => {
     setLoading(true);
-    setTimeout(() => {
-      const p = SOCIAL_PLATFORMS.find(x => x.id === platform);
-      
-      // Platform-specific caption generation
-      const captions: Record<string, string> = {
-        instagram: `🏡 JUST LISTED in Constantia!\n\nThis stunning 5-bed family home offers everything you've been dreaming of:\n✨ Panoramic views\n✨ Sparkling pool\n✨ Gourmet kitchen\n\nR12,500,000\n\n📍 15 Vineyard Road\n\nBook your viewing today!\n\n#Constantia #CapeTown #PropertyForSale #LuxuryLiving #RealEstateSA #DreamHome #JustListed`,
-        facebook: `🏡 JUST LISTED in Constantia!\n\nThis stunning 5-bedroom family home offers an unparalleled lifestyle in one of Cape Town's most sought-after suburbs. Featuring panoramic views, a sparkling pool, gourmet kitchen, and triple garage.\n\nR12,500,000\n📍 15 Vineyard Road, Constantia\n\nDon't miss this opportunity! Book your private viewing today. DM or call to arrange.\n\n#Constantia #CapeTown #PropertyForSale`,
-        whatsapp: `🏡 JUST LISTED!\n\n✨ 5-bed family home\n✨ Constantia, Cape Town\n✨ Panoramic views\n✨ Pool & triple garage\n✨ R12,500,000\n\n📍 15 Vineyard Road\n\nBook your viewing today!\nReply or call to arrange.`,
-        linkedin: `🏡 NEW LISTING | Constantia, Cape Town\n\nExceptional 5-bedroom family residence now available in one of Cape Town's premier suburbs. This property offers:\n\n• Panoramic views\n• Sparkling pool\n• Gourmet kitchen\n• Triple garage\n\nInvestment potential: R12,500,000\nLocation: 15 Vineyard Road, Constantia\n\nIdeal for discerning buyers seeking luxury living in a prestigious neighborhood. Contact for private viewing.`,
-        twitter: `🏡 JUST LISTED: 5-bed family home in Constantia, Cape Town. Panoramic views, pool, triple garage. R12,500,000. 15 Vineyard Road. Book viewing today! #Property #CapeTown`,
-        tiktok: `🏡 POV: You just found your dream home in Constantia! ✨\n\n5 beds, pool, panoramic views & it's R12.5M 💰\n\nWould you live here? 👇\n\n#PropertyTour #CapeTown #DreamHome #RealEstate #LuxuryLiving`,
-        newsletter: `FEATURED PROPERTY: Exceptional Family Home in Constantia\n\nWe are pleased to present this stunning 5-bedroom family residence located in the prestigious suburb of Constantia, Cape Town. This property represents an exceptional opportunity for discerning buyers seeking luxury living in one of the city's most sought-after neighborhoods.\n\nPROPERTY HIGHLIGHTS:\n• 5 spacious bedrooms with built-in cupboards\n• 3 modern bathrooms (2 en-suite)\n• Open-plan living and dining areas\n• Gourmet kitchen with granite countertops and gas stove\n• Triple automated garage\n• Sparkling swimming pool with entertainment area\n• Panoramic mountain and city views\n• Landscaped gardens on 1,200m² erf\n\nLOCATION:\n15 Vineyard Road, Constantia, Cape Town\n\nPRICE: R12,500,000\n\nThis property offers the perfect blend of luxury, comfort, and investment potential. Don't miss this exceptional opportunity.\n\nContact us today to arrange your private viewing.`
-      };
-      
-      setCaption(captions[platform] || captions.instagram);
+    try {
+      const text = await PropReelAPI.generateText('social_caption', {
+        platform,
+        suburb: socialFields.suburb,
+        bedrooms: socialFields.bedrooms,
+        bathrooms: socialFields.bathrooms,
+        price: socialFields.price,
+        features: socialFields.features,
+      });
+      setCaption(text.trim().replace(/^"|"$/g, ''));
+    } catch (e: any) {
+      toast.error(e.message || 'Caption generation failed');
+    } finally {
       setLoading(false);
-    }, 2000);
+    }
   };
 
   const currentPlatform = SOCIAL_PLATFORMS.find(p => p.id === platform);
@@ -1087,6 +1137,12 @@ function SocialTab() {
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-bold text-white flex items-center gap-2"><Share2 className="w-5 h-5 text-purple-400" /> Social Media Post Generator</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div><label className="label">Suburb / City</label><input className="input" value={socialFields.suburb} onChange={setSf('suburb')} placeholder="Constantia, Cape Town" /></div>
+        <div><label className="label">Price</label><input className="input" value={socialFields.price} onChange={setSf('price')} placeholder="R12,500,000" /></div>
+        <div><label className="label">Beds / Baths</label><input className="input" value={socialFields.bedrooms ? `${socialFields.bedrooms} bed` : ''} onChange={setSf('bedrooms')} placeholder="5 bed, 4 bath" /></div>
+        <div className="md:col-span-3"><label className="label">Key Features</label><input className="input" value={socialFields.features} onChange={setSf('features')} placeholder="Pool, panoramic views, triple garage" /></div>
+      </div>
       <div>
         <label className="label">Select Platform</label>
         <div className="flex flex-wrap gap-2">
@@ -1138,8 +1194,10 @@ function SocialTab() {
   );
 }
 
+const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+
 function VideoTab() {
-  const { user, deductCredits } = useCredit();
+  const { user, deductCredits, addCredits } = useCredit();
   const toast = useToast();
   const [tier, setTier] = useState('SOCIAL');
   const [configIndex, setConfigIndex] = useState(0);
@@ -1156,6 +1214,7 @@ function VideoTab() {
   const [flashHeadVideoUrl, setFlashHeadVideoUrl] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [lastRenderUrl, setLastRenderUrl] = useState<string | null>(null);
+  const [renderStatus, setRenderStatus] = useState('');
   const [shareOpen, setShareOpen] = useState(false);
 
   const tierConfig = TIERS.find(t => t.id === tier)!;
@@ -1182,42 +1241,57 @@ function VideoTab() {
       .catch(() => setMusicTracks([]));
   }, []);
 
-  const generateScript = () => {
+  // Real AI script generation via fal-ai/any-llm, sized to the selected duration
+  const generateScript = async () => {
     setGeneratingScript(true);
-    setTimeout(() => {
-      // Generate script with target word count
-      const scripts: Record<string, string> = {
-        'ESSENTIAL': `Step inside this stunning five-bedroom family home in Constantia. Priced at twelve million five hundred thousand rand, this property offers panoramic views, a sparkling pool, and modern finishes throughout. Book your private viewing today.`,
-        'SOCIAL': `Step inside this exceptional five-bedroom family residence in the heart of Constantia. Priced at twelve million five hundred thousand rand, this home offers an unparalleled lifestyle with panoramic views and modern finishes. The open-plan living area flows seamlessly onto a covered patio with built-in braai, perfect for South African outdoor living. The gourmet kitchen features granite countertops and a gas stove. Book your private viewing today.`,
-        'CINEMATIC': `Step inside this exceptional five-bedroom family residence in the heart of Constantia. Priced at twelve million five hundred thousand rand, this home offers an unparalleled lifestyle.\n\nThe open-plan living area flows seamlessly onto a covered patio with built-in braai, perfect for South African outdoor living. The gourmet kitchen features granite countertops and a gas stove.\n\nThe master suite is a true retreat with a walk-in closet and en-suite bathroom. Set on a generous twelve hundred square metre erf with mature gardens and a sparkling pool.\n\nBook your private viewing today.`,
-        'PREMIUM': `Step inside this exceptional five-bedroom family residence in the heart of Constantia. Priced at twelve million five hundred thousand rand, this home offers an unparalleled lifestyle that combines luxury, comfort, and modern sophistication.\n\nThe open-plan living area flows seamlessly onto a covered patio with built-in braai, perfect for South African outdoor living. The gourmet kitchen features granite countertops, a gas stove, and ample storage space for the discerning chef.\n\nThe master suite is a true retreat with a walk-in closet and en-suite bathroom featuring dual vanities and a freestanding bath. Four additional bedrooms, each with built-in cupboards, share two well-appointed bathrooms.\n\nSet on a generous twelve hundred square metre erf with mature landscaped gardens, a sparkling swimming pool, and triple automated garage. Located in the prestigious Constantia wine estate, minutes from top schools, shopping centers, and major routes.\n\nThis is more than a home—it's a lifestyle. Book your private viewing today and experience luxury living at its finest.`
-      };
-      
-      setScript(scripts[tier] || scripts.SOCIAL);
+    try {
+      const text = await PropReelAPI.generateText('video_script', {
+        tier,
+        duration_seconds: selectedConfig.duration,
+        target_words: targetWords,
+      });
+      setScript(text.trim());
+    } catch (e: any) {
+      toast.error(e.message || 'Script generation failed');
+    } finally {
       setGeneratingScript(false);
-    }, 2000);
+    }
   };
 
   const generateReel = async () => {
     setGenerating(true);
     const totalCredits = selectedConfig.credits + (aiTalkingProfile ? 8 : 0);
-    
+    const recordId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
     try {
-      // Call backend API to deduct credits and start video generation
-      const { deductCredits } = useCredit();
+      // 1) Create the project record first (real data in propreel-projects)
+      let projectId: string | null = null;
+      if (user) {
+        try {
+          const project = await PropReelAPI.createProject({
+            userId: user.id,
+            title: script ? script.slice(0, 60).replace(/\n/g, ' ') : 'Property Video',
+            status: 'PROCESSING',
+            videoTier: tier,
+          } as any);
+          projectId = project.id;
+        } catch { /* non-fatal — render can still proceed */ }
+      }
+
+      // 2) Deduct credits atomically server-side
       await deductCredits(totalCredits, 'Video generation', {
         tier,
         duration: selectedConfig.duration,
         aiTalkingProfile,
-        flashHeadVideoUrl
+        recordId,
       });
-      
-      // Call Modal backend to start video rendering
-      const response = await fetch(`${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/render_video`, {
+
+      // 3) Start the async render job
+      const response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          record_id: `pr_${Date.now()}`,
+          record_id: recordId,
           tier,
           config_index: configIndex,
           orientation,
@@ -1227,52 +1301,79 @@ function VideoTab() {
           voiceover_text: script,
           voice_id: voice,
           include_agent_branding: branding,
-          // Fal renders muted; voiceover is composited in Modal
           audio: false,
-          music_url: selectedMusic || undefined
-        })
+          music_url: selectedMusic || undefined,
+        }),
       });
-      
+
       if (!response.ok) {
-        throw new Error('Failed to start video generation');
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to start video generation');
       }
-      
+
       const result = await response.json();
-      console.log('Video generation started:', result);
-      if (result?.video_url) setLastRenderUrl(result.video_url);
       track('render_started', { tier, orientation });
-      
-      // If FlashHead is enabled, generate lip-sync video
-      if (aiTalkingProfile && profileImage) {
-        const flashHeadResponse = await fetch(`${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/generate_flashhead_video`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            profile_image_url: profileImage,
-            // fal-ai/flashhead: lip-sync the Grok-written voiceover script
-            voiceover_text: script,
-            user_id: user?.id || '',
-            voice: 'Aria',
-            model: 'fal-ai/flashhead',
-            stability: 0.5
-          })
-        });
-        
-        if (flashHeadResponse.ok) {
-          const flashHeadResult = await flashHeadResponse.json();
-          setFlashHeadVideoUrl(flashHeadResult.video_url);
-          console.log('FlashHead video generated:', flashHeadResult);
+
+      // 4) Poll /render_status until terminal (ESSENTIAL renders synchronously
+      // and return video_url immediately)
+      let finalUrl: string | null = result?.video_url || null;
+      if (!finalUrl && result?.record_id) {
+        const deadline = Date.now() + 12 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 5000));
+          try {
+            const s = await fetch(`${RENDER_ENDPOINT}/render_status?record_id=${encodeURIComponent(result.record_id)}`).then(r => r.json());
+            setRenderStatus(String(s.status || '').toLowerCase());
+            if (s.status === 'completed' && s.video_url) {
+              finalUrl = s.video_url;
+              break;
+            }
+            if (s.status === 'failed') {
+              throw new Error(s.error || 'Render failed');
+            }
+          } catch (e) {
+            if (e instanceof Error && e.message !== 'Failed to fetch') throw e;
+          }
         }
       }
-      
-      setTimeout(() => {
-        setGenerating(false);
-        toast.success('Video generated successfully!', 'Render Complete');
-      }, 5000);
-    } catch (error) {
-      console.error('Error generating video:', error);
+      if (finalUrl) setLastRenderUrl(finalUrl);
+
+      // 5) FlashHead lip-sync (optional add-on)
+      if (aiTalkingProfile && profileImage) {
+        try {
+          const fh = await fetch(`${RENDER_ENDPOINT}/generate_flashhead_video`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              profile_image_url: profileImage,
+              voiceover_text: script,
+              user_id: user?.id || '',
+              voice: 'Aria',
+              stability: 0.5,
+            }),
+          });
+          if (fh.ok) {
+            const fhResult = await fh.json();
+            setFlashHeadVideoUrl(fhResult.video_url);
+          }
+        } catch { /* FlashHead is optional; don't fail the render */ }
+      }
+
+      // 6) Finalize the project record
+      if (user && projectId && finalUrl) {
+        PropReelAPI.updateProject(user.id, projectId, { status: 'READY', videoUrl: finalUrl }).catch(() => {});
+      }
+
       setGenerating(false);
-      toast.error('Failed to generate video', 'Error');
+      toast.success('Video rendered successfully!', 'Render Complete');
+    } catch (error: any) {
+      console.error('Error generating video:', error);
+      // Failed renders refund the credits (spec: refund on failure)
+      try {
+        await addCredits(totalCredits, 'refund', `Refund — failed video render (${tier})`);
+      } catch { /* best-effort */ }
+      setGenerating(false);
+      toast.error(error.message || 'Failed to generate video — credits refunded', 'Error');
     }
   };
 
@@ -1553,47 +1654,128 @@ function AdminPage() {
   );
 }
 
+// Platform health from the Modal worker's fal.ai probe (billing/auth locks
+// surface here before users hit them). Polled every 60s while the tab is open.
+function useFalProbe() {
+  const [probe, setProbe] = useState<any>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      const url = `${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/probe`;
+      fetch(url).then(r => r.json()).then(d => { if (alive) setProbe(d); }).catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+  return probe;
+}
+
+function FalHealthCard() {
+  const probe = useFalProbe();
+  const cls = probe?.class || 'loading';
+  const config: Record<string, { color: string; label: string }> = {
+    healthy: { color: 'text-green-400', label: 'fal.ai healthy' },
+    billing_locked: { color: 'text-red-400', label: 'fal.ai OUT OF BALANCE — renders will fail' },
+    auth_failed: { color: 'text-red-400', label: 'fal.ai key rejected — check FAL_KEY secret' },
+    provider_error: { color: 'text-yellow-400', label: 'fal.ai degraded' },
+    timeout: { color: 'text-yellow-400', label: 'fal.ai slow/timeout' },
+    no_data: { color: 'text-ink-400', label: 'Awaiting first probe' },
+    loading: { color: 'text-ink-400', label: 'Checking fal.ai status…' },
+  };
+  const c = config[cls] || config.loading;
+  return (
+    <div className="bg-ink-800/50 rounded-xl p-4 flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium {c.color}"><span className={c.color}>●</span> <span className="text-white">{c.label}</span></p>
+        {probe?.detail && <p className="text-xs text-ink-500 mt-1">{String(probe.detail).slice(0, 120)}</p>}
+      </div>
+      <div className="text-right">
+        {probe?.latencyMs != null && <p className="text-xs text-ink-400">{probe.latencyMs} ms</p>}
+        {probe?.checkedAt && <p className="text-[10px] text-ink-500">checked {new Date(probe.checkedAt).toLocaleTimeString()}</p>}
+      </div>
+    </div>
+  );
+}
+
 function AdminOverview() {
-  const s = mockAdminStats;
+  const { user } = useCredit();
+  const [stats, setStats] = useState<any>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!user?.email) return;
+    fetch(`/api/users?action=admin_stats&email=${encodeURIComponent(user.email)}`)
+      .then(r => { if (!r.ok) throw new Error('Admin stats unavailable'); return r.json(); })
+      .then(d => setStats(d.stats))
+      .catch(e => setError(e.message));
+  }, [user?.email]);
+
+  const items = stats ? [
+    { label: 'Total Users', value: stats.userCount },
+    { label: 'Active Users (30d)', value: stats.activeUsers },
+    { label: 'Agencies', value: stats.agencyCount },
+    { label: 'Projects', value: stats.projectCount },
+    { label: 'Ready Reels', value: stats.readyReels },
+    { label: 'Processing', value: stats.processingReels },
+    { label: 'Failed', value: stats.failedReels },
+    { label: 'Credits Spent', value: stats.creditsSpent },
+  ] : [];
+
   return (
     <div className="space-y-6">
+      <FalHealthCard />
+      {error && <div className="bg-red-950/30 border border-red-500/30 rounded-xl p-4 text-sm text-red-300">{error}</div>}
+      {!stats && !error && <p className="text-sm text-ink-400">Loading platform stats…</p>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Users', value: s.userCount },
-          { label: 'Active Users', value: s.activeUsers },
-          { label: 'Agencies', value: s.agencyCount },
-          { label: 'Projects', value: s.projectCount },
-          { label: 'Ready Reels', value: s.readyReels },
-          { label: 'Processing', value: s.processingReels },
-          { label: 'Failed', value: s.failedReels },
-          { label: 'Pending Reviews', value: s.pendingReviews },
-        ].map(item => (
+        {items.map(item => (
           <div key={item.label} className="bg-ink-800/50 rounded-xl p-4">
             <p className="text-xs text-ink-400">{item.label}</p>
-            <p className="text-2xl font-bold text-white mt-1">{item.value.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-white mt-1">{Number(item.value).toLocaleString()}</p>
           </div>
         ))}
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-ink-800/50 rounded-xl p-4">
-          <p className="text-sm text-ink-400">Total Credits Spent</p>
-          <p className="text-3xl font-bold text-red-400">{s.totalCreditsSpent.toLocaleString()}</p>
-        </div>
-        <div className="bg-ink-800/50 rounded-xl p-4">
-          <p className="text-sm text-ink-400">Total Credits Purchased</p>
-          <p className="text-3xl font-bold text-green-400">{s.totalCreditsPurchased.toLocaleString()}</p>
-        </div>
       </div>
     </div>
   );
 }
 
 function AdminUsers() {
+  const { user } = useCredit();
+  const toast = useToast();
+  const [users, setUsers] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.email) return;
+    fetch(`/api/users?action=list_users&email=${encodeURIComponent(user.email)}`)
+      .then(r => r.json())
+      .then(d => setUsers(d.users || []))
+      .catch(() => setUsers([]))
+      .finally(() => setLoading(false));
+  }, [user?.email]);
+
+  const grant = async (userId: string) => {
+    try {
+      await fetch('/api/credits?action=add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, amount: 100, source: 'bonus', description: 'Admin grant' }),
+      });
+      toast.success('Granted 100 credits');
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, credits: (u.credits || 0) + 100 } : u));
+    } catch {
+      toast.error('Grant failed');
+    }
+  };
+
+  const shown = users.filter(u =>
+    !search || u.email?.toLowerCase().includes(search.toLowerCase()) || u.fullName?.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <input className="input max-w-xs" placeholder="Search users..." />
-        <button className="btn btn-primary"><Plus className="w-4 h-4" /> Grant Credits</button>
+        <input className="input max-w-xs" placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -1602,16 +1784,22 @@ function AdminUsers() {
               <th className="text-left px-3 py-2 text-xs text-ink-400">User</th>
               <th className="text-left px-3 py-2 text-xs text-ink-400">Role</th>
               <th className="text-left px-3 py-2 text-xs text-ink-400">Credits</th>
-              <th className="text-left px-3 py-2 text-xs text-ink-400">Status</th>
+              <th className="text-left px-3 py-2 text-xs text-ink-400">Joined</th>
+              <th className="text-left px-3 py-2 text-xs text-ink-400"></th>
             </tr>
           </thead>
           <tbody>
-            {mockAgencyMembers.map(m => (
+            {loading && <tr><td colSpan={5} className="px-3 py-6 text-center text-ink-400 text-sm">Loading users…</td></tr>}
+            {!loading && shown.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-ink-400 text-sm">No users found</td></tr>}
+            {shown.map(m => (
               <tr key={m.id} className="border-b border-white/5">
                 <td className="px-3 py-3"><p className="text-sm text-white">{m.fullName}</p><p className="text-xs text-ink-400">{m.email}</p></td>
-                <td className="px-3 py-3"><span className="badge badge-muted">AGENT</span></td>
+                <td className="px-3 py-3"><span className="badge badge-muted">{(m.role || 'AGENT').toUpperCase()}</span></td>
                 <td className="px-3 py-3 text-sm text-white">{m.credits}</td>
-                <td className="px-3 py-3"><span className="badge badge-success">Active</span></td>
+                <td className="px-3 py-3 text-xs text-ink-400">{m.createdAt ? new Date(m.createdAt).toLocaleDateString() : '—'}</td>
+                <td className="px-3 py-3">
+                  <button onClick={() => grant(m.id)} className="btn btn-ghost text-xs py-1"><Plus className="w-3 h-3" /> +100</button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1622,20 +1810,50 @@ function AdminUsers() {
 }
 
 function AdminReviews() {
+  const { user } = useCredit();
+  const toast = useToast();
+  const [pending, setPending] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.email) return;
+    fetch(`/api/leads?action=review_queue&email=${encodeURIComponent(user.email)}`)
+      .then(r => r.json())
+      .then(d => setPending(d.reviews || []))
+      .catch(() => setPending([]))
+      .finally(() => setLoading(false));
+  }, [user?.email]);
+
+  const moderate = async (reviewId: string, approve: boolean) => {
+    try {
+      await fetch('/api/leads?action=review_moderate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewId, approve, email: user?.email }),
+      });
+      setPending(prev => prev.filter(r => r.id !== reviewId));
+      toast.success(approve ? 'Review approved and published' : 'Review rejected');
+    } catch {
+      toast.error('Moderation action failed');
+    }
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-ink-400">Pending reviews awaiting moderation.</p>
+      {loading && <p className="text-sm text-ink-500">Loading…</p>}
+      {!loading && pending.length === 0 && <p className="text-sm text-ink-500">No pending reviews. New submissions appear here.</p>}
       <div className="space-y-3">
-        {mockReviews.filter(r => !r.featured).map(r => (
+        {pending.map(r => (
           <div key={r.id} className="bg-ink-800/50 rounded-xl p-4 flex items-start justify-between gap-4">
             <div>
               <div className="flex gap-1 mb-1">{Array.from({ length: r.rating }).map((_, i) => <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />)}</div>
               <p className="text-sm text-white">"{r.comment}"</p>
-              <p className="text-xs text-ink-400 mt-1">{r.fullName} — {r.agency}</p>
+              <p className="text-xs text-ink-400 mt-1">{r.fullName} — {r.agency || 'Independent'}</p>
             </div>
             <div className="flex gap-2 flex-shrink-0">
-              <button className="btn btn-primary text-xs py-1 px-3"><Check className="w-3 h-3" /> Approve</button>
-              <button className="btn btn-ghost text-xs py-1 px-3 text-red-400"><X className="w-3 h-3" /></button>
+              <button onClick={() => moderate(r.id, true)} className="btn btn-primary text-xs py-1 px-3"><Check className="w-3 h-3" /> Approve</button>
+              <button onClick={() => moderate(r.id, false)} className="btn btn-ghost text-xs py-1 px-3 text-red-400"><X className="w-3 h-3" /></button>
             </div>
           </div>
         ))}
@@ -1645,38 +1863,78 @@ function AdminReviews() {
 }
 
 function AdminSettings() {
+  // Read-only service status. Real secrets live in Vercel env vars and the
+  // Modal fal-credentials secret — they are never editable from the UI.
+  const probe = useFalProbe();
+  const [modalHealth, setModalHealth] = useState<any>(null);
+  const [musicApi, setMusicApi] = useState<'ok' | 'fail' | 'loading'>('loading');
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/health`)
+      .then(r => r.json()).then(setModalHealth).catch(() => setModalHealth(null));
+    fetch('/api/music').then(r => setMusicApi(r.ok ? 'ok' : 'fail')).catch(() => setMusicApi('fail'));
+  }, []);
+
+  const statusPill = (ok: boolean | null) => (
+    <span className={`badge ${ok ? 'badge-success' : 'badge-danger'}`}>{ok ? 'OPERATIONAL' : 'DOWN'}</span>
+  );
+
+  const services = [
+    { name: 'Modal Render Worker', detail: modalHealth ? `v${modalHealth.version} · ${modalHealth.model}` : 'unreachable', ok: !!modalHealth?.status?.match(/healthy/) },
+    { name: 'fal.ai Account', detail: probe?.detail || (probe?.class === 'healthy' ? 'key valid, balance OK' : probe?.class || 'checking…'), ok: probe?.class === 'healthy' },
+    { name: 'Vercel API (DynamoDB)', detail: musicApi === 'ok' ? '/api reachable' : musicApi === 'fail' ? '/api unreachable' : 'checking…', ok: musicApi === 'ok' },
+    { name: 'Paystack', detail: 'managed via PAYSTACK_SECRET_KEY env var', ok: null as unknown as boolean },
+    { name: 'AWS S3 + DynamoDB', detail: 'managed via AWS_* env vars', ok: null as unknown as boolean },
+  ];
+
   return (
-    <div className="space-y-6">
-      <p className="text-sm text-ink-400">Manage API keys and service configuration. Changes take effect immediately.</p>
-      {['AWS S3', 'Fal.ai', 'xAI Grok', 'Paystack', 'Render Endpoint'].map(service => (
-        <div key={service} className="bg-ink-800/50 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-white">{service}</h4>
-            <button className="text-xs text-purple-400 hover:text-purple-300">Test Connection</button>
+    <div className="space-y-4">
+      <p className="text-sm text-ink-400">Live service status. API keys are managed in Vercel environment variables and Modal secrets — never stored in or editable from the app.</p>
+      {services.map(s => (
+        <div key={s.name} className="bg-ink-800/50 rounded-xl p-4 flex items-center justify-between gap-4">
+          <div>
+            <h4 className="font-semibold text-white text-sm">{s.name}</h4>
+            <p className="text-xs text-ink-400 mt-1">{s.detail}</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div><label className="label">API Key</label><input className="input" type="password" placeholder="••••••••••••••••" /></div>
-            <div><label className="label">Secret / Secondary Key</label><input className="input" type="password" placeholder="••••••••••••••••" /></div>
-          </div>
+          {s.ok === null || s.ok === undefined
+            ? <span className="badge badge-muted">ENV-MANAGED</span>
+            : statusPill(s.ok)}
         </div>
       ))}
-      <button className="btn btn-primary">Save All Settings</button>
     </div>
   );
 }
 
 function AdminPrompts() {
+  const [expanded, setExpanded] = useState<string | null>(null);
   return (
     <div className="space-y-4">
-      <p className="text-sm text-ink-400">Manage AI prompt templates. Strength is clamped to 0.25–0.35.</p>
-      <div className="space-y-3">
-        {PHOTO_PRESETS.slice(0, 4).map(p => (
+      <p className="text-sm text-ink-400">
+        The live prompt library ({IMAGE_PRESETS.length} presets, mirrored to the Modal worker at deploy time).
+        Edit in <code className="text-purple-300">src/lib/imagePrompts.ts</code> + <code className="text-purple-300">modal/image_prompts.py</code> and redeploy.
+      </p>
+      <div className="space-y-2">
+        {IMAGE_PRESETS.map(p => (
           <div key={p.id} className="bg-ink-800/50 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-medium text-white text-sm">{p.emoji} {p.label}</h4>
-              <span className="badge badge-brand">strength: {p.strength}</span>
+            <div className="flex items-center justify-between gap-3">
+              <button onClick={() => setExpanded(expanded === p.id ? null : p.id)} className="flex items-center gap-2 text-left min-w-0">
+                <span className="text-lg">{p.emoji}</span>
+                <div className="min-w-0">
+                  <h4 className="font-medium text-white text-sm truncate">{p.label}</h4>
+                  <p className="text-[10px] text-ink-500">{p.category} · id: {p.id}</p>
+                </div>
+              </button>
+              <div className="flex gap-1 flex-shrink-0">
+                <span className="badge badge-brand">str {p.strength.min}–{p.strength.max}</span>
+                <span className="badge badge-muted">cfg {p.guidanceScale.min}–{p.guidanceScale.max}</span>
+              </div>
             </div>
-            <textarea className="input min-h-[60px] text-xs" defaultValue="Warm golden-hour sunset light washing over the property exterior..." />
+            {expanded === p.id && (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-ink-300 whitespace-pre-wrap">{p.prompt}</p>
+                <p className="text-[10px] text-ink-500 whitespace-pre-wrap"><strong>Negative:</strong> {p.negativePrompt}</p>
+              </div>
+            )}
           </div>
         ))}
       </div>

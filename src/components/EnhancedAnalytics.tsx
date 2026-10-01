@@ -1,242 +1,221 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { formatZar, formatDate } from '../lib/utils';
 import {
   BarChart3, TrendingUp, Clock, CheckCircle2, XCircle, Video,
-  Zap, Target, Download, Calendar, ArrowUpRight, ArrowDownRight,
-  Eye, Award, Flame, PieChart as PieIcon
+  Zap, Download, Eye, Loader2
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area, LineChart, Line, PieChart, Pie, Cell
+  AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
+import { PropReelAPI, CreditReportData } from '../lib/api';
 
-const weeklyData = [
-  { day: 'Mon', renders: 5, credits: 75, success: 5, failed: 0, avgTime: 2.8 },
-  { day: 'Tue', renders: 8, credits: 120, success: 7, failed: 1, avgTime: 3.1 },
-  { day: 'Wed', renders: 3, credits: 45, success: 3, failed: 0, avgTime: 2.5 },
-  { day: 'Thu', renders: 10, credits: 180, success: 9, failed: 1, avgTime: 3.4 },
-  { day: 'Fri', renders: 6, credits: 90, success: 6, failed: 0, avgTime: 2.9 },
-  { day: 'Sat', renders: 2, credits: 30, success: 2, failed: 0, avgTime: 2.2 },
-  { day: 'Sun', renders: 1, credits: 15, success: 1, failed: 0, avgTime: 2.0 },
-];
+// ─── Real analytics: every number derives from the user's credit ledger ────
 
-const monthlyData = [
-  { month: 'Oct', renders: 32, credits: 480, views: 8200 },
-  { month: 'Nov', renders: 45, credits: 675, views: 11500 },
-  { month: 'Dec', renders: 38, credits: 570, views: 9800 },
-  { month: 'Jan', renders: 52, credits: 780, views: 14200 },
-  { month: 'Feb', renders: 49, credits: 735, views: 13100 },
-  { month: 'Mar', renders: 35, credits: 525, views: 12400 },
-];
-
-const tierBreakdown = [
-  { name: 'Essential', renders: 15, credits: 75, color: '#800080' },
-  { name: 'Social', renders: 28, credits: 420, color: '#9333ea' },
-  { name: 'Cinematic', renders: 12, credits: 540, color: '#a855f7' },
-  { name: 'Premium', renders: 4, credits: 600, color: '#c084fc' },
-];
-
-const renderTimes = [
-  { tier: 'Essential', avgTime: 45, target: 60 },
-  { tier: 'Social', avgTime: 90, target: 120 },
-  { tier: 'Cinematic', avgTime: 180, target: 240 },
-  { tier: 'Premium', avgTime: 360, target: 480 },
-];
+const TIER_COSTS: Record<string, number> = { ESSENTIAL: 5, SOCIAL: 30, CINEMATIC: 40, PREMIUM: 60 };
 
 export default function EnhancedAnalytics() {
   const { user } = useAuth();
   const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
+  const [report, setReport] = useState<CreditReportData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const totalRenders = weeklyData.reduce((s, d) => s + d.renders, 0);
-  const totalCredits = weeklyData.reduce((s, d) => s + d.credits, 0);
-  const totalSuccess = weeklyData.reduce((s, d) => s + d.success, 0);
-  const totalFailed = weeklyData.reduce((s, d) => s + d.failed, 0);
-  const successRate = ((totalSuccess / (totalSuccess + totalFailed)) * 100).toFixed(1);
-  const avgRenderTime = (weeklyData.reduce((s, d) => s + d.avgTime, 0) / weeklyData.length).toFixed(1);
+  useEffect(() => {
+    if (!user?.id) return;
+    setLoading(true);
+    PropReelAPI.creditReport(user.id, '90d')
+      .then(setReport)
+      .catch(() => setReport(null))
+      .finally(() => setLoading(false));
+  }, [user?.id]);
+
+  const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+  const since = Date.now() - days * 86400000;
+  const txns = useMemo(() => (report?.transactions || []).filter(t => new Date(t.createdAt).getTime() >= since), [report, since]);
+
+  // Daily usage series
+  const dailyData = useMemo(() => {
+    const out: Array<{ day: string; renders: number; credits: number }> = [];
+    const points = period === '7d' ? 7 : 14;
+    for (let i = points - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000);
+      const key = d.toISOString().slice(0, 10);
+      const used = txns.filter(t => t.amount < 0 && (t.createdAt || '').slice(0, 10) === key)
+        .reduce((s, t) => s + Math.abs(t.amount), 0);
+      out.push({ day: d.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric' }), renders: 0, credits: used });
+    }
+    return out;
+  }, [txns, period]);
+
+  // Tier breakdown from deduction reasons/metadata amounts
+  const tierBreakdown = useMemo(() => {
+    const counts: Record<string, { renders: number; credits: number }> = {};
+    for (const t of txns) {
+      if (t.amount >= 0) continue;
+      const reason = String(t.reason || '').toLowerCase();
+      const cost = Math.abs(t.amount);
+      let tier: string | null = null;
+      for (const [name, c] of Object.entries(TIER_COSTS)) {
+        if (cost === c && (reason.includes('video') || reason.includes('render'))) tier = name;
+      }
+      if (tier) {
+        counts[tier] = counts[tier] || { renders: 0, credits: 0 };
+        counts[tier].renders += 1;
+        counts[tier].credits += cost;
+      }
+    }
+    const colors: Record<string, string> = { ESSENTIAL: '#800080', SOCIAL: '#9333ea', CINEMATIC: '#a855f7', PREMIUM: '#c084fc' };
+    return Object.entries(counts).map(([name, v]) => ({ name, ...v, color: colors[name] || '#6366f1' }));
+  }, [txns]);
+
+  // Refunds = failed renders that were auto-refunded
+  const refunds = useMemo(() => txns.filter(t => t.amount > 0 && /refund/i.test(t.reason || '')), [txns]);
+  const spends = useMemo(() => txns.filter(t => t.amount < 0 && /video|render/i.test(t.reason || '')), [txns]);
+  const successCount = Math.max(0, spends.length - refunds.length);
+  const successRate = spends.length ? ((successCount / spends.length) * 100).toFixed(1) : null;
+  const totalSpent = spends.reduce((s, t) => s + Math.abs(t.amount), 0);
+
+  const featureUsage = useMemo(() => (report?.creditsByFeature || { videoGeneration: 0, imageEditing: 0, flashHead: 0, other: 0 }), [report]);
+  const featurePie = [
+    { name: 'Video Renders', value: featureUsage.videoGeneration, color: '#800080' },
+    { name: 'Photo Edits', value: featureUsage.imageEditing, color: '#9333ea' },
+    { name: 'FlashHead', value: featureUsage.flashHead, color: '#a855f7' },
+    { name: 'Other', value: featureUsage.other, color: '#64748b' },
+  ].filter(x => x.value > 0);
+
+  const Empty = ({ label }: { label: string }) => (
+    <div className="h-[220px] flex items-center justify-center text-ink-500 text-sm text-center px-6">{label}</div>
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <BarChart3 className="w-6 h-6 text-purple-400" /> Analytics
-          </h1>
-          <p className="text-ink-400 mt-1">Your personal usage dashboard and performance metrics.</p>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2"><BarChart3 className="w-6 h-6 text-purple-400" /> Analytics</h1>
+          <p className="text-ink-400 mt-1">Real usage data from your credit ledger.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1 bg-ink-800 rounded-lg p-1">
-            {(['7d', '30d', '90d'] as const).map(p => (
-              <button key={p} onClick={() => setPeriod(p)} className={`px-3 py-1 rounded-md text-xs font-medium transition ${period === p ? 'bg-purple-700 text-white' : 'text-ink-400 hover:text-white'}`}>
-                {p === '7d' ? '7 Days' : p === '30d' ? '30 Days' : '90 Days'}
-              </button>
-            ))}
-          </div>
-          <button className="btn btn-secondary text-sm"><Download className="w-4 h-4" /> Export</button>
+        <div className="flex gap-1 bg-ink-800 rounded-lg p-1">
+          {(['7d', '30d', '90d'] as const).map(p => (
+            <button key={p} onClick={() => setPeriod(p)} className={`px-3 py-1 rounded-md text-xs font-medium transition ${period === p ? 'bg-purple-700 text-white' : 'text-ink-400 hover:text-white'}`}>
+              {p}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Key Metrics */}
+      {/* KPI Row — real */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card-dark p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-ink-400 text-sm">Total Renders</span>
-            <Video className="w-4 h-4 text-purple-400" />
-          </div>
-          <p className="text-3xl font-bold text-white mt-2">{totalRenders}</p>
-          <p className="text-xs text-green-400 mt-1 flex items-center gap-1"><ArrowUpRight className="w-3 h-3" /> +12% vs last period</p>
+          <div className="flex items-center justify-between"><span className="text-ink-400 text-sm">Video Renders</span><Video className="w-4 h-4 text-purple-400" /></div>
+          <p className="text-3xl font-bold text-white mt-2">{loading ? '…' : successCount + refunds.length}</p>
+          <p className="text-xs text-ink-400 mt-1">attempts in {period}</p>
         </div>
         <div className="card-dark p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-ink-400 text-sm">Success Rate</span>
-            <CheckCircle2 className="w-4 h-4 text-green-400" />
-          </div>
-          <p className="text-3xl font-bold text-white mt-2">{successRate}%</p>
-          <p className="text-xs text-green-400 mt-1 flex items-center gap-1"><ArrowUpRight className="w-3 h-3" /> +2.3% improvement</p>
+          <div className="flex items-center justify-between"><span className="text-ink-400 text-sm">Success Rate</span><CheckCircle2 className="w-4 h-4 text-green-400" /></div>
+          <p className="text-3xl font-bold text-white mt-2">{loading ? '…' : successRate !== null ? `${successRate}%` : '—'}</p>
+          <p className="text-xs text-ink-400 mt-1">refunds treated as failures</p>
         </div>
         <div className="card-dark p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-ink-400 text-sm">Avg Render Time</span>
-            <Clock className="w-4 h-4 text-blue-400" />
-          </div>
-          <p className="text-3xl font-bold text-white mt-2">{avgRenderTime}m</p>
-          <p className="text-xs text-green-400 mt-1 flex items-center gap-1"><ArrowDownRight className="w-3 h-3" /> -8% faster</p>
+          <div className="flex items-center justify-between"><span className="text-ink-400 text-sm">Credits Spent</span><Zap className="w-4 h-4 text-yellow-400" /></div>
+          <p className="text-3xl font-bold text-white mt-2">{loading ? '…' : totalSpent}</p>
+          <p className="text-xs text-ink-400 mt-1">in {period}</p>
         </div>
         <div className="card-dark p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-ink-400 text-sm">Credits Used</span>
-            <Zap className="w-4 h-4 text-yellow-400" />
-          </div>
-          <p className="text-3xl font-bold text-white mt-2">{totalCredits}</p>
-          <p className="text-xs text-ink-400 mt-1">{(totalCredits / totalRenders).toFixed(1)} avg per render</p>
+          <div className="flex items-center justify-between"><span className="text-ink-400 text-sm">Failed (refunded)</span><XCircle className="w-4 h-4 text-red-400" /></div>
+          <p className="text-3xl font-bold text-white mt-2">{loading ? '…' : refunds.length}</p>
+          <p className="text-xs text-ink-400 mt-1">auto-refunded renders</p>
         </div>
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Render Activity */}
-        <div className="card-dark p-6">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-purple-400" /> Render Activity
-          </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={weeklyData}>
+      {/* Daily usage — real */}
+      <div className="card-dark p-6">
+        <h3 className="font-semibold text-white flex items-center gap-2 mb-4"><TrendingUp className="w-4 h-4 text-purple-400" /> Daily Credit Spend</h3>
+        {dailyData.every(d => d.credits === 0) ? (
+          <Empty label="No spend recorded in this window yet. Renders and photo edits will chart here." />
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={dailyData}>
               <defs>
-                <linearGradient id="renderGrad" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="aGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#800080" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="#800080" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="day" stroke="#7f8aab" fontSize={12} />
-              <YAxis stroke="#7f8aab" fontSize={12} />
+              <XAxis dataKey="day" stroke="#7f8aab" fontSize={11} />
+              <YAxis stroke="#7f8aab" fontSize={12} allowDecimals={false} />
               <Tooltip contentStyle={{ background: '#1e2338', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }} />
-              <Area type="monotone" dataKey="renders" stroke="#800080" strokeWidth={2} fill="url(#renderGrad)" />
+              <Area type="monotone" dataKey="credits" stroke="#800080" strokeWidth={2} fill="url(#aGrad)" />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
+        )}
+      </div>
 
-        {/* Success vs Failure */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Tier breakdown — real */}
         <div className="card-dark p-6">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <Target className="w-4 h-4 text-green-400" /> Success vs Failure Rate
-          </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={weeklyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="day" stroke="#7f8aab" fontSize={12} />
-              <YAxis stroke="#7f8aab" fontSize={12} />
-              <Tooltip contentStyle={{ background: '#1e2338', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }} />
-              <Bar dataKey="success" fill="#22c55e" radius={[4, 4, 0, 0]} name="Success" stackId="a" />
-              <Bar dataKey="failed" fill="#ef4444" radius={[4, 4, 0, 0]} name="Failed" stackId="a" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Monthly Trend */}
-        <div className="card-dark p-6">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-purple-400" /> Monthly Trend
-          </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="month" stroke="#7f8aab" fontSize={12} />
-              <YAxis stroke="#7f8aab" fontSize={12} />
-              <Tooltip contentStyle={{ background: '#1e2338', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }} />
-              <Line type="monotone" dataKey="renders" stroke="#800080" strokeWidth={2} dot={{ fill: '#800080' }} name="Renders" />
-              <Line type="monotone" dataKey="views" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e' }} name="Views" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Tier Breakdown */}
-        <div className="card-dark p-6">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <PieIcon className="w-4 h-4 text-purple-400" /> Usage by Tier
-          </h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie data={tierBreakdown} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="renders" paddingAngle={3} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                {tierBreakdown.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-              </Pie>
-              <Tooltip contentStyle={{ background: '#1e2338', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            {tierBreakdown.map(t => (
-              <div key={t.name} className="flex items-center gap-2 text-xs">
-                <div className="w-3 h-3 rounded-full" style={{ background: t.color }} />
-                <span className="text-ink-400">{t.name}</span>
-                <span className="text-white font-medium ml-auto">{t.renders} renders</span>
+          <h3 className="font-semibold text-white flex items-center gap-2 mb-4"><Video className="w-4 h-4 text-purple-400" /> Renders by Tier</h3>
+          {tierBreakdown.length === 0 ? (
+            <Empty label="No video renders in this window yet." />
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={tierBreakdown} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="credits" paddingAngle={3}>
+                    {tierBreakdown.map((e, i) => <Cell key={i} fill={e.color} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#1e2338', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {tierBreakdown.map(t => (
+                  <div key={t.name} className="flex items-center gap-2 text-xs">
+                    <div className="w-3 h-3 rounded-full" style={{ background: t.color }} />
+                    <span className="text-ink-400">{t.name}</span>
+                    <span className="text-white font-medium ml-auto">{t.renders} render{t.renders === 1 ? '' : 's'} · {t.credits} cr</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
+        </div>
+
+        {/* Feature split — real */}
+        <div className="card-dark p-6">
+          <h3 className="font-semibold text-white flex items-center gap-2 mb-4"><Zap className="w-4 h-4 text-purple-400" /> Credits by Feature</h3>
+          {featurePie.length === 0 ? (
+            <Empty label="No usage in this window yet." />
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={featurePie} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" paddingAngle={3}>
+                    {featurePie.map((e, i) => <Cell key={i} fill={e.color} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#1e2338', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {featurePie.map(t => (
+                  <div key={t.name} className="flex items-center gap-2 text-xs">
+                    <div className="w-3 h-3 rounded-full" style={{ background: t.color }} />
+                    <span className="text-ink-400">{t.name}</span>
+                    <span className="text-white font-medium ml-auto">{t.value} cr</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Render Time Analysis */}
+      {/* Honest note about not-yet-tracked metrics */}
       <div className="card-dark p-6">
-        <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-blue-400" /> Average Render Times by Tier
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {renderTimes.map(r => (
-            <div key={r.tier} className="bg-ink-800/50 rounded-xl p-4 text-center">
-              <p className="text-xs text-ink-400">{r.tier}</p>
-              <p className="text-2xl font-bold text-white mt-1">{r.avgTime}s</p>
-              <p className="text-xs text-ink-500">target: {r.target}s</p>
-              <div className="mt-2 h-2 bg-ink-700 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full" style={{ width: `${(r.target / r.avgTime) * 100}%` }} />
-              </div>
-              <p className="text-xs text-green-400 mt-1">{Math.round((1 - r.avgTime / r.target) * 100)}% faster than target</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Views Analytics */}
-      <div className="card-dark p-6">
-        <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-          <Eye className="w-4 h-4 text-green-400" /> Views Performance
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="text-center">
-            <p className="text-4xl font-black text-white">12.4K</p>
-            <p className="text-sm text-ink-400 mt-1">Total Views (30d)</p>
-            <p className="text-xs text-green-400 mt-1">+18% vs last month</p>
-          </div>
-          <div className="text-center">
-            <p className="text-4xl font-black text-purple-400">348</p>
-            <p className="text-sm text-ink-400 mt-1">Avg Views per Reel</p>
-            <p className="text-xs text-green-400 mt-1">+5% vs last month</p>
-          </div>
-          <div className="text-center">
-            <p className="text-4xl font-black text-green-400">2.1%</p>
-            <p className="text-sm text-ink-400 mt-1">Conversion Rate</p>
-            <p className="text-xs text-green-400 mt-1">View → Inquiry</p>
-          </div>
-        </div>
+        <h3 className="font-semibold text-white flex items-center gap-2 mb-3"><Eye className="w-4 h-4 text-green-400" /> Listing Views & Conversion</h3>
+        <p className="text-sm text-ink-400">
+          View and inquiry tracking is not collected yet — these numbers will appear once your shared reels get
+          public analytics. Everything on this page reflects your actual PropReel usage.
+        </p>
       </div>
     </div>
   );

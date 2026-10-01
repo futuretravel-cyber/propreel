@@ -13,7 +13,7 @@ import os
 import json
 import requests
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List
@@ -45,10 +45,32 @@ image = modal.Image.debian_slim().apt_install(
     "Pillow",
     "requests",
     "python-dotenv",
-    "fal-client",
+    "fal-client==1.0.3",
     "fastapi",
     "pydantic"
 ).add_local_file("image_prompts.py", remote_path="/root/image_prompts.py")
+
+
+def _friendly_fal_error(e: Exception) -> str:
+    """Map fal.ai/provider failures to clear client-facing messages."""
+    import fal_client  # noqa: F401  (ensure module present for error classes)
+    msg = str(e) or e.__class__.__name__
+    # Remote tracebacks bury the real cause in the last lines.
+    if "Could not deserialize remote exception" in msg or "remote traceback" in msg.lower():
+        lines = [l.strip() for l in msg.splitlines() if l.strip()]
+        msg = lines[-1] if lines else msg
+    if "Exhausted balance" in msg or "User is locked" in msg:
+        return "Image render failed: the fal.ai account is out of balance (user locked). Top up at fal.ai/dashboard/billing."
+    if "401" in msg or "Unauthorized" in msg:
+        return "fal.ai rejected the API key (401 Unauthorized) - check FAL_KEY in the fal-credentials Modal secret."
+    if "403" in msg or "Forbidden" in msg:
+        return f"fal.ai rejected the request (403 Forbidden): {msg[:300]}"
+    if "422" in msg or "Unprocessable" in msg:
+        return f"fal.ai rejected the request payload (422): {msg[:300]}"
+    if "429" in msg or "rate limit" in msg.lower():
+        return "fal.ai rate limit reached - please retry in a moment."
+    return f"Image edit failed: {msg[:400]}"
+
 
 # S3 configuration
 S3_BUCKET = os.environ.get("AWS_S3_OUTPUT_BUCKET", "propreel-video-outputs-sa")
@@ -515,7 +537,126 @@ def render_video(
 # ═══════════════════════════════════════════════════════════════════════════
 # Failure path: mark job failed for polling clients (called via .spawn wrapper)
 def render_video_failed(record_id: str, error: str):
-    _write_job_status(record_id, "failed", {"error": error[:400]})
+    _write_job_status(record_id, "failed", {"error": error[:400]})# ───────────────────────────────────────────────────────────────────────────
+# IMAGE EDITING FUNCTIONS
+# ───────────────────────────────────────────────────────────────────────────
+
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2, max_containers=200, scaledown_window=300)
+def edit_image_job(edit_id: str, image_url: str, preset_id: str, custom_prompt: str | None = None, strength: float | None = None, guidance_scale: float | None = None):
+    """Async image-edit job wrapper: runs the sync edit_image body and mirrors
+    progress/result into S3 so /edit_status can serve it to any poller."""
+    _write_job_status(edit_id, "processing")
+    try:
+        result = edit_image.remote(
+            image_url=image_url,
+            preset_id=preset_id,
+            custom_prompt=custom_prompt,
+            strength=strength,
+            guidance_scale=guidance_scale
+        )
+        _write_job_status(edit_id, "completed", {
+            "image_url": result.get("image_url"),
+            "preset_id": result.get("preset_id"),
+            "strength": result.get("strength"),
+            "guidance_scale": result.get("guidance_scale"),
+            "credits_used": result.get("credits_used"),
+        })
+    except Exception as e:
+        _write_job_status(edit_id, "failed", {"error": _friendly_fal_error(e)})
+
+
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=120)
+def probe_fal_health():
+    """Tiny fal.ai health probe: a 1-token any-llm ping. Classifies the result
+    (healthy / billing_locked / auth_failed / provider_error / timeout) and
+    stores it in S3 for /probe to serve. Scheduled every 15 min below."""
+    import time as _time, json as _json
+    import boto3
+    started = _time.time()
+    record = {"checkedAt": __import__('datetime').datetime.utcnow().isoformat(), "healthy": False, "class": "provider_error", "detail": "", "latencyMs": None}
+    try:
+        result = fal_client.run(
+            "fal-ai/any-llm",
+            arguments={"prompt": "ping", "model": "meta-llama/llama-3.2-3b-instruct"},
+        )
+        ok = isinstance(result, dict) and (result.get("output") is not None or "output" in result)
+        record.update({
+            "healthy": bool(ok),
+            "class": "healthy" if ok else "provider_error",
+            "detail": "" if ok else f"Unexpected response shape: {str(result)[:200]}",
+            "latencyMs": int((_time.time() - started) * 1000),
+        })
+    except Exception as e:
+        msg = str(e)
+        if "Exhausted balance" in msg or "User is locked" in msg:
+            cls, detail = "billing_locked", "fal.ai account out of balance — top up at fal.ai/dashboard/billing"
+        elif "401" in msg or "Unauthorized" in msg or "invalid API key" in msg.lower():
+            cls, detail = "auth_failed", "FAL_KEY rejected (401) — check the fal-credentials Modal secret"
+        elif "timed out" in msg.lower() or "timeout" in msg.lower():
+            cls, detail = "timeout", "fal.ai ping timed out after 120s"
+        else:
+            cls, detail = "provider_error", msg[:300]
+        record.update({"healthy": False, "class": cls, "detail": detail, "latencyMs": int((_time.time() - started) * 1000)})
+
+    try:
+        s3 = boto3.client('s3', region_name=S3_REGION)
+        s3.put_object(
+            Bucket=S3_BUCKET, Key="jobs/health/fal.json",
+            Body=_json.dumps(record), ContentType="application/json",
+        )
+        print(f"Health probe: {record['class']} in {record['latencyMs']}ms")
+    except Exception as e:
+        print(f"Health probe S3 write failed: {e}")
+    return record
+
+
+@app.function(image=image, secrets=[modal.Secret.from_name("fal-credentials")], timeout=120)
+def generate_text_fn(kind: str, fields: dict) -> str:
+    """Real LLM text generation via fal-ai/any-llm for property descriptions,
+    social captions and video voiceover scripts."""
+    system_prompts = {
+        "description": (
+            "You are a professional South African property copywriter for Property24 and "
+            "Private Property listings. Write an engaging property description in markdown-free "
+            "plain text using the exact facts provided (bedrooms, bathrooms, price, suburb, "
+            "features). Never invent facts that were not provided. 3 short paragraphs, "
+            "warm and professional tone."
+        ),
+        "social_caption": (
+            "You are a social media copywriter for a South African estate agency. Write a punchy "
+            "Instagram/WhatsApp caption for the property described in the provided fields. Use the "
+            "exact facts provided, 1-3 emojis, and end with 4-6 local hashtags "
+            "(#PropertyForSale #CapeTown style). Never invent facts."
+        ),
+        "video_script": (
+            "You are a real estate video scriptwriter. Write a spoken voiceover script for a property "
+            "tour video using the exact facts in the provided fields. Plain spoken English only — no "
+            "stage directions, no scene labels, no markdown. Roughly 140 words (about 60 seconds "
+            "of narration). End with a call to action to book a viewing. Never invent facts."
+        ),
+    }
+    system = system_prompts.get(kind, system_prompts["description"])
+    facts = "\n".join(f"{k}: {v}" for k, v in fields.items() if v not in (None, ""))
+    result = fal_client.run(
+        "fal-ai/any-llm",
+        arguments={
+            "prompt": f"Property facts:\n{facts}",
+            "system_prompt": system,
+            "model": "meta-llama/llama-3.2-3b-instruct",
+            "max_tokens": 600,
+        },
+    )
+    text = result.get("output") if isinstance(result, dict) else None
+    if not text:
+        raise RuntimeError(f"LLM returned no output: {str(result)[:200]}")
+    return text
+
+
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=120, schedule=modal.Cron("*/15 * * * *"))
+def scheduled_fal_probe():
+    """Runs every 15 minutes on Modal's scheduler; refreshes the S3 health record."""
+    probe_fal_health.remote()
+
 
 
 # # IMAGE EDITING FUNCTIONS
@@ -567,18 +708,24 @@ def edit_image(
     print(f"Using strength: {actual_strength}, guidance: {actual_guidance}")
     
     # Use fal_client.submit() for long-running tasks with polling
-    handler = fal_client.submit(
-        "fal-ai/flux/dev/image-to-image",
-        arguments={
-            "image_url": image_url,
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
-            "strength": actual_strength,
-            "guidance_scale": actual_guidance,
-            "num_inference_steps": 50,
-            "enable_safety_checker": False
-        }
-    )
+    try:
+        handler = fal_client.submit(
+            "fal-ai/flux/dev/image-to-image",
+            arguments={
+                "image_url": image_url,
+                "prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "strength": actual_strength,
+                "guidance_scale": actual_guidance,
+                "num_inference_steps": 50,
+                "enable_safety_checker": False
+            }
+        )
+    except Exception as e:
+        # Convert provider errors to a plain exception: custom classes like
+        # FalClientHTTPError fail to deserialize on the caller side and bury
+        # the real cause (e.g. billing lock) in a deserialization blob.
+        raise RuntimeError(_friendly_fal_error(e)) from None
     
     # Poll for completion with timeout
     import time
@@ -787,7 +934,7 @@ async def health():
     }
 
 @web_app.post("/render_video")
-async def api_render_video(request: RenderVideoRequest):
+async def api_render_video(request: RenderVideoRequest, raw_request: Request):
     """API endpoint to render video — SPAWNS the job and returns immediately.
 
     For 1000-concurrent-user scale, the HTTP request must not hold a connection
@@ -795,7 +942,7 @@ async def api_render_video(request: RenderVideoRequest):
     Backward compatible: ?wait=true blocks like the old behaviour.
     """
     try:
-        if request.query_params.get("wait") in ("true", "1"):
+        if raw_request.query_params.get("wait") in ("true", "1"):
             result = await render_video.remote.aio(
                 record_id=request.record_id,
                 tier=request.tier,
@@ -859,21 +1006,89 @@ async def api_generate_flashhead_video(request: FlashHeadRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @web_app.post("/edit_image")
-async def api_edit_image(request: EditImageRequest):
-    """API endpoint to edit image"""
+async def api_edit_image(request: EditImageRequest, raw_request: Request):
+    """API endpoint to edit image.
+
+    Default: async — spawns an edit job and returns immediately with an
+    edit_id; clients poll /edit_status. Backward compatible: ?wait=true
+    blocks until the render completes.
+    """
     try:
-        # Call the Modal function asynchronously
-        result = await edit_image.remote.aio(
+        if raw_request.query_params.get("wait") in ("true", "1"):
+            result = await edit_image.remote.aio(
+                image_url=request.image_url,
+                preset_id=request.preset_id,
+                custom_prompt=request.custom_prompt,
+                strength=request.strength,
+                guidance_scale=request.guidance_scale
+            )
+            return result
+
+        import time as _time, uuid as _uuid
+        edit_id = f"edt_{int(_time.time() * 1000)}_{_uuid.uuid4().hex[:6]}"
+        _write_job_status(edit_id, "queued", {"kind": "image_edit", "preset_id": request.preset_id})
+        edit_image_job.spawn(
+            edit_id=edit_id,
             image_url=request.image_url,
             preset_id=request.preset_id,
             custom_prompt=request.custom_prompt,
             strength=request.strength,
             guidance_scale=request.guidance_scale
         )
-        return result
+        return {
+            "edit_id": edit_id,
+            "status": "queued",
+            "poll_url": f"/edit_status?edit_id={edit_id}",
+            "message": "Edit job accepted. Poll /edit_status for progress."
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Surface the real provider error (e.g. fal.ai billing/auth lock)
+        # instead of an opaque serialized-exception blob.
+        raise HTTPException(status_code=502, detail=_friendly_fal_error(e))
 
+@web_app.get("/edit_status")
+async def api_edit_status(edit_id: str):
+    """Poll image edit job status (S3-backed so any container can answer)."""
+    status = _read_job_status(edit_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Unknown edit_id: {edit_id}")
+    return status
+
+@web_app.get("/probe")
+async def api_probe(refresh: str = ""):
+    """fal.ai health probe: reads the last scheduled probe result from S3.
+    ?refresh=true runs a fresh check now (tiny any-llm ping, negligible cost).
+    Detects billing locks / bad API keys before users hit them."""
+    import boto3
+    try:
+        if refresh in ("true", "1"):
+            await probe_fal_health.remote.aio()
+        s3 = boto3.client('s3', region_name=S3_REGION)
+        obj = s3.get_object(Bucket=S3_BUCKET, Key="jobs/health/fal.json")
+        import json as _json
+        record = _json.loads(obj['Body'].read())
+        return {**record, "service": "propreel-render", "probe": "fal-ai"}
+    except Exception as e:
+        return JSONResponse(status_code=503, content={
+            "healthy": False,
+            "class": "no_data",
+            "detail": f"No probe result available: {e}",
+            "service": "propreel-render",
+        })
+
+class GenerateTextRequest(BaseModel):
+    kind: str  # description | social_caption | video_script
+    fields: dict = {}
+
+@web_app.post("/generate_text")
+async def api_generate_text(request: GenerateTextRequest):
+    """Real LLM text generation (fal-ai/any-llm) for property descriptions,
+    social captions, and video voiceover scripts."""
+    try:
+        text = await generate_text_fn.remote.aio(kind=request.kind, fields=request.fields)
+        return {"success": True, "kind": request.kind, "text": text}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=_friendly_fal_error(e))
 @web_app.get("/get_image_presets")
 async def api_get_image_presets():
     """API endpoint to get all image presets"""
@@ -885,7 +1100,7 @@ async def api_get_image_presets():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Mount the FastAPI app to Modal
-@app.function(image=image)
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials")])
 @modal.asgi_app()
 def web():
     """Mount FastAPI app as Modal web endpoint"""
@@ -895,7 +1110,8 @@ def web():
 @app.local_entrypoint()
 def main():
     """Local entrypoint for testing"""
-    print("PropReel Modal Backend v2.1")
+    print("PropReel Modal Backend v2.2 (async image edits, health probe, LLM text)")
+
     print("Video Model: fal-ai/minimax/hailuo-02")
     print("FlashHead Model: fal-ai/flashhead/v1/lip-sync")
     print("Clip Duration: 6 seconds")
@@ -905,6 +1121,9 @@ def main():
     print("  GET  /health")
     print("  POST /render_video")
     print("  POST /generate_flashhead_video")
-    print("  POST /edit_image")
+    print("  POST /edit_image  (async: poll /edit_status; ?wait=true for legacy)")
+    print("  GET  /edit_status?edit_id=…")
+    print("  GET  /probe  (?refresh=true for immediate check)")
+    print("  POST /generate_text  {kind, fields}")
     print("  GET  /get_image_presets")
     print("\nUse 'modal deploy' to deploy this app")

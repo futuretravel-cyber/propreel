@@ -1,12 +1,12 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+import { getUser } from '../../lib/userService';
 import { initializePayment } from '../../lib/paystack';
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
+/**
+ * Initialize a Paystack credit purchase.
+ * Looks the user up in DynamoDB (source of truth) and returns the
+ * Paystack authorization_url for hosted checkout.
+ */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -17,24 +17,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Validate input
     if (!user_id || !credits || credits < 50 || !email) {
-      return res.status(400).json({ 
-        error: 'Invalid request. Minimum purchase is 50 credits (R50).' 
+      return res.status(400).json({
+        error: 'Invalid request. Minimum purchase is 50 credits (R50).'
       });
     }
 
-    // Get user
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user_id)
-      .single();
+    // Get user from DynamoDB (source of truth for accounts)
+    const user = await getUser(user_id);
 
-    if (userError || !user) {
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     // Verify email matches
-    if (user.email !== email) {
+    if (user.email !== String(email).toLowerCase()) {
       return res.status(400).json({ error: 'Email does not match user account' });
     }
 

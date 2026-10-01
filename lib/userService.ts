@@ -116,6 +116,12 @@ export async function createUser(data: Omit<User, 'id' | 'createdAt' | 'updatedA
   return user;
 }
 
+// Delete user (account deletion flow)
+export async function deleteUser(id: string): Promise<boolean> {
+  const { deleteItem } = await import('./db-helpers');
+  return deleteItem(TABLES.USERS, { id });
+}
+
 // Update user
 export async function updateUser(id: string, updates: Partial<User>): Promise<User | null> {
   await updateItem(TABLES.USERS, { id }, updates);
