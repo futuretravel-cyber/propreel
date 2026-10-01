@@ -46,8 +46,9 @@ Recreate anytime with `npm run create-tables` (idempotent).
       (use the vercel.app URL until DNS is live)
 - [ ] **DNS at registrar:** A `@` → `76.76.21.21`, CNAME `www` → `cname.vercel-dns.com`;
       then attach both domains in Vercel → Project → Settings → Domains
-- [ ] **Stale Vercel env vars** (Firebase, JWT, S3, GROK, RENDERFUL, MODAL_API_TOKEN…):
-      nothing reads them — prune in dashboard
+- [x] **Stale Vercel env vars pruned** (30 Sep): 17 removed (Firebase, JWT, S3,
+      GROK, RENDERFUL, MODAL_API_TOKEN, DATABASE_URL, VITE_API_BASE_URL…);
+      production now holds exactly the 17 required vars and was redeployed + smoke-tested
 - [ ] **Vercel Hobby caveat:** crons clamped to daily; commercial use needs Pro before launch
 
 ## Go-live checklist (test → live mode)
