@@ -1,4 +1,4 @@
-const CACHE_NAME = 'propreel-v1';
+const CACHE_NAME = 'propreel-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -18,44 +18,50 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event — strategy depends on the request:
+//   • /assets/* (content-hashed, immutable) → cache-first (instant, safe)
+//   • everything else (HTML navigations especially) → network-first with
+//     cache fallback, so deploys reach users immediately instead of after
+//     an indefinite cache-first stall
 self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
-  // Skip API calls - always go to network
+  // Skip API calls — always go to network
   if (event.request.url.includes('/api/')) return;
 
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
+  const url = new URL(event.request.url);
 
-        // Clone the request
-        const fetchRequest = event.request.clone();
-
-        return fetch(fetchRequest).then(
-          (response) => {
-            // Check if valid response
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
-
-            // Clone the response
-            const responseToCache = response.clone();
-
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return response;
+  if (url.pathname.startsWith('/assets/')) {
+    // Immutable hashed assets: cache-first
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
           }
-        );
+          return response;
+        });
       })
+    );
+    return;
+  }
+
+  // HTML and other same-origin files: network-first, cache fallback for offline
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status === 200 && response.type === 'basic') {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      })
+      .catch(() =>
+        caches.match(event.request).then((cached) => cached || caches.match('/'))
+      )
   );
 });
 
