@@ -23,6 +23,9 @@ export interface Project {
   propertyType: string;
   features: string[];
   status: ProjectStatus;
+  /** REEL = AI video render, FLASHHEAD = Talking Head lip-sync clip */
+  kind?: 'REEL' | 'FLASHHEAD';
+  voice?: string;
   videoTier: string;
   videoUrl: string | null;
   thumbnailUrl: string | null;

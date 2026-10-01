@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useCredit } from '../context/AuthContext';
 import { track } from './analytics';
+import { PropReelAPI } from './api';
 
 const FLASHHEAD_COST = 8;
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
@@ -86,6 +87,8 @@ export function useFlashHead() {
 
     // 3) Start async job + poll status
     setStage('rendering');
+    // Project record id (hoisted so the failure path can mark it FAILED)
+    let projectId: string | null = null;
     try {
       const submitRes = await fetch(`${MODAL_ENDPOINT}/flashhead`, {
         method: 'POST',
@@ -106,6 +109,19 @@ export function useFlashHead() {
       const jobId: string | undefined = submitted.job_id;
       if (!jobId) throw new Error('Render service did not return a job id');
 
+      // Track in propreel-projects so Listings, search and the activity feed
+      // surface it automatically (created as PROCESSING, updated on terminal)
+      try {
+        const project = await PropReelAPI.createProject({
+          userId: user.id,
+          title: `Talking Head — ${opts.voiceoverText.trim().replace(/\s+/g, ' ').slice(0, 60)}`,
+          kind: 'FLASHHEAD',
+          voice: opts.voice || 'Aria',
+          status: 'PROCESSING',
+        } as any);
+        projectId = project.id;
+      } catch { /* non-fatal — render proceeds without the record */ }
+
       const deadline = Date.now() + MAX_WAIT_MS;
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
@@ -113,6 +129,9 @@ export function useFlashHead() {
         if (!statusRes.ok) continue; // transient — retry until deadline
         const job = await statusRes.json();
         if (job.status === 'completed' && job.video_url) {
+          if (projectId) {
+            PropReelAPI.updateProject(user.id, projectId, { status: 'READY', videoUrl: job.video_url }).catch(() => {});
+          }
           track('render_completed', { kind: 'FLASHHEAD' });
           setStage('done');
           return { videoUrl: job.video_url };
@@ -123,7 +142,10 @@ export function useFlashHead() {
       }
       throw new Error('FlashHead timed out — please try again (credits refunded)');
     } catch (e: any) {
-      // Failed renders auto-refund (spec: refund within 60s)
+      // Mark the project record failed (best effort) and auto-refund
+      if (projectId) {
+        PropReelAPI.updateProject(user.id, projectId, { status: 'FAILED' }).catch(() => {});
+      }
       await addCredits(FLASHHEAD_COST, 'refund', 'Refund — failed FlashHead render').catch(() => {});
       setError(e.message || 'Render failed — your 8 credits were refunded');
       setStage('idle');

@@ -25,6 +25,9 @@ export interface ProjectRecord {
   propertyType?: string;
   features?: string[];
   status?: 'DRAFT' | 'PROCESSING' | 'READY' | 'FAILED';
+  /** REEL = AI video render, FLASHHEAD = Talking Head lip-sync clip */
+  kind?: 'REEL' | 'FLASHHEAD';
+  voice?: string;
   videoTier?: string;
   videoUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -122,6 +125,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         propertyType: b.propertyType || 'House',
         features: Array.isArray(b.features) ? b.features.map(String).slice(0, 20) : [],
         status: (['DRAFT', 'PROCESSING', 'READY', 'FAILED'] as const).includes(b.status) ? b.status : 'DRAFT',
+        kind: b.kind === 'FLASHHEAD' ? 'FLASHHEAD' : 'REEL',
+        voice: typeof b.voice === 'string' ? b.voice.slice(0, 40) : undefined,
         videoTier: b.videoTier || 'ESSENTIAL',
         videoUrl: b.videoUrl || null,
         thumbnailUrl: b.thumbnailUrl || null,

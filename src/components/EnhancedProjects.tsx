@@ -6,7 +6,7 @@ import { formatZar, formatRelative } from '../lib/utils';
 import { PropReelAPI, Project } from '../lib/api';
 import {
   Search, Grid, List as ListIcon, FolderOpen, FolderPlus, Pencil, Trash2,
-  Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2,
+  Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2, Mic, Video,
 } from 'lucide-react';
 
 interface Folder {
@@ -49,6 +49,7 @@ export default function EnhancedProjects() {
   const [search, setSearch] = useState('');
   const [selectedFolder, setSelectedFolder] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [kindFilter, setKindFilter] = useState<'all' | 'REEL' | 'FLASHHEAD'>('all');
   const [selected, setSelected] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'date' | 'price' | 'name'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -212,6 +213,7 @@ export default function EnhancedProjects() {
       const q = search.toLowerCase();
       if (q && !p.title.toLowerCase().includes(q) && !(p.suburb || '').toLowerCase().includes(q) && !(p.city || '').toLowerCase().includes(q)) return false;
       if (favoritesOnly && !p.favorite) return false;
+      if (kindFilter !== 'all' && (p.kind || 'REEL') !== kindFilter) return false;
       if (selectedFolder === 'all') return true;
       if (selectedFolder === 'favorites') return !!p.favorite;
       const match = folders.find(f => f.id === selectedFolder);
@@ -222,7 +224,7 @@ export default function EnhancedProjects() {
       if (sortBy === 'price') return ((a.price || 0) - (b.price || 0)) * dir;
       if (sortBy === 'name') return a.title.localeCompare(b.title) * dir;
       return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir;
-    }), [projects, search, favoritesOnly, selectedFolder, folders, sortBy, sortDir]);
+    }), [projects, search, favoritesOnly, kindFilter, selectedFolder, folders, sortBy, sortDir]);
 
   const visibleFolders = [...BUILTIN_FOLDERS, ...folders];
 
@@ -358,6 +360,13 @@ export default function EnhancedProjects() {
               <button onClick={() => setFavoritesOnly(!favoritesOnly)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition ${favoritesOnly ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' : 'bg-white/5 text-ink-400 hover:text-white'}`}>
                 <Star className={`w-3 h-3 ${favoritesOnly ? 'fill-yellow-400' : ''}`} /> Favorites only
               </button>
+              <div className="flex items-center gap-1 px-1" role="group" aria-label="Filter by project type">
+                {([['all', 'All'], ['REEL', 'Reels'], ['FLASHHEAD', 'Talking Head']] as const).map(([k, label]) => (
+                  <button key={k} onClick={() => setKindFilter(k)} className={`px-3 py-1 rounded-full text-xs font-medium transition ${kindFilter === k ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-400 hover:text-white border border-transparent'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
               <span className="text-xs text-ink-500 ml-auto">Sort by:</span>
               {(['date', 'price', 'name'] as const).map(s => (
                 <button key={s} onClick={() => { if (sortBy === s) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy(s); setSortDir('desc'); } }} className={`text-xs px-2 py-1 rounded transition ${sortBy === s ? 'text-purple-300 bg-purple-700/20' : 'text-ink-400 hover:text-white'}`}>
@@ -420,13 +429,20 @@ export default function EnhancedProjects() {
                     {p.thumbnailUrl ? (
                       <img src={p.thumbnailUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl">🏡</div>
+                      <div className="w-full h-full flex items-center justify-center text-4xl">{p.kind === 'FLASHHEAD' ? '🎙️' : '🏡'}</div>
+                    )}
+                    {p.videoUrl && p.status === 'READY' && (
+                      <video src={p.videoUrl} muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-300" aria-hidden="true" />
                     )}
                     <div className="absolute top-2 left-2 flex gap-1">
                       <span className={`badge ${p.status === 'READY' ? 'badge-success' : p.status === 'PROCESSING' ? 'badge-warning' : p.status === 'FAILED' ? 'badge-danger' : 'badge-muted'}`}>
                         {p.status}
                       </span>
-                      <span className="badge badge-brand text-[10px]">{p.videoTier}</span>
+                      {p.kind === 'FLASHHEAD' ? (
+                        <span className="badge badge-brand text-[10px] flex items-center gap-1"><Mic className="w-3 h-3" /> Talking Head</span>
+                      ) : (
+                        <span className="badge badge-brand text-[10px]">{p.videoTier}</span>
+                      )}
                     </div>
                     <div className="absolute top-2 right-2">
                       <button onClick={() => toggleFavorite(p)} className="w-7 h-7 rounded-full bg-black/50 flex items-center justify-center hover:bg-black/70" aria-label={p.favorite ? 'Remove from favorites' : 'Add to favorites'}>

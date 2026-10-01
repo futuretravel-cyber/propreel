@@ -102,25 +102,28 @@ export function useActivity(userId: string | undefined) {
           });
         }
 
-        // Project status events
+        // Project status events (reels and Talking Head clips alike)
         for (const p of projects || []) {
+          const isTalkingHead = p.kind === 'FLASHHEAD';
           if (p.status === 'READY' && p.videoUrl) {
             feed.push({
               id: `proj-${p.id}`,
               type: 'success', category: 'render',
-              title: 'Video Ready',
-              message: `"${p.title}" finished rendering and is ready to download or share.`,
+              title: isTalkingHead ? 'Talking Head Video Ready' : 'Video Ready',
+              message: isTalkingHead
+                ? `Your lip-synced talking-head video ("${p.title.replace(/^Talking Head — /, '')}") is ready to download or share.`
+                : `"${p.title}" finished rendering and is ready to download or share.`,
               timestamp: p.updatedAt || p.createdAt, read: false,
-              actionUrl: '/dashboard/listings',
+              actionUrl: isTalkingHead ? '/studio?tab=flashhead' : '/dashboard/listings',
             });
           } else if (p.status === 'FAILED') {
             feed.push({
               id: `proj-${p.id}`,
               type: 'error', category: 'render',
-              title: 'Render Failed',
+              title: isTalkingHead ? 'Talking Head Render Failed' : 'Render Failed',
               message: `"${p.title}" failed to render. Reserved credits are refunded automatically.`,
               timestamp: p.updatedAt || p.createdAt, read: false,
-              actionUrl: '/studio?tab=video',
+              actionUrl: isTalkingHead ? '/studio?tab=flashhead' : '/studio?tab=video',
             });
           }
         }

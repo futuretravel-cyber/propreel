@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, X, Video, Image, FileText, CreditCard, Settings, ArrowRight, Clock, Star, TrendingUp } from 'lucide-react';
+import { Search, X, Video, Image, FileText, CreditCard, Settings, ArrowRight, Clock, Star, TrendingUp, Mic } from 'lucide-react';
 import { PropReelAPI, Project } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { formatZar, formatRelative } from '../lib/utils';
@@ -55,20 +55,22 @@ export default function GlobalSearch() {
     const searchResults: SearchResult[] = [];
     const lowerQuery = query.toLowerCase();
 
-    // Search the user's real projects (DynamoDB)
+    // Search the user's real projects (DynamoDB) — reels and Talking Head clips
     projects.forEach(project => {
+      const isTalkingHead = project.kind === 'FLASHHEAD';
       if (
         project.title.toLowerCase().includes(lowerQuery) ||
         (project.suburb || '').toLowerCase().includes(lowerQuery) ||
-        (project.city || '').toLowerCase().includes(lowerQuery)
+        (project.city || '').toLowerCase().includes(lowerQuery) ||
+        (isTalkingHead && 'talking head'.includes(lowerQuery))
       ) {
         searchResults.push({
           id: project.id,
           type: 'project',
           title: project.title,
-          subtitle: [project.suburb, project.city].filter(Boolean).join(', ') + (project.price ? ` • ${formatZar(project.price)}` : ''),
-          icon: Video,
-          url: '/dashboard/listings',
+          subtitle: (isTalkingHead ? 'Talking Head • ' : '') + [project.suburb, project.city].filter(Boolean).join(', ') + (project.price ? ` • ${formatZar(project.price)}` : ''),
+          icon: isTalkingHead ? Mic : Video,
+          url: isTalkingHead ? '/studio?tab=flashhead' : '/dashboard/listings',
           category: 'Projects'
         });
       }
