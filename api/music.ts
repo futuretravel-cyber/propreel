@@ -48,8 +48,31 @@ async function requireAdmin(req: VercelRequest): Promise<{ ok: boolean; error?: 
   return { ok: true };
 }
 
+const ALLOWED_IMAGES = ['image/jpeg', 'image/png', 'image/webp'];
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
+    // ── POST /api/music?action=presign — signed upload for studio images ──
+    // Any signed-in user may upload their own property photos (shared with the
+    // music route to stay under the Vercel Hobby 12-function cap).
+    if (req.method === 'POST' && req.query.action === 'presign') {
+      const userId = req.body?.user_id;
+      if (!userId) return res.status(401).json({ error: 'Sign in to upload images' });
+      const requester = await getUser(userId);
+      if (!requester) return res.status(401).json({ error: 'Sign in to upload images' });
+
+      const { contentType } = req.body || {};
+      if (!ALLOWED_IMAGES.includes(contentType)) {
+        return res.status(400).json({ error: 'contentType must be image/jpeg, image/png or image/webp' });
+      }
+      const ext = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+      const key = `uploads/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+      const put = new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, ContentType: contentType });
+      const uploadUrl = await getSignedUrl(s3() as any, put, { expiresIn: 300 });
+      return res.status(200).json({ success: true, uploadUrl, publicUrl: publicUrl(key), expiresIn: 300 });
+    }
+
     // ── GET /api/music — list all tracks ─────────────────────────────
     if (req.method === 'GET') {
       const result = await docClient.send(new ScanCommand({

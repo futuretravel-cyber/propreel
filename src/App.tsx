@@ -47,6 +47,7 @@ import {
 
 import { lazy, Suspense } from 'react';
 import ShareSheet from './components/ShareSheet';
+import ImageWorkbench from './components/ImageWorkbench';
 import { buildPromptRotation } from './lib/videoPrompts';
 import { ThemeProvider } from './lib/theme';
 import HomePage from './components/HomePage';
@@ -840,161 +841,79 @@ function DescriptionTab() {
 function PhotoEditorTab() {
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [strength, setStrength] = useState(0.30);
-  const [processing, setProcessing] = useState(false);
-  const [result, setResult] = useState(false);
-  const [originalImage, setOriginalImage] = useState<string | null>(null);
-  const [beforeImg, setBeforeImg] = useState<string | null>(null);
-  const [afterImg, setAfterImg] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    if (!file.type.startsWith('image/')) {
-      setUploadError('Please upload an image file');
-      return;
-    }
-    
-    if (file.size > 25 * 1024 * 1024) {
-      setUploadError('Image must be less than 25MB');
-      return;
-    }
-    
-    setUploadError(null);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      setOriginalImage(result);
-      setBeforeImg(result);
-      setAfterImg(null);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const process = () => {
-    if (!originalImage) return;
-    setProcessing(true);
-    setAfterImg(null);
-    setTimeout(() => { 
-      setProcessing(false); 
-      setResult(true);
-      // Use Unsplash placeholder for after image
-      setAfterImg('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=400');
-    }, 3000);
-  };
-
-  const clearImage = () => {
-    setOriginalImage(null);
-    setBeforeImg(null);
-    setAfterImg(null);
-    setResult(false);
-    setSelectedPreset(null);
-  };
-
-  // Get photo editor presets from the comprehensive library
+  const [customPrompt, setCustomPrompt] = useState('');
   const photoPresets = IMAGE_PRESETS.filter(p => p.category === 'photo_editor');
+  const active = photoPresets.find(p => p.id === selectedPreset);
 
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-bold text-white flex items-center gap-2"><Camera className="w-5 h-5 text-purple-400" /> AI Photo Editor</h2>
-      <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3 mb-4">
+      <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits
+          Each image render costs 2 credits — failed renders are refunded automatically
         </p>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div>
-          <label className="label">Upload Photo</label>
-          {!originalImage ? (
-            <div className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center hover:border-purple-500/30 transition cursor-pointer" onClick={() => document.getElementById('photo-upload')?.click()}>
-              <input id="photo-upload" type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-              <Camera className="w-8 h-8 text-ink-400 mx-auto mb-2" />
-              <p className="text-ink-400 text-sm">Drop image here or click to upload</p>
-              <p className="text-ink-500 text-xs mt-1">JPEG, PNG, WEBP up to 25MB</p>
-              {uploadError && <p className="text-red-400 text-xs mt-2">{uploadError}</p>}
-            </div>
-          ) : (
-            <div className="relative">
-              <img src={originalImage} alt="Uploaded photo" className="w-full h-64 object-cover rounded-xl" />
-              <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition flex items-center justify-center gap-2">
-                <button onClick={(e) => { e.stopPropagation(); document.getElementById('photo-upload')?.click(); }} className="btn btn-secondary text-xs py-1 px-3">Change</button>
-                <button onClick={clearImage} className="btn btn-ghost text-xs py-1 px-3 text-red-400">Remove</button>
-              </div>
-            </div>
-          )}
-          <div className="mt-4">
-            <label className="label">Quick Presets</label>
-            <div className="grid grid-cols-2 gap-2 max-h-[400px] overflow-y-auto">
-              {photoPresets.map(p => (
-                <button 
-                  key={p.id} 
-                  onClick={() => { 
-                    setSelectedPreset(p.id); 
-                    setStrength(p.strength.default); 
-                  }} 
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition ${
-                    selectedPreset === p.id 
-                      ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' 
-                      : 'bg-white/5 text-ink-300 hover:bg-white/10'
-                  }`}
-                >
-                  <span>{p.emoji}</span> {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="mt-4">
-            <label className="label">Custom Prompt</label>
-            <textarea className="input min-h-[80px]" placeholder="Describe the edit you want..." />
-          </div>
-          {selectedPreset && (
-            <div className="mt-4 p-3 bg-ink-800/50 rounded-lg">
-              <p className="text-xs text-ink-400 mb-2">
-                Recommended strength: {photoPresets.find(p => p.id === selectedPreset)?.strength.min.toFixed(2)} - {photoPresets.find(p => p.id === selectedPreset)?.strength.max.toFixed(2)}
-              </p>
-            </div>
-          )}
-          <div className="mt-4">
-            <label className="label">Strength: {strength.toFixed(2)}</label>
-            <input 
-              type="range" 
-              min={0.20} 
-              max={0.60} 
-              step={0.01} 
-              value={strength} 
-              onChange={e => setStrength(Number(e.target.value))} 
-              className="w-full" 
-            />
-            <p className="text-xs text-ink-500 mt-1">Range: 0.20 - 0.60 (preset-specific optimal range shown above)</p>
-          </div>
-          <button onClick={process} disabled={processing} className="btn btn-primary mt-4 w-full">
-            {processing ? <><RefreshCw className="w-4 h-4 animate-spin" /> Processing...</> : <><Wand2 className="w-4 h-4" /> Enhance Photo (2 credits)</>}
-          </button>
-        </div>
-        <div>
-          <label className="label">Preview</label>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="aspect-square rounded-xl bg-ink-800 overflow-hidden relative">
-              {beforeImg ? (
-                <img src={beforeImg} alt="Before" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-ink-500">No image</div>
-              )}
-              <p className="absolute bottom-2 left-2 badge badge-muted text-[10px]">Before</p>
-            </div>
-            <div className="aspect-square rounded-xl bg-ink-800 overflow-hidden relative">
-              {result && afterImg ? (
-                <img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=400" alt="After" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-ink-500 text-sm">Result will appear here</div>
-              )}
-              <p className="absolute bottom-2 left-2 badge badge-success text-[10px]">After</p>
-            </div>
-          </div>
+      <div>
+        <label className="label">Enhancement Preset</label>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {photoPresets.map(p => (
+            <button
+              key={p.id}
+              onClick={() => { setSelectedPreset(p.id); setStrength(p.strength.default); }}
+              className={`p-4 rounded-xl text-center transition ${selectedPreset === p.id ? 'bg-purple-700/20 border border-purple-500/30 text-purple-300' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+            >
+              <span className="text-2xl">{p.emoji}</span>
+              <p className="text-xs mt-2 font-medium">{p.label}</p>
+            </button>
+          ))}
         </div>
       </div>
+      {active && (
+        <div className="p-3 bg-ink-800/50 rounded-lg">
+          <p className="text-xs text-ink-400">
+            <strong className="text-ink-300">{active.label}:</strong> Strength {active.strength.min.toFixed(2)}–{active.strength.max.toFixed(2)} (slider locked to range), Guidance {active.guidanceScale.min.toFixed(1)}–{active.guidanceScale.max.toFixed(1)}
+          </p>
+        </div>
+      )}
+      {selectedPreset && (
+        <>
+          <div>
+            <label className="label">Strength: {strength.toFixed(2)} <span className="text-ink-500 text-xs">(preset range enforced)</span></label>
+            <input
+              type="range"
+              min={active!.strength.min}
+              max={active!.strength.max}
+              step={0.01}
+              value={strength}
+              onChange={e => setStrength(Number(e.target.value))}
+              className="w-full accent-purple-600"
+            />
+          </div>
+          <div>
+            <label className="label">Custom prompt (optional — overrides the preset)</label>
+            <textarea
+              className="input min-h-[80px]"
+              value={customPrompt}
+              onChange={e => setCustomPrompt(e.target.value)}
+              placeholder="Describe a custom enhancement…"
+            />
+          </div>
+          <ImageWorkbench
+            presetId={selectedPreset}
+            strength={strength}
+            customPrompt={customPrompt.trim() ? customPrompt : undefined}
+            ctaLabel={`Enhance (2 credits)`}
+            emptyHint="JPEG, PNG, WEBP up to 25MB"
+          />
+        </>
+      )}
+      {!selectedPreset && (
+        <div className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center">
+          <Camera className="w-8 h-8 text-ink-400 mx-auto mb-2" />
+          <p className="text-ink-400 text-sm">Pick an enhancement preset above to begin</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1002,8 +921,6 @@ function PhotoEditorTab() {
 function StagingTab() {
   const [room, setRoom] = useState('living_room');
   const [style, setStyle] = useState('luxury_modern');
-  
-  // Get staging presets from the comprehensive library
   const stagingPresets = IMAGE_PRESETS.filter(p => p.category === 'staging');
   const selectedPreset = stagingPresets.find(p => p.id === style);
 
@@ -1013,7 +930,7 @@ function StagingTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits
+          Each image render costs 2 credits — failed renders are refunded automatically
         </p>
       </div>
       <div>
@@ -1040,23 +957,23 @@ function StagingTab() {
       {selectedPreset && (
         <div className="p-3 bg-ink-800/50 rounded-lg">
           <p className="text-xs text-ink-400">
-            <strong className="text-ink-300">Recommended Settings:</strong> Strength {selectedPreset.strength.min.toFixed(2)}-{selectedPreset.strength.max.toFixed(2)}, Guidance {selectedPreset.guidanceScale.min.toFixed(1)}-{selectedPreset.guidanceScale.max.toFixed(1)}
+            <strong className="text-ink-300">{selectedPreset.label}:</strong> Strength {selectedPreset.strength.min.toFixed(2)}–{selectedPreset.strength.max.toFixed(2)}, Guidance {selectedPreset.guidanceScale.min.toFixed(1)}–{selectedPreset.guidanceScale.max.toFixed(1)}
           </p>
         </div>
       )}
-      <div className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center">
-        <Image className="w-8 h-8 text-ink-400 mx-auto mb-2" />
-        <p className="text-ink-400 text-sm">Upload an empty room photo to stage</p>
-      </div>
-      <button className="btn btn-primary"><Wand2 className="w-4 h-4" /> Stage Room (2 credits)</button>
+      <ImageWorkbench
+        presetId={style}
+        strength={selectedPreset?.strength.default}
+        guidanceScale={selectedPreset?.guidanceScale.default}
+        ctaLabel="Stage Room (2 credits)"
+        emptyHint="Upload an empty room photo — JPEG/PNG/WEBP up to 25MB"
+      />
     </div>
   );
 }
 
 function RemovalTab() {
   const [mode, setMode] = useState('remove_all_furniture');
-  
-  // Get removal presets from the comprehensive library
   const removalPresets = IMAGE_PRESETS.filter(p => p.category === 'removal');
   const selectedPreset = removalPresets.find(p => p.id === mode);
 
@@ -1066,7 +983,7 @@ function RemovalTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits
+          Each image render costs 2 credits — failed renders are refunded automatically
         </p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1080,23 +997,23 @@ function RemovalTab() {
       {selectedPreset && (
         <div className="p-3 bg-ink-800/50 rounded-lg">
           <p className="text-xs text-ink-400">
-            <strong className="text-ink-300">Recommended Settings:</strong> Strength {selectedPreset.strength.min.toFixed(2)}-{selectedPreset.strength.max.toFixed(2)}, Guidance {selectedPreset.guidanceScale.min.toFixed(1)}-{selectedPreset.guidanceScale.max.toFixed(1)}
+            <strong className="text-ink-300">{selectedPreset.label}:</strong> Strength {selectedPreset.strength.min.toFixed(2)}–{selectedPreset.strength.max.toFixed(2)}, Guidance {selectedPreset.guidanceScale.min.toFixed(1)}–{selectedPreset.guidanceScale.max.toFixed(1)}
           </p>
         </div>
       )}
-      <div className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center">
-        <Image className="w-8 h-8 text-ink-400 mx-auto mb-2" />
-        <p className="text-ink-400 text-sm">Upload a photo with furniture to remove</p>
-      </div>
-      <button className="btn btn-primary"><Trash2 className="w-4 h-4" /> Remove (2 credits)</button>
+      <ImageWorkbench
+        presetId={mode}
+        strength={selectedPreset?.strength.default}
+        guidanceScale={selectedPreset?.guidanceScale.default}
+        ctaLabel="Remove (2 credits)"
+        emptyHint="Upload a photo with furniture or clutter to remove"
+      />
     </div>
   );
 }
 
 function TwilightTab() {
   const [style, setStyle] = useState('blue_hour');
-  
-  // Get twilight presets from the comprehensive library
   const twilightPresets = IMAGE_PRESETS.filter(p => p.category === 'twilight');
   const selectedPreset = twilightPresets.find(p => p.id === style);
 
@@ -1106,29 +1023,34 @@ function TwilightTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits
+          Each image render costs 2 credits — failed renders are refunded automatically
         </p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {twilightPresets.map(s => (
-          <button key={s.id} onClick={() => setStyle(s.id)} className={`p-6 rounded-xl text-center transition ${style === s.id ? 'bg-purple-700/20 border border-purple-500/30 text-purple-300' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
-            <span className="text-3xl">{s.emoji}</span>
-            <p className="font-medium mt-3 text-sm">{s.label}</p>
-          </button>
-        ))}
+      <div>
+        <label className="label">Twilight Style</label>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {twilightPresets.map(s => (
+            <button key={s.id} onClick={() => setStyle(s.id)} className={`p-4 rounded-xl text-center transition ${style === s.id ? 'bg-purple-700/20 border border-purple-500/30 text-purple-300' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
+              <span className="text-2xl">{s.emoji}</span>
+              <p className="text-xs mt-2 font-medium">{s.label}</p>
+            </button>
+          ))}
+        </div>
       </div>
       {selectedPreset && (
         <div className="p-3 bg-ink-800/50 rounded-lg">
           <p className="text-xs text-ink-400">
-            <strong className="text-ink-300">Recommended Settings:</strong> Strength {selectedPreset.strength.min.toFixed(2)}-{selectedPreset.strength.max.toFixed(2)}, Guidance {selectedPreset.guidanceScale.min.toFixed(1)}-{selectedPreset.guidanceScale.max.toFixed(1)}
+            <strong className="text-ink-300">{selectedPreset.label}:</strong> Strength {selectedPreset.strength.min.toFixed(2)}–{selectedPreset.strength.max.toFixed(2)}, Guidance {selectedPreset.guidanceScale.min.toFixed(1)}–{selectedPreset.guidanceScale.max.toFixed(1)}
           </p>
         </div>
       )}
-      <div className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center">
-        <Image className="w-8 h-8 text-ink-400 mx-auto mb-2" />
-        <p className="text-ink-400 text-sm">Upload a daytime exterior photo</p>
-      </div>
-      <button className="btn btn-primary"><MoonIcon className="w-4 h-4" /> Convert to Twilight (2 credits)</button>
+      <ImageWorkbench
+        presetId={style}
+        strength={selectedPreset?.strength.default}
+        guidanceScale={selectedPreset?.guidanceScale.default}
+        ctaLabel="Convert to Twilight (2 credits)"
+        emptyHint="Upload a daytime exterior photo — best results on clear shots of the full property"
+      />
     </div>
   );
 }

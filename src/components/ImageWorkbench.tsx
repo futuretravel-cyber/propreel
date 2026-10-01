@@ -1,0 +1,114 @@
+import { useRef, useState } from 'react';
+import { Camera, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
+import { useImageEdit } from '../lib/useImageEdit';
+
+interface ImageWorkbenchProps {
+  presetId: string;
+  strength?: number;
+  guidanceScale?: number;
+  customPrompt?: string;
+  ctaLabel: string;
+  emptyHint: string;
+  accept?: string;
+}
+
+/**
+ * Upload → render → before/after workbench shared by all four image tools.
+ * Renders via Modal (fal-ai/flux/dev/image-to-image) and deducts 2 credits.
+ */
+export default function ImageWorkbench({ presetId, strength, guidanceScale, customPrompt, ctaLabel, emptyHint }: ImageWorkbenchProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { edit, busy, stage, error, setError } = useImageEdit();
+
+  const pick = (f: File | null) => {
+    if (!f) return;
+    if (!f.type.startsWith('image/')) { setError('Please upload an image file'); return; }
+    if (f.size > 25 * 1024 * 1024) { setError('Image must be under 25MB'); return; }
+    setFile(f);
+    setResultUrl(null);
+    setError(null);
+    const reader = new FileReader();
+    reader.onloadend = () => setPreview(reader.result as string);
+    reader.readAsDataURL(f);
+  };
+
+  const run = async () => {
+    if (!file) return;
+    const res = await edit({ file, presetId, strength, guidanceScale, customPrompt });
+    if (res) setResultUrl(res.imageUrl);
+  };
+
+  const stageLabel = stage === 'uploading' ? 'Uploading image…'
+    : stage === 'deducting' ? 'Reserving credits…'
+    : stage === 'rendering' ? 'AI is working — typically 15–40 s…'
+    : '';
+
+  return (
+    <div className="space-y-4">
+      {!preview ? (
+        <div
+          className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center hover:border-purple-500/30 transition cursor-pointer"
+          onClick={() => inputRef.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+          aria-label="Upload image"
+        >
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => pick(e.target.files?.[0] || null)} />
+          <Camera className="w-8 h-8 text-ink-400 mx-auto mb-2" />
+          <p className="text-ink-400 text-sm">Drop image here or click to upload</p>
+          <p className="text-ink-500 text-xs mt-1">{emptyHint}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-xs text-ink-400 mb-1.5 font-medium">Before</p>
+            <img src={preview} alt="Original" className="w-full aspect-square object-cover rounded-xl border border-white/10" />
+          </div>
+          <div>
+            <p className="text-xs text-ink-400 mb-1.5 font-medium">After</p>
+            {resultUrl ? (
+              <img src={resultUrl} alt="AI result" className="w-full aspect-square object-cover rounded-xl border border-purple-500/30" />
+            ) : (
+              <div className="w-full aspect-square rounded-xl border border-dashed border-white/10 flex items-center justify-center text-ink-500 text-xs">
+                {busy ? <Loader2 className="w-5 h-5 animate-spin text-purple-400" /> : 'Awaiting render'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-950/40 border border-red-500/30 rounded-lg p-3 text-sm text-red-300 flex items-start justify-between gap-2">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} aria-label="Dismiss error" className="text-red-400 hover:text-red-300 min-h-[24px] min-w-[24px]">×</button>
+        </div>
+      )}
+
+      {preview && (
+        <div className="flex gap-3">
+          <button onClick={run} disabled={busy} className="btn btn-primary flex-1 min-h-[48px]">
+            {busy ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
+            ) : (
+              <><Zap className="w-4 h-4" /> {ctaLabel}</>
+            )}
+          </button>
+          {resultUrl && (
+            <>
+              <a href={resultUrl} target="_blank" rel="noopener" className="btn btn-secondary min-h-[48px]">
+                <Download className="w-4 h-4" /> Download
+              </a>
+              <button onClick={() => { setResultUrl(null); }} className="btn btn-ghost min-h-[48px]" aria-label="Re-render">
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

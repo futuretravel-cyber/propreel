@@ -1,82 +1,63 @@
 /**
  * Fal.ai FLUX Dev image-to-image client.
  *
- * Implements the spec doc rules:
- *  - Endpoint: https://fal.run/fal-ai/flux/dev/image-to-image
- *  - Geometry-lock SYSTEM OVERRIDE prepended to EVERY prompt
- *  - Fixed negative prompt injected on every request
- *  - Strength clamped to 0.25–0.35 (0.25 lighting, 0.30 staging, 0.35 removal)
- *  - Result URL is returned; Modal re-hosts to S3
+ * Model: fal-ai/flux/dev/image-to-image (called via the Modal web service's
+ * /edit_image endpoint, which holds FAL_KEY server-side).
  *
- * Runs through the Modal web service (`/edit_image`) which holds FAL_KEY
- * server-side — the browser never sees the key.
+ * Strength/guidance come from the per-preset ranges in imagePrompts.ts
+ * (e.g. Remove All Furniture 0.5–0.6, Brighten 0.2–0.3) — the prompt library
+ * is the source of truth; no global clamp is applied here because presets
+ * legitimately need up to 0.6 for removal tasks.
  */
 
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
-// CRITICAL: prepended to every prompt (spec doc "CRITICAL" note)
-export const GEOMETRY_LOCK_PREFIX =
-  '[SYSTEM OVERRIDE: 100% PIXEL & GEOMETRY LOCK] Architectural preservation. Retain every original wall, brickwork, window frame, staircase, and fixture precisely.';
-
-// CRITICAL: injected negative prompt (spec doc)
-export const FAL_NEGATIVE_PROMPT =
-  'text, watermarks, signatures, letters, words, blurry, distorted geometry, extra rooms, structural mutation, changing staircases, shifting windows, hallucinated built-in furniture, cupboards.';
-
-export type FalEditCategory = 'lighting' | 'staging' | 'removal';
-
-/** Backend clamp per category (doc: 0.25 lighting, 0.30 staging, 0.35 removal) */
-export const STRENGTH_CLAMP: Record<FalEditCategory, number> = {
-  lighting: 0.25,
-  staging: 0.30,
-  removal: 0.35,
-};
-
-export function clampStrength(requested: number, category: FalEditCategory): number {
-  const cap = STRENGTH_CLAMP[category];
-  // Doc: enforce strength between 0.25 and 0.35 overall
-  return Math.min(0.35, Math.max(0.25, Math.min(requested, cap)));
-}
-
 export interface FalEditParams {
-  imageUrl: string;
-  prompt: string;
-  category: FalEditCategory;
-  strength?: number;
+  imageUrl: string;         // public URL or data URI accepted by Modal/Fal
+  presetId: string;         // preset from imagePrompts.ts (server resolves prompt+negative)
+  strength?: number;        // within the preset's min–max; server defaults to preset default
   guidanceScale?: number;
+  customPrompt?: string;    // overrides the preset prompt (AI Photo Editor custom box)
 }
 
 export interface FalEditResult {
   imageUrl: string;
+  presetId: string;
   strengthUsed: number;
-  promptUsed: string;
+  guidanceUsed: number;
 }
 
 export async function falEditImage(params: FalEditParams): Promise<FalEditResult> {
-  const strengthUsed = clampStrength(params.strength ?? STRENGTH_CLAMP[params.category], params.category);
-  const promptUsed = `${GEOMETRY_LOCK_PREFIX} ${params.prompt}`;
-
   const response = await fetch(`${MODAL_ENDPOINT}/edit_image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       image_url: params.imageUrl,
-      prompt: promptUsed,
-      negative_prompt: FAL_NEGATIVE_PROMPT,
-      strength: strengthUsed,
+      preset_id: params.presetId,
+      strength: params.strength,
       guidance_scale: params.guidanceScale,
-      model: 'fal-ai/flux/dev/image-to-image',
+      custom_prompt: params.customPrompt || undefined,
     }),
   });
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || `Fal edit failed (${response.status})`);
+    throw new Error(err.detail || err.error || `Image edit failed (${response.status})`);
   }
 
   const data = await response.json();
+  const imageUrl = data.image_url || data.imageUrl || data.url || data.output?.image_url;
+  if (!imageUrl) throw new Error('Modal returned no image URL');
+
   return {
-    imageUrl: data.image_url || data.imageUrl || data.url,
-    strengthUsed,
-    promptUsed,
+    imageUrl,
+    presetId: params.presetId,
+    strengthUsed: data.strength_used ?? params.strength ?? 0,
+    guidanceUsed: data.guidance_scale_used ?? params.guidanceScale ?? 0,
   };
+}
+
+/** Clamp a user-chosen strength into the preset's recommended range. */
+export function clampToPreset(requested: number, preset: { strength: { min: number; max: number; default: number } }): number {
+  return Math.min(preset.strength.max, Math.max(preset.strength.min, requested));
 }
