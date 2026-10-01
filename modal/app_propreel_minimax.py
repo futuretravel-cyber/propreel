@@ -575,15 +575,14 @@ def probe_fal_health():
     started = _time.time()
     record = {"checkedAt": __import__('datetime').datetime.utcnow().isoformat(), "healthy": False, "class": "provider_error", "detail": "", "latencyMs": None}
     try:
-        result = fal_client.run(
-            "openrouter/router/google/gemini-2.0-flash-001",
-            arguments={"messages": [{"role": "user", "content": "ping"}]},
-        )
-        ok = isinstance(result, dict) and bool(result.get("choices"))
+        # Use the same resilient LLM chain as /generate_text — model paths on
+        # the router drift, so the probe must not pin a single dead path.
+        text = _llm_chat([{"role": "user", "content": "ping"}])
+        ok = bool(text and text.strip())
         record.update({
             "healthy": bool(ok),
             "class": "healthy" if ok else "provider_error",
-            "detail": "" if ok else f"Unexpected response shape: {str(result)[:200]}",
+            "detail": "" if ok else "LLM returned an empty response",
             "latencyMs": int((_time.time() - started) * 1000),
         })
     except Exception as e:
@@ -615,8 +614,9 @@ def _llm_chat(messages: list) -> str:
     fal-ai/any-llm is deprecated; the OpenAI-compatible replacements live
     under openrouter/router. Model catalogs drift, so try several routes."""
     attempts = [
-        # (endpoint, extra args) — first success wins
-        ("openrouter/router/google/gemini-2.0-flash-001", {}),
+        # (endpoint, extra args) — first success wins.
+        # (the bare openrouter/router/google/gemini-… path 404s now; the
+        # OpenAI-compatible /v1/chat/completions routes are the live ones)
         ("openrouter/router/openai/v1/chat/completions", {"model": "google/gemini-2.0-flash-001"}),
         ("openrouter/router/openai/v1/chat/completions", {"model": "openai/gpt-4o-mini"}),
     ]
