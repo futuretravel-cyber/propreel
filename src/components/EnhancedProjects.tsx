@@ -6,7 +6,7 @@ import { formatZar, formatRelative } from '../lib/utils';
 import { PropReelAPI, Project } from '../lib/api';
 import {
   Search, Grid, List as ListIcon, FolderOpen, FolderPlus, Pencil, Trash2,
-  Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2, Mic, Video,
+  Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2, Mic, Video, Download,
 } from 'lucide-react';
 
 interface Folder {
@@ -475,6 +475,15 @@ export default function EnhancedProjects() {
                       </div>
                     </div>
                     <div className="flex gap-2 mt-3 pt-3 border-t border-white/5">
+                      {p.videoUrl && p.status === 'READY' && (
+                        <button
+                          onClick={() => { window.location.href = `/api/projects?action=social_pack&user_id=${encodeURIComponent(user!.id)}&id=${encodeURIComponent(p.id)}`; }}
+                          className="flex-1 btn btn-ghost text-xs py-1.5 text-purple-300 hover:text-purple-200"
+                          title="Download a branded social pack: video(s) + ready-to-post captions"
+                        >
+                          <Download className="w-3 h-3" /> Social pack
+                        </button>
+                      )}
                       {p.videoUrl && p.status === 'READY' && (
                         <button
                           onClick={() => window.open(p.videoUrl!, '_blank')}

@@ -2,6 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser, updateUser } from '../lib/userService';
 import { TABLES, queryItems, putItem, updateItem } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
+import JSZip from 'jszip';
 
 export interface ProjectFolder {
   id: string;
@@ -91,6 +92,116 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // ── GET /api/projects?action=social_pack&user_id=…&id=… ─────
+    // Branded download bundle: the reel, the agent's latest Talking Head
+    // clip (when one exists), ready-to-post captions, and a branding file.
+    if (req.method === 'GET' && action === 'social_pack') {
+      const userId = req.query.user_id as string;
+      const id = req.query.id as string;
+      if (!userId || !id) return res.status(400).json({ error: 'Missing user_id or id' });
+
+      const [user, owned] = await Promise.all([
+        getUser(userId),
+        queryItems<any>(TABLES.PROJECTS, { expression: 'userId = :u AND id = :i', values: { ':u': userId, ':i': id }, limit: 1 }),
+      ]);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!owned.length) return res.status(404).json({ error: 'Project not found' });
+      const project = owned[0];
+      if (project.status !== 'READY' || !project.videoUrl) {
+        return res.status(400).json({ error: 'This project has no finished video yet' });
+      }
+
+      const slug = String(project.title || 'property')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'property';
+      const zip = new JSZip();
+
+      const fetchVideo = async (url: string): Promise<Buffer> => {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`Video unavailable (${r.status})`);
+        return Buffer.from(await r.arrayBuffer());
+      };
+
+      // 1) The card's own video
+      try {
+        const main = await fetchVideo(project.videoUrl);
+        zip.file(`${slug}-${project.kind === 'FLASHHEAD' ? 'talking-head' : 'reel'}.mp4`, main);
+      } catch (e: any) {
+        return res.status(502).json({ error: `Could not fetch the video: ${e.message}` });
+      }
+
+      // 2) The agent's latest ready Talking Head clip (for reel cards)
+      if (project.kind !== 'FLASHHEAD') {
+        const all = await queryItems<any>(TABLES.PROJECTS, { expression: 'userId = :u', values: { ':u': userId } });
+        const talkingHead = all
+          .filter((p: any) => p.kind === 'FLASHHEAD' && p.status === 'READY' && p.videoUrl)
+          .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+        if (talkingHead) {
+          try {
+            zip.file('talking-head.mp4', await fetchVideo(talkingHead.videoUrl));
+          } catch { /* optional — pack ships without it */ }
+        }
+      }
+
+      // 3) Ready-to-post captions from the real listing data
+      const loc = [project.suburb, project.city].filter(Boolean).join(', ');
+      const beds = Number(project.bedrooms) || 0;
+      const baths = Number(project.bathrooms) || 0;
+      const price = Number(project.price) || 0;
+      const stats = [
+        beds ? `${beds} bedroom${beds === 1 ? '' : 's'}` : '',
+        baths ? `${baths} bathroom${baths === 1 ? '' : 's'}` : '',
+        price ? `R ${price.toLocaleString('en-ZA')}` : '',
+      ].filter(Boolean).join(' • ');
+      const contact = [user.fullName, user.agencyName, user.email].filter(Boolean).join(' | ');
+      const captionBody = [
+        `🎬 ${project.title}${loc ? ` — ${loc}` : ''}`,
+        stats,
+        '',
+        'Full video walkthrough available — send me a message to arrange a viewing.',
+        contact ? `📍 ${contact}` : '',
+        '',
+        '#PropertyForSale #SouthAfrica #RealEstate',
+        loc ? `#${loc.split(',')[0].trim().replace(/\s+/g, '')} #${(project.city || 'Property').replace(/\s+/g, '')}Property` : '#NewListing',
+      ].filter(l => l !== undefined).join('\n');
+      zip.file('captions.txt', [
+        'Ready-to-post captions (edit freely — generated from your listing data).',
+        'For AI-written variations, open the Studio → Social Media tab.',
+        '',
+        '── Instagram / Facebook ──',
+        captionBody,
+        '',
+        '── WhatsApp status ──',
+        `🎬 New video tour: ${project.title}${loc ? ` (${loc})` : ''}${stats ? ` — ${stats}` : ''}. Take a look 👇`,
+      ].join('\n'));
+
+      // 4) Branding / README
+      zip.file('README.txt', [
+        'PropReel Social Pack',
+        '====================',
+        '',
+        `Listing: ${project.title}`,
+        loc ? `Location: ${loc}` : null,
+        `Generated: ${new Date().toISOString().slice(0, 10)}`,
+        '',
+        'Contents:',
+        `• ${slug}-${project.kind === 'FLASHHEAD' ? 'talking-head' : 'reel'}.mp4 — your ${project.kind === 'FLASHHEAD' ? 'Talking Head clip' : 'AI video reel'}`,
+        ...(zip.file('talking-head.mp4') ? ['• talking-head.mp4 — your AI Talking Head clip'] : []),
+        '• captions.txt — ready-to-post captions with your branding',
+        '',
+        contact ? `Branded for: ${contact}` : null,
+        'Created with PropReel — propreel.co.za',
+      ].filter(l => l !== null).join('\n'));
+
+      const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' });
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="propreel-social-pack-${slug}.zip"`);
+      res.setHeader('Content-Length', String(buf.length));
+      return res.status(200).send(buf);
+    }
+
     // ── GET /api/projects?user_id=… ──────────────────────────────────
     if (req.method === 'GET') {
       const userId = req.query.user_id as string;

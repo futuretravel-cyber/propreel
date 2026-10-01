@@ -92,9 +92,16 @@ export async function queryItems<T>(tableName: string, keyCondition: any, option
   const params: any = {
     TableName: tableName,
     KeyConditionExpression: keyCondition.expression,
-    ExpressionAttributeNames: keyCondition.names || {},
     ExpressionAttributeValues: keyCondition.values || {},
   };
+
+  // DynamoDB REJECTS empty ExpressionAttributeNames/Values maps
+  // ("must not be empty") — only include them when non-empty, otherwise
+  // every names-less query silently returned [] via the catch below.
+  const names = keyCondition.names || {};
+  if (Object.keys(names).length > 0) {
+    params.ExpressionAttributeNames = { ...names };
+  }
 
   if (options?.filter) {
     params.FilterExpression = options.filter.expression;
@@ -104,6 +111,11 @@ export async function queryItems<T>(tableName: string, keyCondition: any, option
     if (options.filter.values) {
       params.ExpressionAttributeValues = { ...params.ExpressionAttributeValues, ...options.filter.values };
     }
+    if (Object.keys(params.ExpressionAttributeValues).length === 0) {
+      delete params.ExpressionAttributeValues;
+    }
+  } else if (Object.keys(params.ExpressionAttributeValues).length === 0) {
+    delete params.ExpressionAttributeValues;
   }
 
   if (options?.limit) {
