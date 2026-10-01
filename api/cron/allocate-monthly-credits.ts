@@ -1,6 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { scanItems, TABLES } from '../../lib/db';
 import { allocateMonthlyCredits, getUser } from '../../lib/userService';
+import { recordCronRun } from '../../lib/cronRuns';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow Vercel cron or manual trigger with secret
@@ -21,6 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   console.log('Starting monthly credit allocation...');
+  const started = Date.now();
 
   try {
     // Get all users with active subscriptions
@@ -47,6 +49,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log(`Monthly credit allocation complete: ${allocated} credits allocated`);
 
+    await recordCronRun('allocate-monthly-credits', 'success', Date.now() - started, `allocated=${allocated} errors=${errors.length}`);
+
     return res.status(200).json({
       success: true,
       allocated,
@@ -56,6 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (error) {
     console.error('Monthly credit allocation error:', error);
+    await recordCronRun('allocate-monthly-credits', 'error', Date.now() - started, String((error as any)?.message || error));
     return res.status(500).json({ error: 'Allocation failed' });
   }
 }

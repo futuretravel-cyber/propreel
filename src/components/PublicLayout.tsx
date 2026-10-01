@@ -86,6 +86,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
                 <Link to="/dashboard" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Dashboard</Link>
                 <Link to="/studio" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Video Studio</Link>
                 <Link to="/reviews" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Reviews</Link>
+                <Link to="/status" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">System status</Link>
                 <Link to="/#faq" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">FAQ</Link>
               </div>
             </div>

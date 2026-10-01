@@ -1,4 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
+import { recordCronRun } from '../../lib/cronRuns';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow Vercel cron or manual trigger with secret
@@ -17,9 +18,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   console.log('Expiry notifications job started...');
+  const started = Date.now();
 
   // TODO: Implement email notifications for users with expiring credits
   // This would integrate with an email service (SendGrid, AWS SES, etc.)
+
+  await recordCronRun('send-expiry-notifications', 'success', Date.now() - started, 'no-op — email integration not built yet');
 
   return res.status(200).json({
     success: true,

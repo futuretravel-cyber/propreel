@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { processExpiredCredits } from '../../lib/userService';
+import { recordCronRun } from '../../lib/cronRuns';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow Vercel cron or manual trigger with secret
@@ -19,9 +20,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   console.log('Starting expired credits processing...');
+  const started = Date.now();
 
   try {
     const result = await processExpiredCredits();
+
+    await recordCronRun('process-expired-credits', 'success', Date.now() - started, `processed=${result.processed} expiredCredits=${result.expiredAmount}`);
 
     console.log(`Expired credits processing complete: ${result.processed} users, ${result.expiredAmount} credits expired`);
 
@@ -32,6 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (error) {
     console.error('Expired credits processing error:', error);
+    await recordCronRun('process-expired-credits', 'error', Date.now() - started, String((error as any)?.message || error));
     return res.status(500).json({ error: 'Processing failed' });
   }
 }

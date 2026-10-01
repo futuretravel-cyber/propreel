@@ -55,6 +55,7 @@ import ImageWorkbench from './components/ImageWorkbench';
 import { buildPromptRotation } from './lib/videoPrompts';
 import { ThemeProvider } from './lib/theme';
 import HomePage from './components/HomePage';
+import StatusPage from './pages/StatusPage';
 import { PublicLayout } from './components/PublicLayout';
 import { track } from './lib/analytics';
 
@@ -2162,6 +2163,7 @@ function AppRoutes() {
       <Route path="/paia" element={<PAIAManualPage />} />
       <Route path="/dpa" element={<DataProcessingAgreementPage />} />
       <Route path="/tutorial" element={<TutorialVideoPage />} />
+      <Route path="/status" element={<PublicLayout><StatusPage /></PublicLayout>} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<SignupPage />} />
       <Route path="/signup" element={<SignupPage />} />

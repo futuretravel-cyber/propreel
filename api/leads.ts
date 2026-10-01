@@ -83,6 +83,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ── GET /api/leads?action=status — public system health (no secrets) ──
+  // Feeds the /status page: cron freshness from the settings table + a real
+  // S3 HeadBucket (verifies credentials and bucket reachability). The API
+  // responding at all also proves DynamoDB connectivity.
+  if (req.method === 'GET' && (req.query.action as string) === 'status') {
+    const cronNames = [
+      { name: 'allocate-monthly-credits', label: 'Monthly credit allocation', schedule: '1st of the month, 00:00 UTC', maxAgeHours: 24 * 35 },
+      { name: 'process-expired-credits', label: 'Expired credit processing', schedule: 'Daily, 00:00 UTC', maxAgeHours: 30 },
+      { name: 'send-expiry-notifications', label: 'Expiry notifications', schedule: 'Daily, 09:00 UTC', maxAgeHours: 30 },
+    ];
+    const crons = await Promise.all(cronNames.map(async ({ name, label, schedule, maxAgeHours }) => {
+      const rec = await getItem<any>(TABLES.SETTINGS, { id: `cron_run_${name}` }).catch(() => null);
+      const ageHours = rec?.finishedAt ? (Date.now() - Date.parse(rec.finishedAt)) / 3600000 : null;
+      return {
+        name,
+        label,
+        schedule,
+        lastRun: rec ? { status: rec.status, finishedAt: rec.finishedAt, durationMs: rec.durationMs, detail: rec.detail || null } : null,
+        healthy: rec ? rec.status === 'success' && (ageHours as number) <= maxAgeHours : null,
+        ageHours: ageHours != null ? Math.round(ageHours * 10) / 10 : null,
+      };
+    }));
+
+    let storage: { healthy: boolean | null; detail: string } = { healthy: null, detail: 'Not checked' };
+    try {
+      const { S3Client, HeadBucketCommand } = await import('@aws-sdk/client-s3');
+      const s3 = new S3Client({
+        region: process.env.AWS_REGION || 'af-south-1',
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+        },
+      });
+      await s3.send(new HeadBucketCommand({ Bucket: process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets' }));
+      storage = { healthy: true, detail: 'Uploads bucket reachable' };
+    } catch (e: any) {
+      storage = { healthy: false, detail: String(e?.name || e).slice(0, 140) };
+    }
+
+    return res.status(200).json({ success: true, crons, storage, generatedAt: new Date().toISOString() });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
