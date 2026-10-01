@@ -1,6 +1,6 @@
 # PropReel — Deployment Status
 
-**Last updated:** 30 September 2026
+**Last updated:** 30 September 2026 — Git auto-deploy from GitHub now connected
 
 ## Production
 
