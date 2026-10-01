@@ -518,7 +518,7 @@ def render_video(
     # In production, you'd use moviepy to add audio tracks
     
     print(f"✅ Render complete: {video_url}")
-    _write_job_status(record_id, "completed", {"video_url": video_url, "progress": 100})
+    _write_job_status(record_id, "completed", {"video_url": video_url, "progress": 100, "duration_seconds": config['duration']})
     
     return {
         "record_id": record_id,
@@ -1139,15 +1139,37 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
         # Download from fal and store in AWS S3
         video_response = requests.get(video_url)
         video_response.raise_for_status()
-        s3 = boto3.client('s3', region_name=S3_REGION)
-        video_key = f"flashhead/{user_id}/{uuid.uuid4().hex}.mp4"
+        content = video_response.content
+        # Measure the clip so the dashboard can track talking-head runtime
+        duration_seconds = None
+        try:
+            import subprocess as _sp
+            import tempfile as _tf
+            import os as _os
+            with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as _f:
+                _f.write(content)
+                _tmp_path = _f.name
+            try:
+                _probe = _sp.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", _tmp_path],
+                    capture_output=True, text=True, timeout=30,
+                )
+                duration_seconds = round(float(_probe.stdout.strip()), 1)
+            finally:
+                _os.unlink(_tmp_path)
+        except Exception as _pe:
+            print(f"ffprobe unavailable ({_pe}) — duration not recorded")
         s3.put_object(
             Bucket=S3_BUCKET, Key=video_key,
-            Body=video_response.content, ContentType='video/mp4', ACL='public-read',
+            Body=content, ContentType='video/mp4', ACL='public-read',
         )
         final_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{video_key}"
-        print(f"FlashHead job {job_id} complete: {final_url}")
-        _write_job_status(job_id, "completed", {"video_url": final_url})
+        print(f"FlashHead job {job_id} complete: {final_url} ({duration_seconds}s)")
+        _write_job_status(job_id, "completed", {
+            "video_url": final_url,
+            **({"duration_seconds": duration_seconds} if duration_seconds else {}),
+        })
     except Exception as e:
         _write_job_status(job_id, "failed", {"error": _friendly_fal_error(e)})
 

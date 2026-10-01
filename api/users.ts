@@ -108,6 +108,52 @@ async function adminStats(req: VercelRequest, res: VercelResponse) {
     u.updatedAt && (Date.now() - new Date(u.updatedAt).getTime()) < 30 * 86400000
   ).length;
 
+  // ── AI render activity (last 30d): counts, credits, durations ────────
+  // Derived from the real credit ledger (every render deducts credits with
+  // metadata) plus measured talking-head runtime stored on project records.
+  const txns = await scanItems<any>(TABLES.CREDIT_TRANSACTIONS, { limit: 2000 });
+  const since = Date.now() - 30 * 86400000;
+  const video = { renders: 0, credits: 0, plannedSeconds: 0 };
+  const flashhead = { renders: 0, credits: 0, measuredSeconds: 0 };
+  const dailyMap = new Map<string, { videoRenders: number; videoCredits: number; flashheadRenders: number; flashheadCredits: number }>();
+  for (const t of txns) {
+    if (t.amount >= 0) continue;
+    const ts = Date.parse(t.createdAt || '');
+    if (Number.isNaN(ts) || ts < since) continue;
+    const desc = String(t.description || '');
+    const isVideo = /video generation/i.test(desc);
+    const isFlash = /flashhead/i.test(desc);
+    if (!isVideo && !isFlash) continue;
+    const day = new Date(ts).toISOString().slice(0, 10);
+    const bucket = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, flashheadRenders: 0, flashheadCredits: 0 };
+    const credits = Math.abs(Number(t.amount));
+    if (isVideo) {
+      video.renders += 1;
+      video.credits += credits;
+      video.plannedSeconds += Number(t.metadata?.duration) || 0;
+      bucket.videoRenders += 1;
+      bucket.videoCredits += credits;
+    } else {
+      flashhead.renders += 1;
+      flashhead.credits += credits;
+      bucket.flashheadRenders += 1;
+      bucket.flashheadCredits += credits;
+    }
+    dailyMap.set(day, bucket);
+  }
+  // Talking-head runtime: measured by the worker (ffprobe) and persisted on
+  // project records when the client polls to completion.
+  flashhead.measuredSeconds = projects
+    .filter((p: any) => p.kind === 'FLASHHEAD' && p.durationSeconds)
+    .reduce((s: number, p: any) => s + Number(p.durationSeconds), 0);
+
+  const daily: Array<{ date: string; videoRenders: number; videoCredits: number; flashheadRenders: number; flashheadCredits: number }> = [];
+  for (let i = 13; i >= 0; i--) {
+    const day = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    const b = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, flashheadRenders: 0, flashheadCredits: 0 };
+    daily.push({ date: day.slice(5), ...b });
+  }
+
   return res.status(200).json({
     success: true,
     stats: {
@@ -119,6 +165,12 @@ async function adminStats(req: VercelRequest, res: VercelResponse) {
       processingReels: projects.filter((p: any) => p.status === 'PROCESSING').length,
       failedReels: projects.filter((p: any) => p.status === 'FAILED').length,
       creditsSpent,
+    },
+    renderMetrics: {
+      windowDays: 30,
+      video,
+      flashhead,
+      daily,
     },
   });
 }

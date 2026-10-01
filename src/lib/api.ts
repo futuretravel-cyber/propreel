@@ -26,6 +26,8 @@ export interface Project {
   /** REEL = AI video render, FLASHHEAD = Talking Head lip-sync clip */
   kind?: 'REEL' | 'FLASHHEAD';
   voice?: string;
+  /** Clip runtime in seconds — planned for reels, ffprobe-measured for Talking Head */
+  durationSeconds?: number;
   videoTier: string;
   videoUrl: string | null;
   thumbnailUrl: string | null;

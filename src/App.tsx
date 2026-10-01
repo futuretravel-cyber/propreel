@@ -154,7 +154,7 @@ function Tooltip({ content, children, side = 'top', delay = 300 }: { content: st
   );
 }
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Tooltip as RTooltip } from 'recharts';
 
 export { KeyboardShortcutsModal, Tooltip };
 
@@ -1286,6 +1286,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
             title: script ? script.slice(0, 60).replace(/\n/g, ' ') : 'Property Video',
             status: 'PROCESSING',
             videoTier: tier,
+            durationSeconds: selectedConfig.duration,
           } as any);
           projectId = project.id;
         } catch { /* non-fatal — render can still proceed */ }
@@ -1329,6 +1330,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
       // 4) Poll /render_status until terminal (ESSENTIAL renders synchronously
       // and return video_url immediately)
       let finalUrl: string | null = result?.video_url || null;
+      let measuredDuration: number | undefined;
       if (!finalUrl && result?.record_id) {
         const deadline = Date.now() + 12 * 60 * 1000;
         while (Date.now() < deadline) {
@@ -1338,6 +1340,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
             setRenderStatus(String(s.status || '').toLowerCase());
             if (s.status === 'completed' && s.video_url) {
               finalUrl = s.video_url;
+              if (s.duration_seconds) measuredDuration = Number(s.duration_seconds);
               break;
             }
             if (s.status === 'failed') {
@@ -1361,7 +1364,11 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
 
       // 6) Finalize the project record
       if (user && projectId && finalUrl) {
-        PropReelAPI.updateProject(user.id, projectId, { status: 'READY', videoUrl: finalUrl }).catch(() => {});
+        PropReelAPI.updateProject(user.id, projectId, {
+          status: 'READY',
+          videoUrl: finalUrl,
+          ...(measuredDuration ? { durationSeconds: measuredDuration } : {}),
+        }).catch(() => {});
       }
 
       setGenerating(false);
@@ -1736,6 +1743,9 @@ function AdminOverview() {
     { label: 'Credits Spent', value: stats.creditsSpent },
   ] : [];
 
+  const fmtRuntime = (s: number) => (s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`);
+  const rm = stats?.renderMetrics;
+
   return (
     <div className="space-y-6">
       <FalHealthCard />
@@ -1749,6 +1759,58 @@ function AdminOverview() {
           </div>
         ))}
       </div>
+
+      {rm && (
+        <div className="bg-ink-800/50 rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-purple-400" /> AI Render Activity
+            </h3>
+            <span className="text-xs text-ink-500">last {rm.windowDays} days · credits & runtime from the live ledger</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-ink-900/60 rounded-lg p-3">
+              <p className="text-[11px] text-ink-400">Video renders</p>
+              <p className="text-xl font-bold text-white">{rm.video.renders}</p>
+              <p className="text-[11px] text-purple-300">{rm.video.credits} credits</p>
+            </div>
+            <div className="bg-ink-900/60 rounded-lg p-3">
+              <p className="text-[11px] text-ink-400">Video runtime</p>
+              <p className="text-xl font-bold text-white">{fmtRuntime(rm.video.plannedSeconds)}</p>
+              <p className="text-[11px] text-ink-500">planned duration</p>
+            </div>
+            <div className="bg-ink-900/60 rounded-lg p-3">
+              <p className="text-[11px] text-ink-400">Talking Head renders</p>
+              <p className="text-xl font-bold text-white">{rm.flashhead.renders}</p>
+              <p className="text-[11px] text-cyan-300">{rm.flashhead.credits} credits</p>
+            </div>
+            <div className="bg-ink-900/60 rounded-lg p-3">
+              <p className="text-[11px] text-ink-400">Talking Head runtime</p>
+              <p className="text-xl font-bold text-white">{rm.flashhead.measuredSeconds ? fmtRuntime(rm.flashhead.measuredSeconds) : '—'}</p>
+              <p className="text-[11px] text-ink-500">measured by worker</p>
+            </div>
+          </div>
+          <div className="h-[180px]" aria-label="Daily AI credits spent, video versus Talking Head">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={rm.daily} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="date" tick={{ fill: '#8b8b9e', fontSize: 10 }} tickLine={false} axisLine={{ stroke: 'rgba(255,255,255,0.08)' }} />
+                <YAxis tick={{ fill: '#8b8b9e', fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <RTooltip
+                  contentStyle={{ background: '#1a1a24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: '#c9c9d4' }}
+                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                />
+                <Bar dataKey="videoCredits" name="Video credits" stackId="ai" fill="#7c3aed" radius={[0, 0, 2, 2]} />
+                <Bar dataKey="flashheadCredits" name="Talking Head credits" stackId="ai" fill="#22d3ee" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-[11px] text-ink-500">
+            Video runtime is the planned tier duration; Talking Head runtime is measured from the finished file. Renders whose browser closed mid-job may be missing duration.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

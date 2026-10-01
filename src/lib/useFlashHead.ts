@@ -130,7 +130,11 @@ export function useFlashHead() {
         const job = await statusRes.json();
         if (job.status === 'completed' && job.video_url) {
           if (projectId) {
-            PropReelAPI.updateProject(user.id, projectId, { status: 'READY', videoUrl: job.video_url }).catch(() => {});
+            PropReelAPI.updateProject(user.id, projectId, {
+              status: 'READY',
+              videoUrl: job.video_url,
+              ...(job.duration_seconds ? { durationSeconds: Number(job.duration_seconds) } : {}),
+            }).catch(() => {});
           }
           track('render_completed', { kind: 'FLASHHEAD' });
           setStage('done');
