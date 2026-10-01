@@ -220,6 +220,23 @@ function EditorDemo() {
           <p className="mt-4 text-lg text-ink-400">From listing photos to a finished, narrated reel — no editor, no agency, no waiting.</p>
         </Reveal>
 
+        {/* Real before/after: a listing photo (left) vs the AI-rendered reel (right).
+            Drag the handle to compare. This is exactly what the Studio produces. */}
+        <Reveal className="max-w-4xl mx-auto mb-14">
+          <div className="glass-strong rounded-3xl p-3 shadow-[0_40px_120px_-30px_rgba(128,0,128,0.5)]">
+            <BeforeAfterSlider
+              before="/images/kitchen-before.webp"
+              after="/images/kitchen-before.webp"
+              afterVideo="/media/kitchen-after.mp4"
+              aspect="aspect-[9/16]"
+              beforeLabel="Your photo"
+              afterLabel="PropReel AI reel"
+              className="max-h-[560px] mx-auto max-w-[360px]"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle — a single listing photo, before and after the Studio.</p>
+        </Reveal>
+
         <div className="relative max-w-4xl mx-auto">
           {/* Floating glass badges */}
           {badges.map((b, i) => (

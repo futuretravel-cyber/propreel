@@ -576,10 +576,10 @@ def probe_fal_health():
     record = {"checkedAt": __import__('datetime').datetime.utcnow().isoformat(), "healthy": False, "class": "provider_error", "detail": "", "latencyMs": None}
     try:
         result = fal_client.run(
-            "fal-ai/any-llm",
-            arguments={"prompt": "ping", "model": "meta-llama/llama-3.2-3b-instruct"},
+            "openrouter/router/google/gemini-2.0-flash-001",
+            arguments={"messages": [{"role": "user", "content": "ping"}]},
         )
-        ok = isinstance(result, dict) and (result.get("output") is not None or "output" in result)
+        ok = isinstance(result, dict) and bool(result.get("choices"))
         record.update({
             "healthy": bool(ok),
             "class": "healthy" if ok else "provider_error",
@@ -610,10 +610,38 @@ def probe_fal_health():
     return record
 
 
+def _llm_chat(messages: list) -> str:
+    """Call fal's OpenRouter LLM integration with endpoint fallbacks.
+    fal-ai/any-llm is deprecated; the OpenAI-compatible replacements live
+    under openrouter/router. Model catalogs drift, so try several routes."""
+    attempts = [
+        # (endpoint, extra args) — first success wins
+        ("openrouter/router/google/gemini-2.0-flash-001", {}),
+        ("openrouter/router/openai/v1/chat/completions", {"model": "google/gemini-2.0-flash-001"}),
+        ("openrouter/router/openai/v1/chat/completions", {"model": "openai/gpt-4o-mini"}),
+    ]
+    last_err = None
+    for endpoint, extra in attempts:
+        try:
+            result = fal_client.run(endpoint, arguments={**extra, "messages": messages})
+            if isinstance(result, dict):
+                choices = result.get("choices") or []
+                if choices:
+                    text = (choices[0].get("message") or {}).get("content")
+                    if text:
+                        return text
+            last_err = RuntimeError(f"LLM returned no output from {endpoint}: {str(result)[:200]}")
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err or RuntimeError("LLM call failed")
+
+
 @app.function(image=image, secrets=[modal.Secret.from_name("fal-credentials")], timeout=120)
 def generate_text_fn(kind: str, fields: dict) -> str:
-    """Real LLM text generation via fal-ai/any-llm for property descriptions,
-    social captions and video voiceover scripts."""
+    """Real LLM text generation via fal's OpenRouter integration for property
+    descriptions, social captions and video voiceover scripts.
+    (fal-ai/any-llm is deprecated; openrouter/router is the replacement.)"""
     system_prompts = {
         "description": (
             "You are a professional South African property copywriter for Property24 and "
@@ -637,18 +665,10 @@ def generate_text_fn(kind: str, fields: dict) -> str:
     }
     system = system_prompts.get(kind, system_prompts["description"])
     facts = "\n".join(f"{k}: {v}" for k, v in fields.items() if v not in (None, ""))
-    result = fal_client.run(
-        "fal-ai/any-llm",
-        arguments={
-            "prompt": f"Property facts:\n{facts}",
-            "system_prompt": system,
-            "model": "meta-llama/llama-3.2-3b-instruct",
-            "max_tokens": 600,
-        },
-    )
-    text = result.get("output") if isinstance(result, dict) else None
-    if not text:
-        raise RuntimeError(f"LLM returned no output: {str(result)[:200]}")
+    text = _llm_chat([
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"Property facts:\n{facts}"},
+    ])
     return text
 
 
@@ -1076,9 +1096,103 @@ async def api_probe(refresh: str = ""):
             "service": "propreel-render",
         })
 
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=420, retries=1, max_containers=100, scaledown_window=300)
+def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user_id: str, voice: str = "Aria", stability: float = 0.5):
+    """Async FlashHead lip-sync job (fal-ai/flashhead): mirrors progress and
+    result into S3 so /flashhead_status can serve any poller. Input is the
+    agent's profile picture + the AI-generated voiceover script text."""
+    import boto3
+    import time
+    import uuid
+
+    _write_job_status(job_id, "processing", {"kind": "flashhead"})
+    try:
+        print(f"FlashHead job {job_id}: voice={voice}, text={len(voiceover_text)} chars")
+        handler = fal_client.submit(
+            "fal-ai/flashhead",
+            arguments={
+                "image_url": profile_image_url,
+                "text": voiceover_text,
+                "voice": voice,
+                "stability": stability,
+            },
+        )
+
+        max_wait = 360
+        start = time.time()
+        while True:
+            if time.time() - start > max_wait:
+                raise RuntimeError(f"FlashHead task did not complete within {max_wait}s")
+            status = handler.status()
+            stype = type(status).__name__
+            if stype == "Completed":
+                result = handler.get()
+                video_url = (result.get("video") or {}).get("url")
+                if not video_url:
+                    raise RuntimeError("FlashHead returned no video URL")
+                break
+            if stype == "Failed":
+                raise RuntimeError(f"fal.ai FlashHead task failed: {getattr(status, 'error', 'unknown')}")
+            print(f"FlashHead {stype}... ({int(time.time() - start)}s)")
+            time.sleep(5)
+
+        # Download from fal and store in AWS S3
+        video_response = requests.get(video_url)
+        video_response.raise_for_status()
+        s3 = boto3.client('s3', region_name=S3_REGION)
+        video_key = f"flashhead/{user_id}/{uuid.uuid4().hex}.mp4"
+        s3.put_object(
+            Bucket=S3_BUCKET, Key=video_key,
+            Body=video_response.content, ContentType='video/mp4', ACL='public-read',
+        )
+        final_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{video_key}"
+        print(f"FlashHead job {job_id} complete: {final_url}")
+        _write_job_status(job_id, "completed", {"video_url": final_url})
+    except Exception as e:
+        _write_job_status(job_id, "failed", {"error": _friendly_fal_error(e)})
+
+
+class FlashHeadJobRequest(BaseModel):
+    profile_image_url: str
+    voiceover_text: str
+    user_id: str
+    voice: str = "Aria"
+    stability: float = 0.5
+
+
 class GenerateTextRequest(BaseModel):
     kind: str  # description | social_caption | video_script
     fields: dict = {}
+
+@web_app.post("/flashhead")
+async def api_flashhead(request: FlashHeadJobRequest):
+    """Start an async FlashHead lip-sync job. Poll /flashhead_status."""
+    try:
+        import time as _time, uuid as _uuid
+        job_id = f"fh_{int(_time.time() * 1000)}_{_uuid.uuid4().hex[:6]}"
+        _write_job_status(job_id, "queued", {"kind": "flashhead"})
+        flashhead_job.spawn(
+            job_id=job_id,
+            profile_image_url=request.profile_image_url,
+            voiceover_text=request.voiceover_text,
+            user_id=request.user_id,
+            voice=request.voice,
+            stability=request.stability,
+        )
+        return {
+            "job_id": job_id,
+            "status": "queued",
+            "poll_url": f"/flashhead_status?job_id={job_id}",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=_friendly_fal_error(e))
+
+@web_app.get("/flashhead_status")
+async def api_flashhead_status(job_id: str):
+    status = _read_job_status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Unknown job_id: {job_id}")
+    return status
 
 @web_app.post("/generate_text")
 async def api_generate_text(request: GenerateTextRequest):

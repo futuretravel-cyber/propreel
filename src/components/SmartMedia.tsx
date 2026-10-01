@@ -40,16 +40,22 @@ export function SmartImage({ name, alt, className, sizes = '(max-width: 768px) 1
 export function BeforeAfterSlider({
   before,
   after,
+  afterVideo,
+  aspect = 'aspect-video',
   beforeLabel = 'Before',
   afterLabel = 'After',
   className = '',
 }: {
   before: string;
   after: string;
+  /** Optional looping video for the "after" side (e.g. an AI-rendered reel) */
+  afterVideo?: string;
+  /** Tailwind aspect class — match it to your media (aspect-video for 16:9, aspect-[9/16] for portrait) */
+  aspect?: string;
   beforeLabel?: string;
   afterLabel?: string;
   className?: string;
-}) {
+})
   const [pos, setPos] = useState(50);
   const [dragging, setDragging] = useState(false);
 
@@ -76,7 +82,21 @@ export function BeforeAfterSlider({
         if (e.key === 'ArrowRight') setPos(p => Math.min(100, p + 5));
       }}
     >
-      <img src={after} alt={afterLabel} className="w-full aspect-video object-cover" draggable={false} />
+      {afterVideo ? (
+        <video
+          src={afterVideo}
+          poster={after}
+          className={`w-full ${aspect} object-cover`}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          draggable={false}
+        />
+      ) : (
+        <img src={after} alt={afterLabel} className={`w-full ${aspect} object-cover`} draggable={false} />
+      )}
       <div className="absolute inset-0 overflow-hidden" style={{ width: `${pos}%` }}>
         <img src={before} alt={beforeLabel} className="w-full h-full object-cover" style={{ width: '100vw', maxWidth: 'none', height: '100%' }} draggable={false} />
       </div>

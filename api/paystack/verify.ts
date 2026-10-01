@@ -45,6 +45,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Idempotency: the charge.success webhook also credits this reference —
+    // credit exactly once per Paystack reference.
+    const { getItem, putItem, TABLES } = await import('../../lib/db');
+    const markerId = `pay_${reference}`;
+    const already = await getItem<{ id: string; userId: string }>(TABLES.SETTINGS, { id: markerId });
+    if (already) {
+      const user = await getUser(userId);
+      return res.status(200).json({
+        success: true,
+        already_processed: true,
+        reference,
+        credits_added: 0,
+        new_balance: user?.credits || 0,
+      });
+    }
+    await putItem(TABLES.SETTINGS, { id: markerId, userId, type: 'payment_processed', createdAt: new Date().toISOString() });
+
     // Add credits
     const { addCredits } = await import('../../lib/userService');
     await addCredits(

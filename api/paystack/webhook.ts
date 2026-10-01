@@ -39,6 +39,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ received: true }); // Acknowledge to prevent retries
       }
 
+      // Idempotency: the client may also call /api/paystack/verify for this
+      // reference — credit exactly once per Paystack reference.
+      const { getItem, putItem, TABLES: T } = await import('../../lib/db');
+      const markerId = `pay_${reference}`;
+      const already = await getItem<{ id: string; userId: string }>(T.SETTINGS, { id: markerId });
+      if (already) {
+        console.log(`Webhook: reference ${reference} already credited (via ${already.userId === userId ? 'webhook' : 'verify'}) — skipping`);
+        return res.status(200).json({ success: true, already_processed: true, reference });
+      }
+      await putItem(T.SETTINGS, { id: markerId, userId, type: 'payment_processed', createdAt: new Date().toISOString() });
+
       // Add credits
       await addCredits(
         userId,
