@@ -1228,6 +1228,7 @@ function VideoTab() {
   const [aiTalkingProfile, setAiTalkingProfile] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [selectedMusic, setSelectedMusic] = useState<string | null>(null);
+  const [musicTracks, setMusicTracks] = useState<Array<{ id: string; name: string; genre: string; url: string }>>([]);
   const [generating, setGenerating] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [flashHeadVideoUrl, setFlashHeadVideoUrl] = useState<string | null>(null);
@@ -1250,6 +1251,14 @@ function VideoTab() {
   useEffect(() => {
     setConfigIndex(0);
   }, [tier]);
+
+  // Load admin-managed music tracks for the picker
+  useEffect(() => {
+    fetch('/api/music')
+      .then(r => r.json())
+      .then(d => setMusicTracks(d.tracks || []))
+      .catch(() => setMusicTracks([]));
+  }, []);
 
   const generateScript = () => {
     setGeneratingScript(true);
@@ -1485,41 +1494,71 @@ function VideoTab() {
           Background Music (Optional)
         </label>
         <div className="bg-ink-800/50 rounded-xl p-4">
-          <select
-            className="input"
-            value={selectedMusic || ''}
-            onChange={(e) => setSelectedMusic(e.target.value || null)}
-          >
-            <option value="">No background music</option>
-            <option value="elegant-piano">Elegant Piano (Classical)</option>
-            <option value="modern-corporate">Modern Corporate (Corporate)</option>
-            <option value="upbeat-acoustic">Upbeat Acoustic (Acoustic)</option>
-          </select>
+          {musicTracks.length === 0 ? (
+            <p className="text-sm text-ink-400">No music tracks available yet — your administrator can upload tracks in Admin → Music Library.</p>
+          ) : (
+            <select
+              className="input"
+              value={selectedMusic || ''}
+              onChange={(e) => setSelectedMusic(e.target.value || null)}
+            >
+              <option value="">No background music</option>
+              {musicTracks.map(t => (
+                <option key={t.id} value={t.url}>{t.name} ({t.genre})</option>
+              ))}
+            </select>
+          )}
           <p className="text-xs text-ink-500 mt-2">
             Select background music to enhance your video. Music tracks are managed by administrators.
           </p>
         </div>
       </div>
 
-      {/* 8. Branding */}
+      {/* 8. Branding & Music — tap-to-include toggles */}
       <div className="space-y-3">
-        <label className="label">Branding Options</label>
-        <div className="bg-ink-800/50 rounded-xl p-4 space-y-3">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input 
-              type="checkbox" 
-              checked={branding} 
-              onChange={e => setBranding(e.target.checked)} 
-              className="w-4 h-4 rounded border-ink-600 bg-ink-800 text-purple-600" 
-            />
-            <div className="flex-1">
-              <span className="text-sm text-ink-300">Include Agent Branding</span>
-              <p className="text-xs text-ink-500 mt-1">
-                Profile picture (top-right), agency logo (top-right), and contact details (bottom)
-              </p>
+        <label className="label">Enhancements</label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setBranding(!branding)}
+            aria-pressed={branding}
+            className={`p-4 rounded-xl text-left transition min-h-[44px] ${branding ? 'bg-purple-700/25 border border-purple-500/50' : 'bg-white/5 border border-transparent hover:bg-white/10'}`}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-sm font-semibold ${branding ? 'text-purple-300' : 'text-ink-300'}`}>Agent Profile Branding</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${branding ? 'bg-purple-600 text-white' : 'bg-white/10 text-ink-400'}`}>{branding ? 'INCLUDED' : 'OFF'}</span>
             </div>
-          </label>
+            <p className="text-xs text-ink-500 mt-1">Profile picture, agency logo & contact details on the reel</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedMusic(selectedMusic ? null : (musicTracks[0]?.url || 'default'))}
+            aria-pressed={!!selectedMusic}
+            disabled={musicTracks.length === 0}
+            className={`p-4 rounded-xl text-left transition min-h-[44px] disabled:opacity-40 ${selectedMusic ? 'bg-purple-700/25 border border-purple-500/50' : 'bg-white/5 border border-transparent hover:bg-white/10'}`}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-sm font-semibold ${selectedMusic ? 'text-purple-300' : 'text-ink-300'}`}>Music Track</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${selectedMusic ? 'bg-purple-600 text-white' : 'bg-white/10 text-ink-400'}`}>{selectedMusic ? 'INCLUDED' : 'OFF'}</span>
+            </div>
+            <p className="text-xs text-ink-500 mt-1">{musicTracks.length === 0 ? 'No tracks uploaded yet' : selectedMusic ? 'Tap to remove — choose specific track below' : 'Tap to include — pick the track below'}</p>
+          </button>
         </div>
+        {selectedMusic && (
+          <div className="bg-ink-800/50 rounded-xl p-4">
+            <select
+              className="input"
+              value={selectedMusic}
+              onChange={(e) => setSelectedMusic(e.target.value || null)}
+              aria-label="Choose music track"
+            >
+              {musicTracks.map(t => (
+                <option key={t.id} value={t.url}>{t.name} ({t.genre})</option>
+              ))}
+            </select>
+            <p className="text-xs text-ink-500 mt-2">Music tracks are uploaded by administrators in Admin → Music Library.</p>
+          </div>
+        )}
       </div>
 
       {/* Generate Button */}

@@ -105,7 +105,7 @@ export default function NotificationCenter() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/notifications/preferences?user_id=${encodeURIComponent(user.id)}`);
+        const res = await fetch(`/api/users?action=preferences&user_id=${encodeURIComponent(user.id)}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && data.preferences) {
@@ -120,7 +120,7 @@ export default function NotificationCenter() {
     setPrefsStatus('saving');
     try {
       if (user?.id) {
-        const res = await fetch('/api/notifications/preferences', {
+        const res = await fetch('/api/users?action=preferences', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: user.id, preferences }),

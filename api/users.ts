@@ -5,6 +5,46 @@ import { getUser, updateUser, getUserByEmail } from '../lib/userService';
 const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
 const ADMIN_GRANT_CREDITS = 1000;
 
+// Default notification preferences applied to new users
+export const DEFAULT_NOTIFICATION_PREFERENCES = {
+  emailNotifications: true,
+  pushNotifications: true,
+  renderComplete: true,
+  lowCredits: true,
+  newFeatures: true,
+  billingAlerts: true,
+  marketingEmails: false,
+};
+
+/**
+ * Nested route: GET/POST /api/users?action=preferences (moved from the retired
+ * /api/notifications/preferences function to stay under the Vercel Hobby cap).
+ */
+async function notificationPreferences(req: VercelRequest, res: VercelResponse) {
+  if (req.method === 'GET') {
+    const userId = req.query.user_id as string;
+    if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+    const user = await getUser(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    return res.status(200).json({ success: true, preferences: user.notificationPreferences || DEFAULT_NOTIFICATION_PREFERENCES });
+  }
+  if (req.method === 'POST') {
+    const { user_id, preferences } = req.body || {};
+    if (!user_id || typeof preferences !== 'object' || preferences === null) {
+      return res.status(400).json({ error: 'Missing user_id or preferences' });
+    }
+    const user = await getUser(user_id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const cleaned: Record<string, boolean> = { ...(user.notificationPreferences || DEFAULT_NOTIFICATION_PREFERENCES) };
+    for (const key of Object.keys(DEFAULT_NOTIFICATION_PREFERENCES)) {
+      if (key in preferences) cleaned[key] = Boolean(preferences[key]);
+    }
+    await updateUser(user_id, { notificationPreferences: cleaned });
+    return res.status(200).json({ success: true, preferences: cleaned, message: 'Notification preferences saved' });
+  }
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
 /**
  * GET    /api/users?email=xxx   → find user by email
  * GET    /api/users?id=xxx      → get user by id
@@ -14,6 +54,11 @@ const ADMIN_GRANT_CREDITS = 1000;
  *   supabaseUserId, email, fullName, role?, agencyName?, planId?, cycle?
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Nested routes (function consolidation)
+  if (req.query.action === 'preferences') {
+    return notificationPreferences(req, res);
+  }
+
   if (req.method === 'GET') {
     const { id, email } = req.query as { id?: string; email?: string };
 

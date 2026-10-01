@@ -68,6 +68,8 @@ class RenderVideoRequest(BaseModel):
     voice_id: str = "Joanna"
     include_agent_branding: bool = True
     music_url: Optional[str] = None
+    image_prompts: Optional[List[dict]] = None  # [{image_url, prompt_id, prompt}] rotation overrides
+    audio: bool = False
 
 class FlashHeadRequest(BaseModel):
     profile_image_url: str
@@ -92,11 +94,40 @@ VIDEO_PROMPTS = {
     'C': """Cinematic UE5 visualization of a luxury interior. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal digital crop-shift and bounded perspective adjustment—absolutely zero spatial expansion beyond the original frame. Execute a high-impact, dramatic center push-in with a tight inward zoom, locked to the central focal point. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, intense depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, and high-production-value. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces."""
 }
 
-def get_prompt_for_image(image_index: int) -> str:
-    """Get the appropriate prompt for an image index (rotates A, B, C)"""
+def get_prompt_for_image(image_index: int, image_url: str | None = None) -> str:
+    """Get the prompt for an image: frontend-supplied rotation override first,
+    then the built-in A/B/C round-robin (image_index % 3)."""
+    overrides = globals().get("PROMPT_OVERRIDES") or {}
+    if image_url and image_url in overrides:
+        return overrides[image_url]
     prompt_keys = ['A', 'B', 'C']
     prompt_key = prompt_keys[image_index % 3]
     return VIDEO_PROMPTS[prompt_key]
+
+
+# Populated by /render_video from the request's image_prompts payload
+PROMPT_OVERRIDES: dict = {}
+
+
+def _write_job_status(record_id: str, status: str, extra: dict | None = None):
+    """Persist job status to S3 so any worker container can serve /render_status."""
+    import boto3, json as _json
+    try:
+        s3 = boto3.client('s3', region_name=S3_REGION)
+        body = _json.dumps({"record_id": record_id, "status": status, "updatedAt": __import__('datetime').datetime.utcnow().isoformat(), **(extra or {})})
+        s3.put_object(Bucket=S3_BUCKET, Key=f"jobs/{record_id}.json", Body=body, ContentType='application/json')
+    except Exception as e:
+        print(f"Job status write failed (non-fatal): {e}")
+
+
+def _read_job_status(record_id: str):
+    import boto3, json as _json
+    try:
+        s3 = boto3.client('s3', region_name=S3_REGION)
+        obj = s3.get_object(Bucket=S3_BUCKET, Key=f"jobs/{record_id}.json")
+        return _json.loads(obj['Body'].read())
+    except Exception:
+        return None
 
 # Tier configurations
 TIER_CONFIGS = {
@@ -137,7 +168,7 @@ TIER_CONFIGS = {
     }
 }
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=600, retries=2)
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=600, retries=2, min_containers=0, max_containers=200, scaledown_window=300)
 def generate_ai_video_clip(
     image_url: str,
     prompt: str,
@@ -355,7 +386,7 @@ def render_video_local(
     return video_url
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=2)
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=2, min_containers=0, max_containers=100, scaledown_window=300)
 def render_video(
     record_id: str,
     tier: str,
@@ -365,7 +396,8 @@ def render_video(
     voiceover_text: str,
     voice_id: str = "Joanna",
     include_agent_branding: bool = True,
-    music_url: str | None = None
+    music_url: str | None = None,
+    image_prompts: list[dict] | None = None
 ) -> dict:
     """
     Render a property video based on the provided parameters.
@@ -402,6 +434,8 @@ def render_video(
     # Limit images to configuration
     images = images[:config['images']]
     
+    _write_job_status(record_id, "processing", {"tier": tier, "progress": 0})
+
     if processing_type == "local":
         # ESSENTIAL tier: Local FFmpeg render
         video_url = render_video_local.remote(
@@ -417,8 +451,14 @@ def render_video(
         for i, image_url in enumerate(images):
             print(f"Generating AI clip {i+1}/{len(images)}")
             
-            # Get rotating prompt
-            prompt = get_prompt_for_image(i)
+            # Per-image prompt: frontend rotation payload (A/B/C) if provided,
+            # otherwise the built-in round-robin (i % 3)
+            supplied = None
+            if image_prompts:
+                match = next((p for p in image_prompts if p.get("image_url") == image_url and p.get("prompt")), None)
+                supplied = match.get("prompt") if match else None
+            prompt = supplied or get_prompt_for_image(i)
+            _write_job_status(record_id, "processing", {"tier": tier, "progress": round(i / max(1, len(images)) * 100), "clip": i + 1, "clips": len(images), "prompt_id": (match or {}).get("prompt_id") if match else ['A','B','C'][i % 3]})
             
             # Determine base resolution for AI generation
             if processing_type == "ai_upscaled":
@@ -456,6 +496,7 @@ def render_video(
     # In production, you'd use moviepy to add audio tracks
     
     print(f"✅ Render complete: {video_url}")
+    _write_job_status(record_id, "completed", {"video_url": video_url, "progress": 100})
     
     return {
         "record_id": record_id,
@@ -472,7 +513,12 @@ def render_video(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# IMAGE EDITING FUNCTIONS
+# Failure path: mark job failed for polling clients (called via .spawn wrapper)
+def render_video_failed(record_id: str, error: str):
+    _write_job_status(record_id, "failed", {"error": error[:400]})
+
+
+# # IMAGE EDITING FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2)
@@ -742,10 +788,31 @@ async def health():
 
 @web_app.post("/render_video")
 async def api_render_video(request: RenderVideoRequest):
-    """API endpoint to render video"""
+    """API endpoint to render video — SPAWNS the job and returns immediately.
+
+    For 1000-concurrent-user scale, the HTTP request must not hold a connection
+    for the full multi-minute render. Clients poll /render_status instead.
+    Backward compatible: ?wait=true blocks like the old behaviour.
+    """
     try:
-        # Call the Modal function asynchronously
-        result = await render_video.remote.aio(
+        if request.query_params.get("wait") in ("true", "1"):
+            result = await render_video.remote.aio(
+                record_id=request.record_id,
+                tier=request.tier,
+                config_index=request.config_index,
+                orientation=request.orientation,
+                images=request.images,
+                voiceover_text=request.voiceover_text,
+                voice_id=request.voice_id,
+                include_agent_branding=request.include_agent_branding,
+                music_url=request.music_url,
+                image_prompts=request.image_prompts
+            )
+            return result
+
+        # Async path: write initial job status to S3, then spawn
+        _write_job_status(request.record_id, "queued", {"tier": request.tier})
+        render_video.spawn(
             record_id=request.record_id,
             tier=request.tier,
             config_index=request.config_index,
@@ -754,11 +821,26 @@ async def api_render_video(request: RenderVideoRequest):
             voiceover_text=request.voiceover_text,
             voice_id=request.voice_id,
             include_agent_branding=request.include_agent_branding,
-            music_url=request.music_url
+            music_url=request.music_url,
+            image_prompts=request.image_prompts
         )
-        return result
+        return {
+            "record_id": request.record_id,
+            "status": "queued",
+            "poll_url": f"/render_status?record_id={request.record_id}",
+            "message": "Render job accepted. Poll /render_status for progress."
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@web_app.get("/render_status")
+async def api_render_status(record_id: str):
+    """Poll render job status (S3-backed so any container can answer)."""
+    status = _read_job_status(record_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Unknown record_id: {record_id}")
+    return status
 
 @web_app.post("/generate_flashhead_video")
 async def api_generate_flashhead_video(request: FlashHeadRequest):
