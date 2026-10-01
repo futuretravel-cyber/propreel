@@ -1,6 +1,10 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser, updateUser, getUserByEmail } from '../lib/userService';
 
+// Admin accounts receive 1000 credits on first sign-in (spec doc)
+const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
+const ADMIN_GRANT_CREDITS = 1000;
+
 /**
  * GET    /api/users?email=xxx   → find user by email
  * GET    /api/users?id=xxx      → get user by id
@@ -103,6 +107,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           { kind: 'signup_bonus' },
           bonusExpiry
         );
+
+        // Admin accounts: 1000 credits, no expiry (spec doc)
+        const email = normalizedEmail.toLowerCase();
+        if (ADMIN_EMAILS.includes(email)) {
+          try {
+            await addCredits(
+              created.id,
+              ADMIN_GRANT_CREDITS,
+              'bonus',
+              'Admin account allocation',
+              { kind: 'admin_grant' }
+            );
+            await updateUser(created.id, { role: 'ADMIN' } as any);
+          } catch (adminErr) {
+            console.error('Admin credit grant error:', adminErr);
+          }
+        }
+
         const withBonus = await getUser(created.id);
         return res.status(201).json({ success: true, user: withBonus || created, created: true });
       } catch (bonusError) {

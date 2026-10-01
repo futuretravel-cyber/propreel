@@ -47,7 +47,9 @@ import {
 
 import { lazy, Suspense } from 'react';
 import ShareSheet from './components/ShareSheet';
-import { HomePage } from './components/HomePage';
+import { buildPromptRotation } from './lib/videoPrompts';
+import { ThemeProvider } from './lib/theme';
+import HomePage from './components/HomePage';
 import { PublicLayout } from './components/PublicLayout';
 import { track } from './lib/analytics';
 
@@ -1289,9 +1291,13 @@ function VideoTab() {
           config_index: configIndex,
           orientation,
           images: uploadedImages,
+          // Hailuo-02 prompt rotation: image 1→A, 2→B, 3→C, 4→A, 5→B, …
+          image_prompts: buildPromptRotation(uploadedImages),
           voiceover_text: script,
           voice_id: voice,
           include_agent_branding: branding,
+          // Fal renders muted; voiceover is composited in Modal
+          audio: false,
           music_url: selectedMusic || undefined
         })
       });
@@ -1312,9 +1318,11 @@ function VideoTab() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             profile_image_url: profileImage,
+            // fal-ai/flashhead: lip-sync the Grok-written voiceover script
             voiceover_text: script,
             user_id: user?.id || '',
             voice: 'Aria',
+            model: 'fal-ai/flashhead',
             stability: 0.5
           })
         });
@@ -1870,18 +1878,20 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 left-4 z-50 bg-purple-700 text-white px-4 py-2 rounded-lg shadow-lg">
-        Skip to main content
-      </a>
-      <ToastProvider>
-        <CreditProvider>
-          <AppRoutes />
-          <ShortcutsHelpListener />
-          <OnboardingAndHelp />
-          <OfflineBanner />
-        </CreditProvider>
-      </ToastProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 left-4 z-50 bg-purple-700 text-white px-4 py-2 rounded-lg shadow-lg">
+          Skip to main content
+        </a>
+        <ToastProvider>
+          <CreditProvider>
+            <AppRoutes />
+            <ShortcutsHelpListener />
+            <OnboardingAndHelp />
+            <OfflineBanner />
+          </CreditProvider>
+        </ToastProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }
