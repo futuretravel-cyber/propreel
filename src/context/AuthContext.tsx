@@ -64,7 +64,7 @@ interface CreditContextType {
   lowCreditWarning: 'none' | 'info' | 'warning' | 'critical';
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
+  loginWithGoogle: (redirectTo?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   acceptPendingAgencyInvite: (userId: string) => Promise<void>;
@@ -268,12 +268,18 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const loginWithGoogle = useCallback(async () => {
+  const loginWithGoogle = useCallback(async (redirectTo?: string) => {
     import('../lib/analytics').then(m => m.track('google_login')).catch(() => {});
+    // Remember where the user was headed (defaults to the dashboard); the
+    // login/signup pages read it back when Google returns. Same-app paths
+    // only — never an external URL.
+    import('../lib/postAuth').then(m => m.setPostAuthRedirect(
+      redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard'
+    ));
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/payment/callback`,
+        redirectTo: `${window.location.origin}/login`,
         scopes: 'profile email',
       },
     });

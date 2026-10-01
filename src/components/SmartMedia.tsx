@@ -82,6 +82,9 @@ export function BeforeAfterSlider({
         if (e.key === 'ArrowRight') setPos(p => Math.min(100, p + 5));
       }}
     >
+      {/* Full-size media stack — both layers always render at container size.
+          The clip-path on the before layer (not a resized duplicate) keeps
+          both sides pixel-identical and sharp at any width or DPR. */}
       {afterVideo ? (
         <video
           src={afterVideo}
@@ -97,9 +100,13 @@ export function BeforeAfterSlider({
       ) : (
         <img src={after} alt={afterLabel} className={`w-full ${aspect} object-cover`} draggable={false} />
       )}
-      <div className="absolute inset-0 overflow-hidden" style={{ width: `${pos}%` }}>
-        <img src={before} alt={beforeLabel} className="w-full h-full object-cover" style={{ width: '100vw', maxWidth: 'none', height: '100%' }} draggable={false} />
-      </div>
+      <img
+        src={before}
+        alt={beforeLabel}
+        className={`absolute inset-0 w-full ${aspect} object-cover`}
+        style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
+        draggable={false}
+      />
       {/* Handle */}
       <div className="absolute inset-y-0" style={{ left: `${pos}%` }}>
         <div className="h-full w-0.5 bg-white shadow-[0_0_10px_rgba(0,0,0,0.5)]" />

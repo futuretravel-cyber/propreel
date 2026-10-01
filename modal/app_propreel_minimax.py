@@ -320,91 +320,171 @@ def upscale_video(input_video_url: str, target_resolution: str = "1080p") -> str
     return video_url
 
 
+# ESSENTIAL-tier Ken Burns motion styles, rotated A → B → C per image exactly
+# like the AI tiers rotate their Hailuo prompts. Each style is an ffmpeg
+# zoompan expression (x, y, zoom over the clip's frame count).
+ESSENTIAL_MOTION_STYLES = [
+    # A — slow push-in from center (mirrors AI prompt A's "dramatic focal push-in")
+    {"id": "A", "zoom": "min(zoom+{zrate},1.13)", "x": "iw/2-(iw/zoom/2)", "y": "ih/2-(ih/zoom/2)"},
+    # B — left-to-right lateral drift with gentle zoom ("cinematic tracking arc")
+    {"id": "B", "zoom": "min(zoom+{zrate},1.10)", "x": "(iw-iw/zoom)*({tfrac})", "y": "ih/2-(ih/zoom/2)"},
+    # C — slow pull-back reveal (starts tight, eases out — a distinct third feel)
+    {"id": "C", "zoom": "if(eq(on,1),1.12,max(zoom-{zrate},1.0))", "x": "iw/2-(iw/zoom/2)", "y": "(ih-ih/zoom)*0.35"},
+]
+
+
+def _essential_kenburns_clip(
+    video_path: str,
+    out_path: str,
+    seconds: float,
+    fps: int,
+    width: int,
+    height: int,
+    style: dict,
+) -> None:
+    """Render one Ken Burns segment with pure ffmpeg zoompan (no fal, no moviepy).
+    The image is upscaled 1.4x first so zoompan never samples beyond the frame."""
+    import subprocess as _sp
+    frames = max(int(round(seconds * fps)), 2)
+    zrate = 0.12 / frames  # ~12% zoom across the segment
+    style_fmt = {
+        "id": style["id"],
+        "zoom": style["zoom"].format(zrate=f"{zrate:.6f}"),
+        # tfrac: horizontal position over time for the lateral drift (B)
+        "x": style["x"].format(tfrac="on/" + str(frames - 1)) if "{tfrac}" in style["x"] else style["x"],
+        "y": style["y"],
+    }
+    vf = (
+        f"scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,crop={width * 2}:{height * 2},"
+        f"zoompan=z='{style_fmt['zoom']}':x='{style_fmt['x']}':y='{style_fmt['y']}':d={frames}:s={width}x{height}:fps={fps},"
+        "format=yuv420p"
+    )
+    proc = _sp.run(
+        ["ffmpeg", "-y", "-loop", "1", "-i", video_path, "-t", f"{seconds}",
+         "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+         "-pix_fmt", "yuv420p", out_path],
+        capture_output=True, timeout=300,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg zoompan failed: {(proc.stderr or b'')[-300:]}")
+
+
 @app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials")], timeout=600, retries=2)
 def render_video_local(
     record_id: str,
     images: list[str],
     duration: int,
-    orientation: str
+    orientation: str,
+    image_prompts: list[dict] | None = None,
 ) -> str:
     """
-    Render video using local FFmpeg (for ESSENTIAL tier)
-    
+    Render video with pure FFmpeg (ESSENTIAL tier — no fal.ai involved).
+
+    Each image gets a Ken Burns motion segment. Motion styles rotate A → B → C
+    per image exactly like the AI tiers rotate their Hailuo prompts: the
+    frontend's rotation payload is honored when supplied, otherwise round-robin
+    by image index (i % 3).
+
     Args:
         record_id: Unique identifier for this render job
         images: List of image URLs
         duration: Total video duration in seconds
         orientation: Video orientation (LANDSCAPE or PORTRAIT)
-    
+        image_prompts: Optional per-image rotation payload from the frontend
+            ([{image_url, prompt_id, prompt}]) — only the prompt_id (A/B/C)
+            is used here to pick the matching motion style.
+
     Returns:
         URL of the rendered video
     """
     import boto3
-    from moviepy import ImageClip, concatenate_videoclips
-    from moviepy.video.fx import Resize
-    from PIL import Image
-    from io import BytesIO
-    
-    print(f"Rendering local video: {record_id}, {duration}s, {orientation}")
-    
-    # Set video dimensions
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+
+    print(f"Rendering local (pure ffmpeg) video: {record_id}, {duration}s, {orientation}")
+
+    fps = 24
     if orientation == "PORTRAIT":
         width, height = 1080, 1920
     else:
         width, height = 1920, 1080
-    
-    # Download and process images
-    clips = []
-    image_duration = duration / len(images)
-    
+
+    work = _tf.mkdtemp(prefix=f"essential_{record_id}_")
+    segment_paths = []
+    n = max(1, len(images))
+    seg_duration = duration / n
+
     for i, image_url in enumerate(images):
-        print(f"Processing image {i+1}/{len(images)}")
-        
-        # Download image
-        response = requests.get(image_url)
-        img = Image.open(BytesIO(response.content))
-        
-        # Resize and crop
-        img = img.resize((width, height), Image.Resampling.LANCZOS)
-        
-        # Save to temporary file
-        temp_path = f"/tmp/{record_id}_img_{i}.jpg"
-        img.save(temp_path, quality=95)
-        
-        # Create video clip with zoom/pan effect
-        clip = ImageClip(temp_path, duration=image_duration)
-        
-        # Add zoom/pan effect using moviepy 2.x API
-        clip = clip.with_effects([Resize(lambda t: 1 + 0.1 * t / image_duration)])
-        
-        clips.append(clip)
-    
-    # Concatenate clips
-    final_video = concatenate_videoclips(clips, method="compose")
-    
-    # Export video
-    output_path = f"/tmp/{record_id}_output.mp4"
-    final_video.write_videofile(
-        output_path,
-        fps=24,
-        codec='libx264',
-        audio=False
+        # Motion-style rotation: frontend payload (A/B/C) if provided,
+        # otherwise round-robin by index — same contract as the AI tiers
+        supplied = None
+        if image_prompts:
+            match = next((p for p in image_prompts if p.get("image_url") == image_url and p.get("prompt_id")), None)
+            supplied = str(match.get("prompt_id", "")).upper() if match else None
+        style_id = supplied if supplied in ("A", "B", "C") else ESSENTIAL_MOTION_STYLES[i % 3]["id"]
+        style = next(s for s in ESSENTIAL_MOTION_STYLES if s["id"] == style_id)
+        _write_job_status(record_id, "processing", {
+            "tier": "ESSENTIAL", "progress": round(i / n * 90),
+            "clip": i + 1, "clips": n, "prompt_id": style_id,
+        })
+        print(f"Segment {i+1}/{n}: style {style_id}")
+
+        # Download image → normalize to the exact output canvas (cover-crop,
+        # no stretching) before the zoompan stage
+        raw_path = os.path.join(work, f"raw_{i}.jpg")
+        resp = requests.get(image_url, timeout=60)
+        resp.raise_for_status()
+        norm = _sp.run(
+            ["ffmpeg", "-y", "-i", "-", "-vf",
+             f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}",
+             raw_path],
+            input=resp.content, capture_output=True, timeout=120,
+        )
+        if norm.returncode != 0:
+            raise RuntimeError(f"ffmpeg normalize failed on image {i+1}: {(norm.stderr or b'')[-300:]}")
+
+        seg_path = os.path.join(work, f"seg_{i}.mp4")
+        _essential_kenburns_clip(raw_path, seg_path, seg_duration, fps, width, height, style)
+        segment_paths.append(seg_path)
+        try:
+            _os.unlink(raw_path)
+        except Exception:
+            pass
+
+    # Concatenate all segments (identical codecs → stream-copy concat)
+    concat_list = os.path.join(work, "list.txt")
+    with open(concat_list, "w") as f:
+        for p in segment_paths:
+            f.write(f"file '{p}'\n")
+    output_path = os.path.join(work, "output.mp4")
+    concat = _sp.run(
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
+         "-c", "copy", output_path],
+        capture_output=True, timeout=300,
     )
-    
+    if concat.returncode != 0:
+        # Fallback: re-encode concat (handles any codec drift between segments)
+        concat = _sp.run(
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
+             "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+             "-pix_fmt", "yuv420p", output_path],
+            capture_output=True, timeout=600,
+        )
+        if concat.returncode != 0:
+            raise RuntimeError(f"ffmpeg concat failed: {(concat.stderr or b'')[-300:]}")
+
     # Upload to S3
     s3 = boto3.client('s3', region_name=S3_REGION)
     s3_key = f"renders/{record_id}/video.mp4"
-    
     s3.upload_file(
         output_path,
         S3_BUCKET,
         s3_key,
         ExtraArgs={'ContentType': 'video/mp4', 'ACL': 'public-read'}
     )
-    
     video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
     print(f"Local render complete: {video_url}")
-    
     return video_url
 
 
@@ -459,12 +539,14 @@ def render_video(
     _write_job_status(record_id, "processing", {"tier": tier, "progress": 0})
 
     if processing_type == "local":
-        # ESSENTIAL tier: Local FFmpeg render
+        # ESSENTIAL tier: pure-FFmpeg Ken Burns render (no fal.ai) with the
+        # same A/B/C motion-style rotation the AI tiers use for prompts
         video_url = render_video_local.remote(
             record_id=record_id,
             images=images,
             duration=config['duration'],
-            orientation=orientation
+            orientation=orientation,
+            image_prompts=image_prompts,
         )
     else:
         # SOCIAL, CINEMATIC, PREMIUM tiers: AI rendering

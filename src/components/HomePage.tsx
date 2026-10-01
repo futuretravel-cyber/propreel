@@ -231,7 +231,7 @@ function EditorDemo() {
               aspect="aspect-[9/16]"
               beforeLabel="Your photo"
               afterLabel="PropReel AI reel"
-              className="max-h-[560px] mx-auto max-w-[360px]"
+              className="mx-auto w-full max-w-[320px] sm:max-w-[360px] md:max-w-[400px]"
             />
           </div>
           <p className="text-center text-xs text-ink-500 mt-3">Drag the handle — a single listing photo, before and after the Studio.</p>
