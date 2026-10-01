@@ -171,9 +171,11 @@ export default function StatusPage() {
     { key: 'database', icon: Database, name: 'Database', description: 'DynamoDB — accounts, ledger, projects', state: data.database.state, detail: data.database.detail, latencyMs: null },
   ];
 
+  // Cron "no runs recorded yet" (null) is not a fault — it must not drag the
+  // overall banner into unknown. An overdue cron (false) is a degradation.
   const states: State[] = [
     ...services.map(s => s.state),
-    ...data.crons.map(c => (c.healthy === null ? 'unknown' : c.healthy ? 'up' : 'down') as State),
+    ...data.crons.filter(c => c.healthy === false).map(() => 'degraded' as State),
   ];
   const overall: State = states.includes('down') ? 'down' : states.includes('degraded') ? 'degraded' : states.includes('unknown') ? 'unknown' : 'up';
   const banner = {
