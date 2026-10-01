@@ -43,7 +43,7 @@ const INITIAL: StatusData = {
 };
 
 /** fetch with a hard timeout so a hung endpoint shows as down, not forever-loading */
-async function probe(url: string, init: RequestInit = {}, timeoutMs = 10000): Promise<{ ok: boolean; status: number; body: any; latencyMs: number }> {
+async function probe(url: string, init: RequestInit = {}, timeoutMs = 25000): Promise<{ ok: boolean; status: number; body: any; latencyMs: number }> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const started = Date.now();
@@ -55,6 +55,22 @@ async function probe(url: string, init: RequestInit = {}, timeoutMs = 10000): Pr
   } finally {
     clearTimeout(timer);
   }
+}
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/** Probe with one retry — Modal cold starts can stall the first attempt. */
+async function probeWithRetry(url: string, init: RequestInit = {}, attempts = 2): Promise<{ ok: boolean; status: number; body: any; latencyMs: number }> {
+  let last: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await probe(url, init);
+    } catch (e) {
+      last = e;
+      if (i < attempts - 1) await sleep(2000);
+    }
+  }
+  throw last;
 }
 
 export default function StatusPage() {
@@ -91,7 +107,7 @@ export default function StatusPage() {
 
     // 2) Modal render worker
     try {
-      const r = await probe(`${WORKER_URL}/health`);
+      const r = await probeWithRetry(`${WORKER_URL}/health`);
       next.worker = r.ok && r.body?.status === 'healthy'
         ? { state: 'up', detail: `Pipeline online${r.body?.version ? ` · v${r.body.version}` : ''}`, latencyMs: r.latencyMs }
         : { state: 'down', detail: `Unexpected response (${r.status})`, latencyMs: r.latencyMs };
@@ -101,7 +117,7 @@ export default function StatusPage() {
 
     // 3) fal.ai health — from the scheduled probe (class-classified, 15 min cadence)
     try {
-      const r = await probe(`${WORKER_URL}/probe`);
+      const r = await probeWithRetry(`${WORKER_URL}/probe`);
       const b = r.body || {};
       const cls = String(b.class || '');
       if (b.healthy === true) {
@@ -120,7 +136,7 @@ export default function StatusPage() {
     // 4) Supabase authentication
     if (SUPABASE_ANON_KEY) {
       try {
-        const r = await probe(`${SUPABASE_URL}/auth/v1/health`, { headers: { apikey: SUPABASE_ANON_KEY } });
+        const r = await probeWithRetry(`${SUPABASE_URL}/auth/v1/health`, { headers: { apikey: SUPABASE_ANON_KEY } });
         next.auth = r.ok
           ? { state: 'up', detail: 'Sign-in service responding', latencyMs: r.latencyMs }
           : { state: 'unknown', detail: `Health endpoint returned ${r.status}`, latencyMs: r.latencyMs };
