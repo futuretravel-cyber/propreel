@@ -6,7 +6,7 @@ const FLASHHEAD_COST = 8;
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
 const POLL_INTERVAL_MS = 5000;
-const MAX_WAIT_MS = 8 * 60 * 1000;
+const MAX_WAIT_MS = 10 * 60 * 1000; // fal FlashHead takes ~4–6 min for real scripts
 
 type Stage = 'idle' | 'uploading' | 'deducting' | 'rendering' | 'done';
 

@@ -8,7 +8,7 @@ import {
 import { PublicLayout } from './PublicLayout';
 import { useTheme } from '../lib/theme';
 import { track } from '../lib/analytics';
-import { SmartImage } from './SmartMedia';
+import { SmartImage, BeforeAfterSlider } from './SmartMedia';
 import { useApprovedReviews } from '../lib/useReviews';
 
 const SIGNUP_BONUS = 5;

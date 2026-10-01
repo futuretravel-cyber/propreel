@@ -16,6 +16,8 @@ const VOICES = [
 interface FlashHeadVideoProps {
   /** Pre-fill from the Video tab's AI-generated script (shared Studio state) */
   initialScript?: string;
+  /** Two-way sync: edits here update the shared script for the Video tab too */
+  onScriptChange?: (script: string) => void;
   /** Notify parent (Video tab) when a talking-head video is ready */
   onVideoGenerated?: (videoUrl: string) => void;
 }
@@ -24,7 +26,7 @@ interface FlashHeadVideoProps {
  * FlashHead Studio tab: lip-synced talking-head video from the agent's
  * profile picture + the AI-generated voiceover script. 8 credits.
  */
-export default function FlashHeadVideo({ initialScript = '', onVideoGenerated }: FlashHeadVideoProps) {
+export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated }: FlashHeadVideoProps) {
   const { user } = useCredit() as any;
   const { generate, busy, stage, error, setError, cost } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
@@ -33,6 +35,12 @@ export default function FlashHeadVideo({ initialScript = '', onVideoGenerated }:
   const [voice, setVoice] = useState('Aria');
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Keep the shared Studio script in sync (the Video tab reads from it)
+  const updateScript = (text: string) => {
+    setScript(text);
+    onScriptChange?.(text);
+  };
 
   const pick = (f: File | null) => {
     if (!f) return;
@@ -101,11 +109,11 @@ export default function FlashHeadVideo({ initialScript = '', onVideoGenerated }:
         {/* Script + voice */}
         <div className="space-y-4">
           <div>
-            <label className="label">Voiceover script <span className="text-ink-500 text-xs">(paste the AI-generated script from the Video tab, or write your own)</span></label>
+            <label className="label">Voiceover script <span className="text-ink-500 text-xs">(the AI-generated script from the Video tab is pre-filled — edit freely; the Video tab stays in sync)</span></label>
             <textarea
               className="input min-h-[140px]"
               value={script}
-              onChange={e => setScript(e.target.value)}
+              onChange={e => updateScript(e.target.value)}
               placeholder="Welcome to this stunning family home in Constantia…"
             />
             <p className="text-xs text-ink-500 mt-1">{script.trim() ? `${script.trim().split(/\s+/).length} words` : 'FlashHead speaks this text with your face'}</p>

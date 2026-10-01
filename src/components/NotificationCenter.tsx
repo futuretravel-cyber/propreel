@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Bell, X, Check, CheckCheck, Settings, MessageSquare, Zap, Video, CreditCard, AlertTriangle, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useActivity } from '../lib/useActivity';
+import { formatRelative } from '../lib/utils';
 
 interface Notification {
   id: string;
@@ -25,7 +27,16 @@ const PREFERENCE_LABELS: Record<string, string> = {
 
 export default function NotificationCenter() {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([
+  // Real activity feed: built from the credit ledger + project records — nothing hardcoded
+  const { notifications: activity, unreadCount: liveUnread, markRead: markActivityRead, markAllRead: markAllActivityRead } = useActivity(user?.id);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const notifications: Notification[] = activity
+    .filter(a => !dismissed.has(a.id))
+    .map(a => ({
+      id: a.id, type: a.type, title: a.title, message: a.message,
+      timestamp: a.timestamp, read: a.read, category: a.category, actionUrl: a.actionUrl,
+    }));
+  const legacyItems = ([
     {
       id: '1',
       type: 'success',
@@ -84,6 +95,7 @@ export default function NotificationCenter() {
       category: 'render'
     }
   ]);
+  void legacyItems; // schema reference only — replaced by the live activity feed
 
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -147,21 +159,10 @@ export default function NotificationCenter() {
     return true;
   });
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const markAsRead = (id: string) => {
-    setNotifications(notifications.map(n =>
-      n.id === id ? { ...n, read: true } : n
-    ));
-  };
-
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
-  };
-
-  const deleteNotification = (id: string) => {
-    setNotifications(notifications.filter(n => n.id !== id));
-  };
+  const unreadCount = liveUnread;
+  const markAsRead = markActivityRead;
+  const markAllAsRead = markAllActivityRead;
+  const deleteNotification = (id: string) => setDismissed(prev => new Set(prev).add(id));
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -347,7 +348,8 @@ export default function NotificationCenter() {
         {filteredNotifications.length === 0 ? (
           <div className="card-dark p-12 text-center">
             <Bell className="w-12 h-12 text-ink-500 mx-auto mb-4" />
-            <p className="text-ink-400">No notifications found</p>
+            <p className="text-ink-400">No activity yet</p>
+            <p className="text-ink-500 text-sm mt-1">Renders, credit top-ups and refunds will show up here as they happen.</p>
           </div>
         ) : (
           filteredNotifications.map(notification => (
@@ -378,7 +380,7 @@ export default function NotificationCenter() {
                         </span>
                       </div>
                       <p className="text-sm text-ink-300">{notification.message}</p>
-                      <p className="text-xs text-ink-500 mt-1">{notification.timestamp}</p>
+                      <p className="text-xs text-ink-500 mt-1">{formatRelative(notification.timestamp)}</p>
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">

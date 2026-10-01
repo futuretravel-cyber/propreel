@@ -31,6 +31,7 @@ import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI } from './lib/api';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
 import { useApprovedReviews } from './lib/useReviews';
+import { useActivity } from './lib/useActivity';
 import EnhancedProjects from './components/EnhancedProjects';
 import SecuritySettings from './components/SecuritySettings';
 import AITalkingProfile from './components/AITalkingProfile';
@@ -519,6 +520,7 @@ function RegisterPage() {
 
 function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, balance, logout, isAdmin } = useAuth();
+  const { unreadCount, stats } = useActivity(user?.id);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const location = useLocation();
@@ -582,8 +584,8 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
               <p className="text-2xl font-bold text-white">{balance.personal}</p>
               {balance.agency > 0 && <p className="text-xs text-ink-400">+ {balance.agency} agency pool</p>}
               <div className="mt-2 pt-2 border-t border-white/5">
-                <p className="text-xs text-ink-500">Today: 15 credits</p>
-                <p className="text-xs text-ink-500">This week: 87 credits</p>
+                <p className="text-xs text-ink-500">Used this week: {stats.used7d} credits</p>
+                <p className="text-xs text-ink-500">Used this month: {stats.used30d} credits</p>
               </div>
             </div>
             <button 
@@ -631,9 +633,11 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           </button>
           <div className="flex items-center gap-4 ml-auto">
             <SearchButton />
-            <Link to="/dashboard/notifications" className="relative text-ink-400 hover:text-white" aria-label="Notifications">
+            <Link to="/dashboard/notifications" className="relative text-ink-400 hover:text-white" aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}>
               <Bell className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">3</span>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
+              )}
             </Link>
             <div className="badge badge-brand">
               <Zap className="w-3 h-3" /> {balance.total} credits
@@ -763,7 +767,10 @@ function StudioPage() {
 }
 
 function StudioPageInner() {
-  const [tab, setTab] = useState('description');
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'description');
+  const { user } = useCredit();
+  // Shared voiceover script: the Video tab generates it, FlashHead speaks it
+  const [sharedScript, setSharedScript] = useState('');
   const tabs = [
     { id: 'description', label: 'Description', icon: <FileText className="w-4 h-4" /> },
     { id: 'photo', label: 'Photo Editor', icon: <Camera className="w-4 h-4" /> },
@@ -772,6 +779,7 @@ function StudioPageInner() {
     { id: 'twilight', label: 'Twilight', icon: <MoonIcon className="w-4 h-4" /> },
     { id: 'social', label: 'Social Media', icon: <Share2 className="w-4 h-4" /> },
     { id: 'video', label: 'Video Generator', icon: <Video className="w-4 h-4" /> },
+    { id: 'flashhead', label: 'Talking Head', icon: <Mic className="w-4 h-4" /> },
   ];
 
   return (
@@ -779,12 +787,15 @@ function StudioPageInner() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Studio</h1>
-          <p className="text-ink-400 mt-1">7 AI-powered tools to market your properties.</p>
+          <p className="text-ink-400 mt-1">8 AI-powered tools to market your properties.</p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-ink-500">
-          <Check className="w-3 h-3 text-green-400" />
-          <span>Last saved 2m ago</span>
-        </div>
+        <Link
+          to="/dashboard/credits"
+          className="badge badge-brand hover:bg-white/10 transition"
+          title="Recharge credits"
+        >
+          <Zap className="w-3 h-3" /> {user?.credits ?? 0} credits
+        </Link>
       </div>
       {/* Tab Navigation */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
@@ -802,7 +813,8 @@ function StudioPageInner() {
         {tab === 'removal' && <RemovalTab />}
         {tab === 'twilight' && <TwilightTab />}
         {tab === 'social' && <SocialTab />}
-        {tab === 'video' && <VideoTab />}
+        {tab === 'video' && <VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} />}
+        {tab === 'flashhead' && <FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} />}
       </div>
     </div>
   );
@@ -1196,14 +1208,16 @@ function SocialTab() {
 
 const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
-function VideoTab() {
+function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void }) {
   const { user, deductCredits, addCredits } = useCredit();
   const toast = useToast();
   const [tier, setTier] = useState('SOCIAL');
   const [configIndex, setConfigIndex] = useState(0);
   const [orientation, setOrientation] = useState('LANDSCAPE');
   const [voice, setVoice] = useState('Joanna');
-  const [script, setScript] = useState('');
+  // Script lives in StudioPage state so the FlashHead tab speaks the same text
+  const script = sharedScript;
+  const setScript = onScriptChange;
   const [branding, setBranding] = useState(true);
   const [aiTalkingProfile, setAiTalkingProfile] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -1211,7 +1225,6 @@ function VideoTab() {
   const [musicTracks, setMusicTracks] = useState<Array<{ id: string; name: string; genre: string; url: string }>>([]);
   const [generating, setGenerating] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
-  const [flashHeadVideoUrl, setFlashHeadVideoUrl] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [lastRenderUrl, setLastRenderUrl] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState('');
@@ -1260,7 +1273,7 @@ function VideoTab() {
 
   const generateReel = async () => {
     setGenerating(true);
-    const totalCredits = selectedConfig.credits + (aiTalkingProfile ? 8 : 0);
+    const totalCredits = selectedConfig.credits;
     const recordId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     try {
@@ -1282,7 +1295,6 @@ function VideoTab() {
       await deductCredits(totalCredits, 'Video generation', {
         tier,
         duration: selectedConfig.duration,
-        aiTalkingProfile,
         recordId,
       });
 
@@ -1338,25 +1350,13 @@ function VideoTab() {
       }
       if (finalUrl) setLastRenderUrl(finalUrl);
 
-      // 5) FlashHead lip-sync (optional add-on)
-      if (aiTalkingProfile && profileImage) {
-        try {
-          const fh = await fetch(`${RENDER_ENDPOINT}/generate_flashhead_video`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              profile_image_url: profileImage,
-              voiceover_text: script,
-              user_id: user?.id || '',
-              voice: 'Aria',
-              stability: 0.5,
-            }),
-          });
-          if (fh.ok) {
-            const fhResult = await fh.json();
-            setFlashHeadVideoUrl(fhResult.video_url);
-          }
-        } catch { /* FlashHead is optional; don't fail the render */ }
+      // 5) Talking Head add-on: render it on the dedicated tab (script carries
+      // over; FlashHead's own 8-credit charge happens there — no double billing)
+      if (aiTalkingProfile) {
+        toast.info(
+          'Talking Head add-on: finish on the Talking Head tab — your script is ready and waiting.',
+          'One step left'
+        );
       }
 
       // 6) Finalize the project record
@@ -1377,7 +1377,7 @@ function VideoTab() {
     }
   };
 
-  const totalCredits = selectedConfig.credits + (aiTalkingProfile ? 8 : 0);
+  const totalCredits = selectedConfig.credits;
 
   return (
     <div className="space-y-6">
@@ -1492,7 +1492,7 @@ function VideoTab() {
         </div>
       </div>
 
-      {/* 6. AI Talking Profile with FlashHead */}
+      {/* 6. AI Talking Profile add-on → dedicated Talking Head tab */}
       <AITalkingProfile
         enabled={aiTalkingProfile}
         onToggle={setAiTalkingProfile}
@@ -1500,14 +1500,29 @@ function VideoTab() {
         onProfileImageChange={setProfileImage}
         voiceoverScript={script}
       />
-
-      {/* 6.5 FlashHead Lip-Sync Video */}
-      {aiTalkingProfile && profileImage && script && (
-        <FlashHeadVideo
-          voiceoverScript={script}
-          profileImage={profileImage}
-          onVideoGenerated={(url) => setFlashHeadVideoUrl(url)}
-        />
+      {aiTalkingProfile && (
+        <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-white flex items-center gap-2">
+                <Mic className="w-4 h-4 text-purple-400" /> Talking Head lip-sync add-on
+              </p>
+              <p className="text-xs text-ink-400 mt-1">
+                Your script ({script.trim() ? `${script.trim().split(/\s+/).length} words` : 'not generated yet'}) travels with you —
+                finish setup on the Talking Head tab: upload your headshot, pick a voice, render (+8 credits).
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                onNavigateTab('flashhead');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="btn btn-primary whitespace-nowrap text-sm"
+            >
+              Continue to Talking Head <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* 7. Background Music */}
@@ -1599,7 +1614,7 @@ function VideoTab() {
         </button>
         {aiTalkingProfile && (
           <p className="text-xs text-ink-400 text-center">
-            Includes: {selectedConfig.credits} credits (video) + 8 credits (AI talking profile)
+            Video: {selectedConfig.credits} credits here — the Talking Head lip-sync (+8 credits) renders on its own tab with your script.
           </p>
         )}
         {!generating && lastRenderUrl && (

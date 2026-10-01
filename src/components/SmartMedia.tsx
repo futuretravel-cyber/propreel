@@ -55,7 +55,7 @@ export function BeforeAfterSlider({
   beforeLabel?: string;
   afterLabel?: string;
   className?: string;
-})
+}) {
   const [pos, setPos] = useState(50);
   const [dragging, setDragging] = useState(false);
 

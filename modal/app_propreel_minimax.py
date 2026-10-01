@@ -1096,7 +1096,7 @@ async def api_probe(refresh: str = ""):
             "service": "propreel-render",
         })
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=420, retries=1, max_containers=100, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=1, max_containers=100, scaledown_window=300)
 def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user_id: str, voice: str = "Aria", stability: float = 0.5):
     """Async FlashHead lip-sync job (fal-ai/flashhead): mirrors progress and
     result into S3 so /flashhead_status can serve any poller. Input is the
@@ -1118,7 +1118,7 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
             },
         )
 
-        max_wait = 360
+        max_wait = 840  # full-length scripts take ~4–6 min on fal; leave headroom
         start = time.time()
         while True:
             if time.time() - start > max_wait:
