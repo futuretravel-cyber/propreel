@@ -115,7 +115,8 @@ async function adminStats(req: VercelRequest, res: VercelResponse) {
   const since = Date.now() - 30 * 86400000;
   const video = { renders: 0, credits: 0, plannedSeconds: 0 };
   const flashhead = { renders: 0, credits: 0, measuredSeconds: 0 };
-  const dailyMap = new Map<string, { videoRenders: number; videoCredits: number; flashheadRenders: number; flashheadCredits: number }>();
+  const imageEdits = { edits: 0, credits: 0 };
+  const dailyMap = new Map<string, { videoRenders: number; videoCredits: number; flashheadRenders: number; flashheadCredits: number; imageEdits: number; imageCredits: number }>();
   for (const t of txns) {
     if (t.amount >= 0) continue;
     const ts = Date.parse(t.createdAt || '');
@@ -123,9 +124,10 @@ async function adminStats(req: VercelRequest, res: VercelResponse) {
     const desc = String(t.description || '');
     const isVideo = /video generation/i.test(desc);
     const isFlash = /flashhead/i.test(desc);
-    if (!isVideo && !isFlash) continue;
+    const isImage = /image edit/i.test(desc);
+    if (!isVideo && !isFlash && !isImage) continue;
     const day = new Date(ts).toISOString().slice(0, 10);
-    const bucket = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, flashheadRenders: 0, flashheadCredits: 0 };
+    const bucket = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, flashheadRenders: 0, flashheadCredits: 0, imageEdits: 0, imageCredits: 0 };
     const credits = Math.abs(Number(t.amount));
     if (isVideo) {
       video.renders += 1;
@@ -133,6 +135,11 @@ async function adminStats(req: VercelRequest, res: VercelResponse) {
       video.plannedSeconds += Number(t.metadata?.duration) || 0;
       bucket.videoRenders += 1;
       bucket.videoCredits += credits;
+    } else if (isImage) {
+      imageEdits.edits += 1;
+      imageEdits.credits += credits;
+      bucket.imageEdits += 1;
+      bucket.imageCredits += credits;
     } else {
       flashhead.renders += 1;
       flashhead.credits += credits;
@@ -147,10 +154,10 @@ async function adminStats(req: VercelRequest, res: VercelResponse) {
     .filter((p: any) => p.kind === 'FLASHHEAD' && p.durationSeconds)
     .reduce((s: number, p: any) => s + Number(p.durationSeconds), 0);
 
-  const daily: Array<{ date: string; videoRenders: number; videoCredits: number; flashheadRenders: number; flashheadCredits: number }> = [];
+  const daily: Array<{ date: string; videoRenders: number; videoCredits: number; flashheadRenders: number; flashheadCredits: number; imageEdits: number; imageCredits: number }> = [];
   for (let i = 13; i >= 0; i--) {
     const day = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
-    const b = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, flashheadRenders: 0, flashheadCredits: 0 };
+    const b = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, flashheadRenders: 0, flashheadCredits: 0, imageEdits: 0, imageCredits: 0 };
     daily.push({ date: day.slice(5), ...b });
   }
 
@@ -170,6 +177,7 @@ async function adminStats(req: VercelRequest, res: VercelResponse) {
       windowDays: 30,
       video,
       flashhead,
+      imageEdits,
       daily,
     },
   });

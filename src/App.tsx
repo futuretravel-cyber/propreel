@@ -1788,7 +1788,7 @@ function AdminOverview() {
             </h3>
             <span className="text-xs text-ink-500">last {rm.windowDays} days · credits & runtime from the live ledger</span>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="bg-ink-900/60 rounded-lg p-3">
               <p className="text-[11px] text-ink-400">Video renders</p>
               <p className="text-xl font-bold text-white">{rm.video.renders}</p>
@@ -1809,6 +1809,11 @@ function AdminOverview() {
               <p className="text-xl font-bold text-white">{rm.flashhead.measuredSeconds ? fmtRuntime(rm.flashhead.measuredSeconds) : '—'}</p>
               <p className="text-[11px] text-ink-500">measured by worker</p>
             </div>
+            <div className="bg-ink-900/60 rounded-lg p-3">
+              <p className="text-[11px] text-ink-400">Image edits</p>
+              <p className="text-xl font-bold text-white">{rm.imageEdits?.edits ?? 0}</p>
+              <p className="text-[11px] text-pink-300">{rm.imageEdits?.credits ?? 0} credits</p>
+            </div>
           </div>
           <div className="h-[180px]" aria-label="Daily AI credits spent, video versus Talking Head">
             <ResponsiveContainer width="100%" height="100%">
@@ -1821,8 +1826,9 @@ function AdminOverview() {
                   labelStyle={{ color: '#c9c9d4' }}
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 />
-                <Bar dataKey="videoCredits" name="Video credits" stackId="ai" fill="#7c3aed" radius={[0, 0, 2, 2]} />
-                <Bar dataKey="flashheadCredits" name="Talking Head credits" stackId="ai" fill="#22d3ee" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="videoCredits" name="Video credits" stackId="ai" fill="#7c3aed" />
+                <Bar dataKey="flashheadCredits" name="Talking Head credits" stackId="ai" fill="#22d3ee" />
+                <Bar dataKey="imageCredits" name="Image edit credits" stackId="ai" fill="#ec4899" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
