@@ -1,6 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser, updateUser } from '../lib/userService';
-import { TABLES, queryItems, putItem, updateItem } from '../lib/db';
+import { TABLES, queryItems, putItem, updateItem, scanItems } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
 import JSZip from 'jszip';
 
@@ -92,6 +92,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // ── GET /api/projects?action=agency_history&user_id=… ───────
+    // Agency-wide render history for team leads: every reel and Talking
+    // Head clip produced by the agency's members, newest first, with
+    // per-agent attribution.
+    if (req.method === 'GET' && action === 'agency_history') {
+      const userId = req.query.user_id as string;
+      if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+      const user = await getUser(userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const isLead = user.role === 'AGENCY_OWNER' || user.role === 'ADMIN';
+      if (!isLead || !user.agencyId) {
+        return res.status(200).json({ success: true, authorized: false, projects: [] });
+      }
+
+      const users = await scanItems<any>(TABLES.USERS, { limit: 300 });
+      const members = users.filter((u: any) => u.agencyId === user.agencyId);
+      const perMember = await Promise.all(members.map((m: any) =>
+        queryItems<any>(TABLES.PROJECTS, { expression: 'userId = :u', values: { ':u': m.id } }).catch(() => [])
+      ));
+      const memberMap = new Map(members.map((m: any) => [m.id, m]));
+      const projects = perMember
+        .flat()
+        .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+        .slice(0, 200)
+        .map((p: any) => {
+          const m = memberMap.get(p.userId);
+          return {
+            ...p,
+            agentName: m?.fullName || 'Unknown agent',
+            agentAvatar: String(m?.fullName || '?').split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase(),
+          };
+        });
+
+      return res.status(200).json({
+        success: true,
+        authorized: true,
+        agencyName: user.agencyName || null,
+        agentCount: members.length,
+        projects,
+      });
+    }
+
     // ── GET /api/projects?action=social_pack&user_id=…&id=… ─────
     // Branded download bundle: the reel, the agent's latest Talking Head
     // clip (when one exists), ready-to-post captions, and a branding file.

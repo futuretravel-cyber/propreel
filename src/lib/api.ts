@@ -103,6 +103,24 @@ export const PropReelAPI = {
     );
   },
 
+  // ── Agency render history (team leads) ───────────────────────────
+  async agencyRenderHistory(userId: string): Promise<{
+    authorized: boolean;
+    agencyName: string | null;
+    agentCount: number;
+    projects: Array<Project & { agentName?: string; agentAvatar?: string }>;
+  }> {
+    const data = await j<any>(
+      await fetch(`${API_BASE}/api/projects?action=agency_history&user_id=${encodeURIComponent(userId)}`)
+    );
+    return {
+      authorized: !!data.authorized,
+      agencyName: data.agencyName ?? null,
+      agentCount: data.agentCount ?? 0,
+      projects: data.projects || [],
+    };
+  },
+
   // ── Credits report (real transaction history) ───────────────────────────
   async creditReport(userId: string, period = '30d'): Promise<CreditReportData> {
     const data = await j<any>(

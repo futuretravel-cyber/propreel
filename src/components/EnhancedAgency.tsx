@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { formatDate } from '../lib/utils';
+import { formatDate, formatRelative } from '../lib/utils';
+import { PropReelAPI } from '../lib/api';
 import {
   Users, Plus, Zap, TrendingUp, Mail, Settings,
-  BarChart3, CheckCircle2, Send, Gift,
-  Building2, Clock,
+  BarChart3, CheckCircle2, Send, Gift, Film, Download,
+  Building2, Clock, Mic,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -29,6 +30,19 @@ interface PendingInvite {
   createdAt: string;
 }
 
+interface AgencyProject {
+  id: string;
+  title: string;
+  kind?: 'REEL' | 'FLASHHEAD';
+  status?: string;
+  videoUrl?: string | null;
+  thumbnailUrl?: string | null;
+  durationSeconds?: number;
+  createdAt: string;
+  agentName?: string;
+  agentAvatar?: string;
+}
+
 const onboardingSteps = [
   { title: 'Welcome to Your Agency Dashboard', description: 'Manage your team, track credits, and keep everyone productive.', icon: '👋' },
   { title: 'Invite Your Team', description: 'Add agents by email. Existing PropReel users join instantly; new users join when they sign up with that email.', icon: '📧' },
@@ -39,7 +53,8 @@ const onboardingSteps = [
 export default function EnhancedAgency() {
   const { user, refresh } = useAuth();
   const toast = useToast();
-  const [tab, setTab] = useState<'overview' | 'members' | 'onboarding' | 'settings'>('overview');
+  const [tab, setTab] = useState<'overview' | 'members' | 'history' | 'onboarding' | 'settings'>('overview');
+  const isLead = user?.role === 'AGENCY_OWNER' || user?.role === 'ADMIN';
   const [members, setMembers] = useState<AgencyMember[]>([]);
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const [agencyName, setAgencyName] = useState<string | null>(null);
@@ -198,6 +213,7 @@ export default function EnhancedAgency() {
         {[
           { id: 'overview', label: 'Overview', icon: <BarChart3 className="w-4 h-4" /> },
           { id: 'members', label: 'Team Members', icon: <Users className="w-4 h-4" /> },
+          ...(isLead ? [{ id: 'history', label: 'Render History', icon: <Film className="w-4 h-4" /> }] : []),
           { id: 'onboarding', label: 'Setup Guide', icon: <Zap className="w-4 h-4" /> },
           { id: 'settings', label: 'Settings', icon: <Settings className="w-4 h-4" /> },
         ].map(t => (
@@ -247,6 +263,9 @@ export default function EnhancedAgency() {
           )}
         </div>
       )}
+
+      {/* ─── Render History Tab — agency-wide, team leads ─────────── */}
+      {tab === 'history' && isLead && user?.id && <AgencyRenderHistory userId={user.id} />}
 
       {/* ─── Members Tab — real ────────────────────────────────────────── */}
       {tab === 'members' && (
@@ -345,6 +364,198 @@ export default function EnhancedAgency() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Agency-wide render history (team leads): every reel + talking-head clip
+// the agency's agents produced, with per-agent attribution and per-agent stats.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function AgencyRenderHistory({ userId }: { userId: string }) {
+  const toast = useToast();
+  const [projects, setProjects] = useState<AgencyProject[]>([]);
+  const [agencyName, setAgencyName] = useState<string | null>(null);
+  const [authorized, setAuthorized] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [kindFilter, setKindFilter] = useState<'all' | 'REEL' | 'FLASHHEAD'>('all');
+  const [agentFilter, setAgentFilter] = useState('all');
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const data = await PropReelAPI.agencyRenderHistory(userId);
+        if (cancelled) return;
+        setAuthorized(data.authorized);
+        setAgencyName(data.agencyName);
+        setProjects(data.projects);
+        if (!data.authorized) {
+          toast.info('Render history is available to agency team leads.');
+        }
+      } catch (e: any) {
+        if (!cancelled) toast.error(e.message || 'Failed to load render history');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const agents = useMemo(
+    () => [...new Map(projects.map(p => [p.agentName, p.agentName])).values()].filter(Boolean).sort(),
+    [projects]
+  );
+
+  const perAgent = useMemo(() => {
+    const m = new Map<string, { renders: number; runtime: number }>();
+    for (const p of projects) {
+      if (p.status !== 'READY') continue;
+      const k = p.agentName || 'Unknown';
+      const cur = m.get(k) || { renders: 0, runtime: 0 };
+      cur.renders += 1;
+      cur.runtime += p.durationSeconds || 0;
+      m.set(k, cur);
+    }
+    return [...m.entries()].map(([name, v]) => ({ name: name.split(' ')[0], ...v }))
+      .sort((a, b) => b.renders - a.renders);
+  }, [projects]);
+
+  const filtered = useMemo(() => projects.filter(p => {
+    if (kindFilter !== 'all' && (p.kind || 'REEL') !== kindFilter) return false;
+    if (agentFilter !== 'all' && p.agentName !== agentFilter) return false;
+    if (search && !p.title.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  }), [projects, kindFilter, agentFilter, search]);
+
+  const fmtRuntime = (s: number) => (s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`);
+
+  if (!authorized) {
+    return (
+      <div className="card-dark p-10 text-center">
+        <Film className="w-10 h-10 text-ink-500 mx-auto mb-3" />
+        <p className="text-white font-medium">Team leads only</p>
+        <p className="text-ink-400 text-sm mt-1">Ask your agency admin to promote your role to see the agency-wide render history.</p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="card-dark p-10 text-center text-sm text-ink-400">Loading agency render history…</div>;
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="card-dark p-10 text-center">
+        <Film className="w-10 h-10 text-ink-500 mx-auto mb-3" />
+        <p className="text-white font-medium">No renders yet</p>
+        <p className="text-ink-400 text-sm mt-1">Every reel and Talking Head video your agents create will appear here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Per-agent output */}
+      {perAgent.length > 0 && (
+        <div className="card-dark p-4">
+          <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-purple-400" /> Agent output — finished renders & runtime
+          </h3>
+          <div className="h-[160px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={perAgent} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="name" tick={{ fill: '#8b8b9e', fontSize: 11 }} tickLine={false} axisLine={{ stroke: 'rgba(255,255,255,0.08)' }} />
+                <YAxis tick={{ fill: '#8b8b9e', fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ background: '#1a1a24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: '#c9c9d4' }}
+                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                />
+                <Bar dataKey="renders" name="Finished renders" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <input className="input max-w-xs" placeholder="Search titles…" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search agency renders" />
+        <div className="flex items-center gap-1 px-1" role="group" aria-label="Filter by type">
+          {([['all', 'All'], ['REEL', 'Reels'], ['FLASHHEAD', 'Talking Head']] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setKindFilter(k)} className={`px-3 py-1 rounded-full text-xs font-medium transition ${kindFilter === k ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-400 hover:text-white border border-transparent'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {agents.length > 1 && (
+          <select className="input max-w-[180px] text-sm" value={agentFilter} onChange={e => setAgentFilter(e.target.value)} aria-label="Filter by agent">
+            <option value="all">All agents</option>
+            {agents.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        )}
+        <span className="text-xs text-ink-500 ml-auto">{filtered.length} of {projects.length}{agencyName ? ` · ${agencyName}` : ''}</span>
+      </div>
+
+      {/* Feed */}
+      <div className="card-dark divide-y divide-white/5 overflow-hidden">
+        {filtered.map(p => (
+          <div key={p.id} className="flex items-center gap-4 p-4">
+            {/* Thumbnail */}
+            <div className="w-20 h-12 rounded-lg overflow-hidden bg-ink-800 flex-shrink-0 flex items-center justify-center">
+              {p.thumbnailUrl ? (
+                <img src={p.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+              ) : p.videoUrl && p.status === 'READY' ? (
+                <video src={p.videoUrl} muted preload="metadata" className="w-full h-full object-cover" aria-hidden="true" />
+              ) : (
+                <span className="text-lg">{p.kind === 'FLASHHEAD' ? '🎙️' : '🎬'}</span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-medium text-white truncate max-w-[280px]">{p.title}</p>
+                {p.kind === 'FLASHHEAD' ? (
+                  <span className="badge badge-brand text-[10px] flex items-center gap-1"><Mic className="w-3 h-3" /> Talking Head</span>
+                ) : (
+                  <span className="badge badge-brand text-[10px]"><Film className="w-3 h-3 inline" /> Reel</span>
+                )}
+                <span className={`badge text-[10px] ${p.status === 'READY' ? 'badge-success' : p.status === 'PROCESSING' ? 'badge-warning' : p.status === 'FAILED' ? 'badge-danger' : 'badge-muted'}`}>
+                  {p.status}
+                </span>
+              </div>
+              <p className="text-xs text-ink-500 mt-1">
+                {p.agentAvatar && <span className="inline-block w-4 h-4 rounded-full bg-purple-700/40 text-purple-200 text-[9px] leading-4 text-center mr-1 align-middle">{p.agentAvatar}</span>}
+                {p.agentName} · {formatRelative(p.createdAt)}
+                {p.durationSeconds ? ` · ${fmtRuntime(p.durationSeconds)}` : ''}
+              </p>
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              {p.videoUrl && p.status === 'READY' && (
+                <button onClick={() => window.open(p.videoUrl!, '_blank')} className="btn btn-ghost text-xs py-1.5 text-green-400 hover:text-green-300" title="Watch">
+                  Watch
+                </button>
+              )}
+              {p.videoUrl && p.status === 'READY' && (
+                <button
+                  onClick={() => { window.location.href = `/api/projects?action=social_pack&user_id=${encodeURIComponent(userId)}&id=${encodeURIComponent(p.id)}`; }}
+                  className="btn btn-ghost text-xs py-1.5 text-purple-300 hover:text-purple-200"
+                  title="Download branded social pack"
+                >
+                  <Download className="w-3 h-3" /> Pack
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="p-6 text-sm text-ink-400 text-center">No renders match these filters.</div>
+        )}
+      </div>
     </div>
   );
 }
