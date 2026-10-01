@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { track } from '../lib/analytics';
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { PLANS, SIGNUP_BONUS } from '../lib/constants';
@@ -9,9 +10,21 @@ import { Check, ArrowRight, ArrowLeft, Sparkles, Building2, User, CreditCard, Sh
 type Step = 'plan' | 'details' | 'payment';
 
 export default function SignupPage() {
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<Step>('plan');
-  const [selectedPlan, setSelectedPlan] = useState('PROFESSIONAL');
-  const [cycle, setCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
+  const [selectedPlan, setSelectedPlan] = useState(() => {
+    const p = searchParams.get('plan')?.toUpperCase();
+    return p && PLANS.some(plan => plan.id === p) ? p : 'PROFESSIONAL';
+  });
+  const [cycle, setCycle] = useState<'MONTHLY' | 'ANNUAL'>(() =>
+    searchParams.get('cycle')?.toUpperCase() === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY'
+  );
+  // Deep-linked plans (from pricing CTAs) skip straight to account details
+  useEffect(() => {
+    if (searchParams.get('plan')) setStep('details');
+  }, [searchParams]);
+  // Remember referral code from ?ref= across the multi-step flow
+  const referralCode = searchParams.get('ref') || '';
   const [isAgency, setIsAgency] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '', email: '', password: '', phone: '',
@@ -57,8 +70,10 @@ export default function SignupPage() {
         companyReg: formData.companyReg,
         companyVat: formData.companyVat,
         companyAddress: formData.companyAddress,
+        referralCode: referralCode || undefined,
       });
       toast.success(`Welcome! You've received ${SIGNUP_BONUS} free credits!`, 'Account Created');
+      track('signup_completed', { plan: selectedPlan, cycle });
       navigate(`/payment?plan=${selectedPlan}&cycle=${cycle}&price=${price}`);
     } catch (err: any) {
       setError(err.message || 'Registration failed');

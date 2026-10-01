@@ -30,11 +30,7 @@ import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, ST
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
 import { mockProjects, mockReviews, mockTransactions, mockAgencyMembers, mockAdminStats } from './lib/mockData';
-import EnhancedOverview from './components/EnhancedOverview';
-import EnhancedBilling from './components/EnhancedBilling';
 import EnhancedProjects from './components/EnhancedProjects';
-import EnhancedAgency from './components/EnhancedAgency';
-import EnhancedAnalytics from './components/EnhancedAnalytics';
 import SecuritySettings from './components/SecuritySettings';
 import AITalkingProfile from './components/AITalkingProfile';
 import AdminMusicLibrary from './components/AdminMusicLibrary';
@@ -48,6 +44,19 @@ import {
   Monitor, Smartphone, Mic, Camera, Palette, Sun, Cloud, Moon as MoonIcon, Bell,
   FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle
 } from 'lucide-react';
+
+import { lazy, Suspense } from 'react';
+import ShareSheet from './components/ShareSheet';
+import { HomePage } from './components/HomePage';
+import { PublicLayout } from './components/PublicLayout';
+import { track } from './lib/analytics';
+
+// Code-split the heavy dashboard sections (recharts, framer-motion, admin UI)
+// so the marketing site loads without them.
+const EnhancedOverview = lazy(() => import('./components/EnhancedOverview'));
+const EnhancedBilling = lazy(() => import('./components/EnhancedBilling'));
+const EnhancedAnalytics = lazy(() => import('./components/EnhancedAnalytics'));
+const EnhancedAgency = lazy(() => import('./components/EnhancedAgency'));
 
 // Keyboard shortcuts modal
 function KeyboardShortcutsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -180,391 +189,6 @@ function CopyButton({ text, label = 'Copy', copiedLabel = 'Copied!', className =
 // PUBLIC PAGES
 // ═══════════════════════════════════════════════════════════════════════════
 
-function PublicLayout({ children }: { children: React.ReactNode }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
-              <Play className="w-4 h-4 text-white fill-white" />
-            </div>
-            <span className="font-bold text-xl">PropReel</span>
-          </Link>
-          <div className="hidden md:flex items-center gap-8">
-            <Link to="/pricing" className="text-sm font-medium text-gray-600 hover:text-purple-700 transition">Pricing</Link>
-            <Link to="/reviews" className="text-sm font-medium text-gray-600 hover:text-purple-700 transition">Reviews</Link>
-            <Link to="/about" className="text-sm font-medium text-gray-600 hover:text-purple-700 transition">About</Link>
-            <Link to="/contact" className="text-sm font-medium text-gray-600 hover:text-purple-700 transition">Contact</Link>
-          </div>
-          <div className="hidden md:flex items-center gap-3">
-            <Link to="/login" className="btn btn-ghost text-gray-700 hover:text-purple-700">Log in</Link>
-            <Link to="/register" className="btn btn-primary text-sm">Start Free — {SIGNUP_BONUS} Credits</Link>
-          </div>
-          <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden p-2" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}>
-            <Menu className="w-6 h-6" />
-          </button>
-        </div>
-        {menuOpen && (
-          <div className="md:hidden border-t border-gray-100 bg-white p-4 space-y-3">
-            <Link to="/pricing" className="block py-2 text-gray-700">Pricing</Link>
-            <Link to="/reviews" className="block py-2 text-gray-700">Reviews</Link>
-            <Link to="/about" className="block py-2 text-gray-700">About</Link>
-            <Link to="/contact" className="block py-2 text-gray-700">Contact</Link>
-            <Link to="/login" className="block py-2 text-gray-700">Log in</Link>
-            <Link to="/register" className="block py-2 text-purple-700 font-semibold">Start Free — {SIGNUP_BONUS} Credits</Link>
-          </div>
-        )}
-      </nav>
-      {children}
-      <footer className="bg-gray-900 text-gray-400 py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
-                  <Play className="w-4 h-4 text-white fill-white" />
-                </div>
-                <span className="font-bold text-xl text-white">PropReel</span>
-              </div>
-              <p className="text-sm">Create stunning property videos instantly with AI. Built for South African estate agents.</p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-3">Product</h4>
-              <div className="space-y-2 text-sm">
-                <Link to="/pricing" className="block hover:text-white">Pricing</Link>
-                <Link to="/studio" className="block hover:text-white">Studio</Link>
-                <Link to="/reviews" className="block hover:text-white">Reviews</Link>
-              </div>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-3">Company</h4>
-              <div className="space-y-2 text-sm">
-                <Link to="/about" className="block hover:text-white">About</Link>
-                <Link to="/contact" className="block hover:text-white">Contact</Link>
-              </div>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-3">Legal</h4>
-              <div className="space-y-2 text-sm">
-                <Link to="/terms" className="block hover:text-white">Terms of Service</Link>
-                <Link to="/privacy" className="block hover:text-white">Privacy Policy</Link>
-                <Link to="/cookies" className="block hover:text-white">Cookie Policy</Link>
-                <Link to="/refund-policy" className="block hover:text-white">Refund Policy</Link>
-                <Link to="/paia" className="block hover:text-white">PAIA Manual</Link>
-                <Link to="/dpa" className="block hover:text-white">Data Processing</Link>
-              </div>
-            </div>
-          </div>
-          <div className="border-t border-gray-800 mt-12 pt-8 text-sm text-center">
-            <p>© 2025 PropReel. All rights reserved. All prices include VAT.</p>
-          </div>
-        </div>
-      </footer>
-    </div>
-  );
-}
-
-function HomePage() {
-  return (
-    <PublicLayout>
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-purple-50 to-white py-20 lg:py-32">
-        <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_50%_-10%,rgba(128,0,128,0.08),transparent_70%)]" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div className="text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 bg-purple-100 text-purple-800 px-4 py-2 rounded-full text-sm font-semibold mb-6">
-                <Sparkles className="w-4 h-4" /> {SIGNUP_BONUS} Free Credits on Signup
-              </div>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-gray-900 leading-tight text-balance">
-                Create Stunning Property Videos<br />
-                <span className="brand-text-gradient">Instantly with AI</span>
-              </h1>
-              <p className="mt-6 text-lg sm:text-xl text-gray-600">
-                Turn your property photos into cinematic, narrated listing reels in minutes. Built for South African estate agents.
-              </p>
-              <div className="mt-10 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
-                <Link to="/register" className="btn btn-primary text-lg px-8 py-4">
-                  Start Free — {SIGNUP_BONUS} Credits <ArrowRight className="w-5 h-5" />
-                </Link>
-                <Link to="/pricing" className="btn border border-gray-200 text-gray-700 hover:border-purple-300 text-lg px-8 py-4">
-                  View Pricing
-                </Link>
-              </div>
-            </div>
-            <div className="relative">
-              <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl">
-                <img 
-                  src="https://image.qwenlm.ai/generated-images/330c07e5-35d8-4349-bd85-5605d525a579/_result.png" 
-                  alt="Luxury property in Cape Town" 
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="absolute -bottom-6 -left-6 bg-white rounded-xl shadow-xl p-4 max-w-[200px]">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-                    <Video className="w-4 h-4 text-purple-700" />
-                  </div>
-                  <span className="text-sm font-semibold text-gray-900">AI Generated</span>
-                </div>
-                <p className="text-xs text-gray-600">Cinematic property reel created in 2 minutes</p>
-              </div>
-            </div>
-          </div>
-          <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-3xl mx-auto">
-            {[
-              { label: 'Agents', value: '847+' },
-              { label: 'Reels Generated', value: '3,291' },
-              { label: 'Agencies', value: '42' },
-              { label: 'Avg. Views', value: '12.4K' },
-            ].map(s => (
-              <div key={s.label} className="text-center">
-                <p className="text-3xl font-black text-purple-700">{s.value}</p>
-                <p className="text-sm text-gray-500 mt-1">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Property Showcase */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-black text-gray-900">Transform Your Listings</h2>
-            <p className="mt-4 text-lg text-gray-600">See how AI enhances property photos and creates stunning videos</p>
-          </div>
-          
-          {/* Before/After Comparison */}
-          <div className="mb-16">
-            <div className="grid md:grid-cols-2 gap-8 items-center">
-              <div className="relative group">
-                <div className="aspect-video rounded-2xl overflow-hidden shadow-xl">
-                  <img 
-                    src="https://image.qwenlm.ai/generated-images/67414a7a-ff1d-4510-af4c-59211019fb32/_result.png" 
-                    alt="Before and after AI enhancement" 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                </div>
-                <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-900">
-                  Before → After
-                </div>
-              </div>
-              <div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">AI Photo Enhancement</h3>
-                <p className="text-gray-600 mb-6">
-                  Transform dull, overcast photos into stunning golden hour shots. Our AI preserves every architectural detail while dramatically improving lighting, sky, and landscaping.
-                </p>
-                <ul className="space-y-3">
-                  {[
-                    'Golden hour lighting in seconds',
-                    'Clear blue sky replacement',
-                    'Lush green lawn enhancement',
-                    '100% architectural preservation'
-                  ].map((feature, i) => (
-                    <li key={i} className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-purple-700 flex-shrink-0" />
-                      <span className="text-gray-700">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {/* Virtual Staging Demo */}
-          <div className="mb-16">
-            <div className="grid md:grid-cols-2 gap-8 items-center">
-              <div className="order-2 md:order-1">
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Virtual Staging</h3>
-                <p className="text-gray-600 mb-6">
-                  Stage empty rooms with beautiful furniture in any style. From luxury modern to Scandinavian, our AI creates photorealistic staging that helps buyers envision the space.
-                </p>
-                <ul className="space-y-3">
-                  {[
-                    '8 furniture styles available',
-                    'Photorealistic results',
-                    'Multiple room types supported',
-                    'Perfect for empty properties'
-                  ].map((feature, i) => (
-                    <li key={i} className="flex items-center gap-3">
-                      <Check className="w-5 h-5 text-purple-700 flex-shrink-0" />
-                      <span className="text-gray-700">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="order-1 md:order-2 relative group">
-                <div className="aspect-video rounded-2xl overflow-hidden shadow-xl">
-                  <img 
-                    src="https://image.qwenlm.ai/generated-images/cd3adc6f-f45e-4f36-b943-c549ba1431d6/_result.png" 
-                    alt="Virtual staging before and after" 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                </div>
-                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-900">
-                  Empty → Staged
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Property Gallery */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              {
-                image: 'https://image.qwenlm.ai/generated-images/f93ec3da-ca3f-4ff4-89ec-4b91c591a1cf/_result.png',
-                title: 'Modern Apartment',
-                location: 'Sandton, Johannesburg',
-                price: 'R3,200,000'
-              },
-              {
-                image: 'https://image.qwenlm.ai/generated-images/e91d91fe-28c8-458d-8327-c7c2fc755fe0/_result.png',
-                title: 'Waterfront Villa',
-                location: 'Umhlanga, Durban',
-                price: 'R8,900,000'
-              },
-              {
-                image: 'https://image.qwenlm.ai/generated-images/223f517b-9d46-4b71-b47c-05dc2cb2c888/_result.png',
-                title: 'Family Estate',
-                location: 'Stellenbosch, Cape Town',
-                price: 'R6,800,000'
-              },
-              {
-                image: 'https://image.qwenlm.ai/generated-images/c0dcca61-ae6d-40e4-8245-342302d04087/_result.png',
-                title: 'Luxury Townhouse',
-                location: 'Waterkloof, Pretoria',
-                price: 'R4,500,000'
-              },
-              {
-                image: 'https://image.qwenlm.ai/generated-images/330c07e5-35d8-4349-bd85-5605d525a579/_result.png',
-                title: 'Contemporary Villa',
-                location: 'Camps Bay, Cape Town',
-                price: 'R12,500,000'
-              },
-              {
-                image: 'https://image.qwenlm.ai/generated-images/1bee03b0-4e73-4143-935f-8a2306bb368b/_result.png',
-                title: 'AI Video Editor',
-                location: 'Create cinematic reels',
-                price: 'From 5 credits'
-              }
-            ].map((property, i) => (
-              <div key={i} className="group cursor-pointer">
-                <div className="aspect-video rounded-xl overflow-hidden shadow-lg mb-4">
-                  <img 
-                    src={property.image} 
-                    alt={property.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                </div>
-                <h3 className="font-bold text-gray-900 group-hover:text-purple-700 transition-colors">{property.title}</h3>
-                <p className="text-sm text-gray-600">{property.location}</p>
-                <p className="text-purple-700 font-semibold mt-1">{property.price}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-black text-gray-900">7 Powerful AI Tools in One Studio</h2>
-            <p className="mt-4 text-lg text-gray-600">Everything you need to market properties like a pro.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              { icon: <FileText className="w-6 h-6" />, title: 'Property Descriptions', desc: 'AI-generated descriptions formatted for Property24 and Private Property.' },
-              { icon: <Camera className="w-6 h-6" />, title: 'AI Photo Editor', desc: 'Golden sunsets, clear skies, lush lawns — enhance any photo in seconds.' },
-              { icon: <Sofa className="w-6 h-6" />, title: 'Virtual Staging', desc: 'Stage empty rooms with 8 furniture styles. 100% architectural preservation.' },
-              { icon: <Trash2 className="w-6 h-6" />, title: 'Furniture Removal', desc: 'Remove all furniture, clutter, or vehicles with a single click.' },
-              { icon: <MoonIcon className="w-6 h-6" />, title: 'Twilight Photography', desc: 'Convert day photos to stunning blue-hour twilight shots.' },
-              { icon: <Share2 className="w-6 h-6" />, title: 'Social Media Captions', desc: 'Platform-optimized captions for Instagram, Facebook, WhatsApp, and more.' },
-            ].map((f, i) => (
-              <div key={i} className="card-light p-6 hover:shadow-lg transition-shadow">
-                <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center mb-4">{f.icon}</div>
-                <h3 className="font-bold text-lg text-gray-900">{f.title}</h3>
-                <p className="mt-2 text-gray-600 text-sm">{f.desc}</p>
-              </div>
-            ))}
-            <div className="card-light p-6 bg-gradient-to-br from-purple-50 to-white border-purple-200">
-              <div className="w-12 h-12 rounded-xl bg-purple-700 text-white flex items-center justify-center mb-4"><Video className="w-6 h-6" /></div>
-              <h3 className="font-bold text-lg text-gray-900">AI Video Generator</h3>
-              <p className="mt-2 text-gray-600 text-sm">Create cinematic property reels with AI voiceover, transitions, and branding.</p>
-              <Link to="/register" className="mt-4 inline-flex items-center gap-1 text-purple-700 font-semibold text-sm hover:gap-2 transition-all">
-                Try it free <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Built for SA */}
-      <section className="py-20 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-black text-gray-900">Built for South Africa 🇿🇦</h2>
-          <p className="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">Priced in Rand. Local voices. Property24 & Private Property ready.</p>
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="card-light p-8">
-              <p className="text-4xl mb-4">💰</p>
-              <h3 className="font-bold text-lg">Rand Pricing</h3>
-              <p className="text-gray-600 mt-2">All plans priced in ZAR. No hidden fees. All prices include VAT.</p>
-            </div>
-            <div className="card-light p-8">
-              <p className="text-4xl mb-4">🗣️</p>
-              <h3 className="font-bold text-lg">SA English Voice</h3>
-              <p className="text-gray-600 mt-2">Ayanda — our South African English voice — plus 6 other professional voices.</p>
-            </div>
-            <div className="card-light p-8">
-              <p className="text-4xl mb-4">📋</p>
-              <h3 className="font-bold text-lg">Portal Ready</h3>
-              <p className="text-gray-600 mt-2">Download descriptions formatted for Property24 and Private Property portals.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl sm:text-4xl font-black text-gray-900 text-center mb-12">Loved by SA Agents</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {mockReviews.slice(0, 3).map(r => (
-              <div key={r.id} className="card-light p-6">
-                <div className="flex gap-1 mb-3">
-                  {Array.from({ length: r.rating }).map((_, i) => <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
-                </div>
-                <p className="text-gray-700 text-sm mb-4">"{r.comment}"</p>
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm">{r.fullName}</p>
-                  <p className="text-gray-500 text-xs">{r.agency}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-20 bg-gradient-to-br from-purple-900 via-purple-800 to-purple-900">
-        <div className="max-w-4xl mx-auto px-4 text-center text-white">
-          <h2 className="text-3xl sm:text-4xl font-black">Ready to Transform Your Listings?</h2>
-          <p className="mt-4 text-lg text-purple-200">Join 847+ South African agents already using PropReel.</p>
-          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/register" className="btn bg-white text-purple-900 hover:bg-purple-50 text-lg px-8 py-4 font-bold">
-              Get {SIGNUP_BONUS} Free Credits <ArrowRight className="w-5 h-5" />
-            </Link>
-          </div>
-          <p className="mt-4 text-sm text-purple-300">No credit card required • Cancel anytime</p>
-        </div>
-      </section>
-    </PublicLayout>
-  );
-}
-
 function PricingPage() {
   const [annual, setAnnual] = useState(false);
   return (
@@ -575,15 +199,15 @@ function PricingPage() {
             <h1 className="text-4xl sm:text-5xl font-black text-gray-900">Simple, Transparent Pricing</h1>
             <p className="mt-4 text-lg text-gray-600">All prices include VAT. Cancel anytime.</p>
             <div className="mt-8 inline-flex items-center gap-3 bg-gray-100 rounded-full p-1">
-              <button onClick={() => setAnnual(false)} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${!annual ? 'bg-white shadow text-purple-700' : 'text-gray-600'}`}>Monthly</button>
-              <button onClick={() => setAnnual(true)} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${annual ? 'bg-white shadow text-purple-700' : 'text-gray-600'}`}>Annual <span className="text-green-600 text-xs">Save 15%</span></button>
+              <button onClick={() => { track('pricing_toggle', { to: 'monthly' }); setAnnual(false); }} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${!annual ? 'bg-white shadow text-purple-700' : 'text-gray-600'}`}>Monthly</button>
+              <button onClick={() => { track('pricing_toggle', { to: 'annual' }); setAnnual(true); }} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${annual ? 'bg-white shadow text-purple-700' : 'text-gray-600'}`}>Annual <span className="text-green-600 text-xs">Save 15%</span></button>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {PLANS.map(plan => {
               const price = annual ? plan.annualZar : plan.monthlyZar;
               return (
-                <div key={plan.id} className={`card-light p-6 relative ${plan.popular ? 'ring-2 ring-purple-700 shadow-xl scale-105' : ''}`}>
+                <div key={plan.id} className={`card-light p-6 relative ${plan.popular ? 'ring-2 ring-purple-700 shadow-xl' : ''}`}>
                   {plan.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2 badge badge-brand">Most Popular</div>}
                   <h3 className="font-bold text-xl text-gray-900">{plan.name}</h3>
                   <p className="text-sm text-gray-500 mt-1">{plan.tagline}</p>
@@ -599,8 +223,8 @@ function PricingPage() {
                       </li>
                     ))}
                   </ul>
-                  <Link to="/register" className={`btn w-full mt-6 ${plan.popular ? 'btn-primary' : 'border border-gray-200 text-gray-700 hover:border-purple-300'}`}>
-                    Get Started
+                  <Link to={`/register?plan=${plan.id}&cycle=${annual ? 'ANNUAL' : 'MONTHLY'}`} className={`btn w-full mt-6 min-h-[48px] flex items-center justify-center ${plan.popular ? 'btn-primary' : 'border border-gray-200 text-gray-700 hover:border-purple-300'}`}>
+                    Choose {plan.name}
                   </Link>
                 </div>
               );
@@ -1014,7 +638,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 function DashboardOverview() {
   const loading = useSimulatedLoading(450);
   if (loading) return <DashboardSkeleton />;
-  return <EnhancedOverview />;
+  return <Suspense fallback={<DashboardSkeleton />}><EnhancedOverview /></Suspense>;
 }
 
 function DashboardListings() {
@@ -1024,17 +648,17 @@ function DashboardListings() {
 }
 
 function DashboardAnalytics() {
-  return <EnhancedAnalytics />;
+  return <Suspense fallback={<DashboardSkeleton />}><EnhancedAnalytics /></Suspense>;
 }
 
 function DashboardBilling() {
   const loading = useSimulatedLoading(450);
   if (loading) return <BillingSkeleton />;
-  return <EnhancedBilling />;
+  return <Suspense fallback={<BillingSkeleton />}><EnhancedBilling /></Suspense>;
 }
 
 function DashboardAgency() {
-  return <EnhancedAgency />;
+  return <Suspense fallback={<DashboardSkeleton />}><EnhancedAgency /></Suspense>;
 }
 
 function DashboardSettings() {
@@ -1606,6 +1230,8 @@ function VideoTab() {
   const [generatingScript, setGeneratingScript] = useState(false);
   const [flashHeadVideoUrl, setFlashHeadVideoUrl] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [lastRenderUrl, setLastRenderUrl] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const tierConfig = TIERS.find(t => t.id === tier)!;
   const selectedConfig = tierConfig.configurations[configIndex];
@@ -1676,6 +1302,8 @@ function VideoTab() {
       
       const result = await response.json();
       console.log('Video generation started:', result);
+      if (result?.video_url) setLastRenderUrl(result.video_url);
+      track('render_started', { tier, orientation });
       
       // If FlashHead is enabled, generate lip-sync video
       if (aiTalkingProfile && profileImage) {
@@ -1904,7 +1532,23 @@ function VideoTab() {
             Includes: {selectedConfig.credits} credits (video) + 8 credits (AI talking profile)
           </p>
         )}
+        {!generating && lastRenderUrl && (
+          <button
+            onClick={() => setShareOpen(true)}
+            className="btn btn-secondary w-full min-h-[48px]"
+          >
+            <Share2 className="w-4 h-4" /> Share to social media
+          </button>
+        )}
       </div>
+      {shareOpen && lastRenderUrl && (
+        <ShareSheet
+          videoUrl={lastRenderUrl}
+          caption={script.slice(0, 120)}
+          hashtags={['PropertyForSale', 'SouthAfrica', 'RealEstate']}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
     </div>
   );
 }

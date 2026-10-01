@@ -154,6 +154,7 @@ export interface RegisterData {
   companyReg?: string;
   companyVat?: string;
   companyAddress?: string;
+  referralCode?: string;
 }
 
 const CreditContext = createContext<CreditContextType | null>(null);
@@ -298,9 +299,27 @@ export function CreditProvider({ children }: { children: ReactNode }) {
       console.error('Failed to create user in backend:', error);
       // Non-critical error, continue
     }
+
+    // Referral: credit the referrer if this signup came via ?ref=
+    if (data.referralCode) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const newUserId = sessionData.session?.user?.id;
+        if (newUserId) {
+          await fetch(`${import.meta.env.VITE_API_URL || ''}/api/leads?action=referral`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ referrer: data.referralCode, newUserId, newUserEmail: data.email }),
+          });
+        }
+      } catch (refError) {
+        console.error('Referral apply failed (non-critical):', refError);
+      }
+    }
   }, []);
 
   const loginWithGoogle = useCallback(async () => {
+    import('../lib/analytics').then(m => m.track('google_login')).catch(() => {});
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
