@@ -32,6 +32,8 @@ import { PropReelAPI } from './lib/api';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
 import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
+import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
+import RenderProgressBar from './components/RenderProgressBar';
 import EnhancedProjects from './components/EnhancedProjects';
 import SecuritySettings from './components/SecuritySettings';
 import AITalkingProfile from './components/AITalkingProfile';
@@ -1229,6 +1231,8 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
   const [lastRenderUrl, setLastRenderUrl] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState('');
   const [shareOpen, setShareOpen] = useState(false);
+  // Elapsed-vs-typical progress for the reel render (typical scales with clip count)
+  const reelProgress = useRenderProgress(typicalVideoSeconds(uploadedImages.length || 1));
 
   const tierConfig = TIERS.find(t => t.id === tier)!;
   const selectedConfig = tierConfig.configurations[configIndex];
@@ -1273,6 +1277,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
 
   const generateReel = async () => {
     setGenerating(true);
+    reelProgress.start();
     const totalCredits = selectedConfig.credits;
     const recordId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
@@ -1372,6 +1377,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
       }
 
       setGenerating(false);
+      reelProgress.stop();
       toast.success('Video rendered successfully!', 'Render Complete');
     } catch (error: any) {
       console.error('Error generating video:', error);
@@ -1380,6 +1386,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
         await addCredits(totalCredits, 'refund', `Refund — failed video render (${tier})`);
       } catch { /* best-effort */ }
       setGenerating(false);
+      reelProgress.stop();
       toast.error(error.message || 'Failed to generate video — credits refunded', 'Error');
     }
   };
@@ -1619,6 +1626,13 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
             <><Play className="w-5 h-5" /> Generate Video ({totalCredits} credits)</>
           )}
         </button>
+        {generating && (
+          <RenderProgressBar
+            progress={reelProgress}
+            stage={renderStatus === 'processing' ? 'processing' : renderStatus === 'queued' ? 'queued' : ''}
+            label="Rendering your video reel"
+          />
+        )}
         {aiTalkingProfile && (
           <p className="text-xs text-ink-400 text-center">
             Video: {selectedConfig.credits} credits here — the Talking Head lip-sync (+8 credits) renders on its own tab with your script.

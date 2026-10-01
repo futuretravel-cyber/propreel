@@ -23,6 +23,7 @@ export function useFlashHead() {
   const { deductCredits, addCredits, user } = useCredit() as any;
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<string>('');
 
   const generate = useCallback(async (opts: {
     file: File;
@@ -87,6 +88,7 @@ export function useFlashHead() {
 
     // 3) Start async job + poll status
     setStage('rendering');
+    setJobStatus('queued');
     // Project record id (hoisted so the failure path can mark it FAILED)
     let projectId: string | null = null;
     try {
@@ -128,6 +130,7 @@ export function useFlashHead() {
         const statusRes = await fetch(`${MODAL_ENDPOINT}/flashhead_status?job_id=${encodeURIComponent(jobId)}`);
         if (!statusRes.ok) continue; // transient — retry until deadline
         const job = await statusRes.json();
+        setJobStatus(String(job.status || ''));
         if (job.status === 'completed' && job.video_url) {
           if (projectId) {
             PropReelAPI.updateProject(user.id, projectId, {
@@ -162,6 +165,7 @@ export function useFlashHead() {
     stage,
     error,
     setError,
+    jobStatus,
     busy: stage === 'uploading' || stage === 'deducting' || stage === 'rendering',
     cost: FLASHHEAD_COST,
   };

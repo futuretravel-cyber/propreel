@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { Camera, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { useImageEdit } from '../lib/useImageEdit';
+import { useRenderProgress, TYPICAL_IMAGE_EDIT_SECONDS } from '../lib/useRenderProgress';
+import RenderProgressBar from './RenderProgressBar';
 
 interface ImageWorkbenchProps {
   presetId: string;
@@ -22,6 +24,8 @@ export default function ImageWorkbench({ presetId, strength, guidanceScale, cust
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { edit, busy, stage, error, setError } = useImageEdit();
+  // Elapsed-vs-typical progress for the ~30s FLUX edit
+  const editProgress = useRenderProgress(TYPICAL_IMAGE_EDIT_SECONDS);
 
   const pick = (f: File | null) => {
     if (!f) return;
@@ -37,13 +41,18 @@ export default function ImageWorkbench({ presetId, strength, guidanceScale, cust
 
   const run = async () => {
     if (!file) return;
-    const res = await edit({ file, presetId, strength, guidanceScale, customPrompt });
-    if (res) setResultUrl(res.imageUrl);
+    editProgress.start();
+    try {
+      const res = await edit({ file, presetId, strength, guidanceScale, customPrompt });
+      if (res) setResultUrl(res.imageUrl);
+    } finally {
+      editProgress.stop();
+    }
   };
 
   const stageLabel = stage === 'uploading' ? 'Uploading image…'
     : stage === 'deducting' ? 'Reserving credits…'
-    : stage === 'rendering' ? 'AI is working — typically 15–40 s…'
+    : stage === 'rendering' ? 'AI is working…'
     : '';
 
   return (
@@ -97,6 +106,11 @@ export default function ImageWorkbench({ presetId, strength, guidanceScale, cust
               <><Zap className="w-4 h-4" /> {ctaLabel}</>
             )}
           </button>
+          <RenderProgressBar
+            progress={editProgress}
+            stage={stage === 'rendering' ? 'processing' : stage === 'uploading' ? 'queued' : ''}
+            label="Editing your image"
+          />
           {resultUrl && (
             <>
               <a href={resultUrl} target="_blank" rel="noopener" className="btn btn-secondary min-h-[48px]">

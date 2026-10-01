@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, Check, AlertCircle, Sparkles } from 'lucide-react';
 import { useFlashHead } from '../lib/useFlashHead';
 import { useCredit } from '../context/AuthContext';
+import { useRenderProgress, typicalFlashheadSeconds } from '../lib/useRenderProgress';
+import RenderProgressBar from './RenderProgressBar';
 
 const VOICES = [
   { id: 'Aria', label: 'Aria (female, warm)' },
@@ -28,13 +30,16 @@ interface FlashHeadVideoProps {
  */
 export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated }: FlashHeadVideoProps) {
   const { user } = useCredit() as any;
-  const { generate, busy, stage, error, setError, cost } = useFlashHead();
+  const { generate, busy, stage, error, setError, jobStatus, cost } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [script, setScript] = useState(initialScript);
   const [voice, setVoice] = useState('Aria');
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Elapsed-vs-typical progress: typical scales with the script length
+  const scriptWords = script.trim() ? script.trim().split(/\s+/).length : 0;
+  const progress = useRenderProgress(typicalFlashheadSeconds(scriptWords));
 
   // Keep the shared Studio script in sync (the Video tab reads from it)
   const updateScript = (text: string) => {
@@ -56,16 +61,21 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
 
   const run = async () => {
     if (!file || !script.trim()) return;
-    const res = await generate({ file, voiceoverText: script, voice });
-    if (res) {
-      setResultUrl(res.videoUrl);
-      onVideoGenerated?.(res.videoUrl);
+    progress.start();
+    try {
+      const res = await generate({ file, voiceoverText: script, voice });
+      if (res) {
+        setResultUrl(res.videoUrl);
+        onVideoGenerated?.(res.videoUrl);
+      }
+    } finally {
+      progress.stop();
     }
   };
 
   const stageLabel = stage === 'uploading' ? 'Uploading profile picture…'
     : stage === 'deducting' ? 'Reserving credits…'
-    : stage === 'rendering' ? 'AI is generating your lip-sync video — typically 1–3 minutes…'
+    : stage === 'rendering' ? 'AI is generating your lip-sync video…'
     : '';
 
   const canRun = !!file && !!script.trim() && !busy && (user?.credits ?? 0) >= cost;
@@ -138,6 +148,11 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
             <><Sparkles className="w-5 h-5" /> Generate Talking-Head Video ({cost} credits)</>
           )}
         </button>
+        <RenderProgressBar
+          progress={progress}
+          stage={stage === 'rendering' ? (jobStatus === 'processing' ? 'processing' : 'queued') : ''}
+          label="Generating your talking-head video"
+        />
         {!busy && !canRun && (
           <p className="text-xs text-ink-500 text-center">
             {!file && 'Upload your profile picture • '}
