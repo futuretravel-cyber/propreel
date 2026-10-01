@@ -112,7 +112,8 @@ export function useFlashHead() {
       if (!jobId) throw new Error('Render service did not return a job id');
 
       // Track in propreel-projects so Listings, search and the activity feed
-      // surface it automatically (created as PROCESSING, updated on terminal)
+      // surface it automatically (created as PROCESSING, updated on terminal).
+      // jobId + creditsSpent let the nightly reaper reconcile abandoned renders.
       try {
         const project = await PropReelAPI.createProject({
           userId: user.id,
@@ -120,6 +121,8 @@ export function useFlashHead() {
           kind: 'FLASHHEAD',
           voice: opts.voice || 'Aria',
           status: 'PROCESSING',
+          jobId,
+          creditsSpent: FLASHHEAD_COST,
         } as any);
         projectId = project.id;
       } catch { /* non-fatal — render proceeds without the record */ }

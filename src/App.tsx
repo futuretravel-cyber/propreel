@@ -1293,6 +1293,8 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
             status: 'PROCESSING',
             videoTier: tier,
             durationSeconds: selectedConfig.duration,
+            jobId: recordId,
+            creditsSpent: selectedConfig.credits,
           } as any);
           projectId = project.id;
         } catch { /* non-fatal — render can still proceed */ }

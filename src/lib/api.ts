@@ -26,6 +26,10 @@ export interface Project {
   /** REEL = AI video render, FLASHHEAD = Talking Head lip-sync clip */
   kind?: 'REEL' | 'FLASHHEAD';
   voice?: string;
+  /** Modal job id — lets the reaper reconcile abandoned renders */
+  jobId?: string;
+  /** Credits reserved for this render — what the reaper refunds if it failed */
+  creditsSpent?: number;
   /** Clip runtime in seconds — planned for reels, ffprobe-measured for Talking Head */
   durationSeconds?: number;
   videoTier: string;

@@ -1,6 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { processExpiredCredits } from '../../lib/userService';
 import { recordCronRun } from '../../lib/cronRuns';
+import { reapStaleProjects } from '../../lib/projectReaper';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow Vercel cron or manual trigger with secret
@@ -25,14 +26,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const result = await processExpiredCredits();
 
-    await recordCronRun('process-expired-credits', 'success', Date.now() - started, `processed=${result.processed} expiredCredits=${result.expiredAmount}`);
+    // Same nightly slot: reconcile renders abandoned mid-flight (browser died
+    // while a job was processing) — finalize completed jobs, refund failures.
+    let reapSummary = 'reapError';
+    let reap: Awaited<ReturnType<typeof reapStaleProjects>> | null = null;
+    try {
+      reap = await reapStaleProjects();
+      reapSummary = `reaped=${reap.stale} refunded=${reap.refundedJobs} finalized=${reap.completedJobs} skipped=${reap.skipped}`;
+    } catch (reapErr) {
+      console.error('Project reaper failed (non-fatal):', reapErr);
+      reapSummary = `reapError=${String((reapErr as any)?.message || reapErr).slice(0, 120)}`;
+    }
 
-    console.log(`Expired credits processing complete: ${result.processed} users, ${result.expiredAmount} credits expired`);
+    await recordCronRun(
+      'process-expired-credits',
+      'success',
+      Date.now() - started,
+      `processed=${result.processed} expiredCredits=${result.expiredAmount} ${reapSummary}`
+    );
+
+    console.log(`Expired credits processing complete: ${result.processed} users, ${result.expiredAmount} credits expired; reaper: ${reapSummary}`);
+    if (reap && reap.details.length) {
+      for (const d of reap.details) console.log(`  reaper: ${d}`);
+    }
 
     return res.status(200).json({
       success: true,
       processed: result.processed,
       expired_amount: result.expiredAmount,
+      reaper: reap ? {
+        stale: reap.stale,
+        refunded: reap.refundedJobs,
+        finalized: reap.completedJobs,
+        skipped: reap.skipped,
+        details: reap.details,
+      } : null,
     });
   } catch (error) {
     console.error('Expired credits processing error:', error);

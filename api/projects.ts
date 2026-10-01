@@ -28,6 +28,10 @@ export interface ProjectRecord {
   /** REEL = AI video render, FLASHHEAD = Talking Head lip-sync clip */
   kind?: 'REEL' | 'FLASHHEAD';
   voice?: string;
+  /** Modal job id — lets the reaper reconcile abandoned renders */
+  jobId?: string;
+  /** Credits reserved for this render — what the reaper refunds if it failed */
+  creditsSpent?: number;
   videoTier?: string;
   videoUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -127,6 +131,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: (['DRAFT', 'PROCESSING', 'READY', 'FAILED'] as const).includes(b.status) ? b.status : 'DRAFT',
         kind: b.kind === 'FLASHHEAD' ? 'FLASHHEAD' : 'REEL',
         voice: typeof b.voice === 'string' ? b.voice.slice(0, 40) : undefined,
+        jobId: typeof b.jobId === 'string' ? b.jobId.slice(0, 120) : undefined,
+        creditsSpent: Number(b.creditsSpent) || undefined,
         videoTier: b.videoTier || 'ESSENTIAL',
         videoUrl: b.videoUrl || null,
         thumbnailUrl: b.thumbnailUrl || null,
@@ -154,7 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!existing.length) return res.status(404).json({ error: 'Project not found' });
 
       // Whitelist updatable fields
-      const allowed = ['title', 'address', 'suburb', 'city', 'province', 'price', 'bedrooms', 'bathrooms', 'garages', 'propertyType', 'features', 'status', 'videoTier', 'videoUrl', 'thumbnailUrl', 'folder', 'tags', 'favorite'] as const;
+      const allowed = ['title', 'address', 'suburb', 'city', 'province', 'price', 'bedrooms', 'bathrooms', 'garages', 'propertyType', 'features', 'status', 'kind', 'voice', 'jobId', 'creditsSpent', 'durationSeconds', 'videoTier', 'videoUrl', 'thumbnailUrl', 'folder', 'tags', 'favorite'] as const;
       const clean: Record<string, any> = {};
       for (const key of allowed) {
         if (key in (updates || {})) clean[key] = updates[key];
