@@ -61,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!userId) return res.status(400).json({ error: 'user_id is required' });
       const me = await getUser(userId);
       if (!me) return res.status(404).json({ error: 'User not found' });
-      if (!me.agencyId) return res.status(200).json({ success: true, members: me ? [{ id: me.id, fullName: me.fullName, email: me.email, credits: me.credits ?? 0, role: me.role || 'AGENT', avatar: 'ME', createdAt: me.createdAt }], agencyName: null, invites: [] });
+      if (!me.agencyId) return res.status(200).json({ success: true, members: [{ id: me.id, fullName: me.fullName, email: me.email, credits: me.credits ?? 0, role: me.role || 'AGENT', avatar: 'ME', createdAt: me.createdAt }], agencyName: null, invites: [] });
 
       const { scanItems, TABLES: T } = await import('../lib/db');
       const users = await scanItems<any>(T.USERS, { limit: 300 });
