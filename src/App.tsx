@@ -1339,6 +1339,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
       // and return video_url immediately)
       let finalUrl: string | null = result?.video_url || null;
       let measuredDuration: number | undefined;
+      let thumbUrl: string | undefined;
       if (!finalUrl && result?.record_id) {
         const deadline = Date.now() + 12 * 60 * 1000;
         while (Date.now() < deadline) {
@@ -1349,6 +1350,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
             if (s.status === 'completed' && s.video_url) {
               finalUrl = s.video_url;
               if (s.duration_seconds) measuredDuration = Number(s.duration_seconds);
+              if (s.thumbnail_url) thumbUrl = String(s.thumbnail_url);
               break;
             }
             if (s.status === 'failed') {
@@ -1376,6 +1378,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
           status: 'READY',
           videoUrl: finalUrl,
           ...(measuredDuration ? { durationSeconds: measuredDuration } : {}),
+          ...(thumbUrl ? { thumbnailUrl: thumbUrl } : {}),
         }).catch(() => {});
       }
 

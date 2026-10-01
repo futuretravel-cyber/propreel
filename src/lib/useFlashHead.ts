@@ -140,6 +140,7 @@ export function useFlashHead() {
               status: 'READY',
               videoUrl: job.video_url,
               ...(job.duration_seconds ? { durationSeconds: Number(job.duration_seconds) } : {}),
+              ...(job.thumbnail_url ? { thumbnailUrl: String(job.thumbnail_url) } : {}),
             }).catch(() => {});
           }
           track('render_completed', { kind: 'FLASHHEAD' });

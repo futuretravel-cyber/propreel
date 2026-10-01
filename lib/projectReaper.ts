@@ -20,6 +20,7 @@ interface JobOutcome {
   status: string;
   videoUrl?: string;
   durationSeconds?: number;
+  thumbnailUrl?: string;
 }
 
 /** Ask the Modal worker how the abandoned job ended. null = unknown. */
@@ -37,6 +38,7 @@ async function lookupJob(kind: string | undefined, jobId: string | undefined): P
         status: String(data.status || ''),
         videoUrl: data.video_url || undefined,
         durationSeconds: data.duration_seconds != null ? Number(data.duration_seconds) : undefined,
+        thumbnailUrl: data.thumbnail_url || undefined,
       };
     } finally {
       clearTimeout(timer);
@@ -97,18 +99,18 @@ export async function reapStaleProjects(maxAgeHours = 2): Promise<ReapResult> {
 
     if (completedOk) {
       // Fill in what the client never received
-      const fields: Record<string, any> = { videoUrl: job!.videoUrl, updatedAt: new Date().toISOString() };
       const extra: string[] = [];
-      if (job!.durationSeconds != null) { fields.durationSeconds = job!.durationSeconds; extra.push(', durationSeconds = :dur'); }
+      const values: Record<string, any> = {
+        ':url': job!.videoUrl,
+        ':now': new Date().toISOString(),
+      };
+      if (job!.durationSeconds != null) { extra.push(', durationSeconds = :dur'); values[':dur'] = job!.durationSeconds; }
+      if (job!.thumbnailUrl) { extra.push(', thumbnailUrl = :thumb'); values[':thumb'] = job!.thumbnailUrl; }
       await docClient.send(new UpdateCommand({
         TableName: TABLES.PROJECTS,
         Key: { userId: p.userId, id: p.id },
         UpdateExpression: `SET videoUrl = :url, updatedAt = :now${extra.join('')}`,
-        ExpressionAttributeValues: {
-          ':url': job!.videoUrl,
-          ':now': new Date().toISOString(),
-          ...(job!.durationSeconds != null ? { ':dur': job!.durationSeconds } : {}),
-        },
+        ExpressionAttributeValues: values,
       }));
       result.completedJobs++;
       result.details.push(`${p.id}: job ${p.jobId} had completed — finalized READY with URL, no refund`);

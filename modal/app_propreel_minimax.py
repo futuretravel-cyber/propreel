@@ -518,7 +518,23 @@ def render_video(
     # In production, you'd use moviepy to add audio tracks
     
     print(f"✅ Render complete: {video_url}")
-    _write_job_status(record_id, "completed", {"video_url": video_url, "progress": 100, "duration_seconds": config['duration']})
+
+    # Thumbnail for Listings cards: grab a frame from the finished video
+    # (best-effort — never fails the render)
+    thumbnail_url = None
+    try:
+        _resp = requests.get(video_url, timeout=120)
+        _resp.raise_for_status()
+        thumbnail_url = _thumbnail_from_video_bytes(_resp.content, f"thumbnails/render/{record_id}.jpg")
+    except Exception as _te:
+        print(f"render thumbnail skipped: {_te}")
+
+    _write_job_status(record_id, "completed", {
+        "video_url": video_url,
+        "progress": 100,
+        "duration_seconds": config['duration'],
+        **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
+    })
     
     return {
         "record_id": record_id,
@@ -939,6 +955,26 @@ def health_check() -> dict:
 # FASTAPI WEB ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+class ThumbnailRequest(BaseModel):
+    video_url: str
+
+@web_app.post("/make_thumbnail")
+async def api_make_thumbnail(request: ThumbnailRequest):
+    """Extract a thumbnail frame from a video URL. Used by the one-off
+    backfill for pre-thumbnail renders and any client-less flows."""
+    try:
+        resp = requests.get(request.video_url, timeout=120)
+        resp.raise_for_status()
+        import uuid as _uuid
+        url = _thumbnail_from_video_bytes(resp.content, f"thumbnails/backfill/{_uuid.uuid4().hex}.jpg")
+        if not url:
+            raise HTTPException(status_code=502, detail="Thumbnail extraction failed")
+        return {"thumbnail_url": url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e)[:300])
+
 @web_app.get("/health")
 async def health():
     """Health check endpoint"""
@@ -1096,6 +1132,49 @@ async def api_probe(refresh: str = ""):
             "service": "propreel-render",
         })
 
+def _thumbnail_from_video_bytes(content: bytes, s3_key: str):
+    """Grab a frame from video bytes with ffmpeg and upload it as a public
+    JPEG. Returns the public URL, or None on any failure — thumbnails must
+    never break a render."""
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+    import boto3 as _boto3
+    try:
+        with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as _f:
+            _f.write(content)
+            video_path = _f.name
+        thumb_path = video_path + ".jpg"
+        try:
+            # -ss 0.4 skips leading black frames; height derived, capped width
+            grab = _sp.run(
+                ["ffmpeg", "-y", "-ss", "0.4", "-i", video_path,
+                 "-frames:v", "1", "-vf", "scale='min(800,iw)':-2", "-q:v", "4",
+                 thumb_path],
+                capture_output=True, timeout=60,
+            )
+            if grab.returncode != 0 or not _os.path.exists(thumb_path) or _os.path.getsize(thumb_path) == 0:
+                stderr = (grab.stderr or b"")[-200:]
+                print(f"thumbnail extract failed rc={grab.returncode}: {stderr}")
+                return None
+            s3 = _boto3.client("s3", region_name=S3_REGION)
+            with open(thumb_path, "rb") as _img:
+                s3.put_object(
+                    Bucket=S3_BUCKET, Key=s3_key, Body=_img.read(),
+                    ContentType="image/jpeg", ACL="public-read",
+                )
+            return f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+        finally:
+            for _p in (video_path, thumb_path):
+                try:
+                    _os.unlink(_p)
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"thumbnail generation error: {e}")
+        return None
+
+
 @app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=1, max_containers=100, scaledown_window=300)
 def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user_id: str, voice: str = "Aria", stability: float = 0.5):
     """Async FlashHead lip-sync job (fal-ai/flashhead): mirrors progress and
@@ -1140,8 +1219,10 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
         video_response = requests.get(video_url)
         video_response.raise_for_status()
         content = video_response.content
-        # Measure the clip so the dashboard can track talking-head runtime
+        # Measure the clip (dashboard runtime metrics) and grab a thumbnail
+        # frame (Listings cards) — both best-effort, never fatal
         duration_seconds = None
+        thumbnail_url = None
         try:
             import subprocess as _sp
             import tempfile as _tf
@@ -1150,16 +1231,20 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
                 _f.write(content)
                 _tmp_path = _f.name
             try:
-                _probe = _sp.run(
-                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                     "-of", "default=noprint_wrappers=1:nokey=1", _tmp_path],
-                    capture_output=True, text=True, timeout=30,
-                )
-                duration_seconds = round(float(_probe.stdout.strip()), 1)
+                try:
+                    _probe = _sp.run(
+                        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                         "-of", "default=noprint_wrappers=1:nokey=1", _tmp_path],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    duration_seconds = round(float(_probe.stdout.strip()), 1)
+                except Exception as _pe:
+                    print(f"ffprobe failed ({_pe}) — duration not recorded")
+                thumbnail_url = _thumbnail_from_video_bytes(content, video_key[:-4] + ".jpg")
             finally:
                 _os.unlink(_tmp_path)
         except Exception as _pe:
-            print(f"ffprobe unavailable ({_pe}) — duration not recorded")
+            print(f"probe/thumbnail unavailable ({_pe})")
         s3.put_object(
             Bucket=S3_BUCKET, Key=video_key,
             Body=content, ContentType='video/mp4', ACL='public-read',
@@ -1169,6 +1254,7 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
         _write_job_status(job_id, "completed", {
             "video_url": final_url,
             **({"duration_seconds": duration_seconds} if duration_seconds else {}),
+            **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
         })
     except Exception as e:
         _write_job_status(job_id, "failed", {"error": _friendly_fal_error(e)})
