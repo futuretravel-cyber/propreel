@@ -369,6 +369,50 @@ def _essential_kenburns_clip(
         raise RuntimeError(f"ffmpeg zoompan failed: {(proc.stderr or b'')[-300:]}")
 
 
+def _mix_music_bed(
+    silent_video_path: str,
+    music_url: str,
+    out_path: str,
+    video_duration: float,
+    music_volume: float = 0.22,
+) -> None:
+    """Loop/trim the music track to the video's duration, fade it out over the
+    final 2 seconds, and mix it in with ffmpeg (no fal involved). Raises on
+    failure — the caller decides whether a music failure fails the render."""
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+
+    resp = requests.get(music_url, timeout=120)
+    resp.raise_for_status()
+    ext = ".mp3" if ".mp3" in music_url.lower() else ".wav" if ".wav" in music_url.lower() else ".m4a"
+    with _tf.NamedTemporaryFile(suffix=ext, delete=False) as _f:
+        _f.write(resp.content)
+        music_path = _f.name
+    try:
+        # -stream_loop -1 loops the (usually short) track to cover the video;
+        # -shortest stops at the video's length; the fade eases the last 2s out
+        # so the loop seam / ending never cuts abruptly.
+        fade_start = max(float(video_duration) - 2.0, 0.0)
+        proc = _sp.run(
+            ["ffmpeg", "-y", "-i", silent_video_path,
+             "-stream_loop", "-1", "-i", music_path,
+             "-filter_complex",
+             f"[1:a]volume={music_volume},afade=t=out:st={fade_start:.2f}:d=2[a]",
+             "-map", "0:v", "-map", "[a]",
+             "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+             "-shortest", out_path],
+            capture_output=True, timeout=600,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg music mix failed: {(proc.stderr or b'')[-300:]}")
+    finally:
+        try:
+            _os.unlink(music_path)
+        except Exception:
+            pass
+
+
 @app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials")], timeout=600, retries=2)
 def render_video_local(
     record_id: str,
@@ -376,6 +420,7 @@ def render_video_local(
     duration: int,
     orientation: str,
     image_prompts: list[dict] | None = None,
+    music_url: str | None = None,
 ) -> str:
     """
     Render video with pure FFmpeg (ESSENTIAL tier — no fal.ai involved).
@@ -474,6 +519,19 @@ def render_video_local(
         if concat.returncode != 0:
             raise RuntimeError(f"ffmpeg concat failed: {(concat.stderr or b'')[-300:]}")
 
+    # Optional music bed: loop/trim the admin track under the video and mix
+    # with ffmpeg. The video stream is stream-copied — only audio is added.
+    # If the track can't be fetched/decoded we ship the silent version.
+    if music_url:
+        try:
+            print(f"Mixing music bed from {music_url[:80]}…")
+            mixed_path = os.path.join(work, "output_music.mp4")
+            _mix_music_bed(output_path, music_url, mixed_path, video_duration=duration)
+            _os.replace(mixed_path, output_path)
+            print("Music bed mixed in")
+        except Exception as me:
+            print(f"Music mix failed — shipping silent render: {me}")
+
     # Upload to S3
     s3 = boto3.client('s3', region_name=S3_REGION)
     s3_key = f"renders/{record_id}/video.mp4"
@@ -547,6 +605,7 @@ def render_video(
             duration=config['duration'],
             orientation=orientation,
             image_prompts=image_prompts,
+            music_url=music_url,
         )
     else:
         # SOCIAL, CINEMATIC, PREMIUM tiers: AI rendering
