@@ -125,10 +125,13 @@ as $$
 declare
   v_new numeric;
 begin
+  -- NOTE: INTO must come before USING in PL/pgSQL EXECUTE. The '0' coalesce
+  -- matters: jsonb_set returns NULL when new_value is NULL, so a missing
+  -- attribute would otherwise null out the whole data column.
   execute format(
-    'update %I set data = jsonb_set(data, array[%L], (((coalesce(data->>%L)::numeric) - $2)::text)::jsonb) where %I = $1 and coalesce((data->>%L)::numeric, 0) >= $2 returning (data->>%L)::numeric',
+    'update %I set data = jsonb_set(data, array[%L], (((coalesce(data->>%L,''0'')::numeric) - $2)::text)::jsonb) where %I = $1 and coalesce((data->>%L)::numeric, 0) >= $2 returning (data->>%L)::numeric',
     p_table, p_attr, p_attr, 'id', p_attr, p_attr
-  ) using p_id, p_amount into v_new;
+  ) into v_new using p_id, p_amount;
   return v_new;
 end;
 $$;
@@ -144,9 +147,9 @@ declare
   v_new numeric;
 begin
   execute format(
-    'update %I set data = jsonb_set(data, array[%L], (((coalesce(data->>%L)::numeric) + $2)::text)::jsonb) where %I = $1 returning (data->>%L)::numeric',
+    'update %I set data = jsonb_set(data, array[%L], (((coalesce(data->>%L,''0'')::numeric) + $2)::text)::jsonb) where %I = $1 returning (data->>%L)::numeric',
     p_table, p_attr, p_attr, 'id', p_attr
-  ) using p_id, p_amount into v_new;
+  ) into v_new using p_id, p_amount;
   return v_new;
 end;
 $$;
