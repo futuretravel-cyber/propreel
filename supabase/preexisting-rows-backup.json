@@ -1,0 +1,77 @@
+{
+  "backedUpAt": "2026-10-02T06:23:27.774Z",
+  "tables": {
+    "users": {
+      "error": "Could not find the table 'public.users' in the schema cache"
+    },
+    "credit_transactions": [
+      {
+        "id": "c6961b05-db04-4103-9788-380b634c266e",
+        "user_id": "a4edf6ac-12c7-424d-9285-81690c171871",
+        "agency_id": null,
+        "amount": 1000,
+        "type": "SIGNUP_BONUS",
+        "category": "OTHER",
+        "reference": null,
+        "event_id": null,
+        "project_id": null,
+        "expires_at": null,
+        "balance_after": 1000,
+        "metadata": {
+          "reason": "admin seed balance"
+        },
+        "ip_address": null,
+        "created_at": "2026-09-28T16:17:15.53159+00:00"
+      },
+      {
+        "id": "3787c75b-9748-40e2-8ebf-3e714ed34a0a",
+        "user_id": "0b18d65c-bf6a-41e9-8fc4-b033768e3763",
+        "agency_id": null,
+        "amount": 5,
+        "type": "SIGNUP_BONUS",
+        "category": "OTHER",
+        "reference": null,
+        "event_id": "signup:0b18d65c-bf6a-41e9-8fc4-b033768e3763",
+        "project_id": null,
+        "expires_at": null,
+        "balance_after": 5,
+        "metadata": {
+          "reason": "5 free signup credits"
+        },
+        "ip_address": null,
+        "created_at": "2026-09-29T09:17:38.381713+00:00"
+      },
+      {
+        "id": "d0fdb861-9ca2-40c6-938d-67e3a765b2fd",
+        "user_id": "d06cbd36-be08-4e9a-af61-a0a414c621b3",
+        "agency_id": null,
+        "amount": 5,
+        "type": "SIGNUP_BONUS",
+        "category": "OTHER",
+        "reference": null,
+        "event_id": "signup:d06cbd36-be08-4e9a-af61-a0a414c621b3",
+        "project_id": null,
+        "expires_at": null,
+        "balance_after": 5,
+        "metadata": {
+          "reason": "5 free signup credits"
+        },
+        "ip_address": null,
+        "created_at": "2026-09-29T09:45:30.993428+00:00"
+      }
+    ],
+    "projects": [],
+    "settings": {
+      "error": "Could not find the table 'public.settings' in the schema cache"
+    },
+    "agencies": [],
+    "agency_members": [],
+    "subscriptions": {
+      "error": "Could not find the table 'public.subscriptions' in the schema cache"
+    },
+    "credit_expiries": {
+      "error": "Could not find the table 'public.credit_expiries' in the schema cache"
+    },
+    "reviews": []
+  }
+}

@@ -62,8 +62,46 @@ async function scanAll(tableName: string): Promise<any[]> {
   return out;
 }
 
+/**
+ * Preflight: confirm every target table AND the three atomic credit functions
+ * exist before writing a single row. A missing table used to fail silently —
+ * `select('*', { count, head: true })` returns null instead of erroring on a
+ * missing table, so counts looked plausible while nothing was there.
+ */
+async function preflight(client: SupabaseClient) {
+  const problems: string[] = [];
+
+  for (const t of TABLES) {
+    // A real (non-head) select errors when the table is absent.
+    const { error } = await client.from(t.pg).select('*').limit(1);
+    if (error) problems.push(`table ${t.pg}: ${error.message}`);
+  }
+
+  // The atomic helpers are load-bearing for the credit system.
+  const rpcChecks: Array<[string, Record<string, unknown>]> = [
+    ['dec_if_enough', { p_table: 'users', p_id: '__preflight__', p_attr: 'credits', p_amount: 1 }],
+    ['inc_value', { p_table: 'users', p_id: '__preflight__', p_attr: 'credits', p_amount: 1 }],
+    ['claim_lock', { p_id: '__preflight__', p_payload: { preflight: true } }],
+  ];
+  for (const [fn, args] of rpcChecks) {
+    const { error } = await client.rpc(fn, args);
+    if (error) problems.push(`function ${fn}: ${error.message}`);
+  }
+  // claim_lock may have inserted a probe row on a fresh (empty) settings table.
+  await client.from('settings').delete().eq('id', '__preflight__');
+
+  if (problems.length) {
+    console.error('\n❌ PREFLIGHT FAILED — the Supabase schema is not ready:\n');
+    for (const p of problems) console.error(`   • ${p}`);
+    console.error('\n   Run supabase/reset.sql (if stale tables exist), then supabase/schema.sql, in the Supabase SQL Editor.\n');
+    process.exit(1);
+  }
+  console.log('✓ Preflight: all 9 tables and 3 atomic credit functions present\n');
+}
+
 async function main() {
   const client = sb();
+  await preflight(client);
   const summary: Array<{ table: string; dyn: number; pgBefore: number; pgAfter: number }> = [];
 
   for (const t of TABLES) {
