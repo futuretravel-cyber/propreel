@@ -1,5 +1,4 @@
-import { docClient, TABLES, scanItems } from './db';
-import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { TABLES, scanItems, updateWhere, updateItem } from './db';
 import { addCredits } from './userService';
 
 const WORKER_URL = process.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
@@ -75,43 +74,24 @@ export async function reapStaleProjects(maxAgeHours = 2): Promise<ReapResult> {
     const completedOk = job?.status === 'completed' && !!job.videoUrl;
 
     // Atomic claim: only proceed if the record is still PROCESSING
-    try {
-      await docClient.send(new UpdateCommand({
-        TableName: TABLES.PROJECTS,
-        Key: { userId: p.userId, id: p.id },
-        UpdateExpression: 'SET #st = :newStatus, updatedAt = :now',
-        ConditionExpression: '#st = :processing',
-        ExpressionAttributeNames: { '#st': 'status' },
-        ExpressionAttributeValues: {
-          ':processing': 'PROCESSING',
-          ':newStatus': completedOk ? 'READY' : 'FAILED',
-          ':now': new Date().toISOString(),
-        },
-      }));
-    } catch (e: any) {
-      if (e?.name === 'ConditionalCheckFailedException') {
-        result.skipped++;
-        result.details.push(`${p.id}: transitioned concurrently — skipped`);
-        continue;
-      }
-      throw e;
+    const claimed = await updateWhere(
+      TABLES.PROJECTS,
+      { userId: p.userId, id: p.id },
+      { status: completedOk ? 'READY' : 'FAILED', updatedAt: new Date().toISOString() },
+      { attrEquals: { status: 'PROCESSING' } }
+    );
+    if (!claimed) {
+      result.skipped++;
+      result.details.push(`${p.id}: transitioned concurrently — skipped`);
+      continue;
     }
 
     if (completedOk) {
       // Fill in what the client never received
-      const extra: string[] = [];
-      const values: Record<string, any> = {
-        ':url': job!.videoUrl,
-        ':now': new Date().toISOString(),
-      };
-      if (job!.durationSeconds != null) { extra.push(', durationSeconds = :dur'); values[':dur'] = job!.durationSeconds; }
-      if (job!.thumbnailUrl) { extra.push(', thumbnailUrl = :thumb'); values[':thumb'] = job!.thumbnailUrl; }
-      await docClient.send(new UpdateCommand({
-        TableName: TABLES.PROJECTS,
-        Key: { userId: p.userId, id: p.id },
-        UpdateExpression: `SET videoUrl = :url, updatedAt = :now${extra.join('')}`,
-        ExpressionAttributeValues: values,
-      }));
+      const updates: Record<string, any> = { videoUrl: job!.videoUrl, updatedAt: new Date().toISOString() };
+      if (job!.durationSeconds != null) updates.durationSeconds = job!.durationSeconds;
+      if (job!.thumbnailUrl) updates.thumbnailUrl = job!.thumbnailUrl;
+      await updateItem(TABLES.PROJECTS, { userId: p.userId, id: p.id }, updates);
       result.completedJobs++;
       result.details.push(`${p.id}: job ${p.jobId} had completed — finalized READY with URL, no refund`);
     } else {

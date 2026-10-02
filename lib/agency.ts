@@ -7,8 +7,7 @@
  * dashboard and are never exposed through this module.
  */
 
-import { docClient, getItem, putItem, updateItem, queryItems, scanItems, TABLES } from './db';
-import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { getItem, putItem, updateItem, queryItems, scanItems, TABLES } from './db';
 import { getUser, recordTransaction, PLANS } from './userService';
 
 /** Hard cap — agencies needing more agents create a second agency. */

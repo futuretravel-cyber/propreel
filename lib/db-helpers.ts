@@ -101,14 +101,11 @@ export async function batchWriteItems(
   return { successful, failed };
 }
 
-// Delete item
+// Delete item (delegates to the active driver)
 export async function deleteItem(tableName: string, key: Record<string, any>): Promise<boolean> {
   try {
-    const { DeleteCommand } = await import('@aws-sdk/lib-dynamodb');
-    await docClient.send(new DeleteCommand({
-      TableName: tableName,
-      Key: key,
-    }));
+    const { deleteItem: del } = await import('./db');
+    await del(tableName, key);
     return true;
   } catch (error) {
     console.error(`Delete error on ${tableName}:`, error);

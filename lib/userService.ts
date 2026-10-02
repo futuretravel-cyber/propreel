@@ -3,8 +3,7 @@
  * Handles user, subscription, and credit operations
  */
 
-import { docClient, getItem, putItem, updateItem, queryItems, scanItems, TABLES } from './db';
-import { UpdateCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { getItem, putItem, putItemIfNotExists, updateItem, queryItems, scanItems, decrementIfEnough, incrementValue, TABLES } from './db';
 
 export interface CreditExpiry {
   amount: number;
@@ -209,19 +208,22 @@ export async function deductCredits(
       }
     }
     const poolExpr = useAgencyPool && targetTable === TABLES.AGENCIES ? 'poolCredits' : balanceExpr;
-    const result = await docClient.send(new UpdateCommand({
-      TableName: targetTable,
-      Key: targetKey,
-      UpdateExpression: `SET ${poolExpr} = ${poolExpr} - :amount, updatedAt = :now`,
-      ConditionExpression: 'attribute_exists(id) AND ' + poolExpr + ' >= :amount',
-      ExpressionAttributeValues: {
-        ':amount': amount,
-        ':now': new Date().toISOString(),
-      },
-      ReturnValues: 'UPDATED_NEW',
-    }));
-
-    const newBalance = Number(result.Attributes?.[poolExpr] ?? 0);
+    const newBalance = await decrementIfEnough(targetTable, targetKey, poolExpr, amount);
+    if (newBalance == null) {
+      // Row missing or balance insufficient — mirror the DynamoDB semantics
+      const user = await getUser(userId);
+      if (!user) return { success: false, newBalance: 0, error: 'User not found' };
+      if (useAgencyPool) {
+        const { getAgency } = await import('./agency');
+        const agency = user.agencyId ? await getAgency(user.agencyId) : null;
+        return {
+          success: false,
+          newBalance: agency?.poolCredits ?? user.agencyPoolCredits ?? 0,
+          error: 'Insufficient agency pool credits',
+        };
+      }
+      return { success: false, newBalance: user.credits, error: 'Insufficient credits' };
+    }
 
     await recordTransaction({
       userId,
@@ -234,7 +236,6 @@ export async function deductCredits(
     return { success: true, newBalance };
   } catch (error: any) {
     if (error?.name === 'ConditionalCheckFailedException') {
-      // Either the account doesn't exist or the balance is insufficient
       const user = await getUser(userId);
       if (!user) return { success: false, newBalance: 0, error: 'User not found' };
       if (useAgencyPool) {
@@ -267,15 +268,7 @@ export async function addAgencyPoolCredits(
 
   let newBalance: number;
   if (user.agencyId) {
-    const result = await docClient.send(new UpdateCommand({
-      TableName: TABLES.AGENCIES,
-      Key: { id: user.agencyId },
-      UpdateExpression: 'SET poolCredits = if_not_exists(poolCredits, :zero) + :amount, updatedAt = :now',
-      ConditionExpression: 'attribute_exists(id)',
-      ExpressionAttributeValues: { ':zero': 0, ':amount': amount, ':now': new Date().toISOString() },
-      ReturnValues: 'UPDATED_NEW',
-    }));
-    newBalance = Number(result.Attributes?.poolCredits ?? 0);
+    newBalance = await incrementValue(TABLES.AGENCIES, { id: user.agencyId }, 'poolCredits', amount);
     // Display mirror for the agency owner's own dashboard
     if (user.role === 'AGENCY_OWNER') {
       await updateUser(userId, { agencyPoolCredits: newBalance });
@@ -313,17 +306,17 @@ export async function addCredits(
   const lockId = eventId ? `evt_${eventId}` : undefined;
   if (lockId) {
     try {
-      await docClient.send(new PutCommand({
-        TableName: TABLES.SETTINGS,
-        Item: {
-          id: lockId,
-          type: 'event_lock',
-          userId,
-          eventId,
-          createdAt: new Date().toISOString(),
-        },
-        ConditionExpression: 'attribute_not_exists(id)',
-      }));
+      const claimed = await putItemIfNotExists(TABLES.SETTINGS, {
+        id: lockId,
+        type: 'event_lock',
+        userId,
+        eventId,
+        createdAt: new Date().toISOString(),
+      });
+      if (!claimed) {
+        const current = await getUser(userId);
+        return { success: true, newBalance: current?.credits ?? 0, duplicated: true };
+      }
     } catch (e: any) {
       if (e?.name === 'ConditionalCheckFailedException') {
         const current = await getUser(userId);
@@ -339,8 +332,8 @@ export async function addCredits(
       throw new Error('User not found');
     }
 
-    const newBalance = user.credits + amount;
-    await updateUser(userId, { credits: newBalance });
+    // Atomic increment — safe under concurrency on both drivers
+    const newBalance = await incrementValue(TABLES.USERS, { id: userId }, 'credits', amount);
 
     // Record transaction (idempotent on eventId; belt-and-braces with the
     // settings lock above)
@@ -697,23 +690,12 @@ export function upgradeMarkerId(reference: string): string {
  * already exists — i.e. this payment was already consumed by another caller.
  */
 export async function markUpgradePaid(reference: string, userId: string): Promise<boolean> {
-  const { PutCommand } = await import('@aws-sdk/lib-dynamodb');
-  try {
-    await docClient.send(new PutCommand({
-      TableName: TABLES.SETTINGS,
-      Item: {
-        id: upgradeMarkerId(reference),
-        userId,
-        type: 'plan_upgrade_paid',
-        createdAt: new Date().toISOString(),
-      },
-      ConditionExpression: 'attribute_not_exists(id)',
-    }));
-    return true;
-  } catch (err: any) {
-    if (err?.name === 'ConditionalCheckFailedException') return false;
-    throw err;
-  }
+  return putItemIfNotExists(TABLES.SETTINGS, {
+    id: upgradeMarkerId(reference),
+    userId,
+    type: 'plan_upgrade_paid',
+    createdAt: new Date().toISOString(),
+  });
 }
 
 /** Switch the user onto the upgraded plan: prorate credit-back, new allowance. */
