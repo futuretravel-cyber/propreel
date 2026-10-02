@@ -202,6 +202,98 @@ function VisualShowcase() {
   );
 }
 
+/* ── Property showcase gallery — real SA listings, big and interactive ── */
+const SHOWCASE = [
+  { base: 'waterfront-villa', title: 'Waterfront Villa', place: 'Constantia, Cape Town', tag: 'Cinematic tier', badge: 'Drone + Golden Hour' },
+  { base: 'family-estate', title: 'Family Estate', place: 'Sandton, Johannesburg', tag: 'Premium tier', badge: 'Virtual Staging' },
+  { base: 'townhouse', title: 'Modern Townhouse', place: 'Umhlanga, Durban', tag: 'Essential tier', badge: 'AI Motion' },
+  { base: 'apartment', title: 'City Apartment', place: 'Sea Point, Cape Town', tag: 'Social tier', badge: 'Social Pack' },
+];
+
+function PropertyShowcase() {
+  return (
+    <section className="py-24 bg-ink-950/60 overflow-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <Reveal className="text-center mb-14">
+          <span className="badge badge-brand mb-4">Property Showcase</span>
+          <h2 className="text-3xl sm:text-5xl font-black text-white">Listings That Sell Themselves</h2>
+          <p className="mt-4 text-lg text-ink-400 max-w-2xl mx-auto">Real South African properties, transformed by the Studio. Hover to feel the difference.</p>
+        </Reveal>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {SHOWCASE.map((p, i) => (
+            <Reveal key={p.base} delay={i * 0.06}>
+              <motion.div
+                whileHover={{ y: -6 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+                className="group relative rounded-3xl overflow-hidden glass h-[380px]"
+              >
+                <img
+                  src={img(p.base, 800)}
+                  srcSet={`${img(p.base, 480)} 480w, ${img(p.base, 800)} 800w, ${img(p.base, 1200)} 1200w`}
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                  alt={`${p.title} — ${p.place}`}
+                  loading="lazy"
+                  className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-[900ms]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/30 to-transparent" />
+                <span className="absolute top-4 left-4 glass text-purple-300 text-xs font-bold px-3 py-1.5 rounded-full">{p.tag}</span>
+                <span className="absolute top-4 right-4 glass text-ink-200 text-xs px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">{p.badge}</span>
+                <div className="absolute bottom-0 p-5">
+                  <h3 className="text-lg font-bold text-white">{p.title}</h3>
+                  <p className="text-ink-400 text-sm">{p.place}</p>
+                </div>
+              </motion.div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── How it works — step-by-step process visualization ────────────── */
+const STEPS = [
+  { n: '01', title: 'Upload Photos', desc: 'Drop in 4–8 listing photos. Any phone camera works — the AI does the heavy lifting.', icon: <Camera className="w-6 h-6" /> },
+  { n: '02', title: 'Pick Your Tier', desc: 'Social, Essential, Professional or Cinematic — from quick social reels to 1080p showpieces.', icon: <Video className="w-6 h-6" /> },
+  { n: '03', title: 'Let the AI Work', desc: 'Motion, narration, music and captions assemble automatically. Photo presets stage the rooms.', icon: <Wand2 className="w-6 h-6" /> },
+  { n: '04', title: 'Share Everywhere', desc: 'Download the reel, grab portal-ready captions and a branded social pack in one click.', icon: <Share2 className="w-6 h-6" /> },
+];
+
+function HowItWorks() {
+  return (
+    <section className="py-24 bg-ink-950 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(600px_300px_at_20%_30%,rgba(168,85,247,0.08),transparent_70%)]" />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+        <Reveal className="text-center mb-16">
+          <h2 className="text-3xl sm:text-5xl font-black text-white">From Photos to Sold in Four Steps</h2>
+          <p className="mt-4 text-lg text-ink-400">No editing skills. No agency. About ten minutes, start to finish.</p>
+        </Reveal>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative">
+          {/* Connector line (desktop) */}
+          <div className="hidden lg:block absolute top-[52px] left-[12%] right-[12%] h-px bg-gradient-to-r from-purple-600/10 via-purple-500/50 to-purple-600/10" />
+          {STEPS.map((s, i) => (
+            <Reveal key={s.n} delay={i * 0.08}>
+              <div className="relative glass rounded-3xl p-6 h-full group">
+                <div className="relative z-10 w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center text-white mb-5 shadow-lg shadow-purple-900/40">
+                  {s.icon}
+                </div>
+                <span className="absolute top-5 right-6 text-4xl font-black text-white/5 group-hover:text-purple-500/20 transition-colors select-none">{s.n}</span>
+                <h3 className="font-bold text-lg text-white">{s.title}</h3>
+                <p className="mt-2 text-ink-400 text-sm leading-relaxed">{s.desc}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+        <Reveal delay={0.3} className="text-center mt-12">
+          <Link to="/register" onClick={() => track('cta_clicked', { cta: 'how_it_works' })} className="btn btn-primary text-base px-8">
+            Try it free <ArrowRight className="w-4 h-4" />
+          </Link>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
 /* ── Video editor demo mockup ─────────────────────────────────────── */
 function EditorDemo() {
   const badges = [
@@ -396,6 +488,8 @@ export default function HomePage() {
     <PublicLayout>
       <Hero />
       <VisualShowcase />
+      <PropertyShowcase />
+      <HowItWorks />
       <EditorDemo />
       <SocialProof />
       <FinalCta />

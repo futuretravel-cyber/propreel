@@ -1,6 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser, updateUser, getUserByEmail, deleteUser } from '../lib/userService';
-import { TABLES, queryItems, putItem } from '../lib/db';
+import { TABLES, queryItems, putItem, getItem } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
 
 const isAdminEmail = (email: string | undefined | null) =>
@@ -262,6 +262,29 @@ async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: str
       }
       const agencies = await listAllAgencies();
       return res.status(200).json({ success: true, agencies });
+    }
+
+    // ── Integration feature flags (WhatsApp float, live chat widget) ────
+    // GET ?action=feature_flags → public, non-secret config for the site.
+    // POST ?action=feature_flags → admin-only updates.
+    if (action === 'feature_flags') {
+      const DEFAULTS = {
+        whatsapp: { enabled: false, number: '', message: 'Hi PropReel! I have a question about my listing video.' },
+        liveChat: { enabled: false, provider: 'crisp' as 'crisp' | 'intercom', websiteId: '' },
+      };
+      if (req.method === 'GET') {
+        const flags = await getItem<any>(TABLES.SETTINGS, { id: 'feature_flags' });
+        return res.status(200).json({ success: true, flags: { ...DEFAULTS, ...(flags?.flags || {}) } });
+      }
+      const { email, flags } = body;
+      if (!isAdminEmail(String(email || ''))) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      const existing = await getItem<any>(TABLES.SETTINGS, { id: 'feature_flags' });
+      const merged = { ...DEFAULTS, ...(existing?.flags || {}), ...(flags || {}) };
+      // Never persist secrets here — provider IDs are public embed values
+      await putItem(TABLES.SETTINGS, { id: 'feature_flags', type: 'feature_flags', flags: merged, updatedAt: new Date().toISOString() });
+      return res.status(200).json({ success: true, flags: merged });
     }
 
     return res.status(404).json({ error: `Unknown agency action: ${action}` });
@@ -579,7 +602,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET' && req.query.action === 'admin_ledger') {
     return adminLedger(req, res);
   }
-  if (String(req.query.action || '').startsWith('agency_') || req.query.action === 'admin_agencies') {
+  if (String(req.query.action || '').startsWith('agency_') || req.query.action === 'admin_agencies' || req.query.action === 'feature_flags') {
     return agencyRoutes(req, res, String(req.query.action));
   }
 

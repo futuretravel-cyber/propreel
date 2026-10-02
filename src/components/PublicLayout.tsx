@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Play, Menu, X, ArrowRight, Sun, Moon } from 'lucide-react';
 import { SIGNUP_BONUS } from '../lib/constants';
 import { useTheme } from '../lib/theme';
+import SupportWidgets from './SupportWidgets';
 
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -66,6 +67,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         )}
       </nav>
       {children}
+      <SupportWidgets />
       <MobileStickyCta />
       <footer className="glass-strong border-t border-white/5 py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
