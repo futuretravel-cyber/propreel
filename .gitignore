@@ -63,9 +63,6 @@ test-results/
 playwright-report/
 .next/
 
-# Archived legacy Express/Prisma monorepo (not part of the Vercel deploy)
-legacy-monorepo/
-
 .vercel
 .env*
 
