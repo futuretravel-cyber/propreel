@@ -559,7 +559,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     { path: '/studio', icon: <Video className="w-5 h-5" />, label: 'Studio' },
     { path: '/dashboard/analytics', icon: <BarChart3 className="w-5 h-5" />, label: 'Analytics' },
     { path: '/dashboard/billing', icon: <CreditCard className="w-5 h-5" />, label: 'Billing' },
-    { path: '/dashboard/agency', icon: <Building2 className="w-5 h-5" />, label: 'Agency' },
+    // Agency tab only appears once an agency signup exists (or for admins,
+    // who have full visibility across the site including agency dashboards)
+    ...((user?.agencyId || isAdmin) ? [{ path: '/dashboard/agency', icon: <Building2 className="w-5 h-5" />, label: 'Agency' }] : []),
     { path: '/dashboard/settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
     { path: '/dashboard/notifications', icon: <Bell className="w-5 h-5" />, label: 'Notifications' },
   ];
@@ -741,6 +743,11 @@ function DashboardBilling() {
 
 function DashboardAgency() {
   return <Suspense fallback={<DashboardSkeleton />}><EnhancedAgency /></Suspense>;
+}
+
+const AgencySignupPage = lazy(() => import('./pages/AgencySignupPage'));
+function AgencySignup() {
+  return <Suspense fallback={<DashboardSkeleton />}><AgencySignupPage /></Suspense>;
 }
 
 function DashboardSettings() {
@@ -1727,7 +1734,7 @@ function AdminPage() {
         <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {['overview', 'users', 'reviews', 'settings', 'prompts', 'music'].map(t => (
+        {['overview', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music'].map(t => (
           <button key={t} onClick={() => setTab(t)} className={`tab-pill ${tab === t ? 'tab-pill-active' : ''}`}>
             {t === 'music' ? 'Music Library' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -1736,11 +1743,57 @@ function AdminPage() {
       <div className="card-dark p-6">
         {tab === 'overview' && <AdminOverview />}
         {tab === 'users' && <AdminUsers />}
+        {tab === 'agencies' && <AdminAgencies />}
         {tab === 'reviews' && <AdminReviews />}
         {tab === 'settings' && <AdminSettings />}
         {tab === 'prompts' && <AdminPrompts />}
         {tab === 'music' && <AdminMusicLibrary />}
       </div>
+    </div>
+  );
+}
+
+// Admin: every agency on the platform — members, owners, pool, reports.
+function AdminAgencies() {
+  const { user } = useCredit();
+  const toast = useToast();
+  const [agencies, setAgencies] = useState<any[] | null>(null);
+  useEffect(() => {
+    if (!user?.email) return;
+    fetch(`/api/users?action=admin_agencies&email=${encodeURIComponent(user.email)}`)
+      .then(r => { if (!r.ok) throw new Error('Admin access required'); return r.json(); })
+      .then(d => setAgencies(d.agencies || []))
+      .catch(e => toast.error(e.message));
+  }, [user?.email]);
+
+  if (!agencies) return <p className="text-sm text-ink-400">Loading agencies…</p>;
+  if (agencies.length === 0) return <p className="text-sm text-ink-400">No agencies created yet.</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-white/10">
+            <th className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Agency</th>
+            <th className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Owner</th>
+            <th className="text-right px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Agents</th>
+            <th className="text-right px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Pool</th>
+            <th className="text-right px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Reports</th>
+            <th className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {agencies.map(a => (
+            <tr key={a.id} className="border-b border-white/5">
+              <td className="px-3 py-2 text-white font-medium">{a.name}<span className="text-xs text-ink-500 ml-2">{a.id}</span></td>
+              <td className="px-3 py-2 text-ink-300">{a.ownerEmail}</td>
+              <td className="px-3 py-2 text-right text-white">{a.memberCount}/{a.memberLimit}</td>
+              <td className="px-3 py-2 text-right text-purple-300">{a.poolCredits ?? 0}</td>
+              <td className="px-3 py-2 text-right text-ink-300">{(a.reports || []).length}</td>
+              <td className="px-3 py-2 text-ink-400 text-xs">{a.createdAt ? new Date(a.createdAt).toLocaleDateString('en-ZA') : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -2238,6 +2291,7 @@ function AppRoutes() {
       <Route path="/dashboard/analytics" element={<RequireAuth><DashboardLayout><DashboardAnalytics /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/billing" element={<RequireAuth><DashboardLayout><DashboardBilling /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/agency" element={<RequireAuth><DashboardLayout><DashboardAgency /></DashboardLayout></RequireAuth>} />
+      <Route path="/agency/signup" element={<RequireAuth><AgencySignup /></RequireAuth>} />
       <Route path="/dashboard/settings" element={<RequireAuth><DashboardLayout><DashboardSettings /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/cancel-subscription" element={<RequireAuth><CancelSubscriptionPage /></RequireAuth>} />
       <Route path="/dashboard/delete-account" element={<RequireAuth><DeleteAccountPage /></RequireAuth>} />

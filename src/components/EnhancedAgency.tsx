@@ -22,12 +22,49 @@ interface AgencyMember {
   role: string;
   avatar: string;
   createdAt: string;
+  monthlyLimit?: number | null;
 }
 
 interface PendingInvite {
   id: string;
   email: string;
   createdAt: string;
+}
+
+interface AgencyRecord {
+  id: string;
+  name: string;
+  memberLimit: number;
+  poolCredits: number;
+  company?: Record<string, string | undefined>;
+  branding?: { reportLogoUrl?: string; reportHeaderColor?: string };
+  webhookUrl?: string;
+  reports?: Array<{ month: string; url: string; generatedAt: string; totalCreditsUsed: number; agentCount: number }>;
+  lastWebhook?: { url: string; status: string; at: string; detail?: string };
+}
+
+interface AgentUsageRow {
+  userId: string;
+  name: string;
+  email: string;
+  creditsUsed: number;
+  rendersToday: number;
+  monthSpend: number;
+  monthlyLimit: number | null;
+  balance: number;
+  byCategory: Record<string, number>;
+}
+
+interface AgencyUsageData {
+  windowDays: number;
+  totalUsed: number;
+  poolUsed: number;
+  personalUsed: number;
+  memberCount: number;
+  pendingInvites: number;
+  perDay: Array<{ day: string; credits: number }>;
+  agents: AgentUsageRow[];
+  generatedAt: string;
 }
 
 interface AgencyProject {
@@ -51,12 +88,16 @@ const onboardingSteps = [
 ];
 
 export default function EnhancedAgency() {
-  const { user, refresh } = useAuth();
+  const { user, refresh, isAdmin } = useAuth();
   const toast = useToast();
-  const [tab, setTab] = useState<'overview' | 'members' | 'team_credits' | 'history' | 'onboarding' | 'settings'>('overview');
+  const [tab, setTab] = useState<'overview' | 'members' | 'team_credits' | 'usage' | 'reports' | 'history' | 'onboarding' | 'settings'>('overview');
   const isLead = user?.role === 'AGENCY_OWNER' || user?.role === 'ADMIN';
   const [members, setMembers] = useState<AgencyMember[]>([]);
   const [invites, setInvites] = useState<PendingInvite[]>([]);
+  const [agency, setAgency] = useState<AgencyRecord | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [maxAgents, setMaxAgents] = useState(10);
+  const [canInvite, setCanInvite] = useState(false);
   const [agencyName, setAgencyName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
@@ -69,18 +110,35 @@ export default function EnhancedAgency() {
   const [settings, setSettings] = useState({ agencyName: user?.agencyName || '' });
   const [poolAmount, setPoolAmount] = useState(500);
   const [poolLoading, setPoolLoading] = useState(false);
+  const [limitEditing, setLimitEditing] = useState<AgencyMember | null>(null);
+  const [limitValue, setLimitValue] = useState(200);
 
-  // Real team list from the backend
+  // Real team list from the backend (agency_overview: cap, roles, reports)
   const load = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/leads?action=agency_members&user_id=${encodeURIComponent(user.id)}`);
+      const res = await fetch(`/api/users?action=agency_overview&user_id=${encodeURIComponent(user.id)}`);
       const data = await res.json();
-      setMembers(data.members || []);
+      const overviewMembers: AgencyMember[] = (data.members || []).map((m: any) => ({
+        id: m.userId,
+        fullName: m.name,
+        email: m.email,
+        credits: m.credits,
+        role: m.role,
+        avatar: (m.name || '?').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase(),
+        createdAt: m.addedAt,
+        monthlyLimit: m.monthlyLimit ?? null,
+      }));
+      setMembers(overviewMembers);
       setInvites(data.invites || []);
-      setAgencyName(data.agencyName || null);
-      if (data.agencyName) setSettings({ agencyName: data.agencyName });
+      setAgency(data.agency || null);
+      setIsOwner(Boolean(data.isOwner));
+      setMaxAgents(data.maxAgents || 10);
+      setCanInvite(Boolean(data.canInvite));
+      const name = data.agency?.name || null;
+      setAgencyName(name);
+      if (name) setSettings({ agencyName: name });
     } catch {
       toast.error('Could not load your agency team');
     } finally {
@@ -90,12 +148,50 @@ export default function EnhancedAgency() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Real invite via the backend (adds existing users instantly, stores pending invites)
+  // ── Per-agent monthly credit limit (owner control) ──────────────────
+  const saveLimit = async () => {
+    if (!limitEditing) return;
+    try {
+      const res = await fetch('/api/users?action=agency_set_limit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user?.id, target_user_id: limitEditing.id, monthly_limit: limitValue }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not set limit');
+      toast.success(`Monthly limit of ${limitValue} credits set for ${limitEditing.fullName}`, 'Limit Saved');
+      setLimitEditing(null);
+      load();
+    } catch (e: any) {
+      toast.error(e.message || 'Could not set limit');
+    }
+  };
+
+  // ── Remove member (owner control) ───────────────────────────────────
+  const removeMember = async (m: AgencyMember) => {
+    if (!window.confirm(`Remove ${m.fullName} from the agency? They keep their personal account and projects.`)) return;
+    try {
+      const res = await fetch('/api/users?action=agency_remove_member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user?.id, target_user_id: m.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not remove member');
+      toast.success(`${m.fullName} removed from the agency`, 'Member Removed');
+      load();
+    } catch (e: any) {
+      toast.error(e.message || 'Could not remove member');
+    }
+  };
+
+  // Real invite via the backend (adds existing users instantly, stores pending
+  // invites, enforces the 10-agent cap server-side)
   const sendInvite = async () => {
     if (!user?.id || !inviteEmail.trim()) { toast.error('Enter an email address'); return; }
     setInviting(true);
     try {
-      const res = await fetch('/api/leads?action=agency_invite', {
+      const res = await fetch('/api/users?action=agency_invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ inviter_user_id: user.id, invite_email: inviteEmail.trim(), role: inviteRole }),
@@ -136,17 +232,19 @@ export default function EnhancedAgency() {
     }
   };
 
-  // Save agency settings (persists the agency name on the user record)
+  // Save agency settings (persists the agency name via the agency endpoint)
   const saveSettings = async () => {
     if (!user?.id) return;
     try {
-      await fetch('/api/users?action=update', {
+      const res = await fetch('/api/users?action=agency_settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, updates: { agencyName: settings.agencyName } }),
+        body: JSON.stringify({ user_id: user.id, name: settings.agencyName }),
       });
+      if (!res.ok) throw new Error();
       toast.success('Agency settings saved', 'Settings Updated');
       load();
+      refresh();
     } catch {
       toast.error('Could not save settings');
     }
@@ -159,6 +257,30 @@ export default function EnhancedAgency() {
     credits: m.credits || 0,
   })), [members]);
 
+  // ── No agency yet → creation CTA (owners create via /agency/signup) ──
+  if (!loading && !agency && !user?.agencyId) {
+    const canCreate = user?.role === 'AGENCY_OWNER' || user?.role === 'ADMIN' || !user?.agencyId;
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="card-dark p-10 text-center">
+          <Building2 className="w-12 h-12 text-purple-400 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-white">You're not part of an agency yet</h1>
+          <p className="text-ink-400 mt-2 max-w-lg mx-auto">
+            Create an agency to manage up to {maxAgents} agents, share a credit pool, set per-agent limits,
+            and watch credit usage in real time. Videos and images stay in each agent's own dashboard.
+          </p>
+          <div className="flex items-center justify-center gap-3 mt-6">
+            {canCreate && (
+              <a href="/agency/signup" className="btn btn-primary">Create your agency</a>
+            )}
+            <button onClick={load} className="btn btn-secondary">Refresh</button>
+          </div>
+          <p className="text-xs text-ink-500 mt-4">Have more than {maxAgents} agents? Create more than one agency — each is capped at {maxAgents} to keep the system simple.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -166,13 +288,37 @@ export default function EnhancedAgency() {
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Building2 className="w-6 h-6 text-purple-400" /> Agency Dashboard
           </h1>
-          <p className="text-ink-400 mt-1">{agencyName || user?.agencyName || 'No agency yet — invite your first agent to create one'} • {members.length} member{members.length === 1 ? '' : 's'}</p>
+          <p className="text-ink-400 mt-1">
+            {agencyName || user?.agencyName || 'Agency'} • {members.length} of {agency?.memberLimit ?? maxAgents} agents
+            {invites.length > 0 && ` • ${invites.length} pending invite${invites.length === 1 ? '' : 's'}`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowInvite(true)} className="btn btn-primary text-sm"><Plus className="w-4 h-4" /> Invite Agent</button>
+          {isOwner && (
+            <button
+              onClick={() => { setShowInvite(true); if (!canInvite) toast.info(`Agent limit — ${members.length + invites.length} of ${agency?.memberLimit ?? maxAgents} slots used. Remove a member or create a second agency.`); }}
+              className="btn btn-primary text-sm"
+            >
+              <Plus className="w-4 h-4" /> Invite Agent
+            </button>
+          )}
           <button onClick={() => setTab('settings' as any)} className="btn btn-secondary text-sm"><Settings className="w-4 h-4" /> Settings</button>
         </div>
       </div>
+
+      {/* 10-agent cap visibility */}
+      {isOwner && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {Array.from({ length: agency?.memberLimit ?? maxAgents }).map((_, i) => (
+            <div
+              key={i}
+              title={i < members.length ? 'Filled slot' : i < members.length + invites.length ? 'Pending invite' : 'Open slot'}
+              className={`w-3.5 h-3.5 rounded-full ${i < members.length ? 'bg-purple-500' : i < members.length + invites.length ? 'bg-yellow-500/70' : 'bg-ink-700'}`}
+            />
+          ))}
+          <span className="text-xs text-ink-500 ml-2">{members.length} agents · {invites.length} invited · {(agency?.memberLimit ?? maxAgents) - members.length - invites.length} slots free · cap {(agency?.memberLimit ?? maxAgents)}</span>
+        </div>
+      )}
 
       {/* Invite Modal — real backend action */}
       {showInvite && (
@@ -192,6 +338,22 @@ export default function EnhancedAgency() {
             <button onClick={sendInvite} disabled={inviting} className="btn btn-primary"><Send className="w-4 h-4" /> {inviting ? 'Sending…' : 'Send Invite'}</button>
             <button onClick={() => setShowInvite(false)} className="btn btn-secondary">Cancel</button>
           </div>
+        </div>
+      )}
+
+      {/* Limit editor panel */}
+      {limitEditing && (
+        <div className="card-dark p-6 border border-purple-500/30 animate-fade-in">
+          <h3 className="font-semibold text-white flex items-center gap-2 mb-4"><TrendingUp className="w-4 h-4 text-purple-400" /> Monthly credit limit — {limitEditing.fullName}</h3>
+          <div className="flex items-end gap-4">
+            <div className="flex-1 max-w-xs">
+              <label className="label">Credits per calendar month (0 = blocked)</label>
+              <input type="number" className="input" min={0} max={100000} value={limitValue} onChange={e => setLimitValue(Number(e.target.value))} />
+            </div>
+            <button onClick={saveLimit} className="btn btn-primary"><CheckCircle2 className="w-4 h-4" /> Save limit</button>
+            <button onClick={() => setLimitEditing(null)} className="btn btn-ghost">Cancel</button>
+          </div>
+          <p className="text-xs text-ink-500 mt-2">Enforced server-side at every spend. Clear the field by setting a large value — there is no "unlimited" flag, or remove and re-invite the agent.</p>
         </div>
       )}
 
@@ -216,6 +378,8 @@ export default function EnhancedAgency() {
           { id: 'overview', label: 'Overview', icon: <BarChart3 className="w-4 h-4" /> },
           { id: 'members', label: 'Team Members', icon: <Users className="w-4 h-4" /> },
           ...(isLead ? [{ id: 'team_credits', label: 'Team Credits', icon: <Zap className="w-4 h-4" /> }] : []),
+          ...(isOwner ? [{ id: 'usage', label: 'Live Usage', icon: <TrendingUp className="w-4 h-4" /> }] : []),
+          ...(isOwner ? [{ id: 'reports', label: 'Reports', icon: <Download className="w-4 h-4" /> }] : []),
           ...(isLead ? [{ id: 'history', label: 'Render History', icon: <Film className="w-4 h-4" /> }] : []),
           { id: 'onboarding', label: 'Setup Guide', icon: <Zap className="w-4 h-4" /> },
           { id: 'settings', label: 'Settings', icon: <Settings className="w-4 h-4" /> },
@@ -349,7 +513,17 @@ export default function EnhancedAgency() {
                     <td className="px-4 py-3"><span className="badge badge-muted">{m.role}</span></td>
                     <td className="px-4 py-3 text-sm text-white text-right">{m.credits}</td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => setGiftTarget(m)} className="btn btn-ghost text-xs py-1"><Gift className="w-3 h-3" /> Gift</button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setGiftTarget(m)} className="btn btn-ghost text-xs py-1"><Gift className="w-3 h-3" /> Gift</button>
+                        {isOwner && m.role !== 'AGENCY_OWNER' && (
+                          <>
+                            <button onClick={() => { setLimitEditing(m); setLimitValue(m.monthlyLimit ?? 200); }} className="btn btn-ghost text-xs py-1" title="Set monthly credit limit">
+                              <TrendingUp className="w-3 h-3" /> {m.monthlyLimit != null ? `Limit: ${m.monthlyLimit}` : 'Limit'}
+                            </button>
+                            <button onClick={() => removeMember(m)} className="btn btn-ghost text-xs py-1 text-red-400" title="Remove from agency">✕</button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -357,6 +531,18 @@ export default function EnhancedAgency() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* ─── Live Usage Tab — real-time credit analytics (owner) ─── */}
+      {tab === 'usage' && isOwner && user?.id && <AgencyLiveUsage userId={user.id} />}
+
+      {/* ─── Reports Tab — branded monthly PDFs (owner) ───────────── */}
+      {tab === 'reports' && isOwner && user?.id && (
+        <AgencyReportsPanel
+          userId={user.id}
+          agency={agency}
+          onRegenerated={load}
+        />
       )}
 
       {/* ─── Render History Tab — agency-wide, team leads ─────────── */}
@@ -464,6 +650,297 @@ export default function EnhancedAgency() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Live Usage (owner): real-time credit analytics — who is spending what,
+// right now. Credit activity only; project files never leave the agent's
+// own dashboard. Polls every 30 s while the tab is open.
+// ═════════════════════════════════════════════════════════════════════
+
+function AgencyLiveUsage({ userId }: { userId: string }) {
+  const toast = useToast();
+  const [usage, setUsage] = useState<AgencyUsageData | null>(null);
+  const [days, setDays] = useState(30);
+  const [loading, setLoading] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/users?action=agency_usage&user_id=${encodeURIComponent(userId)}&days=${days}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load usage');
+      setUsage(data.usage);
+      setUpdatedAt(new Date());
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to load usage');
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, days]);
+
+  useEffect(() => {
+    setLoading(true);
+    load();
+    const t = setInterval(load, 30000); // real-time: refresh every 30 s
+    return () => clearInterval(t);
+  }, [load]);
+
+  const chartData = (usage?.perDay || []).map(d => ({
+    day: d.day.slice(5),
+    credits: d.credits,
+  }));
+
+  if (loading && !usage) return <div className="card-dark p-10 text-center text-sm text-ink-400">Loading live usage…</div>;
+  if (!usage) return null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-xs text-ink-400 flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          Live — refreshes every 30 s{updatedAt && ` · updated ${updatedAt.toLocaleTimeString('en-ZA')}`}
+        </p>
+        <div className="flex items-center gap-1">
+          {[7, 30, 90].map(d => (
+            <button key={d} onClick={() => setDays(d)} className={`px-3 py-1 rounded-full text-xs font-medium transition ${days === d ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-400 border border-transparent'}`}>
+              {d}d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="card-dark p-5"><p className="text-sm text-ink-400">Credits used ({usage.windowDays}d)</p><p className="text-3xl font-bold text-white mt-1">{usage.totalUsed.toLocaleString()}</p></div>
+        <div className="card-dark p-5"><p className="text-sm text-ink-400">From agency pool</p><p className="text-3xl font-bold text-purple-400 mt-1">{usage.poolUsed.toLocaleString()}</p></div>
+        <div className="card-dark p-5"><p className="text-sm text-ink-400">From personal</p><p className="text-3xl font-bold text-white mt-1">{usage.personalUsed.toLocaleString()}</p></div>
+        <div className="card-dark p-5"><p className="text-sm text-ink-400">Active agents</p><p className="text-3xl font-bold text-white mt-1">{usage.agents.filter(a => a.creditsUsed > 0).length}<span className="text-base text-ink-500">/{usage.memberCount}</span></p></div>
+      </div>
+
+      {chartData.length > 0 && (
+        <div className="card-dark p-6">
+          <h3 className="font-semibold text-white mb-4 text-sm">Credits spent — last {usage.windowDays} days</h3>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="day" tick={{ fill: '#8b8b9e', fontSize: 10 }} tickLine={false} axisLine={{ stroke: 'rgba(255,255,255,0.08)' }} interval={Math.max(0, Math.floor(chartData.length / 12) - 1)} />
+                <YAxis tick={{ fill: '#8b8b9e', fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#1a1a24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }} labelStyle={{ color: '#c9c9d4' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Bar dataKey="credits" name="Credits" fill="#7c3aed" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      <div className="card-dark overflow-hidden">
+        <div className="px-4 py-3 border-b border-white/5">
+          <h3 className="font-semibold text-white text-sm">Who is using credits</h3>
+          <p className="text-xs text-ink-500 mt-0.5">Credit activity only — each agent's videos and images stay in their own dashboard.</p>
+        </div>
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-white/5">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Agent</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Used ({usage.windowDays}d)</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Renders today</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-ink-400 uppercase">This month vs limit</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {usage.agents.map(a => {
+              const pct = a.monthlyLimit ? Math.min(100, Math.round((a.monthSpend / a.monthlyLimit) * 100)) : null;
+              return (
+                <tr key={a.userId} className="border-b border-white/5 hover:bg-white/[0.02]">
+                  <td className="px-4 py-3">
+                    <p className="text-sm font-medium text-white">{a.name}</p>
+                    <p className="text-xs text-ink-500">{a.email}</p>
+                    {Object.keys(a.byCategory).length > 0 && (
+                      <p className="text-[10px] text-ink-500 mt-1">
+                        {Object.entries(a.byCategory).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-white text-right font-semibold">{a.creditsUsed.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm text-right">
+                    {a.rendersToday > 0 ? <span className="badge badge-success">{a.rendersToday} today</span> : <span className="text-ink-500">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {a.monthlyLimit == null ? (
+                      <span className="text-xs text-ink-500">No limit</span>
+                    ) : (
+                      <div>
+                        <p className={`text-sm font-medium ${pct! >= 100 ? 'text-red-400' : pct! >= 80 ? 'text-yellow-400' : 'text-white'}`}>{a.monthSpend}/{a.monthlyLimit}</p>
+                        <div className="h-1.5 bg-ink-700 rounded-full overflow-hidden mt-1 w-24 ml-auto">
+                          <div className={`h-full rounded-full ${pct! >= 100 ? 'bg-red-500' : pct! >= 80 ? 'bg-yellow-500' : 'bg-purple-500'}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-white text-right">{a.balance.toLocaleString()}</td>
+                </tr>
+              );
+            })}
+            {usage.agents.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-ink-400">No agents yet.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Reports (owner): branded monthly PDFs, agent-scoped reports, zip export,
+// webhook configuration. Generated automatically on the 1st by the cron;
+// can also be generated on demand here.
+// ═════════════════════════════════════════════════════════════════════
+
+function AgencyReportsPanel({ userId, agency, onRegenerated }: { userId: string; agency: AgencyRecord | null; onRegenerated: () => void }) {
+  const toast = useToast();
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [generating, setGenerating] = useState(false);
+  const [zipLoading, setZipLoading] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState(agency?.webhookUrl || '');
+  const [logoUrl, setLogoUrl] = useState(agency?.branding?.reportLogoUrl || '');
+  const [headerColor, setHeaderColor] = useState(agency?.branding?.reportHeaderColor || '#6b21a8');
+  const [savingBranding, setSavingBranding] = useState(false);
+
+  const generate = async (agentScoped: boolean) => {
+    setGenerating(true);
+    try {
+      const res = await fetch('/api/users?action=agency_report_generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, month, agent_user_id: agentScoped ? 'all' : undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Report generation failed');
+      if (agentScoped && data.agents) {
+        toast.success(`${data.agents.length} agent report(s) generated — download links stored`, 'Agent Reports Ready');
+      } else {
+        toast.success('Monthly report generated', 'Report Ready');
+      }
+      onRegenerated();
+    } catch (e: any) {
+      toast.error(e.message || 'Report generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const downloadZip = () => {
+    setZipLoading(true);
+    window.location.href = `/api/users?action=agency_report_zip&user_id=${encodeURIComponent(userId)}`;
+    setTimeout(() => setZipLoading(false), 3000);
+  };
+
+  const saveBranding = async () => {
+    setSavingBranding(true);
+    try {
+      const res = await fetch('/api/users?action=agency_settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          branding: { reportLogoUrl: logoUrl.trim() || undefined, reportHeaderColor: headerColor },
+          webhook_url: webhookUrl.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not save');
+      toast.success('Report branding and webhook saved', 'Saved');
+      onRegenerated();
+    } catch (e: any) {
+      toast.error(e.message || 'Could not save');
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
+  const reports = agency?.reports || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="card-dark p-6">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+          <div className="flex-1">
+            <label className="label">Report month</label>
+            <input type="month" className="input max-w-[200px]" value={month} max={new Date().toISOString().slice(0, 7)} onChange={e => setMonth(e.target.value)} />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => generate(false)} disabled={generating} className="btn btn-primary text-sm">
+              {generating ? 'Generating…' : 'Generate agency report'}
+            </button>
+            <button onClick={() => generate(true)} disabled={generating} className="btn btn-secondary text-sm">
+              Generate per-agent reports
+            </button>
+            <button onClick={downloadZip} disabled={zipLoading || reports.length === 0} className="btn btn-secondary text-sm disabled:opacity-50">
+              Export zip (12 mo)
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-ink-500 mt-3">
+          Reports generate automatically on the 1st of each month for the month just ended. Agent-scoped PDFs are stored for distribution — email delivery will switch on when email infrastructure lands.
+        </p>
+      </div>
+
+      <div className="card-dark overflow-hidden">
+        <div className="px-4 py-3 border-b border-white/5">
+          <h3 className="font-semibold text-white text-sm">Report history</h3>
+        </div>
+        {reports.length === 0 ? (
+          <p className="p-6 text-sm text-ink-400 text-center">No reports yet — generate one above, or wait for the 1st-of-month cron.</p>
+        ) : (
+          <table className="w-full">
+            <tbody>
+              {reports.map(r => (
+                <tr key={r.month} className="border-b border-white/5 last:border-0">
+                  <td className="px-4 py-3 text-sm font-medium text-white">{new Date(r.month + '-01').toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}</td>
+                  <td className="px-4 py-3 text-sm text-ink-400">{r.totalCreditsUsed.toLocaleString()} credits · {r.agentCount} agent{r.agentCount === 1 ? '' : 's'}</td>
+                  <td className="px-4 py-3 text-xs text-ink-500">generated {new Date(r.generatedAt).toLocaleDateString('en-ZA')}</td>
+                  <td className="px-4 py-3 text-right">
+                    <a href={`/api/users?action=agency_report&user_id=${encodeURIComponent(userId)}&key=${encodeURIComponent(`reports/${agency!.id}/${r.month}/propreel-credit-report-${agency!.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${r.month}.pdf`)}`} className="btn btn-ghost text-xs py-1.5 text-purple-300">
+                      <Download className="w-3 h-3" /> PDF
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Branding + webhook */}
+      <div className="card-dark p-6 space-y-4">
+        <h3 className="font-semibold text-white text-sm">Custom report branding & notifications</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Report logo URL (separate from app logo)</label>
+            <input className="input" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} placeholder="https://agency.co.za/logo.png" />
+          </div>
+          <div>
+            <label className="label">Header colour</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={headerColor} onChange={e => setHeaderColor(e.target.value)} className="w-10 h-10 rounded-lg bg-transparent cursor-pointer" aria-label="Header colour" />
+              <input className="input flex-1" value={headerColor} onChange={e => setHeaderColor(e.target.value)} />
+            </div>
+          </div>
+          <div className="md:col-span-2">
+            <label className="label">Webhook URL (Slack/email integrations — POSTed when a report generates)</label>
+            <input className="input" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://hooks.slack.com/services/…" />
+            {agency?.lastWebhook && (
+              <p className="text-xs mt-1 text-ink-500">
+                Last delivery: <span className={agency.lastWebhook.status === 'delivered' ? 'text-green-400' : 'text-yellow-400'}>{agency.lastWebhook.status}</span> at {new Date(agency.lastWebhook.at).toLocaleString('en-ZA')}
+              </p>
+            )}
+          </div>
+        </div>
+        <button onClick={saveBranding} disabled={savingBranding} className="btn btn-primary text-sm">{savingBranding ? 'Saving…' : 'Save branding & webhook'}</button>
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
 // Agency-wide render history (team leads): every reel + talking-head clip
 // the agency's agents produced, with per-agent attribution and per-agent stats.
 // ═══════════════════════════════════════════════════════════════════════════

@@ -63,18 +63,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── POST /api/credits?action=deduct ────────────────────────────
     if (req.method === 'POST' && action === 'deduct') {
-      const { user_id, amount, reason, metadata } = req.body;
+      const { user_id, amount, reason, metadata, pool } = req.body;
 
       if (!user_id || !amount || amount <= 0) {
         return res.status(400).json({ error: 'Invalid request parameters' });
       }
 
-      const result = await deductCredits(user_id, amount, reason || 'Credit deduction', metadata);
+      // pool='agency' spends the shared agency pool instead of the personal
+      // balance (the client sends this for preset-tier render features).
+      // Per-agent monthly caps are enforced inside deductCredits.
+      const result = await deductCredits(user_id, amount, reason || 'Credit deduction', metadata, pool === 'agency' ? 'agency' : 'personal');
 
       if (!result.success) {
-        return res.status(400).json({
+        const isLimit = (result.error || '').includes('Monthly credit limit reached');
+        return res.status(isLimit ? 402 : 400).json({
           error: result.error || 'Failed to deduct credits',
           current_balance: result.newBalance,
+          ...(isLimit ? { limit_reached: true } : {}),
         });
       }
 

@@ -186,11 +186,34 @@ export async function deductCredits(
   const useAgencyPool = pool === 'agency';
   const balanceExpr = useAgencyPool ? 'agencyPoolCredits' : 'credits';
   try {
+    // Per-agent monthly cap (owner-set via the agency dashboard) — enforced
+    // here so no caller can bypass it. Dynamic import avoids the load cycle
+    // with lib/agency.
+    const { checkAgentLimit } = await import('./agency');
+    const limitError = await checkAgentLimit(userId, amount);
+    if (limitError) {
+      return { success: false, newBalance: 0, error: limitError };
+    }
+
+    // Agency-pool spends draw from the SHARED agency row (lib/agency holds
+    // poolCredits there), not the spending agent's own record — any member
+    // spends the one true pool. Solo users (no agencyId) keep the legacy
+    // per-user agencyPoolCredits attribute.
+    let targetTable: string = TABLES.USERS;
+    let targetKey: Record<string, any> = { id: userId };
+    if (useAgencyPool) {
+      const spender = await getUser(userId);
+      if (spender?.agencyId) {
+        targetTable = TABLES.AGENCIES;
+        targetKey = { id: spender.agencyId };
+      }
+    }
+    const poolExpr = useAgencyPool && targetTable === TABLES.AGENCIES ? 'poolCredits' : balanceExpr;
     const result = await docClient.send(new UpdateCommand({
-      TableName: TABLES.USERS,
-      Key: { id: userId },
-      UpdateExpression: `SET ${balanceExpr} = ${balanceExpr} - :amount, updatedAt = :now`,
-      ConditionExpression: `attribute_exists(id) AND ${balanceExpr} >= :amount`,
+      TableName: targetTable,
+      Key: targetKey,
+      UpdateExpression: `SET ${poolExpr} = ${poolExpr} - :amount, updatedAt = :now`,
+      ConditionExpression: 'attribute_exists(id) AND ' + poolExpr + ' >= :amount',
       ExpressionAttributeValues: {
         ':amount': amount,
         ':now': new Date().toISOString(),
@@ -198,7 +221,7 @@ export async function deductCredits(
       ReturnValues: 'UPDATED_NEW',
     }));
 
-    const newBalance = Number(result.Attributes?.[balanceExpr] ?? 0);
+    const newBalance = Number(result.Attributes?.[poolExpr] ?? 0);
 
     await recordTransaction({
       userId,
@@ -211,20 +234,28 @@ export async function deductCredits(
     return { success: true, newBalance };
   } catch (error: any) {
     if (error?.name === 'ConditionalCheckFailedException') {
-      // Either the user doesn't exist or the balance is insufficient
+      // Either the account doesn't exist or the balance is insufficient
       const user = await getUser(userId);
       if (!user) return { success: false, newBalance: 0, error: 'User not found' };
-      return {
-        success: false,
-        newBalance: useAgencyPool ? (user.agencyPoolCredits ?? 0) : user.credits,
-        error: useAgencyPool ? 'Insufficient agency pool credits' : 'Insufficient credits',
-      };
+      if (useAgencyPool) {
+        const { getAgency } = await import('./agency');
+        const agency = user.agencyId ? await getAgency(user.agencyId) : null;
+        return {
+          success: false,
+          newBalance: agency?.poolCredits ?? user.agencyPoolCredits ?? 0,
+          error: 'Insufficient agency pool credits',
+        };
+      }
+      return { success: false, newBalance: user.credits, error: 'Insufficient credits' };
     }
     throw error;
   }
 }
 
-// Add credits to the shared agency pool (owner tops it up via Paystack)
+// Add credits to the shared agency pool (owner tops it up via Paystack).
+// With an agencyId the pool lives on the agency row (source of truth for all
+// members); the buyer's own record keeps a display mirror when they are the
+// agency owner. Solo buyers keep the legacy per-user attribute.
 export async function addAgencyPoolCredits(
   userId: string,
   amount: number,
@@ -233,8 +264,27 @@ export async function addAgencyPoolCredits(
 ): Promise<number> {
   const user = await getUser(userId);
   if (!user) throw new Error('User not found');
-  const newBalance = (user.agencyPoolCredits ?? 0) + amount;
-  await updateUser(userId, { agencyPoolCredits: newBalance });
+
+  let newBalance: number;
+  if (user.agencyId) {
+    const result = await docClient.send(new UpdateCommand({
+      TableName: TABLES.AGENCIES,
+      Key: { id: user.agencyId },
+      UpdateExpression: 'SET poolCredits = if_not_exists(poolCredits, :zero) + :amount, updatedAt = :now',
+      ConditionExpression: 'attribute_exists(id)',
+      ExpressionAttributeValues: { ':zero': 0, ':amount': amount, ':now': new Date().toISOString() },
+      ReturnValues: 'UPDATED_NEW',
+    }));
+    newBalance = Number(result.Attributes?.poolCredits ?? 0);
+    // Display mirror for the agency owner's own dashboard
+    if (user.role === 'AGENCY_OWNER') {
+      await updateUser(userId, { agencyPoolCredits: newBalance });
+    }
+  } else {
+    newBalance = (user.agencyPoolCredits ?? 0) + amount;
+    await updateUser(userId, { agencyPoolCredits: newBalance });
+  }
+
   await recordTransaction({
     userId,
     amount,
@@ -566,6 +616,22 @@ export async function processExpiredCredits(): Promise<{ processed: number; expi
   }
 
   return { processed, expiredAmount };
+}
+
+// Ledger rows for a user within [start, end) — used by agency monthly reports.
+export async function queryLedgerWindow(
+  userId: string,
+  start: Date,
+  end: Date
+): Promise<CreditTransaction[]> {
+  const txs = await queryItems<CreditTransaction>(TABLES.CREDIT_TRANSACTIONS, {
+    expression: 'userId = :uid',
+    values: { ':uid': userId },
+  }, { limit: 400, scanIndexForward: false });
+  return txs.filter(t => {
+    const at = new Date(t.createdAt);
+    return at >= start && at < end;
+  });
 }
 
 // Get plan details

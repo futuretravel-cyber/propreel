@@ -263,6 +263,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── POST /api/leads?action=agency_invite ────────────────────────
     // Agency owner invites an agent by email (stored; accepted on signup/signin)
+    // Cap-aware: routes through lib/agency.addMemberToAgency (10-agent limit).
     if (action === 'agency_invite') {
       const { inviter_user_id, invite_email, role } = req.body || {};
       if (!inviter_user_id || !invite_email) {
@@ -271,15 +272,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const inviter = await getUser(inviter_user_id);
       if (!inviter) return res.status(404).json({ error: 'Inviter not found' });
 
-      const invitee = await getUserByEmail(String(invite_email).toLowerCase());
-      if (invitee) {
-        // Existing user: add them to the inviter's agency right away
-        const agencyId = inviter.agencyId || `agy_${inviter.id}`;
-        const { putItem: put, TABLES: T } = await import('../lib/db');
-        await put(T.AGENCY_MEMBERS, { agencyId, userId: invitee.id, role: role || 'AGENT', addedAt: new Date().toISOString() });
-        await updateUser(invitee.id, { agencyId, agencyName: inviter.agencyName || inviter.fullName } as any);
-        await updateUser(inviter.id, { agencyId, agencyName: inviter.agencyName || inviter.fullName } as any);
-        return res.status(200).json({ success: true, addedExisting: true, member: invitee.email });
+      const agencyId = inviter.agencyId || `agy_${inviter.id}`;
+      const { getAgency, addMemberToAgency, countMembers, MAX_AGENTS_PER_AGENCY } = await import('../lib/agency');
+      const agency = await getAgency(agencyId);
+      if (!agency) {
+        // Legacy path: no formal agency row yet — keep old behavior
+        const invitee = await getUserByEmail(String(invite_email).toLowerCase());
+        if (invitee) {
+          const { putItem: put, TABLES: T } = await import('../lib/db');
+          await put(T.AGENCY_MEMBERS, { agencyId, userId: invitee.id, role: role || 'AGENT', addedAt: new Date().toISOString() });
+          await updateUser(invitee.id, { agencyId, agencyName: inviter.agencyName || inviter.fullName } as any);
+          await updateUser(inviter.id, { agencyId, agencyName: inviter.agencyName || inviter.fullName } as any);
+          return res.status(200).json({ success: true, addedExisting: true, member: invitee.email });
+        }
+      } else {
+        const invitee = await getUserByEmail(String(invite_email).toLowerCase());
+        if (invitee) {
+          if (invitee.agencyId && invitee.agencyId !== agencyId) {
+            return res.status(400).json({ error: 'That user already belongs to another agency' });
+          }
+          await addMemberToAgency(agencyId, invitee.id, role || 'AGENT');
+          return res.status(200).json({ success: true, addedExisting: true, member: invitee.email });
+        }
+        const memberCount = await countMembers(agencyId);
+        if (memberCount >= agency.memberLimit) {
+          return res.status(400).json({ error: `Agent limit reached — agencies are capped at ${agency.memberLimit} agents to keep the system simple. If you have more than ${agency.memberLimit} agents, create a second agency.`, limit: agency.memberLimit });
+        }
       }
 
       // Not signed up yet: store the pending invite
@@ -288,8 +306,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type: 'agency_invite',
         inviterUserId: inviter_user_id,
         inviterEmail: inviter.email,
-        agencyId: inviter.agencyId || `agy_${inviter.id}`,
-        agencyName: inviter.agencyName || inviter.fullName,
+        agencyId,
+        agencyName: agency?.name || inviter.agencyName || inviter.fullName,
         inviteEmail: String(invite_email).toLowerCase(),
         role: role || 'AGENT',
         status: 'pending',
@@ -311,8 +329,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const invite = all.find(i => i.type === 'agency_invite' && i.status === 'pending' && i.inviteEmail === user.email);
       if (!invite) return res.status(200).json({ success: true, joined: false });
 
-      await put(T.AGENCY_MEMBERS, { agencyId: invite.agencyId, userId: user.id, role: invite.role || 'AGENT', addedAt: new Date().toISOString() });
-      await updateUser(user.id, { agencyId: invite.agencyId, agencyName: invite.agencyName } as any);
+      // Cap-checked join — the 10-agent limit also applies on signup.
+      const { addMemberToAgency } = await import('../lib/agency');
+      await addMemberToAgency(invite.agencyId, user.id, invite.role || 'AGENT');
       const { updateItem } = await import('../lib/db');
       await updateItem(T.SETTINGS, { id: invite.id }, { status: 'accepted', acceptedBy: user.id });
       return res.status(200).json({ success: true, joined: true, agencyName: invite.agencyName });

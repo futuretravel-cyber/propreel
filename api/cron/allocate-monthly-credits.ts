@@ -123,7 +123,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log(`Monthly credit allocation complete: ${allocated} credits allocated, ${summariesWritten} summaries written`);
 
-    await recordCronRun('allocate-monthly-credits', 'success', Date.now() - started, `allocated=${allocated} summaries=${summariesWritten} errors=${errors.length}`);
+    // ── Agency monthly PDF reports (for the month that just ended) ──────
+    // Branded per-agency PDFs land in S3; owners are notified via their
+    // configured webhook; agent-scoped variants are generated too (email
+    // delivery pending email infrastructure — logged for now).
+    let reportsGenerated = 0;
+    let agentReportsGenerated = 0;
+    const reportErrors: string[] = [];
+    try {
+      const { listAllAgencies } = await import('../../lib/agency');
+      const { generateAndStoreAgencyReport, generateAgentReports } = await import('../../lib/agencyReport');
+      const justEnded = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+      const agencies = await listAllAgencies();
+      for (const agency of agencies) {
+        try {
+          await generateAndStoreAgencyReport(agency.id, justEnded);
+          reportsGenerated++;
+          const agentReports = await generateAgentReports(agency.id, justEnded);
+          agentReportsGenerated += agentReports.length;
+        } catch (repErr: any) {
+          reportErrors.push(`${agency.id}: ${repErr?.message || repErr}`);
+          console.error(`Agency report failed for ${agency.id}:`, repErr);
+        }
+      }
+      console.log(`Agency reports: ${reportsGenerated} agency PDFs, ${agentReportsGenerated} agent PDFs for ${justEnded}`);
+    } catch (repErr: any) {
+      console.error('Agency report sweep failed (non-fatal):', repErr);
+    }
+
+    await recordCronRun('allocate-monthly-credits', 'success', Date.now() - started, `allocated=${allocated} summaries=${summariesWritten} errors=${errors.length} reports=${reportsGenerated} agentReports=${agentReportsGenerated}`);
 
     return res.status(200).json({
       success: true,
@@ -132,6 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       users_processed: users.filter(u => u.subscription?.status === 'ACTIVE').length,
       errors_count: errors.length,
       errors: errors.slice(0, 10), // First 10 errors
+      agency_reports: { generated: reportsGenerated, agent_reports: agentReportsGenerated, failed: reportErrors.length },
     });
   } catch (error) {
     console.error('Monthly credit allocation error:', error);
