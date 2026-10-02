@@ -4,8 +4,7 @@
  * which DynamoDB rejected; the per-row catch swallowed it.
  * Usage: npx tsx scripts/cleanup_livetest_ledger.ts
  */
-import { DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { scanItems, TABLES } from '../lib/db';
+import { scanItems, deleteItem, TABLES } from '../lib/db';
 
 async function main() {
   const txns = await scanItems<any>(TABLES.CREDIT_TRANSACTIONS, { limit: 2000 });
@@ -26,11 +25,7 @@ async function main() {
   if (deleted !== residue.length) process.exitCode = 1;
 
   async function docSend(userId: string, createdAt: string) {
-    const { docClient } = await import('../lib/db');
-    await docClient.send(new DeleteCommand({
-      TableName: TABLES.CREDIT_TRANSACTIONS,
-      Key: { userId, createdAt },
-    }));
+    await deleteItem(TABLES.CREDIT_TRANSACTIONS, { userId, createdAt });
   }
 }
 

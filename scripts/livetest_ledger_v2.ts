@@ -5,8 +5,7 @@
  *
  * Usage: npx tsx scripts/livetest_ledger_v2.ts
  */
-import { PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLES } from '../lib/db';
+import { putItem, deleteItem, queryItems, scanItems, TABLES } from '../lib/db';
 import {
   addCredits,
   transferCredits,
@@ -28,9 +27,7 @@ function check(name: string, pass: boolean, detail: string) {
 
 async function seed(id: string, credits: number, extra: Record<string, any> = {}) {
   const now = new Date().toISOString();
-  await docClient.send(new PutCommand({
-    TableName: TABLES.USERS,
-    Item: {
+  await putItem(TABLES.USERS, {
       id,
       email: `${id}@example.com`,
       fullName: 'Ledger Livetest',
@@ -47,37 +44,31 @@ async function seed(id: string, credits: number, extra: Record<string, any> = {}
       createdAt: now,
       updatedAt: now,
       ...extra,
-    },
-  }));
+  });
 }
 
 async function cleanup() {
   // Ledger rows must be deleted with the table's REAL key (userId HASH +
-  // createdAt RANGE) — deleting by { id } alone fails with a ValidationException.
+  // createdAt RANGE).
   for (const id of [A, B]) {
-    try { await docClient.send(new DeleteCommand({ TableName: TABLES.USERS, Key: { id } })); } catch { /* best effort */ }
+    try { await deleteItem(TABLES.USERS, { id }); } catch { /* best effort */ }
     try {
-      const { queryItems } = await import('../lib/db');
       const rows = await queryItems<{ userId: string; createdAt: string; id: string }>(
         TABLES.CREDIT_TRANSACTIONS,
         { expression: 'userId = :u', values: { ':u': id } },
         { limit: 200 }
       );
       for (const r of rows) {
-        await docClient.send(new DeleteCommand({
-          TableName: TABLES.CREDIT_TRANSACTIONS,
-          Key: { userId: r.userId, createdAt: r.createdAt },
-        }));
+        await deleteItem(TABLES.CREDIT_TRANSACTIONS, { userId: r.userId, createdAt: r.createdAt });
       }
     } catch (e) { console.error('ledger cleanup failed for', id, e); }
   }
   // Settings-table event locks created by this test (evt_evt_livetest_<ts>)
   try {
-    const { scanItems } = await import('../lib/db');
     const markers = await scanItems<{ id: string }>(TABLES.SETTINGS, { limit: 500 });
     for (const m of markers) {
       if (m.id.startsWith('evt_evt_livetest_') || m.id.startsWith('pay_livetest_')) {
-        await docClient.send(new DeleteCommand({ TableName: TABLES.SETTINGS, Key: { id: m.id } }));
+        await deleteItem(TABLES.SETTINGS, { id: m.id });
       }
     }
   } catch { /* best effort */ }

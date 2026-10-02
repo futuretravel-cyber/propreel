@@ -6,8 +6,7 @@
  *
  * Usage: set -a; source .env; set +a; npx tsx scripts/livetest_agency.ts
  */
-import { PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLES } from '../lib/db';
+import { putItem, deleteItem, TABLES } from '../lib/db';
 import {
   createAgency, getAgency, addMemberToAgency, setAgentMonthlyLimit,
   agencyUsageAnalytics, countMembers, listMembers,
@@ -29,21 +28,18 @@ function check(name: string, pass: boolean, detail: string) {
 
 async function seed(id: string, email: string, credits: number, extra: Record<string, any> = {}) {
   const now = new Date().toISOString();
-  await docClient.send(new PutCommand({
-    TableName: TABLES.USERS,
-    Item: {
-      id, email, fullName: `Livetest ${id.split('-').pop()}`,
-      role: 'AGENT', credits, creditExpiries: [], subscription: null,
-      autoTopup: { enabled: false, threshold: 50, amount: 200 },
-      agencyId: null, agencyName: null, avatarUrl: null, emailVerified: false,
-      lastLowCreditWarnedAt: null, createdAt: now, updatedAt: now,
-      ...extra,
-    },
-  }));
+  await putItem(TABLES.USERS, {
+    id, email, fullName: `Livetest ${id.split('-').pop()}`,
+    role: 'AGENT', credits, creditExpiries: [], subscription: null,
+    autoTopup: { enabled: false, threshold: 50, amount: 200 },
+    agencyId: null, agencyName: null, avatarUrl: null, emailVerified: false,
+    lastLowCreditWarnedAt: null, createdAt: now, updatedAt: now,
+    ...extra,
+  });
 }
 
 async function del(tableName: string, key: Record<string, any>) {
-  try { await docClient.send(new DeleteCommand({ TableName: tableName, Key: key })); } catch { /* best effort */ }
+  try { await deleteItem(tableName, key); } catch { /* best effort */ }
 }
 
 async function cleanup() {
