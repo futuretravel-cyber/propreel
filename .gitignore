@@ -35,8 +35,7 @@ lerna-debug.log*
 *.sln
 *.sw?
 
-# Deployment credentials (NEVER commit secrets)
-deploy/credentials/
+# Secrets (NEVER commit)
 *.pem
 *.key
 
