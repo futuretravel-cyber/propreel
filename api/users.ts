@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { getUser, updateUser, getUserByEmail, deleteUser } from '../lib/userService';
+import { getUser, updateUser, getUserByEmail, deleteUser, getOrCreateUserByEmail } from '../lib/userService';
 import { TABLES, queryItems, putItem, getItem } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
 
@@ -643,24 +643,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const normalizedEmail = String(email).toLowerCase();
 
-      // Existing user → update profile fields
-      const existing = await getUserByEmail(normalizedEmail);
-      if (existing) {
-        const updates: Record<string, any> = { fullName, email: normalizedEmail };
-        if (supabaseUserId) updates.supabaseUserId = supabaseUserId;
-        if (agencyName) updates.agencyName = agencyName;
-        await updateUser(existing.id, updates);
-        const updated = await getUser(existing.id);
-        return res.status(200).json({ success: true, user: updated, created: false });
-      }
-
-      // New user → create with signup bonus
-      const now = new Date().toISOString();
-      const newUser = {
+      // Idempotent provisioning: one row per email even under concurrent
+      // first-login requests (the old check-then-create produced duplicates,
+      // each collecting the signup bonus and, for admins, an extra allocation).
+      const { user: provisioned, created } = await getOrCreateUserByEmail({
         email: normalizedEmail,
         fullName,
         role,
-        credits: 0, // signup bonus credited separately by /api/credits/add
+        credits: 0, // bonuses credited separately below
         creditExpiries: [],
         subscription: null,
         autoTopup: { enabled: false, threshold: 50, amount: 200 },
@@ -681,18 +671,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         planId,
         cycle,
-        createdAt: now,
-        updatedAt: now,
-      } as any;
+      } as any);
 
-      const created = await import('../lib/userService').then(m => m.createUser(newUser));
+      // Profile fields on an existing row are refreshed either way.
+      const profileUpdates: Record<string, any> = { fullName, email: normalizedEmail };
+      if (supabaseUserId) profileUpdates.supabaseUserId = supabaseUserId;
+      if (agencyName) profileUpdates.agencyName = agencyName;
+      await updateUser(provisioned.id, profileUpdates);
+
+      if (!created) {
+        const updated = await getUser(provisioned.id);
+        return res.status(200).json({ success: true, user: updated || provisioned, created: false });
+      }
 
       // Grant 5-credit signup bonus (best effort)
       try {
         const { addCredits } = await import('../lib/userService');
         const bonusExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
         await addCredits(
-          created.id,
+          provisioned.id,
           5,
           'bonus',
           'Signup bonus — welcome to PropReel!',
@@ -705,23 +702,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (ADMIN_EMAILS.includes(email)) {
           try {
             await addCredits(
-              created.id,
+              provisioned.id,
               ADMIN_GRANT_CREDITS,
               'bonus',
               'Admin account allocation',
               { kind: 'admin_grant' }
             );
-            await updateUser(created.id, { role: 'ADMIN' } as any);
+            await updateUser(provisioned.id, { role: 'ADMIN' } as any);
           } catch (adminErr) {
             console.error('Admin credit grant error:', adminErr);
           }
         }
 
-        const withBonus = await getUser(created.id);
-        return res.status(201).json({ success: true, user: withBonus || created, created: true });
+        const withBonus = await getUser(provisioned.id);
+        return res.status(201).json({ success: true, user: withBonus || provisioned, created: true });
       } catch (bonusError) {
         console.error('Signup bonus error:', bonusError);
-        return res.status(201).json({ success: true, user: created, created: true });
+        return res.status(201).json({ success: true, user: provisioned, created: true });
       }
     } catch (error) {
       console.error('Create user error:', error);

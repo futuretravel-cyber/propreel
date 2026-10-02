@@ -150,6 +150,42 @@ export async function createUser(data: Omit<User, 'id' | 'createdAt' | 'updatedA
   return user;
 }
 
+/**
+ * Idempotent user provisioning: exactly one row per email even when several
+ * requests arrive together (first login fires multiple API calls). The old
+ * check-then-create lost that race: every concurrent request saw "no user"
+ * and created its own row, each collecting the signup bonus — and for admins,
+ * a fresh 1000-credit allocation.
+ *
+ * The claim is putItemIfNotExists on a generated id; the loser of a race
+ * re-reads and returns the winner's row. On DynamoDB this is a conditional
+ * put; on Supabase it is ON CONFLICT DO NOTHING — identical semantics.
+ */
+export async function getOrCreateUserByEmail(
+  input: Omit<User, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<{ user: User; created: boolean }> {
+  const email = input.email.toLowerCase();
+  const existing = await getUserByEmail(email);
+  if (existing) return { user: existing, created: false };
+
+  const now = new Date().toISOString();
+  const candidate: User = {
+    ...input,
+    email,
+    id: `usr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    createdAt: now,
+    updatedAt: now,
+  } as User;
+
+  const claimed = await putItemIfNotExists(TABLES.USERS, candidate);
+  if (claimed) return { user: candidate, created: true };
+
+  // Lost the race — the winner's row now exists.
+  const winner = await getUserByEmail(email);
+  if (winner) return { user: winner, created: false };
+  throw new Error(`user provisioning race lost and no row found for ${email}`);
+}
+
 // Delete user (account deletion flow)
 export async function deleteUser(id: string): Promise<boolean> {
   const { deleteItem } = await import('./db-helpers');
