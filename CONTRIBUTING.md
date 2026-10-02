@@ -180,11 +180,17 @@ src/
 
 ### Documentation Files
 
-- `README.md` - Project overview
-- `GITHUB_VERCEL_DEPLOYMENT.md` - Deployment guide
-- `DEPLOYMENT_GUIDE.md` - Detailed deployment
-- `MODAL_ENDPOINT_SETUP.md` - Modal setup
-- `TESTING_RESULTS.md` - Test results
+All documentation lives in `docs/`:
+
+- `README.md` - Project overview (repo root)
+- `docs/SUPABASE_MIGRATION.md` - Database migration runbook
+- `docs/ARCHITECTURE_STORAGE_DECISION.md` - Why S3 for storage
+- `docs/GITHUB_VERCEL_DEPLOYMENT.md` - Deployment guide
+- `docs/MODAL_ENDPOINT_SETUP.md` - Modal render worker setup
+- `docs/MODAL_API_URLS.md` - The two Modal URLs (common gotcha)
+- `docs/DEPLOYMENT_STATUS.md` - Current production status
+- `docs/WEBSITE_IMPROVEMENT_PLAN.md` - Prioritised improvement plan
+- `docs/WEBSITE_IMPROVEMENT_SUGGESTIONS.md` - Longer-term ideas
 
 ---
 

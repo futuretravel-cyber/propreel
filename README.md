@@ -6,17 +6,32 @@ Create stunning property videos instantly with AI. Built for South African estat
 
 - **Frontend**: React + Vite + Tailwind CSS 4
 - **Backend**: Vercel Serverless Functions (Node.js)
-- **Database**: AWS DynamoDB (primary data storage)
+- **Database**: AWS DynamoDB (live) with a Supabase Postgres driver ready — see [docs/SUPABASE_MIGRATION.md](docs/SUPABASE_MIGRATION.md)
 - **Authentication**: Supabase Auth (Google OAuth only)
 - **Payments**: Paystack
 - **Video Rendering**: Modal + Fal.ai (Minimax Hailuo-02)
 - **File Storage**: AWS S3
 
-## Architecture Change
+## Data Layer
 
-**Previously**: Supabase Postgres for all data storage
+All database access goes through `lib/db.ts`, which dispatches on the `DB_DRIVER`
+environment variable:
 
-**Now**: AWS DynamoDB for all data (users, credits, subscriptions, transactions), Supabase only for Google OAuth authentication.
+| `DB_DRIVER` | Backend | Status |
+|---|---|---|
+| unset (default) | AWS DynamoDB (`lib/db-dynamodb.ts`) | Live in production |
+| `supabase` | Supabase Postgres (`lib/db-supabase.ts`) | Ready; cut over via the runbook |
+
+Both drivers implement identical helpers **including the atomic credit
+operations** (conditional balance decrements, idempotency locks), so the credit
+system behaves the same on either backend. Moving between them is one Vercel
+environment variable plus a redeploy — and rolling back is removing it.
+
+Supabase is also the auth provider (Google OAuth + email). File storage is
+AWS S3 in both cases; see [docs/ARCHITECTURE_STORAGE_DECISION.md](docs/ARCHITECTURE_STORAGE_DECISION.md).
+
+> A previous Express + Prisma + PostgreSQL monorepo attempt (and its deployment
+> scripts) was removed — `api/` + `lib/` on Vercel is the only backend.
 
 ## AWS Setup
 
