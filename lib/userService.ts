@@ -4,7 +4,7 @@
  */
 
 import { docClient, getItem, putItem, updateItem, queryItems, scanItems, TABLES } from './db';
-import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { UpdateCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 
 export interface CreditExpiry {
   amount: number;
@@ -49,20 +49,47 @@ export interface User {
   projectFolders?: Array<{ id: string; name: string; icon: string; createdAt: string }>;
   planId?: string | null;
   cycle?: string;
+  /** Paystack saved-card authorization (captured on charge.success; used by auto-topup) */
+  paystackAuthorizationCode?: string;
+  /** Billing dunning state (retries day 1/3/7/14, downgrade at day 21) */
+  paymentFailure?: {
+    count: number;
+    firstFailedAt: string;
+    lastAttemptAt: string;
+    lastReference?: string;
+  };
+  /** Invoice PDFs (S3) — populated by lib/invoice.ts, shown in Billing */
+  invoices?: Array<{ invoiceNumber: string; url: string; amountZar: number; paidAt: string; reference: string; description?: string }>;
+  /** Shared agency credit pool (AGENCY plan); spent first for tier features */
+  agencyPoolCredits?: number;
+  /** Computed by the allocate-monthly-credits cron for the Billing page */
+  monthlySummary?: {
+    month: string;
+    generatedAt: string;
+    openingBalance: number;
+    allocated: number;
+    used: number;
+    expired: number;
+    closingBalance: number;
+    subscriptionZar: number | null;
+    nextChargeDate: string | null;
+  };
 }
 
 export interface CreditTransaction {
   id: string;
   userId: string;
   amount: number;
-  type: 'purchase' | 'bonus' | 'gift' | 'refund' | 'subscription' | 'deduction' | 'expiration';
+  type: 'purchase' | 'bonus' | 'gift' | 'transfer' | 'refund' | 'subscription' | 'deduction' | 'expiration';
   description: string;
   metadata: Record<string, any>;
+  /** Idempotency key (e.g. Paystack data.id or reference) — duplicate events never double-credit */
+  eventId?: string;
   createdAt: string;
 }
 
-// Plan details
-const PLANS: Record<string, { monthlyZar: number; annualZar: number; monthlyCredits: number }> = {
+// Plan details (exported for the prorated-upgrade math in api/subscriptions.ts)
+export const PLANS: Record<string, { monthlyZar: number; annualZar: number; monthlyCredits: number }> = {
   'STARTER': { monthlyZar: 129, annualZar: 110, monthlyCredits: 130 },
   'PROFESSIONAL': { monthlyZar: 589, annualZar: 560, monthlyCredits: 600 },
   'PREMIUM': { monthlyZar: 1270, annualZar: 1200, monthlyCredits: 1300 },
@@ -137,18 +164,25 @@ export async function deductCredits(
   userId: string,
   amount: number,
   reason: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, any>,
+  pool?: 'personal' | 'agency'
 ): Promise<{ success: boolean; newBalance: number; error?: string }> {
   // Fully atomic server-side decrement: DynamoDB evaluates
-  // `credits = credits - :amount WHERE credits >= :amount` on the CURRENT
+  // `balance = balance - :amount WHERE balance >= :amount` on the CURRENT
   // item, so concurrent requests can never double-spend or go negative.
   // The authoritative new balance comes back via ReturnValues.
+  //
+  // pool='agency' spends the shared agency pool (agencyPoolCredits) instead of
+  // the personal balance — used for preset-tier render features. The ledger
+  // row keeps type 'deduction' with metadata.pool='agency' for reporting.
+  const useAgencyPool = pool === 'agency';
+  const balanceExpr = useAgencyPool ? 'agencyPoolCredits' : 'credits';
   try {
     const result = await docClient.send(new UpdateCommand({
       TableName: TABLES.USERS,
       Key: { id: userId },
-      UpdateExpression: 'SET credits = credits - :amount, updatedAt = :now',
-      ConditionExpression: 'attribute_exists(id) AND credits >= :amount',
+      UpdateExpression: `SET ${balanceExpr} = ${balanceExpr} - :amount, updatedAt = :now`,
+      ConditionExpression: `attribute_exists(id) AND ${balanceExpr} >= :amount`,
       ExpressionAttributeValues: {
         ':amount': amount,
         ':now': new Date().toISOString(),
@@ -156,14 +190,14 @@ export async function deductCredits(
       ReturnValues: 'UPDATED_NEW',
     }));
 
-    const newBalance = Number(result.Attributes?.credits ?? 0);
+    const newBalance = Number(result.Attributes?.[balanceExpr] ?? 0);
 
     await recordTransaction({
       userId,
       amount: -amount,
       type: 'deduction',
       description: reason,
-      metadata: metadata || {},
+      metadata: { ...(metadata || {}), pool: useAgencyPool ? 'agency' : 'personal' },
     });
 
     return { success: true, newBalance };
@@ -172,56 +206,127 @@ export async function deductCredits(
       // Either the user doesn't exist or the balance is insufficient
       const user = await getUser(userId);
       if (!user) return { success: false, newBalance: 0, error: 'User not found' };
-      return { success: false, newBalance: user.credits, error: 'Insufficient credits' };
+      return {
+        success: false,
+        newBalance: useAgencyPool ? (user.agencyPoolCredits ?? 0) : user.credits,
+        error: useAgencyPool ? 'Insufficient agency pool credits' : 'Insufficient credits',
+      };
     }
     throw error;
   }
+}
+
+// Add credits to the shared agency pool (owner tops it up via Paystack)
+export async function addAgencyPoolCredits(
+  userId: string,
+  amount: number,
+  description: string,
+  metadata?: Record<string, any>
+): Promise<number> {
+  const user = await getUser(userId);
+  if (!user) throw new Error('User not found');
+  const newBalance = (user.agencyPoolCredits ?? 0) + amount;
+  await updateUser(userId, { agencyPoolCredits: newBalance });
+  await recordTransaction({
+    userId,
+    amount,
+    type: 'purchase',
+    description,
+    metadata: { ...(metadata || {}), pool: 'agency' },
+  });
+  return newBalance;
 }
 
 // Add credits to user
 export async function addCredits(
   userId: string,
   amount: number,
-  source: 'purchase' | 'bonus' | 'gift' | 'refund' | 'subscription',
+  source: 'purchase' | 'bonus' | 'gift' | 'refund' | 'subscription' | 'transfer',
   description: string,
   metadata?: Record<string, any>,
-  expiresAt?: string
-): Promise<{ success: boolean; newBalance: number }> {
-  const user = await getUser(userId);
-  if (!user) {
-    throw new Error('User not found');
-  }
-
-  const newBalance = user.credits + amount;
-  await updateUser(userId, { credits: newBalance });
-
-  // Record transaction
-  await recordTransaction({
-    userId,
-    amount,
-    type: source,
-    description,
-    metadata: metadata || {},
-  });
-
-  // Add to credit expiries if applicable
-  if (expiresAt && (source === 'subscription' || source === 'purchase')) {
-    const userAfter = await getUser(userId);
-    if (userAfter) {
-      const updatedExpiries = [...(userAfter.creditExpiries || []), {
-        amount,
-        expiresAt,
-        source,
-      }];
-      await updateUser(userId, { creditExpiries: updatedExpiries });
+  expiresAt?: string,
+  eventId?: string
+): Promise<{ success: boolean; newBalance: number; duplicated?: boolean }> {
+  // Idempotency first: atomically claim the event via a conditional put on
+  // the settings table (HASH key = id, so attribute_not_exists is a true
+  // uniqueness guarantee). Duplicate webhooks / renewal replays land here,
+  // lose the race, and never touch the balance. The lock is released if the
+  // credit add itself fails, so a later retry can proceed.
+  const lockId = eventId ? `evt_${eventId}` : undefined;
+  if (lockId) {
+    try {
+      await docClient.send(new PutCommand({
+        TableName: TABLES.SETTINGS,
+        Item: {
+          id: lockId,
+          type: 'event_lock',
+          userId,
+          eventId,
+          createdAt: new Date().toISOString(),
+        },
+        ConditionExpression: 'attribute_not_exists(id)',
+      }));
+    } catch (e: any) {
+      if (e?.name === 'ConditionalCheckFailedException') {
+        const current = await getUser(userId);
+        return { success: true, newBalance: current?.credits ?? 0, duplicated: true };
+      }
+      throw e;
     }
   }
 
-  return { success: true, newBalance };
+  try {
+    const user = await getUser(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const newBalance = user.credits + amount;
+    await updateUser(userId, { credits: newBalance });
+
+    // Record transaction (idempotent on eventId; belt-and-braces with the
+    // settings lock above)
+    await recordTransaction({
+      userId,
+      amount,
+      type: source,
+      description,
+      metadata: metadata || {},
+      eventId,
+    });
+
+    // Add to credit expiries if applicable
+    if (expiresAt && (source === 'subscription' || source === 'purchase')) {
+      const userAfter = await getUser(userId);
+      if (userAfter) {
+        const updatedExpiries = [...(userAfter.creditExpiries || []), {
+          amount,
+          expiresAt,
+          source,
+        }];
+        await updateUser(userId, { creditExpiries: updatedExpiries });
+      }
+    }
+
+    return { success: true, newBalance };
+  } catch (err) {
+    // Release the event lock so a retry after a transient failure can proceed
+    if (lockId) {
+      try {
+        const { deleteItem } = await import('./db-helpers');
+        await deleteItem(TABLES.SETTINGS, { id: lockId });
+      } catch { /* best effort */ }
+    }
+    throw err;
+  }
 }
 
-// Record a credit transaction
-export async function recordTransaction(data: Omit<CreditTransaction, 'id' | 'createdAt'>): Promise<void> {
+// Record a credit transaction. Idempotency for event-driven credits is
+// handled by the settings-table event lock in addCredits (the credit-
+// transactions table is keyed by (userId, createdAt), so a uniqueness
+// condition here could not work across items); eventId is kept on the row
+// for audit and joins.
+export async function recordTransaction(data: Omit<CreditTransaction, 'id' | 'createdAt'>): Promise<{ recorded: boolean }> {
   const transaction: CreditTransaction = {
     ...data,
     id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -229,6 +334,43 @@ export async function recordTransaction(data: Omit<CreditTransaction, 'id' | 'cr
   };
 
   await putItem(TABLES.CREDIT_TRANSACTIONS, transaction);
+  return { recorded: true };
+}
+
+// Transfer credits between agents (agency teammates especially). Atomic on
+// the sender's side; writes two linked TRANSFER ledger rows.
+export async function transferCredits(
+  fromUserId: string,
+  toUserId: string,
+  amount: number,
+  reason?: string
+): Promise<{ success: boolean; newBalance: number; error?: string }> {
+  const linkId = `xfer_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  const deduct = await deductCredits(fromUserId, amount, reason || 'Credit transfer sent', {
+    kind: 'TRANSFER', linkId, toUserId,
+  });
+  if (!deduct.success) return deduct;
+
+  await recordTransaction({
+    userId: toUserId,
+    amount,
+    type: 'transfer',
+    description: reason || 'Credit transfer received',
+    metadata: { kind: 'TRANSFER', linkId, fromUserId },
+    eventId: linkId,
+  });
+
+  // Credit the receiver's balance directly (ledger row already written)
+  const receiver = await getUser(toUserId);
+  if (!receiver) {
+    // Roll back — receiver vanished mid-transfer
+    await addCredits(fromUserId, amount, 'refund', 'Transfer reversed — recipient not found', { kind: 'TRANSFER_REVERSAL', linkId });
+    return { success: false, newBalance: deduct.newBalance, error: 'Recipient not found' };
+  }
+  await updateUser(toUserId, { credits: receiver.credits + amount });
+
+  return { success: true, newBalance: deduct.newBalance };
 }
 
 // Get credit transactions for user
@@ -457,7 +599,7 @@ export async function getCreditReport(userId: string, days = 30): Promise<{
   const transactions = await queryItems<CreditTransaction>(TABLES.CREDIT_TRANSACTIONS, {
     expression: 'userId = :uid',
     values: { ':uid': userId },
-  }, { limit: 100 });
+  }, { limit: 400 });
 
   const filteredTransactions = transactions.filter(t => new Date(t.createdAt) >= since);
 

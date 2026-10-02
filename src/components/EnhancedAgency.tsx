@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { formatDate, formatRelative } from '../lib/utils';
+import { formatDate, formatRelative, formatZar } from '../lib/utils';
 import { PropReelAPI } from '../lib/api';
 import {
   Users, Plus, Zap, TrendingUp, Mail, Settings,
@@ -53,7 +53,7 @@ const onboardingSteps = [
 export default function EnhancedAgency() {
   const { user, refresh } = useAuth();
   const toast = useToast();
-  const [tab, setTab] = useState<'overview' | 'members' | 'history' | 'onboarding' | 'settings'>('overview');
+  const [tab, setTab] = useState<'overview' | 'members' | 'team_credits' | 'history' | 'onboarding' | 'settings'>('overview');
   const isLead = user?.role === 'AGENCY_OWNER' || user?.role === 'ADMIN';
   const [members, setMembers] = useState<AgencyMember[]>([]);
   const [invites, setInvites] = useState<PendingInvite[]>([]);
@@ -67,6 +67,8 @@ export default function EnhancedAgency() {
   const [giftTarget, setGiftTarget] = useState<AgencyMember | null>(null);
   const [giftAmount, setGiftAmount] = useState(50);
   const [settings, setSettings] = useState({ agencyName: user?.agencyName || '' });
+  const [poolAmount, setPoolAmount] = useState(500);
+  const [poolLoading, setPoolLoading] = useState(false);
 
   // Real team list from the backend
   const load = useCallback(async () => {
@@ -213,6 +215,7 @@ export default function EnhancedAgency() {
         {[
           { id: 'overview', label: 'Overview', icon: <BarChart3 className="w-4 h-4" /> },
           { id: 'members', label: 'Team Members', icon: <Users className="w-4 h-4" /> },
+          ...(isLead ? [{ id: 'team_credits', label: 'Team Credits', icon: <Zap className="w-4 h-4" /> }] : []),
           ...(isLead ? [{ id: 'history', label: 'Render History', icon: <Film className="w-4 h-4" /> }] : []),
           { id: 'onboarding', label: 'Setup Guide', icon: <Zap className="w-4 h-4" /> },
           { id: 'settings', label: 'Settings', icon: <Settings className="w-4 h-4" /> },
@@ -261,6 +264,98 @@ export default function EnhancedAgency() {
               </ResponsiveContainer>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ─── Team Credits Tab — shared pool management (owner) ────── */}
+      {tab === 'team_credits' && isLead && (
+        <div className="space-y-6">
+          {/* Shared pool card + top-up */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="card-dark p-6">
+              <p className="text-sm text-ink-400">Shared Agency Pool</p>
+              <p className="text-4xl font-black text-purple-400 mt-1">{user?.agencyPoolCredits ?? 0}</p>
+              <p className="text-xs text-ink-400 mt-2">Spent first for tier render features (Essential → Premium) by every team member. Personal credits cover extras like FlashHead and photo edits.</p>
+            </div>
+            <div className="card-dark p-6">
+              <h3 className="font-semibold text-white mb-3 flex items-center gap-2"><Plus className="w-4 h-4 text-purple-400" /> Top Up Pool</h3>
+              <input
+                type="range" min={50} max={5000} step={50}
+                value={poolAmount}
+                onChange={e => setPoolAmount(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="flex justify-between text-sm mt-2">
+                <span className="text-ink-400">50</span>
+                <span className="text-white font-bold">{poolAmount} credits · {formatZar(poolAmount)}</span>
+                <span className="text-ink-400">5,000</span>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!user) return;
+                  setPoolLoading(true);
+                  try {
+                    const res = await fetch('/api/paystack/initialize', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ user_id: user.id, credits: poolAmount, email: user.email, pool: 'agency' }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || 'Payment could not be initialized');
+                    window.location.href = data.authorization_url;
+                  } catch (e: any) {
+                    toast.error(e.message || 'Pool top-up failed');
+                    setPoolLoading(false);
+                  }
+                }}
+                disabled={poolLoading}
+                className="btn btn-primary w-full mt-4"
+              >
+                <Zap className="w-4 h-4" /> {poolLoading ? 'Opening checkout…' : `Top up ${poolAmount} credits`}
+              </button>
+              <p className="text-xs text-ink-500 mt-2">Secured by Paystack · pool credits expire 365 days after purchase</p>
+            </div>
+          </div>
+
+          {/* Per-agent balances */}
+          <div className="card-dark overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/5">
+              <h3 className="font-semibold text-white text-sm">Agent Balances</h3>
+              <p className="text-xs text-ink-500 mt-0.5">Personal credits per agent. Pool renders are deducted from the shared pool and appear in each agent's ledger as “agency pool”.</p>
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/5">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Member</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Role</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-ink-400 uppercase">Personal Credits</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && <tr><td colSpan={4} className="px-4 py-6 text-center text-ink-400 text-sm">Loading team…</td></tr>}
+                {!loading && members.length === 0 && <tr><td colSpan={4} className="px-4 py-6 text-center text-ink-400 text-sm">No members yet — invite your first agent.</td></tr>}
+                {!loading && members.map(m => (
+                  <tr key={m.id} className="border-b border-white/5 hover:bg-white/[0.02]">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-purple-700/30 flex items-center justify-center text-purple-300 font-bold text-xs">{m.avatar}</div>
+                        <div>
+                          <p className="text-sm font-medium text-white">{m.fullName}</p>
+                          <p className="text-xs text-ink-400">{m.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3"><span className="badge badge-muted">{m.role}</span></td>
+                    <td className="px-4 py-3 text-sm text-white text-right">{m.credits}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button onClick={() => setGiftTarget(m)} className="btn btn-ghost text-xs py-1"><Gift className="w-3 h-3" /> Gift</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

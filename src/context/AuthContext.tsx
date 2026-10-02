@@ -43,6 +43,29 @@ export interface User {
   emailVerified: boolean;
   lastLowCreditWarnedAt: string | null;
   createdAt: string;
+  /** Paystack saved-card authorization (captured server-side on charge.success) */
+  paystackAuthorizationCode?: string;
+  /** Billing dunning state — surfaced as a friendly banner in Billing */
+  paymentFailure?: { count: number; firstFailedAt: string; lastAttemptAt: string; lastReference?: string } | null;
+  /** Shared agency credit pool (AGENCY plan owners) */
+  agencyPoolCredits?: number;
+  /** Invoice PDFs (S3) — populated server-side on payment */
+  invoices?: Array<{ invoiceNumber: string; url: string; amountZar: number; paidAt: string; reference: string; description?: string }>;
+  /** Computed by the monthly cron; shown in Billing */
+  monthlySummary?: {
+    month: string;
+    generatedAt: string;
+    openingBalance: number;
+    allocated: number;
+    used: number;
+    expired: number;
+    closingBalance: number;
+    subscriptionZar: number | null;
+    nextChargeDate: string | null;
+  } | null;
+  /** Set by the nightly auto-topup sweep when it needs a one-time checkout */
+  autoTopupNeedsAuth?: boolean;
+  autoTopupAuthAmount?: number;
 }
 
 export interface Balance {
@@ -71,10 +94,10 @@ interface CreditContextType {
   purchaseCredits: (amount: number) => Promise<{ authorizationUrl: string; reference: string }>;
   setAutoTopup: (config: AutoTopup) => void;
   giftCredits: (toEmail: string, amount: number) => Promise<void>;
-  upgradePlan: (planId: PlanId, cycle: BillingCycle) => Promise<{ authorizationUrl: string }>;
+  upgradePlan: (planId: PlanId, cycle: BillingCycle) => Promise<{ authorizationUrl?: string; chargedZar?: number; requiresCheckout?: boolean }>;
   downgradePlan: (planId: PlanId) => void;
   acknowledgeLowCredit: () => void;
-  deductCredits: (amount: number, reason: string, metadata?: any) => Promise<boolean>;
+  deductCredits: (amount: number, reason: string, metadata?: any, pool?: 'personal' | 'agency') => Promise<boolean>;
   addCredits: (amount: number, source: 'purchase' | 'bonus' | 'gift' | 'refund' | 'subscription', description: string) => Promise<boolean>;
 }
 
@@ -182,8 +205,8 @@ export function CreditProvider({ children }: { children: ReactNode }) {
   // Calculate balance
   const balance: Balance = {
     personal: user?.credits || 0,
-    agency: 0, // Would come from backend for agency users
-    total: (user?.credits || 0),
+    agency: user?.agencyPoolCredits || 0, // shared agency pool (AGENCY plan)
+    total: (user?.credits || 0) + (user?.agencyPoolCredits || 0),
     expiringSoon: user?.creditExpiries?.filter(e => {
       const days = (new Date(e.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
       return days <= 7 && days > 0;
@@ -339,12 +362,30 @@ export function CreditProvider({ children }: { children: ReactNode }) {
   const upgradePlan = useCallback(async (planId: PlanId, cycle: BillingCycle) => {
     if (!user) throw new Error('Not logged in');
 
+    // Active subscription → prorated immediate upgrade (charges the plan
+    // difference via saved card, credits unused allowance back).
+    if (user.subscription?.status === 'ACTIVE') {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/subscriptions?action=upgrade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id, plan_id: planId, cycle }),
+      });
+      const data = await response.json().catch(() => ({} as any));
+      if (!response.ok) throw new Error(data.error || 'Upgrade failed');
+      if (data.requires_checkout && data.authorization_url) {
+        return { authorizationUrl: data.authorization_url as string, requiresCheckout: true };
+      }
+      await refresh();
+      return { chargedZar: data.charged_zar as number | undefined };
+    }
+
+    // No active subscription → normal subscription creation flow
     const response = await BackendAPI.createSubscription(user.id, planId, cycle);
     if (response.authorization_url) {
       return { authorizationUrl: response.authorization_url };
     }
     throw new Error('Failed to create subscription');
-  }, [user]);
+  }, [user, refresh]);
 
   const downgradePlan = useCallback((planId: PlanId) => {
     setUser(prev => prev?.subscription ? {
@@ -362,11 +403,8 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     setUser(prev => prev ? { ...prev, lastLowCreditWarnedAt: new Date().toISOString() } : null);
   }, []);
 
-  const deductCredits = useCallback(async (amount: number, reason: string, metadata?: any): Promise<boolean> => {
+  const deductCredits = useCallback(async (amount: number, reason: string, metadata?: any, pool?: 'personal' | 'agency'): Promise<boolean> => {
     if (!user) return false;
-    if (user.credits < amount) {
-      throw new Error(`Insufficient credits. You need ${amount} but only have ${user.credits}`);
-    }
 
     try {
       const result = await BackendAPI.deductCredits({
@@ -374,9 +412,14 @@ export function CreditProvider({ children }: { children: ReactNode }) {
         amount,
         reason,
         metadata,
+        pool,
       });
 
-      setUser(prev => prev ? { ...prev, credits: result.new_balance } : null);
+      setUser(prev => {
+        if (!prev) return prev;
+        if (pool === 'agency') return { ...prev, agencyPoolCredits: result.new_balance };
+        return { ...prev, credits: result.new_balance };
+      });
       return true;
     } catch (error) {
       console.error('Error deducting credits:', error);

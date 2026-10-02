@@ -64,26 +64,39 @@ export async function updateItem(
   key: Record<string, any>,
   updates: Record<string, any>
 ): Promise<void> {
-  const updateExpressions: string[] = [];
+  const setExpressions: string[] = [];
+  const removeExpressions: string[] = [];
   const expressionAttributeValues: Record<string, any> = {};
   const expressionAttributeNames: Record<string, string> = {};
 
+  // Fields explicitly set to undefined are REMOVEd from the item (used to
+  // clear dunning state etc.), rather than silently dropped or written as
+  // DynamoDB NULL. Also ensures at least one update action always exists.
   let i = 0;
   for (const [field, value] of Object.entries(updates)) {
     const placeholder = `#field${i}`;
-    const valuePlaceholder = `:val${i}`;
-    updateExpressions.push(`${placeholder} = ${valuePlaceholder}`);
     expressionAttributeNames[placeholder] = field;
-    expressionAttributeValues[valuePlaceholder] = value;
+    if (value === undefined) {
+      removeExpressions.push(placeholder);
+    } else {
+      setExpressions.push(`${placeholder} = :val${i}`);
+      expressionAttributeValues[`\u003aval${i}`] = value;
+    }
     i++;
   }
+
+  if (setExpressions.length === 0 && removeExpressions.length === 0) return;
+
+  const actions: string[] = [];
+  if (setExpressions.length) actions.push(`SET ${setExpressions.join(', ')}`);
+  if (removeExpressions.length) actions.push(`REMOVE ${removeExpressions.join(', ')}`);
 
   await docClient.send(new UpdateCommand({
     TableName: tableName,
     Key: key,
-    UpdateExpression: `SET ${updateExpressions.join(', ')}`,
+    UpdateExpression: actions.join(' '),
     ExpressionAttributeNames: expressionAttributeNames,
-    ExpressionAttributeValues: expressionAttributeValues,
+    ...(Object.keys(expressionAttributeValues).length > 0 ? { ExpressionAttributeValues: expressionAttributeValues } : {}),
     ReturnValues: 'ALL_NEW',
   }));
 }

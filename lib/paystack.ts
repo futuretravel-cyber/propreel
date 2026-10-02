@@ -193,3 +193,44 @@ export async function getTransaction(reference: string) {
 
   return response.json();
 }
+
+/**
+ * Charge a returning customer using a saved authorization (auto-top-up).
+ * Returns { status: 'open_url' } with a hosted URL when no authorization is
+ * on file — the caller should redirect the user there once.
+ */
+export async function chargeAuthorization(
+  email: string,
+  amount: number,
+  authorizationCode: string,
+  metadata?: any
+): Promise<{ status: string; reference: string; paystackId?: number; authorization_url?: string }> {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey) throw new Error('Paystack secret key not configured');
+
+  const reference = `atopup_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const response = await fetch('https://api.paystack.co/transaction/charge_authorization', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${secretKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email,
+      amount: amount * 100, // kobo
+      authorization_code: authorizationCode,
+      reference,
+      metadata,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to charge authorization');
+  }
+  return {
+    status: data.data?.status || 'unknown',
+    reference,
+    paystackId: typeof data.data?.id === 'number' ? data.data.id : undefined,
+    authorization_url: data.data?.url || undefined,
+  };
+}

@@ -238,6 +238,48 @@ async function notificationPreferences(req: VercelRequest, res: VercelResponse) 
 }
 
 /**
+ * Nested route: GET /api/users?action=admin_ledger — platform-wide credit
+ * ledger (admin-only). Powers the audit-log view in the dashboard.
+ */
+async function adminLedger(req: VercelRequest, res: VercelResponse) {
+  const email = String(req.query.email || '').toLowerCase();
+  if (!ADMIN_EMAILS.includes(email)) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const { scanItems } = await import('../lib/db');
+  const limit = Math.min(500, Math.max(10, parseInt(req.query.limit as string) || 150));
+  const typeFilter = (req.query.type as string) || '';
+
+  const txns = await scanItems<any>(TABLES.CREDIT_TRANSACTIONS, { limit: 2000 });
+  // Hide internal index rows (idx_<eventId> dedupe helpers)
+  let rows = txns.filter((t: any) => t.type !== 'event_index');
+  if (typeFilter) rows = rows.filter((t: any) => t.type === typeFilter);
+  rows.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  rows = rows.slice(0, limit);
+
+  // Resolve emails for display
+  const users = await scanItems<any>(TABLES.USERS, { limit: 500 });
+  const emailById = new Map<string, string>(users.map((u: any) => [u.id, u.email]));
+
+  return res.status(200).json({
+    success: true,
+    count: rows.length,
+    transactions: rows.map((t: any) => ({
+      id: t.id,
+      userId: t.userId,
+      userEmail: emailById.get(t.userId) || null,
+      amount: t.amount,
+      type: t.type,
+      description: t.description,
+      eventId: t.eventId || null,
+      pool: t.metadata?.pool || null,
+      createdAt: t.createdAt,
+    })),
+  });
+}
+
+/**
  * GET    /api/users?email=xxx   → find user by email
  * GET    /api/users?id=xxx      → get user by id
  * POST   /api/users             → create or update user after OAuth/signup
@@ -261,6 +303,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.method === 'GET' && req.query.action === 'list_users') {
     return listUsers(req, res);
+  }
+  if (req.method === 'GET' && req.query.action === 'admin_ledger') {
+    return adminLedger(req, res);
   }
 
   if (req.method === 'GET') {

@@ -10,6 +10,8 @@ export interface CreditDeductRequest {
   amount: number;
   reason: string;
   metadata?: any;
+  /** 'agency' spends the shared agency pool instead of personal credits */
+  pool?: 'personal' | 'agency';
 }
 
 export interface CreditAddRequest {

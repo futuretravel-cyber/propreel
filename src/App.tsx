@@ -43,7 +43,7 @@ import {
   Home as HomeIcon, Video, Image, Wand2, Sofa, Trash2, Moon, Share2, Play,
   LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield,
   Users, Star, ChevronRight, Check, X, Menu, LogOut, Zap, Crown, Sparkles,
-  TrendingUp, Eye, Clock, AlertCircle, Download, Copy, RefreshCw, Plus,
+  TrendingUp, Eye, Clock, AlertCircle, AlertTriangle, Download, Copy, RefreshCw, Plus,
   Search, Filter, ArrowRight, Globe, Phone, Mail, MapPin, ChevronDown,
   Monitor, Smartphone, Mic, Camera, Palette, Sun, Cloud, Moon as MoonIcon, Bell,
   FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle
@@ -249,14 +249,14 @@ function PricingPage() {
                   <CreditCard className="w-5 h-5 text-blue-600" />
                   <h4 className="font-semibold text-gray-900 text-sm">Purchased Credits</h4>
                 </div>
-                <p className="text-xs text-gray-600">Non-refundable once spent. Never expire (365 days of inactivity).</p>
+                <p className="text-xs text-gray-600">Valid for 365 days after purchase. Non-refundable once spent — but failed renders are auto-refunded within ~60 seconds.</p>
               </div>
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Clock className="w-5 h-5 text-yellow-600" />
                   <h4 className="font-semibold text-gray-900 text-sm">Subscriptions</h4>
                 </div>
-                <p className="text-xs text-gray-600">Unused credits roll over. Cancellations apply at next renewal.</p>
+                <p className="text-xs text-gray-600">Monthly allowance rolls over while subscribed. Cancellations take effect at the end of the paid period — no cancellation fees.</p>
               </div>
             </div>
             <p className="text-center text-sm text-gray-500 mt-6">
@@ -536,12 +536,21 @@ function RegisterPage() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, balance, logout, isAdmin } = useAuth();
+  const { user, balance, logout, isAdmin, lowCreditWarning, acknowledgeLowCredit } = useAuth();
   const { unreadCount, stats } = useActivity(user?.id);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // App-wide low-credit banner (20/10/5% of plan allowance) — acknowledged
+  // per session via lastLowCreditWarnedAt so it stays visible until acted on.
+  const bannerVisible = (() => {
+    if (lowCreditWarning === 'none') return false;
+    if (location.pathname.startsWith('/dashboard/credits') || location.pathname.startsWith('/dashboard/billing')) return false;
+    const ack = user?.lastLowCreditWarnedAt ? new Date(user.lastLowCreditWarnedAt).getTime() : 0;
+    return ack < Date.now() - 12 * 60 * 60 * 1000; // re-surface 12h after ack
+  })();
 
   const navItems = [
     { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Overview' },
@@ -662,6 +671,29 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main id="main-content" className="flex-1 p-4 lg:p-8 pb-28 lg:pb-8 overflow-y-auto">
+          {bannerVisible && (
+            <div className={`mb-4 rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in ${
+              lowCreditWarning === 'critical' ? 'bg-red-950/60 border-red-500/40' :
+              lowCreditWarning === 'warning' ? 'bg-yellow-950/60 border-yellow-500/40' :
+              'bg-blue-950/60 border-blue-500/40'
+            }`}>
+              <div className="flex items-center gap-3">
+                <AlertTriangle className={`w-5 h-5 shrink-0 ${lowCreditWarning === 'critical' ? 'text-red-300' : lowCreditWarning === 'warning' ? 'text-yellow-300' : 'text-blue-300'}`} />
+                <div>
+                  <p className={`text-sm font-semibold ${lowCreditWarning === 'critical' ? 'text-red-300' : lowCreditWarning === 'warning' ? 'text-yellow-300' : 'text-blue-300'}`}>
+                    {lowCreditWarning === 'critical' ? 'Critical: less than 5% of your monthly credits remain' :
+                     lowCreditWarning === 'warning' ? 'Low credit warning: below 10% of your monthly allowance' :
+                     'Heads up: credits below 20% of your monthly allowance'}
+                  </p>
+                  <p className="text-xs text-ink-400">{balance.personal} credits left{balance.agency > 0 ? ` + ${balance.agency} agency pool` : ''}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => navigate('/dashboard/credits')} className="btn btn-primary text-xs py-2 px-3">Recharge Now</button>
+                <button onClick={acknowledgeLowCredit} className="btn btn-ghost text-xs py-2 px-2" aria-label="Dismiss low credit warning"><X className="w-4 h-4" /></button>
+              </div>
+            </div>
+          )}
           {children}
         </main>
       </div>
@@ -1314,12 +1346,15 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
         } catch { /* non-fatal — render can still proceed */ }
       }
 
-      // 2) Deduct credits atomically server-side
+      // 2) Deduct credits atomically server-side. Tier features are paid
+      // from the shared agency pool when one exists (AGENCY plan); extras
+      // come from personal credits.
+      const usePool = (user?.agencyPoolCredits ?? 0) > 0;
       await deductCredits(totalCredits, 'Video generation', {
         tier,
         duration: selectedConfig.duration,
         recordId,
-      });
+      }, usePool ? 'agency' : 'personal');
 
       // 3) Start the async render job
       const response = await fetch(`${RENDER_ENDPOINT}/render_video`, {

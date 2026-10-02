@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail } from '../lib/userService';
+import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail, transferCredits } from '../lib/userService';
 
 /**
  * Unified credits endpoint (Hobby plan has a 12-function limit).
@@ -28,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         total_credits_used: report.totalUsed,
         total_credits_purchased: report.totalPurchased,
         transaction_count: report.transactions.length,
-        transactions: report.transactions.slice(0, 20),
+        transactions: report.transactions.slice(0, 100),
       });
     }
 
@@ -115,22 +115,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const deductResult = await deductCredits(from_user_id, amount, reason || 'Credit transfer');
-      if (!deductResult.success) {
-        return res.status(400).json({ error: deductResult.error });
+      // Atomic on the sender (conditional decrement); two linked TRANSFER
+      // ledger rows are written by transferCredits.
+      const result = await transferCredits(from_user_id, to_user_id, amount, reason || 'Credit transfer');
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
       }
 
-      await addCredits(to_user_id, amount, 'gift', reason || 'Credit transfer from ' + fromUser.email);
+      const receiver = await getUser(to_user_id);
 
       return res.status(200).json({
         success: true,
         from_user: {
           id: from_user_id,
-          new_balance: deductResult.newBalance,
+          new_balance: result.newBalance,
         },
         to_user: {
           id: to_user_id,
-          new_balance: toUser.credits + amount,
+          new_balance: receiver?.credits ?? toUser.credits + amount,
         },
         amount,
         reason,
@@ -163,16 +165,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Cannot gift credits to yourself' });
       }
 
-      const ded = await deductCredits(from_user_id, amount, reason || 'Credit gift');
-      if (!ded.success) {
-        return res.status(400).json({ error: ded.error || 'Failed to deduct credits' });
+      // Atomic transfer: sender's deduct is conditional, receiver credit is
+      // rolled back automatically if the recipient vanishes mid-transfer.
+      const result = await transferCredits(from_user_id, toUser.id, amount, reason || `Credit gift from ${fromUser.email}`);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error || 'Failed to gift credits' });
       }
-      await addCredits(toUser.id, amount, 'gift', reason || `Credit gift from ${fromUser.email}`);
 
       return res.status(200).json({
         success: true,
         to_email: toUser.email,
-        new_balance: ded.newBalance,
+        new_balance: result.newBalance,
         amount,
       });
     }

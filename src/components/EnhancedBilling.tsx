@@ -208,16 +208,85 @@ export default function EnhancedBilling() {
                 {(user?.creditExpiries || []).length === 0 ? (
                   <p className="text-xs text-ink-500">No expiring credit batches on your account.</p>
                 ) : (
-                  (user!.creditExpiries || []).slice(0, 3).map((e, i) => (
-                    <div key={i} className="flex justify-between text-sm">
-                      <span className="text-white">{e.amount} credits</span>
-                      <span className="text-xs text-ink-400">{formatDate(e.expiresAt)}</span>
-                    </div>
-                  ))
+                  (user!.creditExpiries || []).slice(0, 3).map((e, i) => {
+                    const days = Math.ceil((new Date(e.expiresAt).getTime() - Date.now()) / 86400000);
+                    return (
+                      <div key={i} className="flex justify-between text-sm">
+                        <span className="text-white">{e.amount} credits <span className="text-xs text-ink-500">({e.source})</span></span>
+                        <span className={`text-xs ${days <= 7 ? 'text-red-400' : days <= 30 ? 'text-yellow-400' : 'text-ink-400'}`}>
+                          {days > 0 ? `expires in ${days} day${days === 1 ? '' : 's'}` : 'expired'} · {formatDate(e.expiresAt)}
+                        </span>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
           </div>
+
+          {/* Payment issue banner (dunning) — honest, actionable */}
+          {user?.paymentFailure && (
+            <div className="card-dark p-6 border border-red-500/40 bg-red-950/30">
+              <div className="flex items-start gap-3">
+                <XCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white text-sm">Payment failed — action needed</h3>
+                  <p className="text-xs text-ink-400 mt-1">
+                    Your last card charge didn't go through ({user.paymentFailure.count} attempt{user.paymentFailure.count === 1 ? '' : 's'},
+                    first on {formatDate(user.paymentFailure.firstFailedAt)}). We retry your saved card automatically over the
+                    next two weeks. If payment can't be collected within 21 days, the subscription is cancelled — your
+                    remaining credits stay usable.
+                  </p>
+                </div>
+                <button onClick={() => navigate('/dashboard/bundles')} className="btn btn-primary text-xs py-2 px-3 shrink-0">Update Payment</button>
+              </div>
+            </div>
+          )}
+
+          {/* Monthly usage summary (computed by the 1st-of-month cron) */}
+          {user?.monthlySummary && (
+            <div className="card-dark p-6">
+              <h3 className="font-semibold text-white mb-1">Usage Summary — {user.monthlySummary.month}</h3>
+              <p className="text-xs text-ink-500 mb-4">Generated from your credit ledger on the 1st of each month</p>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-center">
+                <div className="bg-ink-800/50 rounded-xl p-3"><p className="text-xs text-ink-400">Opened with</p><p className="text-lg font-bold text-white">{user.monthlySummary.openingBalance}</p></div>
+                <div className="bg-ink-800/50 rounded-xl p-3"><p className="text-xs text-ink-400">Added</p><p className="text-lg font-bold text-green-400">+{user.monthlySummary.allocated}</p></div>
+                <div className="bg-ink-800/50 rounded-xl p-3"><p className="text-xs text-ink-400">Used</p><p className="text-lg font-bold text-purple-400">−{user.monthlySummary.used}</p></div>
+                <div className="bg-ink-800/50 rounded-xl p-3"><p className="text-xs text-ink-400">Expired</p><p className="text-lg font-bold text-yellow-400">−{user.monthlySummary.expired}</p></div>
+                <div className="bg-ink-800/50 rounded-xl p-3"><p className="text-xs text-ink-400">Closed with</p><p className="text-lg font-bold text-white">{user.monthlySummary.closingBalance}</p></div>
+              </div>
+              {user.monthlySummary.subscriptionZar != null && (
+                <p className="text-xs text-ink-400 mt-3">
+                  Subscription: {formatZar(user.monthlySummary.subscriptionZar)} · next charge {user.monthlySummary.nextChargeDate ? formatDate(user.monthlySummary.nextChargeDate) : '—'}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Invoices — real PDFs generated on every payment (S3) */}
+          {(user?.invoices || []).length > 0 && (
+            <div className="card-dark p-6">
+              <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                <Download className="w-4 h-4 text-purple-400" /> Invoices
+              </h3>
+              <div className="space-y-2">
+                {user!.invoices!.slice().reverse().slice(0, 8).map(inv => (
+                  <div key={inv.invoiceNumber} className="flex items-center justify-between bg-ink-800/50 rounded-lg px-4 py-2.5">
+                    <div>
+                      <p className="text-sm text-white font-medium">{inv.invoiceNumber}</p>
+                      <p className="text-xs text-ink-500">{formatDate(inv.paidAt)} · {inv.description || 'Credit purchase'}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm text-white font-semibold">{formatZar(inv.amountZar)}</span>
+                      <a href={inv.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs py-1.5 px-3">
+                        <Download className="w-3 h-3" /> PDF
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Current Plan — real */}
           <div className="card-dark p-6">

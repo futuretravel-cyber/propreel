@@ -13,7 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { user_id, credits, email } = req.body;
+    const { user_id, credits, email, pool } = req.body;
 
     // Validate input
     if (!user_id || !credits || credits < 50 || !email) {
@@ -38,7 +38,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const paymentData = await initializePayment(email, credits, {
       user_id,
       credits,
-      type: 'credit_purchase'
+      // 'agency_pool' purchases land in the shared agency pool on charge.success
+      type: pool === 'agency' ? 'agency_pool_purchase' : 'credit_purchase',
+      pool: pool === 'agency' ? 'agency' : 'personal',
     });
 
     return res.status(200).json({
