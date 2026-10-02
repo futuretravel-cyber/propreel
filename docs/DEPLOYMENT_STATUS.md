@@ -1,23 +1,32 @@
 # PropReel — Deployment Status
 
-**Last updated:** 30 September 2026 — Git auto-deploy from GitHub now connected
+**Last updated:** 2 October 2026 — **database cut over to Supabase** (`DB_DRIVER=supabase` in Vercel Production)
 
 ## Production
 
 | Item | Value |
 |---|---|
-| URL | https://propreel.vercel.app (auto-aliases latest deploy) |
+| URL | https://propreel-xi.vercel.app (auto-aliases latest deploy) |
 | Project | `futuretravel-5761s-projects/propreel` (`prj_WoZmzg7PbpE7OdIqRUtm8TA7fmbp`) |
 | Repo | https://github.com/futuretravel-cyber/propreel.co.za (`main`) |
-| Region | af-south-1 (AWS DynamoDB), iad1 (Vercel functions) |
+| Database | **Supabase Postgres** (project `agcchttiomlbuuycwdgy`, eu-west-1) via `lib/db-supabase.ts` |
+| Rollback | Remove `DB_DRIVER` from Vercel → redeploy (returns to DynamoDB) — see [SUPABASE_MIGRATION.md](SUPABASE_MIGRATION.md) |
+| Region | eu-west-1 (Supabase), iad1 (Vercel functions) |
 | Plan | Vercel Hobby — 12-function cap, currently **11** functions |
+
+## Cutover verification (2 Oct 2026, all passed)
+
+- Final pre-cutover sync: 2 users / 11 ledger / 4 settings — counts matched
+- Probe signup via live API → row + bonus ledger landed **in Supabase only** (DynamoDB: zero rows), then cleaned
+- Settings-backed GET (`feature_flags`), cron status, homepage, bundle all healthy
 
 ## Verified working (smoke-tested live)
 
 - Static site: HTTP 200
 - `GET /api/users?email=…` → `{"error":"User not found"}`
 - Cron **without** secret → HTTP 401; **with** `CRON_SECRET` → HTTP 200
-- E2E signup → user in DynamoDB + 5-credit signup bonus
+- E2E signup → user in Supabase + 5-credit signup bonus
+- Credit + agency E2E suites pass on both drivers (11/11, 17/17)
 - E2E subscription → Paystack plan `PLN_68okgs5e0ge03g6` accepted, status ACTIVE, 130 credits allocated
 
 ## Database (AWS DynamoDB, af-south-1, account 619924817943)
