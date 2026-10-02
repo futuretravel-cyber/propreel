@@ -8,6 +8,8 @@ import {
   updateUser,
   recordTransaction,
   PLANS,
+  applyPendingUpgrade,
+  markUpgradePaid,
 } from '../lib/userService';
 import { createSubscription as createPaystackSub, cancelSubscription as cancelPaystackSub, chargeAuthorization } from '../lib/paystack';
 
@@ -174,12 +176,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const totalPeriod = Math.max(1, periodEnd - periodStart);
       const remaining = Math.max(0, Math.min(1, (periodEnd - now) / totalPeriod));
 
-      // Credit back the unused portion of the old allowance
-      const unusedOldCredits = Math.floor(oldPlan.monthlyCredits * remaining);
-
       // Prorated amount to charge for the remainder of the new plan
       const chargeZar = Math.max(50, Math.round((newPrice - oldPrice) * remaining));
-      const chargeKobo = chargeZar * 100;
 
       // Pay the difference: saved card if we have one, else hosted checkout
       if (user.paystackAuthorizationCode) {
@@ -202,73 +200,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             description: `Plan upgrade ${sub.planId} → ${plan_id} (prorated R${chargeZar})`,
             metadata: { kind: 'PLAN_UPGRADE', reference, chargeZar, toPlan: plan_id },
           });
+          // Gate the plan switch so a retried/duplicated charge.success
+          // webhook for this reference can't apply the upgrade twice.
+          await markUpgradePaid(reference, user_id);
         } catch (chargeErr: any) {
           return res.status(402).json({ error: chargeErr?.message || 'Card charge failed — no changes made' });
         }
       } else {
-        // No saved card: send the user to hosted checkout for the difference.
-        // The plan switch happens after they pay (client re-calls upgrade —
-        // the charge marker then exists, or we keep this simple: return URL).
+        // No saved card: hosted checkout for the difference. The plan switch
+        // is applied by the webhook/verify handler once the payment clears.
         const { initializePayment } = await import('../lib/paystack');
         const init = await initializePayment(user.email, chargeZar, {
           user_id, type: 'plan_upgrade_checkout', to_plan: plan_id, cycle,
+        });
+        await updateUser(user_id, {
+          pendingPlanUpgrade: {
+            toPlanId: plan_id,
+            cycle,
+            chargeZar,
+            reference: init.data.reference,
+            createdAt: new Date().toISOString(),
+          },
         });
         return res.status(200).json({
           success: true,
           requires_checkout: true,
           authorization_url: init.data.authorization_url,
           amount_zar: chargeZar,
-          message: `Pay R${chargeZar} to complete the upgrade`,
+          message: `Pay R${chargeZar} to complete the upgrade — it applies automatically once payment clears`,
         });
       }
 
       // ── Apply the upgrade ────────────────────────────────────────────
-      const nowDate = new Date();
-      const periodEndDate = new Date();
-      periodEndDate.setDate(periodEndDate.getDate() + (cycle === 'MONTHLY' ? 30 : 365));
-
-      // Refund unused old credits as bonus, then grant the new allowance
-      const expiryDate = cycle === 'MONTHLY'
-        ? new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1).toISOString()
-        : new Date(nowDate.getFullYear() + 1, nowDate.getMonth(), nowDate.getDate()).toISOString();
-
-      const newCredits = (user.credits ?? 0) + unusedOldCredits + newPlan.monthlyCredits;
-
-      await updateUser(user_id, {
-        subscription: {
-          ...sub,
-          planId: plan_id,
-          cycle,
-          currentPeriodStart: nowDate.toISOString(),
-          currentPeriodEnd: periodEndDate.toISOString(),
-          nextChargeAmount: cycle === 'MONTHLY' ? newPlan.monthlyZar : newPlan.annualZar,
-        },
-        credits: newCredits,
-        creditExpiries: [
-          ...(user.creditExpiries || []),
-          ...(unusedOldCredits > 0 ? [{ amount: unusedOldCredits, expiresAt: new Date(now + 30 * 86400000).toISOString(), source: 'bonus' as const }] : []),
-          { amount: newPlan.monthlyCredits, expiresAt: expiryDate, source: 'subscription' as const },
-        ],
-      });
-
-      await recordTransaction({
-        userId: user_id,
-        amount: newPlan.monthlyCredits + unusedOldCredits,
-        type: 'subscription',
-        description: `Plan upgrade: ${plan_id} (${cycle})${unusedOldCredits > 0 ? ` + ${unusedOldCredits} unused credits carried over` : ''}`,
-        metadata: { planId: plan_id, cycle, carriedOver: unusedOldCredits, kind: 'PLAN_UPGRADE_ALLOCATION' },
-      });
-
+      const result = await applyPendingUpgrade(user, plan_id, cycle);
       const updated = await getUser(user_id);
 
       return res.status(200).json({
         success: true,
-        charged_zar: chargeZar,
-        carried_over_credits: unusedOldCredits,
-        credits_allocated: newPlan.monthlyCredits,
+        charged_zar: result.chargedZar,
+        carried_over_credits: result.carriedOver,
+        credits_allocated: result.creditsAllocated,
         subscription: updated?.subscription,
         new_balance: updated?.credits,
-        message: `Upgraded to ${plan_id} — R${chargeZar} charged, ${newPlan.monthlyCredits} credits added`,
+        message: `Upgraded to ${plan_id} — R${result.chargedZar} charged, ${result.creditsAllocated} credits added`,
       });
     }
 

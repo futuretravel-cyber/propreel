@@ -21,6 +21,36 @@ export default function CreditSystemDashboard() {
   const [giftEmail, setGiftEmail] = useState('');
   const [giftAmount, setGiftAmount] = useState(50);
   const [autoTopupAuthPrompt, setAutoTopupAuthPrompt] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
+
+  // One-click prorated upgrade (saved card: charged instantly; no card:
+  // hosted checkout, applied automatically when payment clears)
+  const handleUpgradeNow = async () => {
+    if (!user || upgrading) return;
+    setUpgrading(true);
+    try {
+      const result = await upgradePlan('PREMIUM', 'MONTHLY');
+      if (result.authorizationUrl) {
+        window.location.href = result.authorizationUrl;
+        return;
+      }
+      toast.success(
+        typeof result.chargedZar === 'number'
+          ? `Upgraded to Premium — R${result.chargedZar} charged, 1,300 credits added`
+          : 'Upgraded to Premium — 1,300 credits added',
+        'Upgrade Complete!'
+      );
+    } catch (err: any) {
+      if (err?.message?.includes('No active subscription') || err?.message?.includes('Downgrades apply')) {
+        // No active subscription — fall back to the normal checkout flow
+        navigate('/payment?plan=PREMIUM&cycle=MONTHLY&price=1270');
+        return;
+      }
+      toast.error(err?.message || 'Upgrade failed — try again or use the payment page');
+    } finally {
+      setUpgrading(false);
+    }
+  };
 
   // One-time auto-recharge setup prompt (flagged by the nightly sweep when
   // auto-topup fired with no saved card on file)
@@ -158,8 +188,9 @@ export default function CreditSystemDashboard() {
                 <p className="text-ink-400 text-sm">Get 1,300 credits/month, fastest render queue, and priority support</p>
               </div>
             </div>
-            <button onClick={() => navigate('/payment?plan=PREMIUM&cycle=MONTHLY&price=1270')} className="btn btn-primary">
-              <Sparkles className="w-4 h-4" /> Upgrade Now
+            <button onClick={handleUpgradeNow} disabled={upgrading} className="btn btn-primary disabled:opacity-60">
+              {upgrading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {upgrading ? 'Upgrading…' : 'Upgrade Now'}
             </button>
           </div>
         </div>

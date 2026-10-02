@@ -40,6 +40,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ received: true }); // Acknowledge to prevent retries
       }
 
+      // ── Prorated plan upgrades (saved-card + hosted-checkout) ──────────
+      // Upgrade payments must NOT fall through to the generic credit-purchase
+      // path below — that would top up credits with the plan-difference money.
+      const upgradeKind = data.metadata?.type;
+      if (upgradeKind === 'plan_upgrade' || upgradeKind === 'plan_upgrade_checkout') {
+        const targetPlan = data.metadata.to_plan as string;
+        const targetCycle = (data.metadata.cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY') as 'MONTHLY' | 'ANNUAL';
+
+        // Atomic marker: duplicate webhook deliveries and the /verify endpoint
+        // can never apply the same upgrade payment twice.
+        const { markUpgradePaid, applyPendingUpgrade } = await import('../../lib/userService');
+        const consumed = await markUpgradePaid(reference, userId);
+        if (!consumed) {
+          console.log(`Webhook: upgrade ${reference} already applied — skipping`);
+          return res.status(200).json({ success: true, already_processed: true, reference });
+        }
+
+        const payer = await getUser(userId);
+        if (payer?.subscription) {
+          try {
+            const result = await applyPendingUpgrade(payer, targetPlan, targetCycle);
+            console.log(`Webhook: plan upgrade applied for ${payer.email} → ${targetPlan} (R${result.chargedZar} prorated, +${result.creditsAllocated} credits)`);
+          } catch (upErr) {
+            console.error('Upgrade application failed (payment captured):', upErr);
+          }
+        }
+
+        // Capture the card authorization + clear dunning (recovered payment)
+        const authCode = data.authorization?.authorization_code;
+        if (authCode) {
+          try {
+            await updateUser(userId, {
+              paystackAuthorizationCode: authCode,
+              paymentFailure: undefined,
+              pendingPlanUpgrade: undefined,
+            } as any);
+          } catch (authErr) {
+            console.error('Auth code capture failed (non-fatal):', authErr);
+          }
+        }
+
+        return res.status(200).json({ success: true, plan_upgrade_applied: true, reference });
+      }
+
       // Idempotency: the client may also call /api/paystack/verify for this
       // reference — credit exactly once per Paystack reference.
       const { getItem, putItem, TABLES: T } = await import('../../lib/db');

@@ -62,6 +62,14 @@ export interface User {
   invoices?: Array<{ invoiceNumber: string; url: string; amountZar: number; paidAt: string; reference: string; description?: string }>;
   /** Shared agency credit pool (AGENCY plan); spent first for tier features */
   agencyPoolCredits?: number;
+  /** Set when a no-saved-card upgrade is awaiting hosted-checkout payment */
+  pendingPlanUpgrade?: {
+    toPlanId: string;
+    cycle: 'MONTHLY' | 'ANNUAL';
+    chargeZar: number;
+    reference: string;
+    createdAt: string;
+  };
   /** Computed by the allocate-monthly-credits cron for the Billing page */
   monthlySummary?: {
     month: string;
@@ -609,4 +617,103 @@ export async function getCreditReport(userId: string, days = 30): Promise<{
     totalPurchased: filteredTransactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0),
     transactions: filteredTransactions,
   };
+}
+
+// ─── Prorated plan upgrade (shared by api/subscriptions.ts + webhook/verify) ──
+
+/** Marker id in the settings table that gates the plan-switch (paid amount). */
+export function upgradeMarkerId(reference: string): string {
+  return `upg_${reference}`;
+}
+
+/**
+ * Write the paid-upgrade marker (atomic). Returns false when the marker
+ * already exists — i.e. this payment was already consumed by another caller.
+ */
+export async function markUpgradePaid(reference: string, userId: string): Promise<boolean> {
+  const { PutCommand } = await import('@aws-sdk/lib-dynamodb');
+  try {
+    await docClient.send(new PutCommand({
+      TableName: TABLES.SETTINGS,
+      Item: {
+        id: upgradeMarkerId(reference),
+        userId,
+        type: 'plan_upgrade_paid',
+        createdAt: new Date().toISOString(),
+      },
+      ConditionExpression: 'attribute_not_exists(id)',
+    }));
+    return true;
+  } catch (err: any) {
+    if (err?.name === 'ConditionalCheckFailedException') return false;
+    throw err;
+  }
+}
+
+/** Switch the user onto the upgraded plan: prorate credit-back, new allowance. */
+export async function applyPendingUpgrade(
+  user: User,
+  toPlanId: string,
+  cycle: 'MONTHLY' | 'ANNUAL'
+): Promise<{ chargedZar: number; carriedOver: number; creditsAllocated: number }> {
+  const newPlan = PLANS[toPlanId];
+  const sub = user.subscription;
+  if (!newPlan) throw new Error(`Unknown plan: ${toPlanId}`);
+  if (!sub) throw new Error('User has no subscription');
+
+  const oldPlan = PLANS[sub.planId];
+  if (!oldPlan) throw new Error(`Unknown current plan: ${sub.planId}`);
+
+  const oldPrice = sub.cycle === 'MONTHLY' ? oldPlan.monthlyZar : oldPlan.annualZar * 12;
+  const newPrice = cycle === 'MONTHLY' ? newPlan.monthlyZar : newPlan.annualZar * 12;
+
+  const periodStart = new Date(sub.currentPeriodStart).getTime();
+  const periodEnd = new Date(sub.currentPeriodEnd).getTime();
+  const now = Date.now();
+  const totalPeriod = Math.max(1, periodEnd - periodStart);
+  const remaining = Math.max(0, Math.min(1, (periodEnd - now) / totalPeriod));
+
+  // Credit back the unused portion of the old allowance
+  const unusedOldCredits = Math.floor(oldPlan.monthlyCredits * remaining);
+
+  // Prorated amount that was charged for the remainder of the new plan
+  const chargeZar = Math.max(50, Math.round((newPrice - oldPrice) * remaining));
+
+  const nowDate = new Date();
+  const periodEndDate = new Date();
+  periodEndDate.setDate(periodEndDate.getDate() + (cycle === 'MONTHLY' ? 30 : 365));
+
+  const expiryDate = cycle === 'MONTHLY'
+    ? new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1).toISOString()
+    : new Date(nowDate.getFullYear() + 1, nowDate.getMonth(), nowDate.getDate()).toISOString();
+
+  const newCredits = (user.credits ?? 0) + unusedOldCredits + newPlan.monthlyCredits;
+
+  await updateUser(user.id, {
+    subscription: {
+      ...sub,
+      planId: toPlanId,
+      cycle,
+      currentPeriodStart: nowDate.toISOString(),
+      currentPeriodEnd: periodEndDate.toISOString(),
+      nextChargeAmount: cycle === 'MONTHLY' ? newPlan.monthlyZar : newPlan.annualZar,
+    },
+    credits: newCredits,
+    creditExpiries: [
+      ...(user.creditExpiries || []),
+      ...(unusedOldCredits > 0 ? [{ amount: unusedOldCredits, expiresAt: new Date(now + 30 * 86400000).toISOString(), source: 'bonus' as const }] : []),
+      { amount: newPlan.monthlyCredits, expiresAt: expiryDate, source: 'subscription' as const },
+    ],
+    pendingPlanUpgrade: undefined,
+  });
+
+  await recordTransaction({
+    userId: user.id,
+    amount: newPlan.monthlyCredits + unusedOldCredits,
+    type: 'subscription',
+    description: `Plan upgrade: ${toPlanId} (${cycle})${unusedOldCredits > 0 ? ` + ${unusedOldCredits} unused credits carried over` : ''}`,
+    metadata: { planId: toPlanId, cycle, carriedOver: unusedOldCredits, kind: 'PLAN_UPGRADE_ALLOCATION' },
+  });
+
+  return { chargedZar: chargeZar, carriedOver: unusedOldCredits, creditsAllocated: newPlan.monthlyCredits };
 }

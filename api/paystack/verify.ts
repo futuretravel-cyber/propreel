@@ -45,6 +45,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // ── Prorated plan upgrade (hosted-checkout branch) ────────────────
+    // The plan switch is gated by an `upg_<reference>` marker in settings:
+    // present → the webhook already applied it; absent → webhook was lost,
+    // so this verify call consumes the marker and applies the upgrade.
+    if (result.data.metadata?.type === 'plan_upgrade_checkout') {
+      const { markUpgradePaid, applyPendingUpgrade } = await import('../../lib/userService');
+      const consumed = await markUpgradePaid(reference, userId);
+      if (!consumed) {
+        const user = await getUser(userId);
+        return res.status(200).json({
+          success: true,
+          already_processed: true,
+          plan_upgrade: true,
+          reference,
+          subscription: user?.subscription,
+          new_balance: user?.credits,
+        });
+      }
+      const payer = await getUser(userId);
+      if (payer?.subscription) {
+        const targetPlan = result.data.metadata.to_plan as string;
+        const targetCycle = (result.data.metadata.cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY') as 'MONTHLY' | 'ANNUAL';
+        try {
+          const up = await applyPendingUpgrade(payer, targetPlan, targetCycle);
+          console.log(`Verify: plan upgrade applied for ${payer.email} → ${targetPlan} (R${up.chargedZar} prorated, +${up.creditsAllocated} credits)`);
+        } catch (upErr) {
+          console.error('Verify: upgrade application failed (payment captured):', upErr);
+        }
+      }
+      // Capture the card + clear dunning/pending state (payment recovered)
+      const authCode = result.data.authorization?.authorization_code;
+      if (authCode) {
+        try {
+          const { updateUser } = await import('../../lib/userService');
+          await updateUser(userId, {
+            paystackAuthorizationCode: authCode,
+            paymentFailure: undefined,
+            pendingPlanUpgrade: undefined,
+          } as any);
+        } catch (authErr) {
+          console.error('Auth code capture failed (non-fatal):', authErr);
+        }
+      }
+      const user = await getUser(userId);
+      return res.status(200).json({
+        success: true,
+        plan_upgrade: true,
+        reference,
+        subscription: user?.subscription,
+        new_balance: user?.credits,
+      });
+    }
+
     // Idempotency: the charge.success webhook also credits this reference —
     // credit exactly once per Paystack reference.
     const { getItem, putItem, TABLES } = await import('../../lib/db');
