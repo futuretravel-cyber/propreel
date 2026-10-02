@@ -12,13 +12,13 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const TABLES: Array<{ dyn: string; pg: string; keys: string[] }> = [
   { dyn: 'propreel-users', pg: 'users', keys: ['id'] },
-  { dyn: 'propreel-credit-transactions', pg: 'credit_transactions', keys: ['userId', 'createdAt'] },
+  { dyn: 'propreel-credit_transactions', pg: 'credit_transactions', keys: ['userId', 'createdAt'] },
   { dyn: 'propreel-projects', pg: 'projects', keys: ['userId', 'id'] },
   { dyn: 'propreel-settings', pg: 'settings', keys: ['id'] },
   { dyn: 'propreel-agencies', pg: 'agencies', keys: ['id'] },
-  { dyn: 'propreel-agency-members', pg: 'agency_members', keys: ['agencyId', 'userId'] },
+  { dyn: 'propreel-agency_members', pg: 'agency_members', keys: ['agencyId', 'userId'] },
   { dyn: 'propreel-subscriptions', pg: 'subscriptions', keys: ['userId'] },
-  { dyn: 'propreel-credit-expiries', pg: 'credit_expiries', keys: ['userId', 'expiresAt'] },
+  { dyn: 'propreel-credit_expiries', pg: 'credit_expiries', keys: ['userId', 'expiresAt'] },
   { dyn: 'propreel-reviews', pg: 'reviews', keys: ['id'] },
 ];
 
@@ -45,11 +45,20 @@ async function scanAll(tableName: string): Promise<any[]> {
   const client = ddb();
   const out: any[] = [];
   let last: Record<string, any> | undefined;
-  do {
-    const res = await client.send(new ScanCommand({ TableName: tableName, ...(last ? { ExclusiveStartKey: last } : {}) }));
-    out.push(...(res.Items || []));
-    last = res.LastEvaluatedKey;
-  } while (last);
+  try {
+    do {
+      const res = await client.send(new ScanCommand({ TableName: tableName, ...(last ? { ExclusiveStartKey: last } : {}) }));
+      out.push(...(res.Items || []));
+      last = res.LastEvaluatedKey;
+    } while (last);
+  } catch (e: any) {
+    // A table that was never created (no writes yet) is not an error — nothing to migrate.
+    if (e?.name === 'ResourceNotFoundException') {
+      console.log(`   ⚠ ${tableName} does not exist in DynamoDB — nothing to migrate`);
+      return [];
+    }
+    throw e;
+  }
   return out;
 }
 
@@ -91,7 +100,7 @@ async function main() {
   }
 
   // Admin accounts present with role ADMIN and credits loaded
-  const { data: admins } = await client.from('users').select('data').in('data->>email', ADMINS);
+  const { data: admins } = await client.from('users').select('data').in('email', ADMINS);
   for (const email of ADMINS) {
     const row = (admins || []).find((r: any) => (r.data?.email || '').toLowerCase() === email);
     if (!row) { console.log(`✗ admin missing in Supabase: ${email}`); ok = false; continue; }

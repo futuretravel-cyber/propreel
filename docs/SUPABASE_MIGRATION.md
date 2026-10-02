@@ -84,7 +84,7 @@ Optional final backup (Git Bash, writes local JSON per table):
 ```bash
 set -a; source .env; set +a
 mkdir -p aws-final-backup
-for t in users credit-transactions projects settings agencies agency-members subscriptions credit-expiries reviews; do
+for t in users credit_transactions projects settings agencies agency_members subscriptions credit_expiries reviews; do
   PYTHONUTF8=1 aws dynamodb scan --table-name "propreel-$t" --output json > "aws-final-backup/$t.json" && echo "backed up $t"
 done
 ```
@@ -93,7 +93,7 @@ Delete the tables (all nine, one command each):
 
 ```bash
 set -a; source .env; set +a
-for t in users credit-transactions projects settings agencies agency-members subscriptions credit-expiries reviews; do
+for t in users credit_transactions projects settings agencies agency_members subscriptions credit_expiries reviews; do
   PYTHONUTF8=1 aws dynamodb delete-table --table-name "propreel-$t" && echo "deleted propreel-$t"
 done
 ```
