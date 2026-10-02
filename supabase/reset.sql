@@ -26,6 +26,12 @@ drop function if exists claim_lock(text, jsonb) cascade;
 drop function if exists deduct_credits(uuid, integer) cascade;
 drop function if exists add_credits(uuid, integer) cascade;
 
+-- Leftovers from the abandoned deploy/ plan (Express + Prisma attempt).
+-- Unused by the live app; their rows were backed up first.
+drop table if exists app_settings cascade;
+drop table if exists notifications cascade;
+drop table if exists audit_logs cascade;
+
 -- Drop the nine tables. CASCADE removes dependent indexes/constraints.
 drop table if exists credit_transactions cascade;
 drop table if exists agency_members cascade;
@@ -43,5 +49,6 @@ from information_schema.tables
 where table_schema = 'public'
   and table_name in (
     'users','credit_transactions','projects','settings','agencies',
-    'agency_members','subscriptions','credit_expiries','reviews'
+    'agency_members','subscriptions','credit_expiries','reviews',
+    'app_settings','notifications','audit_logs'
   );

@@ -72,6 +72,42 @@
     "credit_expiries": {
       "error": "Could not find the table 'public.credit_expiries' in the schema cache"
     },
-    "reviews": []
+    "reviews": [],
+    "app_settings": [
+      {
+        "key": "prompts",
+        "value": {
+          "strengths": {
+            "staging": [
+              0.45,
+              0.55
+            ],
+            "declutter": [
+              0.35,
+              0.45
+            ],
+            "golden_sunset": [
+              0.4,
+              0.45
+            ]
+          },
+          "image_master": "",
+          "image_negative": ""
+        },
+        "description": "Admin managed generation prompts and preset strengths",
+        "updated_by": null,
+        "updated_at": "2026-09-28T14:36:08.294971+00:00"
+      },
+      {
+        "key": "integrations",
+        "value": {
+          "video_provider": "fal-ai/minimax/hailuo-02/standard/image-to-video"
+        },
+        "description": "Provider configuration names; secret keys stay in server environment",
+        "updated_by": null,
+        "updated_at": "2026-09-28T14:36:08.294971+00:00"
+      }
+    ],
+    "notifications": []
   }
 }
