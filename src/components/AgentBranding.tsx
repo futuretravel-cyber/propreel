@@ -218,8 +218,11 @@ export default function AgentBranding() {
   const [editing, setEditing] = useState<AgentProfile | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Latest saved list — the auth refresh right after a write can hit an
+  // eventually-consistent read and briefly flip the UI back to the old value.
+  const [override, setOverride] = useState<AgentProfile[] | null>(null);
 
-  const profiles: AgentProfile[] = user?.agentProfiles || [];
+  const profiles: AgentProfile[] = override ?? user?.agentProfiles ?? [];
 
   const persist = async (list: AgentProfile[]) => {
     if (!user) throw new Error('You must be signed in');
@@ -232,6 +235,7 @@ export default function AgentBranding() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Could not save your agent profiles');
+      setOverride(list);
       await refresh();
     } finally {
       setSaving(false);
