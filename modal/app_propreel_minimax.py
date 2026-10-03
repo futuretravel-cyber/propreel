@@ -768,12 +768,14 @@ def probe_fal_health():
 
 def _llm_chat(messages: list) -> str:
     """Call fal's OpenRouter LLM integration with endpoint fallbacks.
-    fal-ai/any-llm is deprecated; the OpenAI-compatible replacements live
-    under openrouter/router. Model catalogs drift, so try several routes."""
+    Grok (x-ai) is the primary model for property copy; OpenRouter model
+    catalogs drift, so keep fallbacks behind it."""
     attempts = [
         # (endpoint, extra args) — first success wins.
         # (the bare openrouter/router/google/gemini-… path 404s now; the
         # OpenAI-compatible /v1/chat/completions routes are the live ones)
+        ("openrouter/router/openai/v1/chat/completions", {"model": "x-ai/grok-4.6"}),
+        ("openrouter/router/openai/v1/chat/completions", {"model": "x-ai/grok-4.7"}),
         ("openrouter/router/openai/v1/chat/completions", {"model": "google/gemini-2.0-flash-001"}),
         ("openrouter/router/openai/v1/chat/completions", {"model": "openai/gpt-4o-mini"}),
     ]
@@ -795,23 +797,28 @@ def _llm_chat(messages: list) -> str:
 
 
 @app.function(image=image, secrets=[modal.Secret.from_name("fal-credentials")], timeout=120)
-def generate_text_fn(kind: str, fields: dict) -> str:
-    """Real LLM text generation via fal's OpenRouter integration for property
-    descriptions, social captions and video voiceover scripts.
-    (fal-ai/any-llm is deprecated; openrouter/router is the replacement.)"""
+def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str:
+    """Grok AI text generation for property descriptions, social captions and
+    video voiceover scripts (via fal's OpenRouter integration), with optional
+    photo URLs for vision-described copy."""
     system_prompts = {
         "description": (
             "You are a professional South African property copywriter for Property24 and "
             "Private Property listings. Write an engaging property description in markdown-free "
             "plain text using the exact facts provided (bedrooms, bathrooms, price, suburb, "
-            "features). Never invent facts that were not provided. 3 short paragraphs, "
+            "key features, nearby amenities). When a confirmed location and nearby amenities are "
+            "provided, weave 3-5 of the most relevant ones naturally into the copy (schools, "
+            "shopping, cafés, parks) as lifestyle benefits. If photos are attached, describe the "
+            "rooms and features you can actually see. Never invent facts that were not provided. "
+            "Prices are in ZAR with the decimal system (e.g. R12 500 000,00). 3 short paragraphs, "
             "warm and professional tone."
         ),
         "social_caption": (
             "You are a social media copywriter for a South African estate agency. Write a punchy "
-            "Instagram/WhatsApp caption for the property described in the provided fields. Use the "
-            "exact facts provided, 1-3 emojis, and end with 4-6 local hashtags "
-            "(#PropertyForSale #CapeTown style). Never invent facts."
+            "Instagram/WhatsApp/Facebook caption for the property described in the provided fields. "
+            "Use the exact facts provided (beds, baths, price in ZAR with the decimal system, key "
+            "features), mention what you can see in any attached photos, use 1-3 emojis, and end "
+            "with 4-6 local hashtags (#PropertyForSale #CapeTown style). Never invent facts."
         ),
         "video_script": (
             "You are a real estate video scriptwriter. Write a spoken voiceover script for a property "
@@ -821,10 +828,18 @@ def generate_text_fn(kind: str, fields: dict) -> str:
         ),
     }
     system = system_prompts.get(kind, system_prompts["description"])
-    facts = "\n".join(f"{k}: {v}" for k, v in fields.items() if v not in (None, ""))
+    facts = "\n".join(f"{k}: {v}" for k, v in fields.items() if v not in (None, "", []))
+    user_text = f"Property facts:\n{facts}"
+    user_content = user_text
+    image_list = [u for u in (images or []) if u]
+    if image_list:
+        # Vision: Grok describes the attached photos alongside the facts
+        user_content = [{"type": "text", "text": user_text}] + [
+            {"type": "image_url", "image_url": {"url": url}} for url in image_list
+        ]
     text = _llm_chat([
         {"role": "system", "content": system},
-        {"role": "user", "content": f"Property facts:\n{facts}"},
+        {"role": "user", "content": user_content},
     ])
     return text
 
@@ -1412,6 +1427,7 @@ class FlashHeadJobRequest(BaseModel):
 class GenerateTextRequest(BaseModel):
     kind: str  # description | social_caption | video_script
     fields: dict = {}
+    images: list[str] = []  # optional photo URLs for Grok vision
 
 @web_app.post("/flashhead")
 async def api_flashhead(request: FlashHeadJobRequest):
@@ -1445,10 +1461,10 @@ async def api_flashhead_status(job_id: str):
 
 @web_app.post("/generate_text")
 async def api_generate_text(request: GenerateTextRequest):
-    """Real LLM text generation (fal-ai/any-llm) for property descriptions,
-    social captions, and video voiceover scripts."""
+    """Grok AI text generation for property descriptions, social captions,
+    and video voiceover scripts (optional attached photos)."""
     try:
-        text = await generate_text_fn.remote.aio(kind=request.kind, fields=request.fields)
+        text = await generate_text_fn.remote.aio(kind=request.kind, fields=request.fields, images=request.images)
         return {"success": True, "kind": request.kind, "text": text}
     except Exception as e:
         raise HTTPException(status_code=502, detail=_friendly_fal_error(e))

@@ -1,16 +1,18 @@
-import { useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams, useLocation, Link, useNavigate } from 'react-router-dom';
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar } from '../lib/utils';
 import { PLANS } from '../lib/constants';
 import { BackendAPI } from '../lib/backendAPI';
-import { CreditCard, Check, Shield, Lock } from 'lucide-react';
+import { CreditCard, Check, Shield, Lock, Loader2, LogIn } from 'lucide-react';
 
 export default function PaymentPage() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const toast = useToast();
-  const { user, refresh } = useCredit();
+  const { user, loading, refresh } = useCredit();
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -20,8 +22,59 @@ export default function PaymentPage() {
   const isTopup = searchParams.get('topup') === 'true';
   const topupAmount = Number(searchParams.get('amount')) || 0;
 
+  // Paystack hosted-checkout redirect lands here as
+  // /payment/callback?trxref=<ref>&reference=<ref>. Verify server-side so the
+  // balance (and invoice/plan state) is applied even if the webhook is slow,
+  // and so the page shows the right confirmation instead of a fresh checkout.
+  const callbackRef = searchParams.get('trxref') || searchParams.get('reference');
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [creditsAdded, setCreditsAdded] = useState<number | null>(null);
+  const [newBalance, setNewBalance] = useState<number | null>(null);
+  const verifiedRef = useRef(false);
+
   const plan = PLANS.find(p => p.id === planId);
   const amount = isTopup ? topupAmount : priceParam;
+  const signedIn = !loading && !!user;
+  const loginPath = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+
+  const runVerify = async (reference: string) => {
+    setVerifying(true);
+    setVerifyError(null);
+    try {
+      const res = await fetch('/api/paystack/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reference }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Payment not verified');
+      setCreditsAdded(typeof data.credits_added === 'number' ? data.credits_added : 0);
+      if (typeof data.new_balance === 'number') setNewBalance(data.new_balance);
+      setSuccess(true);
+      await refresh();
+    } catch (err: any) {
+      setVerifyError(err.message || 'Could not verify this payment yet');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!callbackRef || verifiedRef.current) return;
+    verifiedRef.current = true;
+    runVerify(callbackRef);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callbackRef]);
+
+  // Payment approved → straight to the dashboard, where the welcome message
+  // and the dashboard tutorial are waiting.
+  useEffect(() => {
+    if (!success || !signedIn) return;
+    const t = setTimeout(() => navigate('/dashboard?welcome=1', { replace: true }), 3500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [success, signedIn]);
 
   // Real payment flow:
   //  - Credit top-ups → Paystack hosted checkout (initialize → redirect).
@@ -32,7 +85,12 @@ export default function PaymentPage() {
   const handlePaystack = async () => {
     setProcessing(true);
     try {
-      if (!user) throw new Error('Please sign in to continue with payment');
+      if (!user) {
+        // Never strand the visitor on an error toast — send them to sign in
+        // and back to this exact payment page afterwards.
+        navigate(loginPath);
+        return;
+      }
 
       if (isTopup) {
         const response = await BackendAPI.initializePayment(user.id, topupAmount, user.email);
@@ -53,6 +111,7 @@ export default function PaymentPage() {
   };
 
   if (success) {
+    const balance = newBalance ?? user?.credits ?? 0;
     return (
       <div className="min-h-screen bg-ink-950 flex items-center justify-center p-4">
         <div className="card-dark p-8 max-w-md text-center animate-scale-in">
@@ -61,16 +120,83 @@ export default function PaymentPage() {
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">Payment Successful!</h2>
           <p className="text-ink-400 mb-4">
-            {isTopup
-              ? `${topupAmount} credits are being added to your account — refresh your dashboard in a moment.`
-              : `Your ${plan?.name} subscription is now active with ${user?.credits ?? 0} credits available.`
+            {callbackRef || isTopup
+              ? creditsAdded
+                ? `${creditsAdded} credits added — your balance is now ${balance}.`
+                : 'Your credits are already in your account.'
+              : `Your ${plan?.name} subscription is now active with ${balance} credits available.`
             }
           </p>
           <div className="bg-ink-800/50 rounded-xl p-4 mb-6">
             <p className="text-sm text-ink-400">Amount</p>
             <p className="text-2xl font-bold text-white">{formatZar(amount)}</p>
           </div>
-          <Link to="/dashboard" className="btn btn-primary mt-4 w-full">Go to Dashboard</Link>
+          <Link to="/dashboard?welcome=1" className="btn btn-primary mt-4 w-full">Go to Dashboard</Link>
+          <p className="text-xs text-ink-500 mt-3">Redirecting to your dashboard…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Callback URL while the verify call is still running
+  if (callbackRef && verifying) {
+    return (
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center p-4">
+        <div className="card-dark p-8 max-w-md text-center">
+          <Loader2 className="w-10 h-10 text-purple-400 animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-white mb-2">Confirming your payment…</h2>
+          <p className="text-ink-400 text-sm">Reference {callbackRef} — this only takes a moment.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Callback URL that could not be verified yet — honest state, not a fresh
+  // checkout form for an amount we don't know.
+  if (callbackRef && verifyError) {
+    return (
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center p-4">
+        <div className="card-dark p-8 max-w-md text-center">
+          <h2 className="text-xl font-bold text-white mb-2">Payment received — confirming…</h2>
+          <p className="text-ink-400 text-sm mb-6">{verifyError}. Your payment is safe; we just couldn't confirm it yet.</p>
+          <button onClick={() => runVerify(callbackRef)} className="btn btn-primary w-full">
+            Check again
+          </button>
+          <Link to="/dashboard" className="btn w-full mt-3">Back to Dashboard</Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Signed-out visitor on the payment page (e.g. the confirmation-email link
+  // after clearing cookies, or a shared plan link) → sign in and come back.
+  if (!loading && !user && !callbackRef) {
+    const nextParam = searchParams.get('next');
+    const backTo = nextParam || (location.pathname + location.search);
+    return (
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center p-4">
+        <div className="card-dark p-8 max-w-md text-center">
+          <div className="w-14 h-14 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
+            <LogIn className="w-7 h-7 text-purple-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Sign in to continue</h2>
+          <p className="text-ink-400 text-sm mb-6">
+            {plan && !isTopup
+              ? `Sign in (or create an account) to subscribe to the ${plan.name} plan — you'll come straight back to this page.`
+              : 'Sign in (or create an account) to complete this payment — you’ll come straight back to this page.'}
+          </p>
+          <Link
+            to={`/login?next=${encodeURIComponent(backTo)}`}
+            className="btn btn-primary w-full text-lg py-3"
+          >
+            Sign In
+          </Link>
+          <Link
+            to={`/register?plan=${planId}&cycle=${cycle}&price=${priceParam}`}
+            className="btn w-full mt-3"
+          >
+            Create an account
+          </Link>
         </div>
       </div>
     );
@@ -118,7 +244,7 @@ export default function PaymentPage() {
           {/* Payment Button */}
           <button
             onClick={handlePaystack}
-            disabled={processing}
+            disabled={processing || loading}
             className="btn btn-primary w-full text-lg py-4 mb-4"
           >
             {processing ? (

@@ -199,6 +199,14 @@ function CopyButton({ text, label = 'Copy', copiedLabel = 'Copied!', className =
 
 function PricingPage() {
   const [annual, setAnnual] = useState(false);
+  // Signed-in visitors (e.g. Billing → "Choose a Plan") go straight to this
+  // plan's payment page; only new visitors need the register step first.
+  const { user } = useAuth();
+  const cycle = annual ? 'ANNUAL' : 'MONTHLY';
+  const chooseHref = (planId: string, price: number) =>
+    user
+      ? `/payment?plan=${planId}&cycle=${cycle}&price=${price}`
+      : `/register?plan=${planId}&cycle=${cycle}`;
   return (
     <PublicLayout>
       <section className="py-20 bg-gradient-to-b from-purple-50 to-white">
@@ -231,7 +239,7 @@ function PricingPage() {
                       </li>
                     ))}
                   </ul>
-                  <Link to={`/register?plan=${plan.id}&cycle=${annual ? 'ANNUAL' : 'MONTHLY'}`} className={`btn w-full mt-6 min-h-[48px] flex items-center justify-center ${plan.popular ? 'btn-primary' : 'border border-gray-200 text-gray-700 hover:border-purple-300'}`}>
+                  <Link to={chooseHref(plan.id, price)} className={`btn w-full mt-6 min-h-[48px] flex items-center justify-center ${plan.popular ? 'btn-primary' : 'border border-gray-200 text-gray-700 hover:border-purple-300'}`}>
                     Choose {plan.name}
                   </Link>
                 </div>
@@ -402,23 +410,33 @@ function LoginPage() {
 
   // Single navigation path for email + Google sign-in: when the auth state
   // settles on a session, complete the stored post-auth redirect (defaults
-  // to the dashboard). Google returns to this page after OAuth.
+  // to the dashboard). Google returns to this page after OAuth. An explicit
+  // ?next= wins — a signed-in visitor sent here to re-auth before paying must
+  // land back on the payment page, not the dashboard.
   useEffect(() => {
     if (!user) return;
+    if (nextPath && nextPath.startsWith('/')) {
+      navigate(nextPath, { replace: true });
+      return;
+    }
     import('./lib/postAuth').then(({ takePostAuthRedirect }) => {
       navigate(takePostAuthRedirect(), { replace: true });
     });
-  }, [user, navigate]);
+  }, [user, navigate, nextPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      await login(email, password);
-      toast.success('Welcome back!');
+      // Store the destination BEFORE login() fires the auth listener — the
+      // user-effect below can otherwise consume a stale/default redirect and
+      // strand the visitor on the dashboard instead of back where they were
+      // (e.g. the payment page).
       const { setPostAuthRedirect } = await import('./lib/postAuth');
       setPostAuthRedirect(nextPath && nextPath.startsWith('/') ? nextPath : '/dashboard');
+      await login(email, password);
+      toast.success('Welcome back!');
     } catch (err: any) {
       setError(err.message || 'Invalid credentials');
       setLoading(false);
@@ -823,19 +841,28 @@ function StudioPage() {
 }
 
 function StudioPageInner() {
-  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'description');
   const { user } = useCredit();
+  // Tab lives in the URL (?tab=photo). Navigating to the same route with a
+  // different query does NOT remount this component, so a useState
+  // initializer would silently miss deep links (onboarding tour, help links).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') || 'description';
+  const setTab = (t: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', t);
+    setSearchParams(next, { replace: true });
+  };
   // Shared voiceover script: the Video tab generates it, FlashHead speaks it
   const [sharedScript, setSharedScript] = useState('');
   const tabs = [
-    { id: 'description', label: 'Description', icon: <FileText className="w-4 h-4" /> },
-    { id: 'photo', label: 'Photo Editor', icon: <Camera className="w-4 h-4" /> },
-    { id: 'staging', label: 'Virtual Staging', icon: <Sofa className="w-4 h-4" /> },
-    { id: 'removal', label: 'Furniture Removal', icon: <Trash2 className="w-4 h-4" /> },
-    { id: 'twilight', label: 'Twilight', icon: <MoonIcon className="w-4 h-4" /> },
-    { id: 'social', label: 'Social Media', icon: <Share2 className="w-4 h-4" /> },
-    { id: 'video', label: 'Video Generator', icon: <Video className="w-4 h-4" /> },
-    { id: 'flashhead', label: 'Talking Head', icon: <Mic className="w-4 h-4" /> },
+    { id: 'description', label: 'Description', icon: <FileText className="w-4 h-4" />, cost: 1 },
+    { id: 'photo', label: 'Photo Editor', icon: <Camera className="w-4 h-4" />, cost: 2 },
+    { id: 'staging', label: 'Virtual Staging', icon: <Sofa className="w-4 h-4" />, cost: 2 },
+    { id: 'removal', label: 'Furniture Removal', icon: <Trash2 className="w-4 h-4" />, cost: 2 },
+    { id: 'twilight', label: 'Twilight', icon: <MoonIcon className="w-4 h-4" />, cost: 2 },
+    { id: 'social', label: 'Social Media', icon: <Share2 className="w-4 h-4" />, cost: 2 },
+    { id: 'video', label: 'Video Generator', icon: <Video className="w-4 h-4" />, cost: null },
+    { id: 'flashhead', label: 'Talking Head', icon: <Mic className="w-4 h-4" />, cost: 8 },
   ];
 
   return (
@@ -858,6 +885,7 @@ function StudioPageInner() {
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 ${tab === t.id ? 'tab-pill tab-pill-active' : 'tab-pill'}`}>
             {t.icon} <span className="hidden sm:inline">{t.label}</span>
+            {t.cost ? <span className="text-[10px] font-bold text-yellow-300" title={`${t.cost} credits per render`}>⚡{t.cost}</span> : <span className="text-[10px] font-bold text-yellow-300" title="Credits by video tier">⚡</span>}
           </button>
         ))}
       </div>
@@ -876,23 +904,262 @@ function StudioPageInner() {
   );
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// SHARED AI GENERATION HELPERS (Description + Social tabs)
+// ═════════════════════════════════════════════════════════════════════════
+
+const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (Grok AI)
+const SOCIAL_POST_COST = 2; // ⚡ per social media post render (Grok AI)
+
+/** Selectable Key Features shown as chips in Description + Social tabs */
+const KEY_FEATURES = [
+  'Swimming Pool', 'Double Garage', 'Solar Panels', 'Generator', 'Fibre Internet',
+  'Air Conditioning', 'Underfloor Heating', 'Security Estate', 'Mountain Views',
+  'Sea Views', 'Garden', 'Staff Quarters', 'Study', 'Scullery', 'Braai Area',
+  'Entertainment Area', 'Pet Friendly', 'Borehole', 'Water Tanks', 'EV Charging',
+];
+
+function FeatureChips({ selected, onToggle }: { selected: string[]; onToggle: (f: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {KEY_FEATURES.map(f => {
+        const on = selected.includes(f);
+        return (
+          <button
+            key={f}
+            type="button"
+            onClick={() => onToggle(f)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition border ${
+              on
+                ? 'bg-purple-700 text-white border-purple-500'
+                : 'bg-white/5 text-ink-300 border-white/10 hover:border-purple-500/40'
+            }`}
+            aria-pressed={on}
+          >
+            {on && <Check className="w-3 h-3 inline mr-1 -mt-0.5" />}
+            {f}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Presigned browser → S3 upload used by the AI text tools (Grok vision) */
+async function uploadImagesForAI(files: FileList | null, userId: string | undefined, max: number): Promise<string[]> {
+  if (!files || !files.length) return [];
+  const urls: string[] = [];
+  const list = Array.from(files).slice(0, max);
+  for (const file of list) {
+    const okType = file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|avif)$/i.test(file.name);
+    if (!okType) throw new Error(`${file.name} is not an image file`);
+    if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} is over 25MB`);
+    const contentType = file.type || 'image/jpeg';
+    const preRes = await fetch('/api/music?action=presign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, contentType }),
+    });
+    if (!preRes.ok) {
+      const d = await preRes.json().catch(() => ({}));
+      throw new Error(d.error || 'Upload authorisation failed');
+    }
+    const pre = await preRes.json();
+    const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+    if (!put.ok) throw new Error(`Upload failed for ${file.name}`);
+    urls.push(pre.publicUrl);
+  }
+  return urls;
+}
+
+/** Free geocode (OpenStreetMap Nominatim) — no API key required */
+async function geocodeAddress(address: string): Promise<{ lat: number; lon: number; display: string } | null> {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`
+  );
+  if (!res.ok) return null;
+  const rows = await res.json();
+  if (!Array.isArray(rows) || !rows.length) return null;
+  return { lat: Number(rows[0].lat), lon: Number(rows[0].lon), display: rows[0].display_name || address };
+}
+
+function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLon = ((bLon - aLon) * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Named amenities near a confirmed point (OpenStreetMap Overpass — free) */
+async function findNearbyAmenities(lat: number, lon: number): Promise<string[]> {
+  const around = (r: number) => `(around:${r},${lat},${lon})`;
+  const q = `[out:json][timeout:25];(
+    node${around(2000)}["amenity"~"^(school|kindergarten|hospital|clinic|pharmacy|restaurant|cafe|bar|fuel|gym|library|supermarket)$"];
+    way${around(2000)}["shop"~"^(mall|supermarket|convenience)$"];
+    way${around(2500)}["leisure"="park"];
+  );out center 120;`;
+  // Mirrors — the main instance rate-limits hard during busy periods
+  const hosts = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+  ];
+  let data: any = null;
+  let lastErr: unknown = null;
+  for (const host of hosts) {
+    try {
+      const res = await fetch(`${host}?data=${encodeURIComponent(q)}`);
+      if (!res.ok) { lastErr = new Error(`${host} → HTTP ${res.status}`); continue; }
+      const body = await res.json();
+      if (!body || !Array.isArray(body.elements)) { lastErr = new Error(`${host} → unexpected payload`); continue; }
+      data = body;
+      break;
+    } catch (e) {
+      lastErr = e; // network error or HTML rate-limit page — try next mirror
+    }
+  }
+  if (!data) throw new Error(`Nearby amenities lookup failed (${lastErr instanceof Error ? lastErr.message : 'unknown'})`);
+  type Row = { name: string; kind: string; dist: number };
+  const rows: Row[] = [];
+  for (const el of data.elements || []) {
+    const t = el.tags || {};
+    const name = t.name || t['name:en'];
+    const kind = t.amenity || t.shop || (t.leisure === 'park' ? 'park' : null);
+    if (!name || !kind) continue;
+    const elLat = typeof el.lat === 'number' ? el.lat : el.center?.lat;
+    const elLon = typeof el.lon === 'number' ? el.lon : el.center?.lon;
+    const dist = typeof elLat === 'number' && typeof elLon === 'number' ? haversineKm(lat, lon, elLat, elLon) : 99;
+    rows.push({ name, kind, dist });
+  }
+  rows.sort((a, b) => a.dist - b.dist);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rows) {
+    const key = r.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(`${r.name} (${r.kind}, ${r.dist < 10 ? `${(r.dist * 1000).toFixed(0)}m` : `${r.dist.toFixed(1)}km`} away)`);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
 function DescriptionTab() {
+  const toast = useToast();
+  const { user, deductCredits, addCredits } = useCredit();
   const [tone, setTone] = useState('Professional');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
-  const toast = useToast();
-  const [fields, setFields] = useState({ address: '', price: '', bedrooms: '', bathrooms: '', garages: '', propertyType: '', features: '' });
+  const [fields, setFields] = useState({ address: '', price: '', bedrooms: '', bathrooms: '', garages: '', propertyType: '', extraFeatures: '' });
   const setField = (k: string) => (e: any) => setFields(f => ({ ...f, [k]: e.target.value }));
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
+  const toggleFeature = (f: string) =>
+    setSelectedFeatures(prev => (prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]));
 
-  // Real AI generation via fal-ai/any-llm (through the Modal worker)
-  const generate = async () => {
-    setLoading(true);
+  // Address → confirm the pin on Google Maps → pull nearby amenities for the copy
+  const [geo, setGeo] = useState<{ lat: number; lon: number; display: string } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [amenities, setAmenities] = useState<string[]>([]);
+  const [amenityBusy, setAmenityBusy] = useState(false);
+
+  // Grok vision: optional photos that get described in the copy
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const imagesInputRef = useRef<HTMLInputElement>(null);
+
+  const findLocation = async () => {
+    if (!fields.address.trim()) { toast.error('Enter the property address first', 'Address required'); return; }
+    setLocating(true); setConfirmed(false); setAmenities([]); setGeo(null);
     try {
-      const text = await PropReelAPI.generateText('description', { tone, ...fields });
-      setDescription(text.trim());
-      toast.success('Description generated', 'AI Copywriter');
+      const g = await geocodeAddress(fields.address.trim());
+      if (!g) { toast.error('Could not find that address — add the suburb or city and try again', 'Address not found'); return; }
+      setGeo(g);
+      toast.success('Location found — confirm the pin on the map below', 'Google Maps');
+    } catch {
+      toast.error('Map lookup failed — please try again', 'Google Maps');
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  const confirmLocation = async () => {
+    if (!geo) return;
+    setConfirmed(true);
+    setAmenityBusy(true);
+    try {
+      const found = await findNearbyAmenities(geo.lat, geo.lon);
+      setAmenities(found);
+      if (found.length) toast.success(`${found.length} nearby amenities found — they'll be woven into the copy`, 'Location confirmed');
+    } catch {
+      toast.error('Nearby amenities lookup failed — the description will skip them');
+    } finally {
+      setAmenityBusy(false);
+    }
+  };
+
+  const handleImages = async (list: FileList | null) => {
+    if (!list || !list.length) return;
+    if (images.length >= 4) { toast.error('Up to 4 photos per description', 'Photo limit'); return; }
+    setUploading(true);
+    try {
+      const urls = await uploadImagesForAI(list, user?.id, 4 - images.length);
+      setImages(prev => [...prev, ...urls]);
+      toast.success(`${urls.length} photo${urls.length > 1 ? 's' : ''} uploaded — Grok will describe them`, 'Photos ready');
     } catch (e: any) {
-      toast.error(e.message || 'Description generation failed');
+      toast.error(e.message || 'Photo upload failed');
+    } finally {
+      setUploading(false);
+      if (imagesInputRef.current) imagesInputRef.current.value = '';
+    }
+  };
+
+  // Grok AI generation — 1 credit per render, refunded on failure
+  const generate = async () => {
+    if (!user) { toast.error('Sign in to generate a description'); return; }
+    const cost = DESCRIPTION_RENDER_COST;
+    if ((user.credits ?? 0) < cost) {
+      toast.error(`Not enough credits — a description costs ${cost} credit. Top up in Billing.`, 'Insufficient credits');
+      return;
+    }
+    // ZAR with the decimal system: "12500000" → "R 12 500 000,00"
+    const rawPrice = fields.price.trim();
+    const priceZar = !rawPrice ? ''
+      : /^\d[\d\s,]*$/.test(rawPrice) && Number(rawPrice.replace(/[^\d]/g, '')) > 0
+        ? formatZar(Number(rawPrice.replace(/[^\d]/g, '')))
+        : rawPrice;
+
+    setLoading(true);
+    let charged = false;
+    try {
+      const ok = await deductCredits(cost, 'Property description', { kind: 'PROPERTY_DESCRIPTION' });
+      if (!ok) throw new Error('Could not deduct credits — check your balance');
+      charged = true;
+      const text = await PropReelAPI.generateText(
+        'description',
+        {
+          tone,
+          address: fields.address,
+          price: priceZar,
+          bedrooms: fields.bedrooms,
+          bathrooms: fields.bathrooms,
+          garages: fields.garages,
+          propertyType: fields.propertyType,
+          key_features: selectedFeatures.join(', '),
+          extra_features: fields.extraFeatures,
+          location: geo ? `${geo.display} (latitude ${geo.lat.toFixed(5)}, longitude ${geo.lon.toFixed(5)})` : '',
+          location_confirmed: confirmed ? 'Yes — the agent confirmed the exact pin on Google Maps' : 'No',
+          nearby_amenities: amenities.join('; '),
+          currency: 'ZAR (South African Rand) — always write prices with the decimal system, e.g. R12 500 000,00',
+        },
+        images
+      );
+      setDescription(text.trim());
+      toast.success('Description generated', 'Grok AI');
+    } catch (e: any) {
+      if (charged) await addCredits(cost, 'refund', 'Refund — failed property description').catch(() => {});
+      toast.error(e.message ? `${e.message} — your credit was refunded` : 'Description generation failed — your credit was refunded');
     } finally {
       setLoading(false);
     }
@@ -900,19 +1167,116 @@ function DescriptionTab() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="w-5 h-5 text-purple-400" /> Property Description</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="w-5 h-5 text-purple-400" /> Property Description</h2>
+        <span className="badge badge-brand" title="Charged only when a render succeeds"><Zap className="w-3 h-3" /> ⚡{DESCRIPTION_RENDER_COST} credit per render · Grok AI</span>
+      </div>
+
+      {/* Address + Google Maps confirmation */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
         <div><label className="label">Address</label><input className="input" value={fields.address} onChange={setField('address')} placeholder="15 Vineyard Road, Constantia" /></div>
-        <div><label className="label">Price (ZAR)</label><input className="input" type="number" value={fields.price} onChange={setField('price')} placeholder="12500000" /></div>
+        <button onClick={findLocation} disabled={locating} className="btn btn-secondary h-[42px]">
+          {locating ? <><RefreshCw className="w-4 h-4 animate-spin" /> Finding…</> : <><MapPin className="w-4 h-4" /> Find on map</>}
+        </button>
+      </div>
+
+      {geo && (
+        <div className="rounded-xl border border-white/10 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 bg-ink-800/60">
+            <p className="text-xs text-ink-300 truncate">{geo.display}</p>
+            <a href={`https://www.google.com/maps?q=${geo.lat},${geo.lon}`} target="_blank" rel="noreferrer" className="text-xs text-purple-400 hover:text-purple-300 shrink-0 ml-3">Open in Google Maps ↗</a>
+          </div>
+          <iframe
+            title="Confirm the property location on Google Maps"
+            src={`https://maps.google.com/maps?q=${geo.lat},${geo.lon}&z=16&output=embed`}
+            className="w-full h-64 border-0"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+          />
+          <div className="flex items-center justify-between gap-3 px-4 py-3 bg-ink-800/60">
+            {confirmed ? (
+              <span className="text-xs text-green-400 flex items-center gap-1"><Check className="w-3 h-3" /> Location confirmed — {amenities.length} nearby amenities loaded</span>
+            ) : (
+              <span className="text-xs text-ink-400">Check the pin, then confirm so we can use nearby amenities in the copy.</span>
+            )}
+            <button onClick={confirmLocation} disabled={amenityBusy || confirmed} className="btn btn-primary text-sm px-4 py-2 shrink-0">
+              {amenityBusy ? <><RefreshCw className="w-4 h-4 animate-spin" /> Looking up…</> : confirmed ? 'Confirmed' : 'Confirm location'}
+            </button>
+          </div>
+          {amenities.length > 0 && (
+            <div className="px-4 py-3 bg-black/20">
+              <p className="text-xs text-ink-400 mb-2">Nearby amenities (OpenStreetMap):</p>
+              <div className="flex flex-wrap gap-1.5">
+                {amenities.map(a => <span key={a} className="text-[11px] bg-white/5 border border-white/10 rounded-full px-2 py-1 text-ink-300">{a}</span>)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div><label className="label">Price (ZAR)</label><input className="input" value={fields.price} onChange={setField('price')} placeholder="R12 500 000,00" inputMode="decimal" /></div>
+        <div><label className="label">Property Type</label><input className="input" value={fields.propertyType} onChange={setField('propertyType')} placeholder="House" /></div>
         <div><label className="label">Bedrooms</label><input className="input" type="number" value={fields.bedrooms} onChange={setField('bedrooms')} placeholder="5" /></div>
         <div><label className="label">Bathrooms</label><input className="input" type="number" value={fields.bathrooms} onChange={setField('bathrooms')} placeholder="4" /></div>
         <div><label className="label">Garages</label><input className="input" type="number" value={fields.garages} onChange={setField('garages')} placeholder="3" /></div>
-        <div><label className="label">Property Type</label><input className="input" value={fields.propertyType} onChange={setField('propertyType')} placeholder="House" /></div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="label mb-0">Key Features <span className="text-ink-500 font-normal">({selectedFeatures.length} selected)</span></label>
+          {selectedFeatures.length > 0 && (
+            <button onClick={() => setSelectedFeatures([])} className="text-xs text-ink-400 hover:text-red-400">Clear</button>
+          )}
+        </div>
+        <FeatureChips selected={selectedFeatures} onToggle={toggleFeature} />
       </div>
       <div>
-        <label className="label">Key Features (comma separated)</label>
-        <input className="input" value={fields.features} onChange={setField('features')} placeholder="Pool, garden, panoramic views, gas stove, walk-in pantry" />
+        <label className="label">Extra features (optional)</label>
+        <input className="input" value={fields.extraFeatures} onChange={setField('extraFeatures')} placeholder="gas stove, walk-in pantry, skyline views" />
       </div>
+
+      {/* Photos for Grok to describe */}
+      <div>
+        <label className="label">Photos for Grok to describe ({images.length} / 4)</label>
+        <input
+          ref={imagesInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="sr-only"
+          onChange={e => { handleImages(e.target.files); e.target.value = ''; }}
+        />
+        <div
+          className="border-2 border-dashed rounded-xl p-5 text-center transition cursor-pointer border-white/10 hover:border-purple-500/30"
+          onClick={() => imagesInputRef.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && imagesInputRef.current?.click()}
+          aria-label="Upload photos for the description"
+        >
+          <Image className="w-7 h-7 text-ink-400 mx-auto mb-2" />
+          <p className="text-ink-400 text-sm">{uploading ? 'Uploading…' : 'Drop photos here or click to upload'}</p>
+          <p className="text-ink-500 text-xs mt-1">Grok describes what it sees — up to 4 images</p>
+        </div>
+        {images.length > 0 && (
+          <div className="grid grid-cols-4 gap-3 mt-3">
+            {images.map((src, i) => (
+              <div key={src} className="relative group">
+                <img src={src} alt={`Property ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10" />
+                <button
+                  onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}
+                  className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition"
+                  aria-label={`Remove photo ${i + 1}`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div>
         <label className="label">Tone</label>
         <div className="flex flex-wrap gap-2">
@@ -923,9 +1287,11 @@ function DescriptionTab() {
           ))}
         </div>
       </div>
+
       <button onClick={generate} disabled={loading} className="btn btn-primary">
-        {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> Generate Description</>}
+        {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with Grok…</> : <><Sparkles className="w-4 h-4" /> Generate Description · ⚡{DESCRIPTION_RENDER_COST}</>}
       </button>
+
       {description && (
         <div className="space-y-3">
           <label className="label">Generated Description</label>
@@ -942,11 +1308,14 @@ function DescriptionTab() {
 }
 
 function PhotoEditorTab() {
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  const [strength, setStrength] = useState(0.30);
-  const [guidance, setGuidance] = useState(4.5);
-  const [customPrompt, setCustomPrompt] = useState('');
   const photoPresets = IMAGE_PRESETS.filter(p => p.category === 'photo_editor');
+  // Pre-select the first preset so the upload zone is visible immediately —
+  // previously the dashed "pick a preset" placeholder looked like an upload
+  // button and did nothing when clicked.
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(photoPresets[0]?.id ?? null);
+  const [strength, setStrength] = useState(photoPresets[0]?.strength.default ?? 0.3);
+  const [guidance, setGuidance] = useState(photoPresets[0]?.guidanceScale.default ?? 4.5);
+  const [customPrompt, setCustomPrompt] = useState('');
   const active = photoPresets.find(p => p.id === selectedPreset);
 
   return (
@@ -1173,27 +1542,88 @@ function TwilightTab() {
 }
 
 function SocialTab() {
+  const toast = useToast();
+  const { user, deductCredits, addCredits } = useCredit();
   const [platform, setPlatform] = useState('instagram');
   const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(false);
-  const toast = useToast();
-  const [socialFields, setSocialFields] = useState({ suburb: '', bedrooms: '', bathrooms: '', price: '', features: '' });
+  // Inner sections — each one details a different aspect of the property
+  const [section, setSection] = useState<'details' | 'features' | 'photos' | 'platform'>('details');
+  // NOTE: beds and baths are SEPARATE plain number fields. The old single
+  // "Beds / Baths" input rendered `${bedrooms} bed` as its value, so every
+  // keystroke got " bed" appended — the field appeared to auto-fill with Beds.
+  const [socialFields, setSocialFields] = useState({
+    suburb: '', propertyType: 'House', price: '', bedrooms: '', bathrooms: '', garages: '', features: '',
+  });
   const setSf = (k: string) => (e: any) => setSocialFields(f => ({ ...f, [k]: e.target.value }));
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
+  const toggleFeature = (f: string) =>
+    setSelectedFeatures(prev => (prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]));
 
-  const generate = async () => {
-    setLoading(true);
+  // Photos included in the final post render (and described by Grok)
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const imagesInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImages = async (list: FileList | null) => {
+    if (!list || !list.length) return;
+    if (images.length >= 6) { toast.error('Up to 6 photos per post', 'Photo limit'); return; }
+    setUploading(true);
     try {
-      const text = await PropReelAPI.generateText('social_caption', {
-        platform,
-        suburb: socialFields.suburb,
-        bedrooms: socialFields.bedrooms,
-        bathrooms: socialFields.bathrooms,
-        price: socialFields.price,
-        features: socialFields.features,
-      });
-      setCaption(text.trim().replace(/^"|"$/g, ''));
+      const urls = await uploadImagesForAI(list, user?.id, 6 - images.length);
+      setImages(prev => [...prev, ...urls]);
+      toast.success(`${urls.length} photo${urls.length > 1 ? 's' : ''} uploaded — they'll appear in the post`, 'Photos ready');
     } catch (e: any) {
-      toast.error(e.message || 'Caption generation failed');
+      toast.error(e.message || 'Photo upload failed');
+    } finally {
+      setUploading(false);
+      if (imagesInputRef.current) imagesInputRef.current.value = '';
+    }
+  };
+
+  // Grok AI generation — 2 credits per post render, refunded on failure
+  const generate = async () => {
+    if (!user) { toast.error('Sign in to generate a post'); return; }
+    const cost = SOCIAL_POST_COST;
+    if ((user.credits ?? 0) < cost) {
+      toast.error(`Not enough credits — a post costs ${cost} credits. Top up in Billing.`, 'Insufficient credits');
+      return;
+    }
+    // ZAR with the decimal system: "12500000" → "R 12 500 000,00"
+    const rawPrice = socialFields.price.trim();
+    const priceZar = !rawPrice ? ''
+      : /^\d[\d\s,]*$/.test(rawPrice) && Number(rawPrice.replace(/[^\d]/g, '')) > 0
+        ? formatZar(Number(rawPrice.replace(/[^\d]/g, '')))
+        : rawPrice;
+
+    setLoading(true);
+    let charged = false;
+    try {
+      const ok = await deductCredits(cost, 'Social media post', { kind: 'SOCIAL_POST' });
+      if (!ok) throw new Error('Could not deduct credits — check your balance');
+      charged = true;
+      const text = await PropReelAPI.generateText(
+        'social_caption',
+        {
+          platform,
+          suburb: socialFields.suburb,
+          property_type: socialFields.propertyType,
+          price: priceZar,
+          bedrooms: socialFields.bedrooms,
+          bathrooms: socialFields.bathrooms,
+          garages: socialFields.garages,
+          key_features: selectedFeatures.join(', '),
+          features: socialFields.features,
+          attached_photos: images.length ? `${images.length} photo(s) attached — mention what you see in them` : '',
+          currency: 'ZAR (South African Rand) — write prices with the decimal system, e.g. R12 500 000,00',
+        },
+        images
+      );
+      setCaption(text.trim().replace(/^"|"$/g, ''));
+      toast.success('Post generated', 'Grok AI · ⚡' + cost + ' credits');
+    } catch (e: any) {
+      if (charged) await addCredits(cost, 'refund', 'Refund — failed social media post').catch(() => {});
+      toast.error(e.message ? `${e.message} — your credits were refunded` : 'Caption generation failed — your credits were refunded');
     } finally {
       setLoading(false);
     }
@@ -1202,34 +1632,128 @@ function SocialTab() {
   const currentPlatform = SOCIAL_PLATFORMS.find(p => p.id === platform);
   const isOverLimit = caption.length > (currentPlatform?.charLimit || 0);
 
+  const sectionTabs: Array<{ id: typeof section; label: string }> = [
+    { id: 'details', label: 'Property Details' },
+    { id: 'features', label: `Key Features (${selectedFeatures.length})` },
+    { id: 'photos', label: `Photos (${images.length}/6)` },
+    { id: 'platform', label: 'Platform' },
+  ];
+
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-bold text-white flex items-center gap-2"><Share2 className="w-5 h-5 text-purple-400" /> Social Media Post Generator</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div><label className="label">Suburb / City</label><input className="input" value={socialFields.suburb} onChange={setSf('suburb')} placeholder="Constantia, Cape Town" /></div>
-        <div><label className="label">Price</label><input className="input" value={socialFields.price} onChange={setSf('price')} placeholder="R12,500,000" /></div>
-        <div><label className="label">Beds / Baths</label><input className="input" value={socialFields.bedrooms ? `${socialFields.bedrooms} bed` : ''} onChange={setSf('bedrooms')} placeholder="5 bed, 4 bath" /></div>
-        <div className="md:col-span-3"><label className="label">Key Features</label><input className="input" value={socialFields.features} onChange={setSf('features')} placeholder="Pool, panoramic views, triple garage" /></div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-white flex items-center gap-2"><Share2 className="w-5 h-5 text-purple-400" /> Social Media Post Generator</h2>
+        <span className="badge badge-brand" title="Charged only when a render succeeds"><Zap className="w-3 h-3" /> ⚡{SOCIAL_POST_COST} credits per post · Grok AI</span>
       </div>
-      <div>
-        <label className="label">Select Platform</label>
-        <div className="flex flex-wrap gap-2">
-          {SOCIAL_PLATFORMS.map(p => (
-            <button key={p.id} onClick={() => setPlatform(p.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition ${platform === p.id ? 'bg-purple-700 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
-              {p.icon} {p.label}
-            </button>
-          ))}
-        </div>
-        {currentPlatform && (
-          <div className="mt-3 p-3 bg-ink-800/50 rounded-lg">
-            <p className="text-xs text-ink-400 mb-1">Platform Requirements:</p>
-            <p className="text-sm text-white">{currentPlatform.rules}</p>
-            <p className="text-xs text-ink-400 mt-2">Character limit: {currentPlatform.charLimit.toLocaleString()}</p>
+
+      {/* Detail sections */}
+      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+        {sectionTabs.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setSection(s.id)}
+            className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition ${section === s.id ? 'bg-purple-700 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {section === 'details' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label className="label">Suburb / City</label><input className="input" value={socialFields.suburb} onChange={setSf('suburb')} placeholder="Constantia, Cape Town" /></div>
+          <div><label className="label">Price (ZAR)</label><input className="input" value={socialFields.price} onChange={setSf('price')} placeholder="R12 500 000,00" inputMode="decimal" /></div>
+          <div>
+            <label className="label">Property Type</label>
+            <select className="input" value={socialFields.propertyType} onChange={setSf('propertyType')}>
+              {['House', 'Apartment', 'Townhouse', 'Sectional Title', 'Vacant Land', 'Farm / Smallholding', 'Commercial', 'Industrial'].map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </div>
-        )}
-      </div>
+          <div><label className="label">Beds</label><input className="input" type="number" min="0" value={socialFields.bedrooms} onChange={setSf('bedrooms')} placeholder="5" /></div>
+          <div><label className="label">Baths</label><input className="input" type="number" min="0" value={socialFields.bathrooms} onChange={setSf('bathrooms')} placeholder="4" /></div>
+          <div><label className="label">Garages / Parking</label><input className="input" type="number" min="0" value={socialFields.garages} onChange={setSf('garages')} placeholder="2" /></div>
+          <div className="md:col-span-3"><label className="label">Extra highlights</label><input className="input" value={socialFields.features} onChange={setSf('features')} placeholder="Pool, panoramic views, gas stove" /></div>
+        </div>
+      )}
+
+      {section === 'features' && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="label mb-0">Key Features</label>
+            {selectedFeatures.length > 0 && (
+              <button onClick={() => setSelectedFeatures([])} className="text-xs text-ink-400 hover:text-red-400">Clear</button>
+            )}
+          </div>
+          <FeatureChips selected={selectedFeatures} onToggle={toggleFeature} />
+        </div>
+      )}
+
+      {section === 'photos' && (
+        <div>
+          <label className="label">Post Photos ({images.length} / 6)</label>
+          <input
+            ref={imagesInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={e => { handleImages(e.target.files); e.target.value = ''; }}
+          />
+          <div
+            className="border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer border-white/10 hover:border-purple-500/30"
+            onClick={() => imagesInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && imagesInputRef.current?.click()}
+            aria-label="Upload photos for the post"
+          >
+            <Image className="w-7 h-7 text-ink-400 mx-auto mb-2" />
+            <p className="text-ink-400 text-sm">{uploading ? 'Uploading…' : 'Drop photos here or click to upload'}</p>
+            <p className="text-ink-500 text-xs mt-1">Photos are shown in the final post and described by Grok</p>
+          </div>
+          {images.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mt-3">
+              {images.map((src, i) => (
+                <div key={src} className="relative group">
+                  <img src={src} alt={`Post ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10" />
+                  <button
+                    onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition"
+                    aria-label={`Remove photo ${i + 1}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {section === 'platform' && (
+        <div>
+          <label className="label">Select Platform</label>
+          <div className="flex flex-wrap gap-2">
+            {SOCIAL_PLATFORMS.map(p => (
+              <button key={p.id} onClick={() => setPlatform(p.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition ${platform === p.id ? 'bg-purple-700 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
+                {p.icon} {p.label}
+              </button>
+            ))}
+          </div>
+          {currentPlatform && (
+            <div className="mt-3 p-3 bg-ink-800/50 rounded-lg">
+              <p className="text-xs text-ink-400 mb-1">Platform Requirements:</p>
+              <p className="text-sm text-white">{currentPlatform.rules}</p>
+              <p className="text-xs text-ink-400 mt-2">Character limit: {currentPlatform.charLimit.toLocaleString()}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       <button onClick={generate} disabled={loading} className="btn btn-primary">
-        {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> Generate Post</>}
+        {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with Grok…</> : <><Sparkles className="w-4 h-4" /> Generate Post · ⚡{SOCIAL_POST_COST}</>}
       </button>
       {caption && (
         <div className="space-y-3">
@@ -1252,6 +1776,20 @@ function SocialTab() {
             value={caption} 
             onChange={e => setCaption(e.target.value)} 
           />
+          {/* Final post render: photo + caption as it will look live */}
+          <div className="rounded-xl border border-white/10 overflow-hidden bg-ink-900">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5 text-xs text-ink-400">
+              {currentPlatform?.icon} Post preview — {currentPlatform?.label}
+            </div>
+            {images[0] ? (
+              <img src={images[0]} alt="Post preview" className="w-full max-h-72 object-cover" />
+            ) : (
+              <div className="h-24 flex items-center justify-center text-ink-500 text-xs">
+                Add photos in the Photos tab to include imagery in the post
+              </div>
+            )}
+            <p className="p-4 text-sm text-white whitespace-pre-wrap">{caption}</p>
+          </div>
           <div className="flex gap-3">
             <CopyButton text={caption} className="btn btn-secondary" label="Copy to Clipboard" copiedLabel="Copied!" />
             <button onClick={() => setCaption('')} className="btn btn-ghost"><X className="w-4 h-4" /> Clear</button>
@@ -1282,6 +1820,9 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
   const [generating, setGenerating] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [photoDrag, setPhotoDrag] = useState(false);
+  const photosInputRef = useRef<HTMLInputElement>(null);
   const [lastRenderUrl, setLastRenderUrl] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState('');
   const [shareOpen, setShareOpen] = useState(false);
@@ -1298,6 +1839,50 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
   };
 
   const targetWords = calculateTargetWords(selectedConfig.duration);
+
+  // Photo upload: presigned browser → S3, keeps the public URLs the render
+  // worker expects (and that buildPromptRotation rotates through).
+  const handlePhotos = async (list: FileList | null) => {
+    if (!list || !list.length) return;
+    const room = selectedConfig.images - uploadedImages.length;
+    if (room <= 0) {
+      toast.error(`This configuration takes ${selectedConfig.images} images — remove one first`, 'Photo limit reached');
+      return;
+    }
+    const files = Array.from(list).slice(0, room);
+    setUploadingPhotos(true);
+    try {
+      const urls: string[] = [];
+      for (const file of files) {
+        const okType = file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|avif)$/i.test(file.name);
+        if (!okType) { toast.error(`${file.name} is not an image file`); continue; }
+        if (file.size > 25 * 1024 * 1024) { toast.error(`${file.name} is over 25MB`); continue; }
+        const contentType = file.type || 'image/jpeg';
+        const preRes = await fetch('/api/music?action=presign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user?.id, contentType }),
+        });
+        if (!preRes.ok) {
+          const d = await preRes.json().catch(() => ({}));
+          throw new Error(d.error || 'Upload authorisation failed');
+        }
+        const pre = await preRes.json();
+        const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+        if (!put.ok) throw new Error(`Upload failed for ${file.name}`);
+        urls.push(pre.publicUrl);
+      }
+      if (urls.length) {
+        setUploadedImages(prev => [...prev, ...urls].slice(0, selectedConfig.images));
+        toast.success(`${urls.length} photo${urls.length > 1 ? 's' : ''} uploaded`, 'Photos ready');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Photo upload failed');
+    } finally {
+      setUploadingPhotos(false);
+      if (photosInputRef.current) photosInputRef.current.value = '';
+    }
+  };
 
   // Reset config index when tier changes
   useEffect(() => {
@@ -1503,12 +2088,54 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
 
       {/* 2. Property Photos */}
       <div>
-        <label className="label">Property Photos (max {selectedConfig.images})</label>
-        <div className="border-2 border-dashed border-white/10 rounded-xl p-6 text-center">
-          <Image className="w-8 h-8 text-ink-400 mx-auto mb-2" />
-          <p className="text-ink-400 text-sm">Drop photos here or click to upload</p>
-          <p className="text-ink-500 text-xs mt-1">Select up to {selectedConfig.images} images for {selectedConfig.duration}s video</p>
+        <div className="flex items-center justify-between">
+          <label className="label">Property Photos ({uploadedImages.length} / {selectedConfig.images})</label>
+          {uploadedImages.length > 0 && (
+            <button onClick={() => setUploadedImages([])} className="text-xs text-ink-400 hover:text-red-400">Clear all</button>
+          )}
         </div>
+        <input
+          ref={photosInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="sr-only"
+          onChange={e => handlePhotos(e.target.files)}
+        />
+        <div
+          className={`border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer ${photoDrag ? 'border-purple-500 bg-purple-500/10' : 'border-white/10 hover:border-purple-500/30'}`}
+          onClick={() => photosInputRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); setPhotoDrag(true); }}
+          onDragLeave={() => setPhotoDrag(false)}
+          onDrop={e => { e.preventDefault(); e.stopPropagation(); setPhotoDrag(false); handlePhotos(e.dataTransfer.files); }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && photosInputRef.current?.click()}
+          aria-label="Upload property photos"
+        >
+          <Image className="w-8 h-8 text-ink-400 mx-auto mb-2" />
+          <p className="text-ink-400 text-sm">
+            {uploadingPhotos ? 'Uploading…' : uploadedImages.length ? 'Add more photos' : 'Drop photos here or click to upload'}
+          </p>
+          <p className="text-ink-500 text-xs mt-1">Up to {selectedConfig.images} images for {selectedConfig.duration}s video — JPEG/PNG/WEBP up to 25MB</p>
+        </div>
+        {uploadedImages.length > 0 && (
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mt-3">
+            {uploadedImages.map((src, i) => (
+              <div key={src} className="relative group">
+                <img src={src} alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10" />
+                <span className="absolute top-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">{i + 1}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); setUploadedImages(prev => prev.filter((_, idx) => idx !== i)); }}
+                  className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition"
+                  aria-label={`Remove photo ${i + 1}`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 3. Orientation */}
@@ -2240,6 +2867,20 @@ function OnboardingAndHelp() {
     window.addEventListener('propreel:show-help', show);
     return () => window.removeEventListener('propreel:show-help', show);
   }, []);
+
+  // Restart the tour on demand (e.g. "Start the tour" on the post-payment
+  // welcome card, or Help → Replay tour). Clears the seen-flag first so the
+  // state doesn't immediately re-close it.
+  useEffect(() => {
+    const restart = () => {
+      try {
+        if (user) localStorage.removeItem(`propreel:onboarded:${user.id || user.email}`);
+      } catch { /* ignore */ }
+      setShowOnboarding(true);
+    };
+    window.addEventListener('propreel:start-tour', restart);
+    return () => window.removeEventListener('propreel:start-tour', restart);
+  }, [user]);
 
   const completeOnboarding = () => {
     setShowOnboarding(false);

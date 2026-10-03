@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { X, ChevronRight, ChevronLeft, Check, Play, Image, Video, Sparkles, Zap } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { X, ChevronRight, ChevronLeft, Check, Zap, Image, Video, Sparkles, FileText, CreditCard, LayoutGrid, Camera, Users } from 'lucide-react';
 
 interface Step {
   id: string;
@@ -7,13 +8,22 @@ interface Step {
   description: string;
   icon: any;
   action?: string;
-  completed?: boolean;
 }
 
+/**
+ * Guided dashboard tour shown to first-time users (and on demand after a
+ * payment via the `propreel:start-tour` event).
+ *
+ * IMPORTANT: every navigation uses react-router (SPA). The previous version
+ * used `window.location.href`, which reloaded the page, remounted the tour at
+ * step 1, and trapped users in a 2-step loop.
+ */
 export default function OnboardingTutorial({ onComplete }: { onComplete?: () => void }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isOpen, setIsOpen] = useState(true);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Fires when the tour is finished or dismissed, so the parent can persist
   // the "seen" flag and unmount the tutorial.
@@ -25,49 +35,87 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
   const steps: Step[] = [
     {
       id: 'welcome',
-      title: 'Welcome to PropReel!',
-      description: 'Let\'s take a quick tour to help you get started with creating stunning property videos.',
-      icon: Sparkles
+      title: 'Welcome to PropReel! 🎉',
+      description: 'Your account is ready. Let\'s take a quick 60-second tour of your new dashboard — you can replay it any time from Help.',
+      icon: Sparkles,
     },
     {
-      id: 'create-project',
-      title: 'Create Your First Project',
-      description: 'Start by creating a new project. Add property details, photos, and let AI do the magic.',
-      icon: Video,
-      action: '/studio'
-    },
-    {
-      id: 'edit-photos',
-      title: 'Enhance Photos with AI',
-      description: 'Use our AI Photo Editor to enhance lighting, sky, and landscaping in seconds.',
-      icon: Image,
-      action: '/studio?tab=photo'
-    },
-    {
-      id: 'generate-video',
-      title: 'Generate Your First Video',
-      description: 'Create a cinematic property video with AI voiceover, transitions, and branding.',
-      icon: Video,
-      action: '/studio?tab=video'
-    },
-    {
-      id: 'share-social',
-      title: 'Share on Social Media',
-      description: 'Generate platform-specific captions for Instagram, Facebook, WhatsApp, and more.',
+      id: 'credits',
+      title: 'Your Credits Live Here',
+      description: 'Check your balance, top up, view every credit transaction, and set up auto-topup. Renders only cost credits when they succeed — failures are refunded automatically.',
       icon: Zap,
-      action: '/studio?tab=social'
+      action: '/dashboard/credits',
+    },
+    {
+      id: 'billing',
+      title: 'Billing & Plans',
+      description: 'Manage your subscription, buy credit bundles in ZAR, download invoices, and gift credits to your team.',
+      icon: CreditCard,
+      action: '/dashboard/billing',
+    },
+    {
+      id: 'studio',
+      title: 'The Studio — Where Content Is Made',
+      description: 'Every AI tool lives in the Studio: property descriptions, photo edits, videos, social posts and talking-head videos.',
+      icon: LayoutGrid,
+      action: '/studio',
+    },
+    {
+      id: 'description',
+      title: 'Grok Property Descriptions',
+      description: 'Type an address, confirm it on Google Maps, pick key features — Grok writes an amenities-rich listing description for 1 credit per render.',
+      icon: FileText,
+      action: '/studio?tab=description',
+    },
+    {
+      id: 'photo',
+      title: 'AI Photo Editor',
+      description: 'Upload a photo, pick a preset (day-to-dusk, sky fix, declutter…), and let AI enhance it — 2 credits per render.',
+      icon: Camera,
+      action: '/studio?tab=photo',
+    },
+    {
+      id: 'video',
+      title: 'Create Your Property Video',
+      description: 'Upload property photos, choose a tier and voice, then generate a cinematic video with AI voiceover.',
+      icon: Video,
+      action: '/studio?tab=video',
+    },
+    {
+      id: 'social',
+      title: 'Social Media Posts',
+      description: 'Fill in the property details (beds, baths, features, photos) and Grok writes platform-ready posts — 2 credits per post.',
+      icon: Image,
+      action: '/studio?tab=social',
+    },
+    {
+      id: 'team',
+      title: 'Grow With Your Agency',
+      description: 'On the Agency tab you can invite agents, share a credit pool, and track the whole team\'s usage.',
+      icon: Users,
+      action: '/dashboard/agency',
     },
     {
       id: 'complete',
       title: 'You\'re All Set!',
-      description: 'You\'re ready to create amazing property videos. Check out our advanced features anytime.',
-      icon: Check
-    }
+      description: 'Everything is ready — start with a photo edit or your first video. Reopen this tour any time from the Help button.',
+      icon: Check,
+    },
   ];
 
+  const goTo = (path?: string) => {
+    if (!path) return;
+    // SPA navigation keeps the tour state alive (a full page load would
+    // restart it from step 1 — the old "stuck on step 2" bug).
+    const [pathOnly] = path.split('?');
+    if (location.pathname + location.search !== path) navigate(path);
+  };
+
   const handleNext = () => {
+    const step = steps[currentStep];
+    setCompletedSteps(prev => (prev.includes(step.id) ? prev : [...prev, step.id]));
+    goTo(step.action);
     if (currentStep < steps.length - 1) {
-      setCompletedSteps([...completedSteps, steps[currentStep].id]);
       setCurrentStep(currentStep + 1);
     } else {
       finish();
@@ -75,23 +123,14 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
   };
 
   const handlePrevious = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleAction = () => {
-    const step = steps[currentStep];
-    if (step.action) {
-      window.location.href = step.action;
-    }
-    handleNext();
+    if (currentStep > 0) setCurrentStep(currentStep - 1);
   };
 
   if (!isOpen) return null;
 
   const currentStepData = steps[currentStep];
   const progress = ((currentStep + 1) / steps.length) * 100;
+  const isLast = currentStep === steps.length - 1;
 
   return (
     <>
@@ -132,14 +171,23 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
           </div>
 
           {/* Content */}
-          <div className="p-8">
+          <div className="p-8 min-h-[180px]">
             <p className="text-ink-300 text-lg leading-relaxed mb-6">
               {currentStepData.description}
             </p>
 
-            {/* Visual Guide */}
-            {currentStep === 0 && (
-              <div className="grid grid-cols-3 gap-4 mb-6">
+            {currentStepData.action && (
+              <div className="bg-ink-800/50 rounded-xl p-4 flex items-center gap-3">
+                <currentStepData.icon className="w-6 h-6 text-purple-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm text-white font-medium">Opening: <span className="text-purple-300 font-mono text-xs">{currentStepData.action}</span></p>
+                  <p className="text-xs text-ink-400 truncate">The page behind this card switches as you tap Next — the tour never restarts.</p>
+                </div>
+              </div>
+            )}
+
+            {!currentStepData.action && currentStep === 0 && (
+              <div className="grid grid-cols-3 gap-4">
                 <div className="bg-ink-800/50 rounded-xl p-4 text-center">
                   <Video className="w-8 h-8 text-purple-400 mx-auto mb-2" />
                   <p className="text-xs text-ink-300">Create Videos</p>
@@ -155,75 +203,15 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
               </div>
             )}
 
-            {currentStep === 1 && (
-              <div className="bg-ink-800/50 rounded-xl p-6 mb-6">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-16 h-16 rounded-xl bg-purple-700/20 flex items-center justify-center">
-                    <Video className="w-8 h-8 text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-white font-medium">Studio</p>
-                    <p className="text-sm text-ink-400">Your creative workspace</p>
-                  </div>
+            {isLast && (
+              <div className="bg-gradient-to-br from-purple-950/50 to-ink-900 rounded-xl p-6 border border-purple-500/20 text-center">
+                <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+                  <Check className="w-8 h-8 text-green-400" />
                 </div>
+                <p className="text-white font-medium mb-2">Tour Complete!</p>
                 <p className="text-sm text-ink-300">
-                  The Studio is where you'll create all your property marketing content. 
-                  From videos to photos to social media captions, everything is in one place.
+                  Your free credits are waiting in the top-right of your dashboard.
                 </p>
-              </div>
-            )}
-
-            {currentStep === 2 && (
-              <div className="bg-ink-800/50 rounded-xl p-6 mb-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="aspect-video rounded-lg bg-ink-700 flex items-center justify-center">
-                    <span className="text-ink-500 text-sm">Before</span>
-                  </div>
-                  <div className="aspect-video rounded-lg bg-gradient-to-br from-orange-900/50 to-purple-900/50 flex items-center justify-center">
-                    <span className="text-white text-sm">After ✨</span>
-                  </div>
-                </div>
-                <p className="text-sm text-ink-300 mt-4">
-                  Our AI Photo Editor can transform daylight photos into golden hour shots, 
-                  clear up skies, enhance landscaping, and more — all while preserving the property's architecture.
-                </p>
-              </div>
-            )}
-
-            {currentStep === 3 && (
-              <div className="bg-ink-800/50 rounded-xl p-6 mb-6">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-purple-700/20 flex items-center justify-center text-xs text-purple-400 font-bold">1</div>
-                    <span className="text-sm text-ink-300">Upload property photos</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-purple-700/20 flex items-center justify-center text-xs text-purple-400 font-bold">2</div>
-                    <span className="text-sm text-ink-300">Choose video tier and style</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-purple-700/20 flex items-center justify-center text-xs text-purple-400 font-bold">3</div>
-                    <span className="text-sm text-ink-300">Select AI voice for narration</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-purple-700/20 flex items-center justify-center text-xs text-purple-400 font-bold">4</div>
-                    <span className="text-sm text-ink-300">Generate cinematic video</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentStep === 5 && (
-              <div className="bg-gradient-to-br from-purple-950/50 to-ink-900 rounded-xl p-6 mb-6 border border-purple-500/20">
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
-                    <Check className="w-8 h-8 text-green-400" />
-                  </div>
-                  <p className="text-white font-medium mb-2">Tutorial Complete!</p>
-                  <p className="text-sm text-ink-300">
-                    You now have 5 free credits to start creating. Explore all features at your own pace.
-                  </p>
-                </div>
               </div>
             )}
           </div>
@@ -253,21 +241,12 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
               ))}
             </div>
 
-            {currentStepData.action ? (
-              <button
-                onClick={handleAction}
-                className="btn btn-primary gap-2"
-              >
-                {currentStep === steps.length - 1 ? 'Finish' : 'Try It'} <ChevronRight className="w-4 h-4" />
-              </button>
-            ) : (
-              <button
-                onClick={handleNext}
-                className="btn btn-primary gap-2"
-              >
-                {currentStep === steps.length - 1 ? 'Finish' : 'Next'} <ChevronRight className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              onClick={handleNext}
+              className="btn btn-primary gap-2"
+            >
+              {isLast ? 'Finish' : 'Next'} <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>

@@ -150,12 +150,16 @@ export const PropReelAPI = {
     };
   },
 
-  // ── AI text generation (fal-ai/any-llm via Modal) ───────────────────────
-  async generateText(kind: 'description' | 'social_caption' | 'video_script', fields: Record<string, any>): Promise<string> {
+  // ── AI text generation (Grok via Modal's OpenRouter route) ──────────────
+  async generateText(
+    kind: 'description' | 'social_caption' | 'video_script',
+    fields: Record<string, any>,
+    images: string[] = []
+  ): Promise<string> {
     const res = await fetch(`${MODAL_ENDPOINT}/generate_text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind, fields }),
+      body: JSON.stringify({ kind, fields, images }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({} as any));

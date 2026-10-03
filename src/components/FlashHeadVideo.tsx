@@ -33,6 +33,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
   const { generate, busy, stage, error, setError, jobStatus, cost } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [script, setScript] = useState(initialScript);
   const [voice, setVoice] = useState('Aria');
   const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -49,7 +50,8 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
 
   const pick = (f: File | null) => {
     if (!f) return;
-    if (!f.type.startsWith('image/')) { setError('Please upload an image file'); return; }
+    const looksImage = f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|avif|bmp|gif)$/i.test(f.name);
+    if (!looksImage) { setError('Please upload an image file'); return; }
     if (f.size > 25 * 1024 * 1024) { setError('Image must be under 25MB'); return; }
     setFile(f);
     setResultUrl(null);
@@ -95,19 +97,36 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
         <div>
           <label className="label">Your profile picture</label>
           {!preview ? (
-            <div
-              className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center hover:border-purple-500/30 transition cursor-pointer"
-              onClick={() => inputRef.current?.click()}
-              role="button"
-              tabIndex={0}
-              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
-              aria-label="Upload profile picture"
-            >
-              <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => pick(e.target.files?.[0] || null)} />
-              <User className="w-8 h-8 text-ink-400 mx-auto mb-2" />
-              <p className="text-ink-400 text-sm">Drop a headshot here or click to upload</p>
-              <p className="text-ink-500 text-xs mt-1">Front-facing portrait, good lighting — JPEG/PNG up to 25MB</p>
-            </div>
+            <>
+              {/* Kept outside the clickable zone — see ImageWorkbench */}
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={e => { pick(e.target.files?.[0] || null); e.target.value = ''; }}
+              />
+              <div
+                className={`border-2 border-dashed rounded-xl p-8 text-center transition cursor-pointer ${dragging ? 'border-purple-500 bg-purple-500/10' : 'border-white/10 hover:border-purple-500/30'}`}
+                onClick={() => inputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragging(false);
+                  pick(e.dataTransfer.files?.[0] || null);
+                }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+                aria-label="Upload profile picture"
+              >
+                <User className="w-8 h-8 text-ink-400 mx-auto mb-2" />
+                <p className="text-ink-400 text-sm">Drop a headshot here or click to upload</p>
+                <p className="text-ink-500 text-xs mt-1">Front-facing portrait, good lighting — JPEG/PNG up to 25MB</p>
+              </div>
+            </>
           ) : (
             <div className="relative">
               <img src={preview} alt="Profile" className="w-full max-w-[280px] aspect-square object-cover rounded-xl border border-white/10" />
@@ -181,16 +200,6 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
         </div>
       )}
 
-      {/* How it works */}
-      <div className="bg-ink-800/50 rounded-xl p-4">
-        <h4 className="font-semibold text-white text-sm mb-2 flex items-center gap-2"><Camera className="w-4 h-4 text-purple-400" /> How it works</h4>
-        <ol className="space-y-1.5 text-xs text-ink-300">
-          <li>1. Your headshot and script go to FlashHead (fal-ai/flashhead) via our secure render worker</li>
-          <li>2. The AI generates a lip-synced talking-head video speaking your script</li>
-          <li>3. The finished MP4 is stored in AWS S3 and stays available for download</li>
-          <li>4. Use it standalone or attach it in the Video Generator tab's "AI Talking Profile" option</li>
-        </ol>
-      </div>
     </div>
   );
 }

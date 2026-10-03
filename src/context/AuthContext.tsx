@@ -86,7 +86,7 @@ interface CreditContextType {
   isAgencyOwner: boolean;
   lowCreditWarning: 'none' | 'info' | 'warning' | 'critical';
   login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterData) => Promise<{ needsConfirmation: boolean }>;
   loginWithGoogle: (redirectTo?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -106,6 +106,8 @@ export interface RegisterData {
   password: string;
   fullName: string;
   phone?: string;
+  /** Where the "confirm your email" link should land (e.g. the payment page) */
+  emailRedirectTo?: string;
   agencyName?: string;
   planId: PlanId;
   cycle: BillingCycle;
@@ -235,8 +237,10 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }, []);
 
-  const register = useCallback(async (data: RegisterData) => {
-    // Register with Supabase auth
+  const register = useCallback(async (data: RegisterData): Promise<{ needsConfirmation: boolean }> => {
+    // Register with Supabase auth. When the project requires email
+    // confirmation (mailer_autoconfirm=false) signUp returns NO session —
+    // callers must not assume the user is signed in yet.
     const { error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
@@ -246,14 +250,17 @@ export function CreditProvider({ children }: { children: ReactNode }) {
           plan_id: data.planId,
           agency_name: data.agencyName,
         },
+        emailRedirectTo: data.emailRedirectTo,
       },
     });
     if (error) throw error;
 
     // Create user in backend
+    let hasSession = false;
     try {
       const { data: authData } = await supabase.auth.getSession();
       if (authData.session?.user) {
+        hasSession = true;
         await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -261,6 +268,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
             supabaseUserId: authData.session.user.id,
             email: data.email,
             fullName: data.fullName,
+            phone: data.phone,
             role: 'AGENT',
             agencyName: data.agencyName,
             planId: data.planId,
@@ -289,6 +297,8 @@ export function CreditProvider({ children }: { children: ReactNode }) {
         console.error('Referral apply failed (non-critical):', refError);
       }
     }
+
+    return { needsConfirmation: !hasSession };
   }, []);
 
   const loginWithGoogle = useCallback(async (redirectTo?: string) => {

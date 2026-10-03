@@ -4,8 +4,14 @@ export function cn(...inputs: ClassValue[]) {
   return inputs.filter(Boolean).join(' ');
 }
 
+// ZAR with the decimal system (cents): R 129,00 / R 12 500 000,00
 export const formatZar = (n: number) =>
-  new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(n || 0);
+  new Intl.NumberFormat('en-ZA', {
+    style: 'currency',
+    currency: 'ZAR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n || 0);
 
 export const formatDate = (d: string | Date) => {
   if (!d) return '—';

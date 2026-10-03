@@ -580,7 +580,7 @@ async function adminLedger(req: VercelRequest, res: VercelResponse) {
  * POST   /api/users             → create or update user after OAuth/signup
  *
  * Body (POST):
- *   supabaseUserId, email, fullName, role?, agencyName?, planId?, cycle?
+ *   supabaseUserId, email, fullName, phone?, role?, agencyName?, planId?, cycle?
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Nested routes (function consolidation)
@@ -630,6 +630,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       supabaseUserId,
       email,
       fullName,
+      phone = null,
       role = 'AGENT',
       agencyName = null,
       planId = null,
@@ -677,6 +678,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const profileUpdates: Record<string, any> = { fullName, email: normalizedEmail };
       if (supabaseUserId) profileUpdates.supabaseUserId = supabaseUserId;
       if (agencyName) profileUpdates.agencyName = agencyName;
+      if (phone) profileUpdates.phone = phone;
       await updateUser(provisioned.id, profileUpdates);
 
       if (!created) {

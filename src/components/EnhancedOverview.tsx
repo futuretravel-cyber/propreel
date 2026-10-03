@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatZar, formatRelative } from '../lib/utils';
 import { PropReelAPI, Project, CreditReportData } from '../lib/api';
@@ -8,6 +8,7 @@ import UpgradeToProCTA from './UpgradeToProCTA';
 import {
   Video, Zap, List, Clock, ArrowUpRight, Activity,
   BarChart3, PieChart as PieIcon, ChevronRight, Loader2, Image as ImageIcon,
+  Sparkles, X, FileText, Camera,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -36,6 +37,16 @@ export default function EnhancedOverview() {
   const [report, setReport] = useState<CreditReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [chartPeriod, setChartPeriod] = useState<'daily' | 'monthly'>('daily');
+  // Post-payment welcome: PaymentPage lands here as /dashboard?welcome=1
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showWelcome, setShowWelcome] = useState(() => searchParams.get('welcome') === '1');
+
+  const dismissWelcome = () => {
+    setShowWelcome(false);
+    const next = new URLSearchParams(searchParams);
+    next.delete('welcome');
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     if (!user?.id) return;
@@ -107,6 +118,32 @@ export default function EnhancedOverview() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* ── Post-payment welcome message (PaymentPage → /dashboard?welcome=1) ── */}
+      {showWelcome && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="card-dark p-8 max-w-lg w-full text-center animate-scale-in relative">
+            <button onClick={dismissWelcome} aria-label="Close welcome" className="absolute top-4 right-4 text-ink-400 hover:text-white p-1"><X className="w-5 h-5" /></button>
+            <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4"><Sparkles className="w-8 h-8 text-purple-400" /></div>
+            <h2 className="text-2xl font-bold text-white mb-2">Welcome to PropReel, {user?.fullName?.split(' ')[0] || 'Agent'}! 🎉</h2>
+            <p className="text-ink-400 mb-5">
+              Your {planName || 'PropReel'} account is active with <span className="text-white font-semibold">{balance.total} credits</span> ready to spend.
+            </p>
+            <div className="grid grid-cols-3 gap-3 mb-6 text-left">
+              <div className="bg-ink-800/50 rounded-xl p-3"><FileText className="w-4 h-4 text-purple-400 mb-1" /><p className="text-xs text-ink-300">Grok description</p><p className="text-xs font-bold text-purple-300">⚡1 / render</p></div>
+              <div className="bg-ink-800/50 rounded-xl p-3"><Camera className="w-4 h-4 text-purple-400 mb-1" /><p className="text-xs text-ink-300">Photo edit</p><p className="text-xs font-bold text-purple-300">⚡2 / render</p></div>
+              <div className="bg-ink-800/50 rounded-xl p-3"><Zap className="w-4 h-4 text-purple-400 mb-1" /><p className="text-xs text-ink-300">Social post</p><p className="text-xs font-bold text-purple-300">⚡2 / post</p></div>
+            </div>
+            <button
+              onClick={() => { dismissWelcome(); window.dispatchEvent(new Event('propreel:start-tour')); }}
+              className="btn btn-primary w-full mb-3"
+            >
+              Start the 60-second dashboard tour
+            </button>
+            <button onClick={dismissWelcome} className="btn w-full">Explore on my own</button>
+          </div>
+        </div>
+      )}
+
       {/* Welcome */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -126,6 +163,28 @@ export default function EnhancedOverview() {
         <StatCard label="Video Renders" value={loading ? '…' : stats.videoRenders} sub="last 30 days (ledger)" icon={<Video className="w-4 h-4 text-purple-400" />} accent="text-white" />
         <StatCard label="Credits Used" value={loading ? '…' : report?.totalUsed ?? 0} sub="last 30 days" icon={<Activity className="w-4 h-4 text-green-400" />} accent="text-white" />
         <StatCard label="Credits Remaining" value={balance.personal} sub={planName ? `${planName} plan` : 'no active plan'} icon={<Zap className="w-4 h-4 text-yellow-400" />} accent="text-white" />
+      </div>
+
+      {/* Credit cost cheat-sheet — what each AI tool costs */}
+      <div className="card-dark p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-white flex items-center gap-2"><Zap className="w-4 h-4 text-yellow-400" /> What things cost</h3>
+          <span className="text-xs text-ink-500">failed renders are refunded automatically</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {[
+            { label: 'Grok Property Description', cost: '⚡1 / render' },
+            { label: 'Social Media Post', cost: '⚡2 / post' },
+            { label: 'Photo Edit / Staging', cost: '⚡2 / render' },
+            { label: 'Talking Head Video', cost: '⚡8 / render' },
+            { label: 'Property Video', cost: '⚡ by tier' },
+          ].map(c => (
+            <div key={c.label} className="bg-ink-800/50 rounded-xl p-3">
+              <p className="text-xs text-ink-300">{c.label}</p>
+              <p className="text-sm font-bold text-purple-300 mt-1">{c.cost}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Charts Row */}

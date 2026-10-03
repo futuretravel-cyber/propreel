@@ -18,10 +18,11 @@ interface ImageWorkbenchProps {
  * Upload → render → before/after workbench shared by all four image tools.
  * Renders via Modal (fal-ai/flux/dev/image-to-image) and deducts 2 credits.
  */
-export default function ImageWorkbench({ presetId, strength, guidanceScale, customPrompt, ctaLabel, emptyHint }: ImageWorkbenchProps) {
+export default function ImageWorkbench({ presetId, strength, guidanceScale, customPrompt, ctaLabel, emptyHint, accept = 'image/*' }: ImageWorkbenchProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { edit, busy, stage, error, setError } = useImageEdit();
   // Elapsed-vs-typical progress for the ~30s FLUX edit
@@ -29,7 +30,9 @@ export default function ImageWorkbench({ presetId, strength, guidanceScale, cust
 
   const pick = (f: File | null) => {
     if (!f) return;
-    if (!f.type.startsWith('image/')) { setError('Please upload an image file'); return; }
+    // Some Windows files carry an empty/odd MIME type — fall back to extension
+    const looksImage = f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|avif|bmp|gif)$/i.test(f.name);
+    if (!looksImage) { setError('Please upload an image file'); return; }
     if (f.size > 25 * 1024 * 1024) { setError('Image must be under 25MB'); return; }
     setFile(f);
     setResultUrl(null);
@@ -58,19 +61,38 @@ export default function ImageWorkbench({ presetId, strength, guidanceScale, cust
   return (
     <div className="space-y-4">
       {!preview ? (
-        <div
-          className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center hover:border-purple-500/30 transition cursor-pointer"
-          onClick={() => inputRef.current?.click()}
-          role="button"
-          tabIndex={0}
-          onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
-          aria-label="Upload image"
-        >
-          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => pick(e.target.files?.[0] || null)} />
-          <Camera className="w-8 h-8 text-ink-400 mx-auto mb-2" />
-          <p className="text-ink-400 text-sm">Drop image here or click to upload</p>
-          <p className="text-ink-500 text-xs mt-1">{emptyHint}</p>
-        </div>
+        <>
+          {/* The input lives OUTSIDE the clickable zone: nesting it inside
+              re-dispatches its click back up to the zone's handler, which
+              some browsers swallow (button appears dead). */}
+          <input
+            ref={inputRef}
+            type="file"
+            accept={accept}
+            className="sr-only"
+            onChange={e => { pick(e.target.files?.[0] || null); e.target.value = ''; }}
+          />
+          <div
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition cursor-pointer ${dragging ? 'border-purple-500 bg-purple-500/10' : 'border-white/10 hover:border-purple-500/30'}`}
+            onClick={() => inputRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDragging(false);
+              pick(e.dataTransfer.files?.[0] || null);
+            }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+            aria-label="Upload image"
+          >
+            <Camera className="w-8 h-8 text-ink-400 mx-auto mb-2" />
+            <p className="text-ink-400 text-sm">Drop image here or click to upload</p>
+            <p className="text-ink-500 text-xs mt-1">{emptyHint}</p>
+          </div>
+        </>
       ) : (
         <div className="grid grid-cols-2 gap-3">
           <div>
