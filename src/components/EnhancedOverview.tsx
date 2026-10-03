@@ -46,6 +46,14 @@ export default function EnhancedOverview() {
     const next = new URLSearchParams(searchParams);
     next.delete('welcome');
     setSearchParams(next, { replace: true });
+    // Closing the welcome card (or "Explore on my own") also opts out of the
+    // dashboard auto-tour — don't stack a second modal right after. The tour
+    // stays reachable from the welcome card's button and Help → Replay tour
+    // (both dispatch `propreel:start-tour`, which clears this flag).
+    try {
+      const id = user?.id || user?.email;
+      if (id) localStorage.setItem(`propreel:onboarded:${id}`, '1');
+    } catch { /* ignore */ }
   };
 
   useEffect(() => {

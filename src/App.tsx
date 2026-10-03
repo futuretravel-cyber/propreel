@@ -2847,11 +2847,18 @@ function ShortcutsHelpListener() {
 // First-time user onboarding + reusable Help Centre entry point
 function OnboardingAndHelp() {
   const { user, loading } = useAuth();
+  const location = useLocation();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     if (loading || !user) return;
+    // Auto-start only on the dashboard: the tour describes the dashboard, and
+    // a fresh signup lands on the payment page first — the tour must never
+    // hijack checkout. The post-payment welcome card (and Help → Replay tour)
+    // start it explicitly via the `propreel:start-tour` event.
+    if (!location.pathname.startsWith('/dashboard')) return;
+    if (new URLSearchParams(location.search).get('welcome') === '1') return; // welcome card owns the screen
     try {
       const key = `propreel:onboarded:${user.id || user.email}`;
       if (!localStorage.getItem(key)) {
@@ -2860,7 +2867,7 @@ function OnboardingAndHelp() {
     } catch {
       // localStorage unavailable (private mode) — skip onboarding
     }
-  }, [user, loading]);
+  }, [user, loading, location.pathname, location.search]);
 
   useEffect(() => {
     const show = () => setShowHelp(true);
