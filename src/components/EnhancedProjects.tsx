@@ -9,6 +9,7 @@ import {
   Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2, Mic, Video, Download,
 } from 'lucide-react';
 import { VideoLightbox } from './PropertyListings';
+import { queueVideoRender } from '../lib/videoPrefill';
 
 interface Folder {
   id: string;
@@ -498,6 +499,15 @@ export default function EnhancedProjects() {
                           title="Watch the rendered video"
                         >
                           <Share2 className="w-3 h-3" /> Video
+                        </button>
+                      )}
+                      {(!p.videoUrl || p.status !== 'READY') && (
+                        <button
+                          onClick={() => { queueVideoRender({ images: p.photos || [], script: p.description || '', title: p.title }); navigate('/studio?tab=video'); }}
+                          className="flex-1 btn btn-ghost text-xs py-1.5 text-purple-300 hover:text-purple-200"
+                          title="Auto-format this project's photos into a video render, using its description as the voiceover"
+                        >
+                          <Video className="w-3 h-3" /> Render
                         </button>
                       )}
                       <button onClick={() => deleteProjects([p.id])} className="flex-1 btn btn-ghost text-xs py-1.5 text-red-400 hover:text-red-300" title="Delete project">

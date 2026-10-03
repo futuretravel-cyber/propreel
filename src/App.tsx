@@ -38,8 +38,9 @@ import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
 import RenderProgressBar from './components/RenderProgressBar';
 import EnhancedProjects from './components/EnhancedProjects';
-import PropertyListings, { NewListingPage } from './components/PropertyListings';
+import PropertyListings, { NewListingPage, PROVINCES, PROPERTY_TYPES } from './components/PropertyListings';
 import AgentBranding from './components/AgentBranding';
+import { queueVideoRender, takeVideoRender } from './lib/videoPrefill';
 import SecuritySettings from './components/SecuritySettings';
 import AITalkingProfile from './components/AITalkingProfile';
 import AdminMusicLibrary from './components/AdminMusicLibrary';
@@ -603,10 +604,10 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Overview' },
+    { path: '/studio', icon: <Video className="w-5 h-5" />, label: 'Studio' },
     { path: '/dashboard/credits', icon: <Zap className="w-5 h-5" />, label: 'Credits' },
     { path: '/dashboard/listings', icon: <List className="w-5 h-5" />, label: 'Listings' },
     { path: '/dashboard/projects', icon: <FolderOpen className="w-5 h-5" />, label: 'My Projects' },
-    { path: '/studio', icon: <Video className="w-5 h-5" />, label: 'Studio' },
     { path: '/dashboard/branding', icon: <Palette className="w-5 h-5" />, label: 'Agent Branding' },
     { path: '/dashboard/analytics', icon: <BarChart3 className="w-5 h-5" />, label: 'Analytics' },
     { path: '/dashboard/billing', icon: <CreditCard className="w-5 h-5" />, label: 'Billing' },
@@ -899,6 +900,17 @@ function StudioPageInner() {
   };
   // Shared voiceover script: the Video tab generates it, FlashHead speaks it
   const [sharedScript, setSharedScript] = useState('');
+  // Photos + script handed over from a listing card, a project card or the
+  // Property Description tab (queued via src/lib/videoPrefill.ts).
+  const [prefillImages, setPrefillImages] = useState<string[]>([]);
+  useEffect(() => {
+    if (tab !== 'video') return;
+    const pf = takeVideoRender();
+    if (!pf) return;
+    if (pf.script) setSharedScript(pf.script);
+    if (pf.images && pf.images.length) setPrefillImages(pf.images);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const tabs = [
     { id: 'description', label: 'Description', icon: <FileText className="w-4 h-4" />, cost: 1 },
     { id: 'photo', label: 'Photo Editor', icon: <Camera className="w-4 h-4" />, cost: 2 },
@@ -926,7 +938,7 @@ function StudioPageInner() {
         </Link>
       </div>
       {/* Tab Navigation */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+      <div className="flex flex-wrap gap-2 pb-2">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 ${tab === t.id ? 'tab-pill tab-pill-active' : 'tab-pill'}`}>
             {t.icon} <span className="hidden sm:inline">{t.label}</span>
@@ -942,7 +954,7 @@ function StudioPageInner() {
         {tab === 'removal' && <RemovalTab />}
         {tab === 'twilight' && <TwilightTab />}
         {tab === 'social' && <SocialTab />}
-        {tab === 'video' && <VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} />}
+        {tab === 'video' && <VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} />}
         {tab === 'flashhead' && <FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} />}
       </div>
     </div>
@@ -969,11 +981,12 @@ const SOCIAL_POST_COST = 2; // ⚡ per social media post render (Grok AI)
 
 function DescriptionTab() {
   const toast = useToast();
+  const navigate = useNavigate();
   const { user, deductCredits, addCredits } = useCredit();
   const [tone, setTone] = useState('Professional');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
-  const [fields, setFields] = useState({ address: '', price: '', bedrooms: '', bathrooms: '', garages: '', propertyType: '', extraFeatures: '' });
+  const [fields, setFields] = useState({ address: '', province: 'Western Cape', price: '', bedrooms: '', bathrooms: '', garages: '', propertyType: 'House', erf: '', floor: '', extraFeatures: '' });
   const setField = (k: string) => (e: any) => setFields(f => ({ ...f, [k]: e.target.value }));
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
   const toggleFeature = (f: string) =>
@@ -1028,7 +1041,7 @@ function DescriptionTab() {
     try {
       const urls = await uploadImagesForAI(list, user?.id, 4 - images.length);
       setImages(prev => [...prev, ...urls]);
-      toast.success(`${urls.length} photo${urls.length > 1 ? 's' : ''} uploaded — Grok will describe them`, 'Photos ready');
+      toast.success(`${urls.length} photo${urls.length > 1 ? 's' : ''} uploaded — AI will describe them`, 'Photos ready');
     } catch (e: any) {
       toast.error(e.message || 'Photo upload failed');
     } finally {
@@ -1068,6 +1081,9 @@ function DescriptionTab() {
           bathrooms: fields.bathrooms,
           garages: fields.garages,
           propertyType: fields.propertyType,
+          province: fields.province,
+          erf_size_m2: fields.erf,
+          floor_size_m2: fields.floor,
           key_features: selectedFeatures.join(', '),
           extra_features: fields.extraFeatures,
           location: geo ? `${geo.display} (latitude ${geo.lat.toFixed(5)}, longitude ${geo.lon.toFixed(5)})` : '',
@@ -1078,7 +1094,7 @@ function DescriptionTab() {
         images
       );
       setDescription(text.trim());
-      toast.success('Description generated', 'Grok AI');
+      toast.success('Description generated', 'AI');
     } catch (e: any) {
       if (charged) await addCredits(cost, 'refund', 'Refund — failed property description').catch(() => {});
       toast.error(e.message ? `${e.message} — your credit was refunded` : 'Description generation failed — your credit was refunded');
@@ -1091,14 +1107,14 @@ function DescriptionTab() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="w-5 h-5 text-purple-400" /> Property Description</h2>
-        <span className="badge badge-brand" title="Charged only when a render succeeds"><Zap className="w-3 h-3" /> ⚡{DESCRIPTION_RENDER_COST} credit per render · Grok AI</span>
+        <span className="badge badge-brand" title="Charged only when a render succeeds"><Zap className="w-3 h-3" /> ⚡{DESCRIPTION_RENDER_COST} credit per render · AI</span>
       </div>
 
       {/* Address + Google Maps confirmation */}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
         <div><label className="label">Address</label><input className="input" value={fields.address} onChange={setField('address')} placeholder="15 Vineyard Road, Constantia" /></div>
         <button onClick={findLocation} disabled={locating} className="btn btn-secondary h-[42px]">
-          {locating ? <><RefreshCw className="w-4 h-4 animate-spin" /> Finding…</> : <><MapPin className="w-4 h-4" /> Find on map</>}
+          {locating ? <><RefreshCw className="w-4 h-4 animate-spin" /> Verifying…</> : <><MapPin className="w-4 h-4" /> Verify Address</>}
         </button>
       </div>
 
@@ -1138,10 +1154,24 @@ function DescriptionTab() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div><label className="label">Price (ZAR)</label><input className="input" value={fields.price} onChange={setField('price')} placeholder="R12 500 000,00" inputMode="decimal" /></div>
-        <div><label className="label">Property Type</label><input className="input" value={fields.propertyType} onChange={setField('propertyType')} placeholder="House" /></div>
+        <div>
+          <label className="label">Property Type</label>
+          <select className="input" value={fields.propertyType} onChange={setField('propertyType')} aria-label="Property Type">
+            {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Province</label>
+          <select className="input" value={fields.province} onChange={setField('province')} aria-label="Province">
+            <option value="">Select province…</option>
+            {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
         <div><label className="label">Bedrooms</label><input className="input" type="number" value={fields.bedrooms} onChange={setField('bedrooms')} placeholder="5" /></div>
         <div><label className="label">Bathrooms</label><input className="input" type="number" value={fields.bathrooms} onChange={setField('bathrooms')} placeholder="4" /></div>
         <div><label className="label">Garages</label><input className="input" type="number" value={fields.garages} onChange={setField('garages')} placeholder="3" /></div>
+        <div><label className="label">Erf Size (m²)</label><input className="input" type="number" value={fields.erf} onChange={setField('erf')} placeholder="600" /></div>
+        <div><label className="label">Floor Size (m²)</label><input className="input" type="number" value={fields.floor} onChange={setField('floor')} placeholder="280" /></div>
       </div>
 
       <div>
@@ -1158,9 +1188,9 @@ function DescriptionTab() {
         <input className="input" value={fields.extraFeatures} onChange={setField('extraFeatures')} placeholder="gas stove, walk-in pantry, skyline views" />
       </div>
 
-      {/* Photos for Grok to describe */}
+      {/* Photos for AI to describe */}
       <div>
-        <label className="label">Photos for Grok to describe ({images.length} / 4)</label>
+        <label className="label">Photos for AI to describe ({images.length} / 4)</label>
         <input
           ref={imagesInputRef}
           type="file"
@@ -1179,7 +1209,7 @@ function DescriptionTab() {
         >
           <Image className="w-7 h-7 text-ink-400 mx-auto mb-2" />
           <p className="text-ink-400 text-sm">{uploading ? 'Uploading…' : 'Drop photos here or click to upload'}</p>
-          <p className="text-ink-500 text-xs mt-1">Grok describes what it sees — up to 4 images</p>
+          <p className="text-ink-500 text-xs mt-1">AI describes what it sees — up to 4 images</p>
         </div>
         {images.length > 0 && (
           <div className="grid grid-cols-4 gap-3 mt-3">
@@ -1211,14 +1241,21 @@ function DescriptionTab() {
       </div>
 
       <button onClick={generate} disabled={loading} className="btn btn-primary">
-        {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with Grok…</> : <><Sparkles className="w-4 h-4" /> Generate Description · ⚡{DESCRIPTION_RENDER_COST}</>}
+        {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with AI…</> : <><Sparkles className="w-4 h-4" /> Generate Description · ⚡{DESCRIPTION_RENDER_COST}</>}
       </button>
 
       {description && (
         <div className="space-y-3">
           <label className="label">Generated Description</label>
           <textarea className="input min-h-[200px]" value={description} onChange={e => setDescription(e.target.value)} />
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => { queueVideoRender({ images, script: description }); navigate('/studio?tab=video'); }}
+              className="btn btn-primary"
+              title="Auto-format these photos into a video render with this description as the voiceover"
+            >
+              <Video className="w-4 h-4" /> Render as video
+            </button>
             <button onClick={() => downloadText('description-property24.txt', description)} className="btn btn-secondary"><Download className="w-4 h-4" /> Download for Property24</button>
             <button onClick={() => downloadText('description-privateproperty.txt', description)} className="btn btn-secondary"><Download className="w-4 h-4" /> Download for Private Property</button>
             <CopyButton text={description} className="btn btn-ghost" label="Copy" />
@@ -1542,7 +1579,7 @@ function SocialTab() {
         images
       );
       setCaption(text.trim().replace(/^"|"$/g, ''));
-      toast.success('Post generated', 'Grok AI · ⚡' + cost + ' credits');
+      toast.success('Post generated', 'AI · ⚡' + cost + ' credits');
     } catch (e: any) {
       if (charged) await addCredits(cost, 'refund', 'Refund — failed social media post').catch(() => {});
       toast.error(e.message ? `${e.message} — your credits were refunded` : 'Caption generation failed — your credits were refunded');
@@ -1565,7 +1602,7 @@ function SocialTab() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-white flex items-center gap-2"><Share2 className="w-5 h-5 text-purple-400" /> Social Media Post Generator</h2>
-        <span className="badge badge-brand" title="Charged only when a render succeeds"><Zap className="w-3 h-3" /> ⚡{SOCIAL_POST_COST} credits per post · Grok AI</span>
+        <span className="badge badge-brand" title="Charged only when a render succeeds"><Zap className="w-3 h-3" /> ⚡{SOCIAL_POST_COST} credits per post · AI</span>
       </div>
 
       {/* Detail sections */}
@@ -1633,7 +1670,7 @@ function SocialTab() {
           >
             <Image className="w-7 h-7 text-ink-400 mx-auto mb-2" />
             <p className="text-ink-400 text-sm">{uploading ? 'Uploading…' : 'Drop photos here or click to upload'}</p>
-            <p className="text-ink-500 text-xs mt-1">Photos are shown in the final post and described by Grok</p>
+            <p className="text-ink-500 text-xs mt-1">Photos are shown in the final post and described by AI</p>
           </div>
           {images.length > 0 && (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mt-3">
@@ -1675,7 +1712,7 @@ function SocialTab() {
       )}
 
       <button onClick={generate} disabled={loading} className="btn btn-primary">
-        {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with Grok…</> : <><Sparkles className="w-4 h-4" /> Generate Post · ⚡{SOCIAL_POST_COST}</>}
+        {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with AI…</> : <><Sparkles className="w-4 h-4" /> Generate Post · ⚡{SOCIAL_POST_COST}</>}
       </button>
       {caption && (
         <div className="space-y-3">
@@ -1724,7 +1761,7 @@ function SocialTab() {
 
 const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
-function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void }) {
+function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages = [] }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void; initialImages?: string[] }) {
   const { user, deductCredits, addCredits } = useCredit();
   const toast = useToast();
   const [tier, setTier] = useState('SOCIAL');
@@ -1748,6 +1785,12 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
   const [generating, setGenerating] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  // Prefilled photos (listing / project / description hand-off). Runs after
+  // mount too, because the Studio consumes the queue in its own effect.
+  useEffect(() => {
+    if (initialImages.length) setUploadedImages(initialImages.slice(0, 12));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialImages]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [photoDrag, setPhotoDrag] = useState(false);
   const photosInputRef = useRef<HTMLInputElement>(null);

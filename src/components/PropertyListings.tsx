@@ -18,6 +18,7 @@ import {
   ChevronRight, Loader2, Wand2, FileText, ArrowRight,
 } from 'lucide-react';
 import { useCredit } from '../context/AuthContext';
+import { queueVideoRender } from '../lib/videoPrefill';
 import { useToast } from '../context/ToastContext';
 import { PropReelAPI, type Project } from '../lib/api';
 import { formatZar, downloadText } from '../lib/utils';
@@ -25,13 +26,14 @@ import { TONES } from '../lib/constants';
 import FeatureChips from './FeatureChips';
 import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from '../lib/propertyListing';
 
-const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (Grok AI) — parity with the Studio
+const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (AI) — parity with the Studio
+const NEW_LISTING_COST = 2; // ⚡ charged server-side when a listing is saved
 
-const PROVINCES = [
+export const PROVINCES = [
   'Western Cape', 'Eastern Cape', 'Northern Cape', 'Free State', 'Gauteng',
   'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West',
 ];
-const PROPERTY_TYPES = ['House', 'Apartment', 'Townhouse', 'Vacant Land', 'Farm', 'Commercial', 'Industrial'];
+export const PROPERTY_TYPES = ['House', 'Apartment', 'Townhouse', 'Vacant Land', 'Farm', 'Commercial', 'Industrial'];
 
 const TONE_BLURBS: Record<string, string> = {
   Professional: 'Clear, factual and authoritative. Ideal for corporate buyers.',
@@ -209,7 +211,7 @@ const emptyDraft: DraftDetails = {
 const STEPS = ['Property Details', 'Photos', 'Description', 'Export'];
 
 export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const { user, deductCredits, addCredits } = useCredit();
+  const { user, deductCredits, addCredits, refresh } = useCredit();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -311,7 +313,7 @@ export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSav
         photos.slice(0, 4)
       );
       setDescription(text.trim());
-      toast.success('Description generated', 'Grok AI');
+      toast.success('Description generated', 'AI');
     } catch (e: any) {
       if (charged) await addCredits(cost, 'refund', 'Refund — failed property description').catch(() => {});
       toast.error(e.message ? `${e.message} — your credit was refunded` : 'Description generation failed — your credit was refunded');
@@ -364,6 +366,10 @@ export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSav
 
   const saveListing = async () => {
     if (!user) return;
+    if ((user.credits ?? 0) < NEW_LISTING_COST) {
+      toast.error(`A new listing costs ${NEW_LISTING_COST} credits — top up in Billing.`, 'Insufficient credits');
+      return;
+    }
     setSaving(true);
     try {
       await PropReelAPI.createProject({
@@ -386,7 +392,8 @@ export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSav
         erfSize: Number(d.erf) || undefined,
         floorSize: Number(d.floor) || undefined,
       } as any);
-      toast.success('Listing saved to your portfolio');
+      await refresh(); // the backend charged NEW_LISTING_COST credits for the listing
+      toast.success('Listing saved to your portfolio', `-${NEW_LISTING_COST} credits`);
       onSaved();
       onClose();
     } catch (e: any) {
@@ -574,7 +581,7 @@ export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSav
           </div>
 
           <button onClick={generateDescription} disabled={generating} className="btn btn-primary w-full">
-            {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating with Grok…</> : <><Sparkles className="w-4 h-4" /> Generate Description · ⚡{DESCRIPTION_RENDER_COST}</>}
+            {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating with AI…</> : <><Sparkles className="w-4 h-4" /> Generate Description · ⚡{DESCRIPTION_RENDER_COST}</>}
           </button>
 
           {description && (
@@ -620,6 +627,8 @@ export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSav
               <p className="text-ink-600">Photos: <span className="text-ink-900">{photos.length}</span></p>
             </div>
           </div>
+
+          <p className="text-xs text-ink-500">Saving this listing costs {NEW_LISTING_COST} credits — charged when you press Save Listing.</p>
 
           <div>
             <h4 className="font-semibold text-ink-900 mb-1">Export for Portal</h4>
@@ -874,7 +883,11 @@ export default function PropertyListings() {
                   key={p.id}
                   project={p}
                   onPlay={() => setPlayer(p)}
-                  onReel={() => navigate(p.videoUrl ? '/dashboard/projects' : '/studio')}
+                  onReel={() => {
+                    if (p.videoUrl) { navigate('/dashboard/projects'); return; }
+                    queueVideoRender({ images: p.photos || [], script: p.description || '', title: p.title });
+                    navigate('/studio?tab=video');
+                  }}
                   onStatus={s => setStatus(p, s)}
                   onDelete={() => remove(p)}
                 />

@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { getUser, updateUser } from '../lib/userService';
+import { getUser, updateUser, deductCredits, addCredits } from '../lib/userService';
 import { TABLES, queryItems, putItem, updateItem, scanItems } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
 import JSZip from 'jszip';
@@ -277,6 +277,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await getUser(owner);
       if (!user) return res.status(404).json({ error: 'User not found' });
 
+      // A listing (created from the New Listing wizard — it always sends
+      // marketStatus) costs 2 credits, charged server-side so the client
+      // can't bypass it. Render-job project rows stay free.
+      const NEW_LISTING_COST = 2;
+      const isListing = b.marketStatus !== undefined;
+      if (isListing) {
+        const charged = await deductCredits(owner, NEW_LISTING_COST, 'New listing', { kind: 'NEW_LISTING' });
+        if (!charged.success) {
+          return res.status(402).json({ error: `Not enough credits — a new listing costs ${NEW_LISTING_COST} credits` });
+        }
+      }
+
       const now = new Date().toISOString();
       const project: ProjectRecord = {
         userId: owner,
@@ -313,7 +325,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedAt: now,
       };
 
-      await putItem(TABLES.PROJECTS, project);
+      try {
+        await putItem(TABLES.PROJECTS, project);
+      } catch (err) {
+        if (isListing) await addCredits(owner, NEW_LISTING_COST, 'refund', 'Refund — listing was not saved').catch(() => {});
+        throw err;
+      }
       return res.status(201).json({ success: true, project });
     }
 

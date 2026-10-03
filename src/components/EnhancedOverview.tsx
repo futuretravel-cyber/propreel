@@ -137,7 +137,7 @@ export default function EnhancedOverview() {
               Your {planName || 'PropReel'} account is active with <span className="text-white font-semibold">{balance.total} credits</span> ready to spend.
             </p>
             <div className="grid grid-cols-3 gap-3 mb-6 text-left">
-              <div className="bg-ink-800/50 rounded-xl p-3"><FileText className="w-4 h-4 text-purple-400 mb-1" /><p className="text-xs text-ink-300">Grok description</p><p className="text-xs font-bold text-purple-300">⚡1 / render</p></div>
+              <div className="bg-ink-800/50 rounded-xl p-3"><FileText className="w-4 h-4 text-purple-400 mb-1" /><p className="text-xs text-ink-300">AI description</p><p className="text-xs font-bold text-purple-300">⚡1 / render</p></div>
               <div className="bg-ink-800/50 rounded-xl p-3"><Camera className="w-4 h-4 text-purple-400 mb-1" /><p className="text-xs text-ink-300">Photo edit</p><p className="text-xs font-bold text-purple-300">⚡2 / render</p></div>
               <div className="bg-ink-800/50 rounded-xl p-3"><Zap className="w-4 h-4 text-purple-400 mb-1" /><p className="text-xs text-ink-300">Social post</p><p className="text-xs font-bold text-purple-300">⚡2 / post</p></div>
             </div>
@@ -181,7 +181,7 @@ export default function EnhancedOverview() {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {[
-            { label: 'Grok Property Description', cost: '⚡1 / render' },
+            { label: 'AI Property Description', cost: '⚡1 / render' },
             { label: 'Social Media Post', cost: '⚡2 / post' },
             { label: 'Photo Edit / Staging', cost: '⚡2 / render' },
             { label: 'Talking Head Video', cost: '⚡8 / render' },

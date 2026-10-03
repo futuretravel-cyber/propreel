@@ -62,8 +62,8 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
     },
     {
       id: 'description',
-      title: 'Grok Property Descriptions',
-      description: 'Type an address, confirm it on Google Maps, pick key features — Grok writes an amenities-rich listing description for 1 credit per render.',
+      title: 'AI Property Descriptions',
+      description: 'Type an address, confirm it on Google Maps, pick key features — AI writes an amenities-rich listing description for 1 credit per render.',
       icon: FileText,
       action: '/studio?tab=description',
     },
@@ -84,7 +84,7 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
     {
       id: 'social',
       title: 'Social Media Posts',
-      description: 'Fill in the property details (beds, baths, features, photos) and Grok writes platform-ready posts — 2 credits per post.',
+      description: 'Fill in the property details (beds, baths, features, photos) and AI writes platform-ready posts — 2 credits per post.',
       icon: Image,
       action: '/studio?tab=social',
     },
