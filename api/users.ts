@@ -737,8 +737,11 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       }
       const user = await getUser(row.userId);
       if (!user) return res.status(404).json({ error: 'User not found' });
-      await updateUser(user.id, { emailVerified: true, emailConfirmToken: null } as any);
-      await deleteItem(TABLES.SETTINGS, { id: row.id }).catch(() => {});
+      // Idempotent: scanners / repeat clicks may arrive after the first
+      // confirmation — keep the emailed link working until its TTL.
+      if (!user.emailVerified) {
+        await updateUser(user.id, { emailVerified: true, emailConfirmToken: null } as any);
+      }
       const sessionToken = await createSession(user.id);
       res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
       const updated = await getUser(user.id);
@@ -824,7 +827,6 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       const row = await consumePasswordResetToken(token);
       if (!row) return res.status(410).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
       await updateUser(row.userId, { passwordHash: hashPassword(password), passwordResetToken: null } as any);
-      await deleteItem(TABLES.SETTINGS, { id: `pwreset_${token}` }).catch(() => {});
       await deleteSessionsForUser(row.userId);
       return res.status(200).json({ success: true });
     }

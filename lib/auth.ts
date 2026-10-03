@@ -199,6 +199,12 @@ export async function consumeEmailConfirmToken(token: string): Promise<ConfirmTo
     await deleteItem(TABLES.SETTINGS, { id: row.id }).catch(() => {});
     return null;
   }
+  // NOTE: the row is intentionally NOT deleted on use. Mail scanners (Gmail
+  // fetches links from unverified senders) and double-clicks used to burn the
+  // single-use token before the human arrived → "link invalid" with the
+  // account already confirmed. Possession of the emailed link == the person
+  // it was sent to, so re-confirming within the 24h TTL stays safe and is
+  // idempotent (already-verified users just get a fresh session).
   return row;
 }
 
@@ -210,6 +216,10 @@ export async function consumePasswordResetToken(token: string): Promise<{ userId
     await deleteItem(TABLES.SETTINGS, { id: row.id }).catch(() => {});
     return null;
   }
+  // Reusable until the 1-hour expiry for the same reason as the confirm
+  // token: link scanners must not be able to burn a reset link before the
+  // user clicks it. Every successful reset still kills all sessions, and the
+  // row disappears at expiry (lazy).
   return { userId: row.userId };
 }
 
