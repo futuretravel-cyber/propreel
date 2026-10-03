@@ -8,6 +8,7 @@ import {
   Search, Grid, List as ListIcon, FolderOpen, FolderPlus, Pencil, Trash2,
   Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2, Mic, Video, Download,
 } from 'lucide-react';
+import { VideoLightbox } from './PropertyListings';
 
 interface Folder {
   id: string;
@@ -61,6 +62,12 @@ export default function EnhancedProjects() {
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [moveTarget, setMoveTarget] = useState<string[] | null>(null);
+  // Finished reels open in an inline media player; drafts jump to the Studio.
+  const [player, setPlayer] = useState<Project | null>(null);
+  const openProject = (p: Project) => {
+    if (p.videoUrl && p.status === 'READY') setPlayer(p);
+    else navigate('/studio');
+  };
 
   // ── Real data: load projects + folders from backend ────────────────────
   const reload = useCallback(async () => {
@@ -454,7 +461,7 @@ export default function EnhancedProjects() {
                     </div>
                   </div>
                   <div className="p-4">
-                    <div className="cursor-pointer" onClick={() => navigate('/studio')}>
+                    <div className="cursor-pointer" onClick={() => openProject(p)}>
                       <h3 className="font-semibold text-white text-sm truncate">{p.title}</h3>
                       <p className="text-ink-400 text-xs mt-1">{[p.suburb, p.city].filter(Boolean).join(', ') || 'Location not set'}</p>
                       {p.folder && (
@@ -486,7 +493,7 @@ export default function EnhancedProjects() {
                       )}
                       {p.videoUrl && p.status === 'READY' && (
                         <button
-                          onClick={() => window.open(p.videoUrl!, '_blank')}
+                          onClick={() => setPlayer(p)}
                           className="flex-1 btn btn-ghost text-xs py-1.5 text-green-400 hover:text-green-300"
                           title="Watch the rendered video"
                         >
@@ -517,7 +524,7 @@ export default function EnhancedProjects() {
                 </thead>
                 <tbody>
                   {filtered.map(p => (
-                    <tr key={p.id} className="border-b border-white/5 hover:bg-white/[0.02] cursor-pointer" onClick={() => navigate('/studio')}>
+                    <tr key={p.id} className="border-b border-white/5 hover:bg-white/[0.02] cursor-pointer" onClick={() => openProject(p)}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-ink-800 flex items-center justify-center text-lg overflow-hidden">
@@ -541,6 +548,7 @@ export default function EnhancedProjects() {
           )}
         </div>
       </div>
+      {player && <VideoLightbox project={player} onClose={() => setPlayer(null)} />}
     </div>
   );
 }

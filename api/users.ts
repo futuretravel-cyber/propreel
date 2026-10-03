@@ -736,6 +736,19 @@ async function provisionUser(input: ProvisionInput): Promise<{ user: any; create
   return { user: (await getUser(provisioned.id)) || provisioned, created: true };
 }
 
+/** Minimal styled error page for the Google OAuth routes (server-rendered). */
+function googleConfigError(title = 'Google sign-in is not configured', detail = ''): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>PropReel — Google sign-in</title></head>
+<body style="margin:0;background:#0b0b14;color:#e5e7eb;font-family:Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center">
+  <div style="max-width:420px;padding:32px;background:#151527;border:1px solid #262643;border-radius:16px;text-align:center">
+    <div style="font-size:22px;font-weight:bold;margin-bottom:12px">▶ PropReel</div>
+    <h1 style="font-size:18px;margin:0 0 8px">${title}</h1>
+    <p style="font-size:14px;color:#9a9ab8;line-height:1.6">${detail || 'Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on Vercel, then redeploy — see docs/GOOGLE_AUTH_SETUP.md. Email + password sign-in works in the meantime.'}</p>
+    <a href="/login" style="display:inline-block;margin-top:16px;padding:10px 24px;background:#7e22ce;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">Back to sign in</a>
+  </div>
+</body></html>`;
+}
+
 // ─── First-party auth routes (Supabase replaced — see lib/auth.ts) ─────────
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -870,6 +883,91 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
     }
 
     // ── GET auth_session ──────────────────────────────────────────────
+    // ── Google OAuth (authorization code flow, first-party) ────────
+    // Restored after Supabase's retirement removed the hosted Google button.
+    // Needs GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET (docs/GOOGLE_AUTH_SETUP.md).
+    if (action === 'auth_google_start') {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        return res.status(503).send(googleConfigError());
+      }
+      const redirect = String(req.query.redirect || '/dashboard');
+      const safe = redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/dashboard';
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: `${siteOrigin(req)}/api/users?action=auth_google_callback`,
+        response_type: 'code',
+        scope: 'openid email profile',
+        state: safe,
+        prompt: 'select_account',
+      });
+      return res.redirect(302, `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+    }
+
+    if (action === 'auth_google_callback') {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) return res.status(503).send(googleConfigError());
+
+      const code = String(req.query.code || '');
+      const state = String(req.query.state || '');
+      if (!code) {
+        const detail = String(req.query.error_description || req.query.error || 'Missing authorization code');
+        return res.status(400).send(googleConfigError('Google sign-in failed', detail));
+      }
+
+      try {
+        // 1) Code → tokens (server-side exchange; secret never reaches the client)
+        const tokRes = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            code,
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: `${siteOrigin(req)}/api/users?action=auth_google_callback`,
+            grant_type: 'authorization_code',
+          }),
+        });
+        if (!tokRes.ok) {
+          const errBody = await tokRes.json().catch(() => ({} as any));
+          return res.status(400).send(googleConfigError('Google token exchange failed', String(errBody.error_description || errBody.error || tokRes.status)));
+        }
+        const tok = await tokRes.json();
+
+        // 2) access_token → verified profile (Google-asserted)
+        const uiRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+          headers: { Authorization: `Bearer ${tok.access_token}` },
+        });
+        if (!uiRes.ok) {
+          return res.status(400).send(googleConfigError('Google profile lookup failed', String(uiRes.status)));
+        }
+        const profile = await uiRes.json();
+        const email = String(profile.email || '').toLowerCase();
+        if (!email || profile.email_verified === false) {
+          return res.status(400).send(googleConfigError('Google account not verified', 'Use a Google account with a verified email address.'));
+        }
+
+        // 3) Find-or-create the account (new Google users get the standard
+        //    signup bonus via provisionUser; existing accounts keep their name).
+        const existing = await getUserByEmail(email);
+        const user = existing || (await provisionUser({
+          email,
+          fullName: String(profile.name || email).slice(0, 120),
+          role: 'AGENT',
+        })).user;
+
+        // 4) First-party session + land on the requested destination
+        const token = await createSession(user.id);
+        res.setHeader('Set-Cookie', sessionCookie(token, req));
+        const dest = state.startsWith('/') && !state.startsWith('//') ? state : '/dashboard';
+        return res.redirect(302, dest);
+      } catch (oauthErr: any) {
+        console.error('Google OAuth error:', oauthErr);
+        return res.status(500).send(googleConfigError('Google sign-in failed', String(oauthErr?.message || oauthErr)));
+      }
+    }
+
     if (action === 'auth_session') {
       const user = await getSessionUser(getTokenFromRequest(req));
       return res.status(200).json({ user: user ? safeUser(user) : null });

@@ -362,7 +362,7 @@ export default function EnhancedOverview() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {projects.slice(0, 3).map(p => (
-              <div key={p.id} className="card-dark overflow-hidden group cursor-pointer hover:border-purple-500/30 transition" onClick={() => navigate('/studio')}>
+              <div key={p.id} className="card-dark overflow-hidden group cursor-pointer hover:border-purple-500/30 transition" onClick={() => navigate('/dashboard/projects')}>
                 <div className="aspect-video bg-ink-800 relative overflow-hidden">
                   {p.thumbnailUrl ? (
                     <img src={p.thumbnailUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />

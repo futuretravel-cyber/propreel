@@ -32,7 +32,7 @@ export default function MobileNav() {
         </NavLink>
 
         <NavLink
-          to="/dashboard/listings"
+          to="/dashboard/projects"
           aria-label="Projects"
           className={({ isActive }) =>
             `flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition ${isActive ? 'text-purple-400' : 'text-ink-500'}`

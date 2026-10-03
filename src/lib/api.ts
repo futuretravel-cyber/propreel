@@ -38,6 +38,13 @@ export interface Project {
   folder?: string;
   tags?: string[];
   favorite?: boolean;
+  /** Portfolio listing extras (Property Listings page) */
+  photos?: string[];
+  description?: string;
+  marketStatus?: 'ACTIVE' | 'DRAFT' | 'SOLD' | 'EXPIRED';
+  soldAt?: string;
+  erfSize?: number;
+  floorSize?: number;
   createdAt: string;
   updatedAt: string;
 }

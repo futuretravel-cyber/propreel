@@ -39,6 +39,13 @@ export interface ProjectRecord {
   folder?: string;
   tags?: string[];
   favorite?: boolean;
+  /** Portfolio listing extras (Property Listings page) */
+  photos?: string[];
+  description?: string;
+  marketStatus?: 'ACTIVE' | 'DRAFT' | 'SOLD' | 'EXPIRED';
+  soldAt?: string;
+  erfSize?: number;
+  floorSize?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -296,6 +303,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         folder: b.folder || undefined,
         tags: Array.isArray(b.tags) ? b.tags.map(String).slice(0, 10) : [],
         favorite: Boolean(b.favorite),
+        photos: Array.isArray(b.photos) ? b.photos.map(String).slice(0, 30) : [],
+        description: typeof b.description === 'string' ? b.description.slice(0, 20000) : undefined,
+        marketStatus: (['ACTIVE', 'DRAFT', 'SOLD', 'EXPIRED'] as const).includes(b.marketStatus) ? b.marketStatus : undefined,
+        soldAt: typeof b.soldAt === 'string' ? b.soldAt : undefined,
+        erfSize: Number(b.erfSize) || undefined,
+        floorSize: Number(b.floorSize) || undefined,
         createdAt: now,
         updatedAt: now,
       };
@@ -317,7 +330,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!existing.length) return res.status(404).json({ error: 'Project not found' });
 
       // Whitelist updatable fields
-      const allowed = ['title', 'address', 'suburb', 'city', 'province', 'price', 'bedrooms', 'bathrooms', 'garages', 'propertyType', 'features', 'status', 'kind', 'voice', 'jobId', 'creditsSpent', 'durationSeconds', 'videoTier', 'videoUrl', 'thumbnailUrl', 'folder', 'tags', 'favorite'] as const;
+      const allowed = ['title', 'address', 'suburb', 'city', 'province', 'price', 'bedrooms', 'bathrooms', 'garages', 'propertyType', 'features', 'status', 'kind', 'voice', 'jobId', 'creditsSpent', 'durationSeconds', 'videoTier', 'videoUrl', 'thumbnailUrl', 'folder', 'tags', 'favorite', 'photos', 'description', 'marketStatus', 'soldAt', 'erfSize', 'floorSize'] as const;
       const clean: Record<string, any> = {};
       for (const key of allowed) {
         if (key in (updates || {})) clean[key] = updates[key];

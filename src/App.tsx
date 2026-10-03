@@ -30,12 +30,15 @@ import CollaborationPanel from './components/CollaborationPanel';
 import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS } from './lib/constants';
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI } from './lib/api';
+import FeatureChips from './components/FeatureChips';
+import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
 import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
 import RenderProgressBar from './components/RenderProgressBar';
 import EnhancedProjects from './components/EnhancedProjects';
+import PropertyListings from './components/PropertyListings';
 import SecuritySettings from './components/SecuritySettings';
 import AITalkingProfile from './components/AITalkingProfile';
 import AdminMusicLibrary from './components/AdminMusicLibrary';
@@ -47,7 +50,7 @@ import {
   TrendingUp, Eye, Clock, AlertCircle, AlertTriangle, Download, Copy, RefreshCw, Plus,
   Search, Filter, ArrowRight, Globe, Phone, Mail, MapPin, ChevronDown,
   Monitor, Smartphone, Mic, Camera, Palette, Sun, Cloud, Moon as MoonIcon, Bell,
-  FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle
+  FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle, FolderOpen
 } from 'lucide-react';
 
 import { lazy, Suspense } from 'react';
@@ -397,6 +400,17 @@ function ContactPage() {
 // AUTH PAGES
 // ═══════════════════════════════════════════════════════════════════════════
 
+function GoogleGIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+    </svg>
+  );
+}
+
 function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -467,6 +481,22 @@ function LoginPage() {
             <div className="mt-4">
               <button onClick={() => navigate('/forgot-password')} className="btn w-full mb-3 text-sm">Forgot your password?</button>
             </div>
+            <div className="flex items-center gap-3 my-1">
+              <div className="h-px flex-1 bg-white/10" />
+              <span className="text-xs text-ink-500">or</span>
+              <div className="h-px flex-1 bg-white/10" />
+            </div>
+            <button
+              onClick={() => {
+                const dest = nextPath && nextPath.startsWith('/') ? nextPath : '/dashboard';
+                import('./lib/postAuth').then(({ setPostAuthRedirect }) => setPostAuthRedirect(dest));
+                track('google_login');
+                window.location.href = `/api/users?action=auth_google_start&redirect=${encodeURIComponent(dest)}`;
+              }}
+              className="btn w-full text-sm justify-center gap-2 bg-white text-gray-900 hover:bg-gray-100 font-medium border-0"
+            >
+              <GoogleGIcon /> Continue with Google
+            </button>
           <p className="mt-6 text-center text-sm text-ink-400">
             Don't have an account? <Link to="/register" className="text-purple-400 hover:text-purple-300 font-semibold">Sign up free</Link>
           </p>
@@ -574,6 +604,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Overview' },
     { path: '/dashboard/credits', icon: <Zap className="w-5 h-5" />, label: 'Credits' },
     { path: '/dashboard/listings', icon: <List className="w-5 h-5" />, label: 'Listings' },
+    { path: '/dashboard/projects', icon: <FolderOpen className="w-5 h-5" />, label: 'My Projects' },
     { path: '/studio', icon: <Video className="w-5 h-5" />, label: 'Studio' },
     { path: '/dashboard/analytics', icon: <BarChart3 className="w-5 h-5" />, label: 'Analytics' },
     { path: '/dashboard/billing', icon: <CreditCard className="w-5 h-5" />, label: 'Billing' },
@@ -744,6 +775,13 @@ function DashboardOverview() {
 }
 
 function DashboardListings() {
+  // Property portfolio — stats, filters, the New Listing wizard and inline
+  // media players for rendered reels (see components/PropertyListings.tsx).
+  return <PropertyListings />;
+}
+
+function DashboardMyProjects() {
+  // Every render job — reels and Talking Head clips — with folders/search.
   const loading = useSimulatedLoading(400);
   if (loading) return <ProjectsSkeleton />;
   return <EnhancedProjects />;
@@ -911,139 +949,16 @@ function StudioPageInner() {
 const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (Grok AI)
 const SOCIAL_POST_COST = 2; // ⚡ per social media post render (Grok AI)
 
-/** Selectable Key Features shown as chips in Description + Social tabs */
-const KEY_FEATURES = [
-  'Swimming Pool', 'Double Garage', 'Solar Panels', 'Generator', 'Fibre Internet',
-  'Air Conditioning', 'Underfloor Heating', 'Security Estate', 'Mountain Views',
-  'Sea Views', 'Garden', 'Staff Quarters', 'Study', 'Scullery', 'Braai Area',
-  'Entertainment Area', 'Pet Friendly', 'Borehole', 'Water Tanks', 'EV Charging',
-];
+// Key-feature chips moved to src/components/FeatureChips.tsx and the upload /
+// geocoding helpers below moved to src/lib/propertyListing.ts — both shared
+// with the Property Listings page.
 
-function FeatureChips({ selected, onToggle }: { selected: string[]; onToggle: (f: string) => void }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {KEY_FEATURES.map(f => {
-        const on = selected.includes(f);
-        return (
-          <button
-            key={f}
-            type="button"
-            onClick={() => onToggle(f)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition border ${
-              on
-                ? 'bg-purple-700 text-white border-purple-500'
-                : 'bg-white/5 text-ink-300 border-white/10 hover:border-purple-500/40'
-            }`}
-            aria-pressed={on}
-          >
-            {on && <Check className="w-3 h-3 inline mr-1 -mt-0.5" />}
-            {f}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+// S3 photo upload + OSM geocoding/amenities helpers moved to
+// src/lib/propertyListing.ts — shared with the Property Listings page.
 
-/** Presigned browser → S3 upload used by the AI text tools (Grok vision) */
-async function uploadImagesForAI(files: FileList | null, userId: string | undefined, max: number): Promise<string[]> {
-  if (!files || !files.length) return [];
-  const urls: string[] = [];
-  const list = Array.from(files).slice(0, max);
-  for (const file of list) {
-    const okType = file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|avif)$/i.test(file.name);
-    if (!okType) throw new Error(`${file.name} is not an image file`);
-    if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} is over 25MB`);
-    const contentType = file.type || 'image/jpeg';
-    const preRes = await fetch('/api/music?action=presign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, contentType }),
-    });
-    if (!preRes.ok) {
-      const d = await preRes.json().catch(() => ({}));
-      throw new Error(d.error || 'Upload authorisation failed');
-    }
-    const pre = await preRes.json();
-    const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
-    if (!put.ok) throw new Error(`Upload failed for ${file.name}`);
-    urls.push(pre.publicUrl);
-  }
-  return urls;
-}
 
-/** Free geocode (OpenStreetMap Nominatim) — no API key required */
-async function geocodeAddress(address: string): Promise<{ lat: number; lon: number; display: string } | null> {
-  const res = await fetch(
-    `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`
-  );
-  if (!res.ok) return null;
-  const rows = await res.json();
-  if (!Array.isArray(rows) || !rows.length) return null;
-  return { lat: Number(rows[0].lat), lon: Number(rows[0].lon), display: rows[0].display_name || address };
-}
 
-function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
-  const R = 6371;
-  const dLat = ((bLat - aLat) * Math.PI) / 180;
-  const dLon = ((bLon - aLon) * Math.PI) / 180;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
 
-/** Named amenities near a confirmed point (OpenStreetMap Overpass — free) */
-async function findNearbyAmenities(lat: number, lon: number): Promise<string[]> {
-  const around = (r: number) => `(around:${r},${lat},${lon})`;
-  const q = `[out:json][timeout:25];(
-    node${around(2000)}["amenity"~"^(school|kindergarten|hospital|clinic|pharmacy|restaurant|cafe|bar|fuel|gym|library|supermarket)$"];
-    way${around(2000)}["shop"~"^(mall|supermarket|convenience)$"];
-    way${around(2500)}["leisure"="park"];
-  );out center 120;`;
-  // Mirrors — the main instance rate-limits hard during busy periods
-  const hosts = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.private.coffee/api/interpreter',
-  ];
-  let data: any = null;
-  let lastErr: unknown = null;
-  for (const host of hosts) {
-    try {
-      const res = await fetch(`${host}?data=${encodeURIComponent(q)}`);
-      if (!res.ok) { lastErr = new Error(`${host} → HTTP ${res.status}`); continue; }
-      const body = await res.json();
-      if (!body || !Array.isArray(body.elements)) { lastErr = new Error(`${host} → unexpected payload`); continue; }
-      data = body;
-      break;
-    } catch (e) {
-      lastErr = e; // network error or HTML rate-limit page — try next mirror
-    }
-  }
-  if (!data) throw new Error(`Nearby amenities lookup failed (${lastErr instanceof Error ? lastErr.message : 'unknown'})`);
-  type Row = { name: string; kind: string; dist: number };
-  const rows: Row[] = [];
-  for (const el of data.elements || []) {
-    const t = el.tags || {};
-    const name = t.name || t['name:en'];
-    const kind = t.amenity || t.shop || (t.leisure === 'park' ? 'park' : null);
-    if (!name || !kind) continue;
-    const elLat = typeof el.lat === 'number' ? el.lat : el.center?.lat;
-    const elLon = typeof el.lon === 'number' ? el.lon : el.center?.lon;
-    const dist = typeof elLat === 'number' && typeof elLon === 'number' ? haversineKm(lat, lon, elLat, elLon) : 99;
-    rows.push({ name, kind, dist });
-  }
-  rows.sort((a, b) => a.dist - b.dist);
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const r of rows) {
-    const key = r.name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(`${r.name} (${r.kind}, ${r.dist < 10 ? `${(r.dist * 1000).toFixed(0)}m` : `${r.dist.toFixed(1)}km`} away)`);
-    if (out.length >= 10) break;
-  }
-  return out;
-}
 
 function DescriptionTab() {
   const toast = useToast();
@@ -2335,9 +2250,21 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
           </p>
         )}
         {!generating && lastRenderUrl && (
+          <div className="rounded-xl overflow-hidden border border-white/10 bg-black">
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              controls
+              playsInline
+              src={lastRenderUrl}
+              className="w-full max-h-[420px]"
+              aria-label="Rendered video preview"
+            />
+          </div>
+        )}
+        {!generating && lastRenderUrl && (
           <button
             onClick={() => setShareOpen(true)}
-            className="btn btn-secondary w-full min-h-[48px]"
+            className="btn btn-primary w-full min-h-[48px]"
           >
             <Share2 className="w-4 h-4" /> Share to social media
           </button>
@@ -3319,6 +3246,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<RequireAuth><DashboardLayout><DashboardOverview /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/credits" element={<RequireAuth><DashboardLayout><CreditSystemDashboard /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/listings" element={<RequireAuth><DashboardLayout><DashboardListings /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/projects" element={<RequireAuth><DashboardLayout><DashboardMyProjects /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/analytics" element={<RequireAuth><DashboardLayout><DashboardAnalytics /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/billing" element={<RequireAuth><DashboardLayout><DashboardBilling /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/agency" element={<RequireAuth><DashboardLayout><DashboardAgency /></DashboardLayout></RequireAuth>} />
