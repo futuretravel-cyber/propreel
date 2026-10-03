@@ -8,7 +8,7 @@ export const KEY_FEATURES = [
   'Entertainment Area', 'Pet Friendly', 'Borehole', 'Water Tanks', 'EV Charging',
 ];
 
-export default function FeatureChips({ selected, onToggle }: { selected: string[]; onToggle: (f: string) => void }) {
+export default function FeatureChips({ selected, onToggle, light = false }: { selected: string[]; onToggle: (f: string) => void; light?: boolean }) {
   return (
     <div className="flex flex-wrap gap-2">
       {KEY_FEATURES.map(f => {
@@ -19,9 +19,13 @@ export default function FeatureChips({ selected, onToggle }: { selected: string[
             type="button"
             onClick={() => onToggle(f)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium transition border ${
-              on
-                ? 'bg-purple-700 text-white border-purple-500'
-                : 'bg-white/5 text-ink-300 border-white/10 hover:border-purple-500/40'
+              light
+                ? on
+                  ? 'bg-brand-700 text-white border-brand-700'
+                  : 'bg-white text-ink-600 border-ink-200 hover:border-brand-700 hover:text-brand-700'
+                : on
+                  ? 'bg-purple-700 text-white border-purple-500'
+                  : 'bg-white/5 text-ink-300 border-white/10 hover:border-purple-500/40'
             }`}
             aria-pressed={on}
           >

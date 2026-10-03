@@ -38,7 +38,7 @@ import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
 import RenderProgressBar from './components/RenderProgressBar';
 import EnhancedProjects from './components/EnhancedProjects';
-import PropertyListings from './components/PropertyListings';
+import PropertyListings, { NewListingPage } from './components/PropertyListings';
 import SecuritySettings from './components/SecuritySettings';
 import AITalkingProfile from './components/AITalkingProfile';
 import AdminMusicLibrary from './components/AdminMusicLibrary';
@@ -775,8 +775,8 @@ function DashboardOverview() {
 }
 
 function DashboardListings() {
-  // Property portfolio — stats, filters, the New Listing wizard and inline
-  // media players for rendered reels (see components/PropertyListings.tsx).
+  // Property portfolio — stats, filters, rendered-reel players, and a
+  // dedicated New Listing page (see components/PropertyListings.tsx).
   return <PropertyListings />;
 }
 
@@ -3246,6 +3246,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<RequireAuth><DashboardLayout><DashboardOverview /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/credits" element={<RequireAuth><DashboardLayout><CreditSystemDashboard /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/listings" element={<RequireAuth><DashboardLayout><DashboardListings /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/listings/new" element={<RequireAuth><DashboardLayout><NewListingPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/projects" element={<RequireAuth><DashboardLayout><DashboardMyProjects /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/analytics" element={<RequireAuth><DashboardLayout><DashboardAnalytics /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/billing" element={<RequireAuth><DashboardLayout><DashboardBilling /></DashboardLayout></RequireAuth>} />

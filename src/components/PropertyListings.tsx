@@ -208,7 +208,7 @@ const emptyDraft: DraftDetails = {
 
 const STEPS = ['Property Details', 'Photos', 'Description', 'Export'];
 
-function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { user, deductCredits, addCredits } = useCredit();
   const toast = useToast();
   const navigate = useNavigate();
@@ -396,10 +396,11 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
     }
   };
 
-  const inputCls = 'input w-full';
+  // Light-card styling — mirrors base44's /listings/new wizard.
+  const inputCls = 'input-light w-full';
 
   return (
-    <div className="card-dark p-6 space-y-6">
+    <div className="space-y-5">
       {/* Stepper */}
       <div className="flex items-center justify-between max-w-2xl mx-auto">
         {STEPS.map((label, i) => (
@@ -417,15 +418,18 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         ))}
       </div>
 
+      {/* White wizard card */}
+      <div className="card-light p-6 sm:p-8 space-y-6 text-ink-900">
+
       {/* ── Step 1: Property Details ── */}
       {step === 0 && (
         <div className="space-y-5">
           <div>
-            <h3 className="text-lg font-bold text-white flex items-center gap-2"><MapPin className="w-4 h-4 text-purple-400" /> Property Address</h3>
+            <h3 className="text-lg font-bold text-ink-900 flex items-center gap-2"><MapPin className="w-4 h-4 text-purple-600" /> Property Address</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
               <div className="md:col-span-2 flex gap-2">
                 <input className={inputCls} placeholder="Street Address *" value={d.street} onChange={set('street')} />
-                <button onClick={verifyAddress} disabled={verifying} className="btn btn-ghost text-sm whitespace-nowrap" title="Confirm the pin on Google Maps">
+                <button onClick={verifyAddress} disabled={verifying} className="btn btn-quiet text-sm whitespace-nowrap" title="Confirm the pin on Google Maps">
                   {verifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />} Verify
                 </button>
               </div>
@@ -440,7 +444,7 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
               </select>
             </div>
             {verified && (
-              <p className="text-xs text-green-400 mt-2 flex items-center gap-1">
+              <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
                 <Check className="w-3.5 h-3.5" /> Verified: {verified}
                 {amenities.length > 0 && <span className="text-ink-500">· {amenities.length} amenities found</span>}
               </p>
@@ -448,20 +452,20 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
           </div>
 
           <div>
-            <h3 className="text-lg font-bold text-white flex items-center gap-2"><HomeIcon className="w-4 h-4 text-purple-400" /> Property Specs</h3>
+            <h3 className="text-lg font-bold text-ink-900 flex items-center gap-2"><HomeIcon className="w-4 h-4 text-purple-600" /> Property Specs</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-              <div><label className="label">Bedrooms</label><input type="number" min="0" className={inputCls} value={d.beds} onChange={set('beds')} /></div>
-              <div><label className="label">Bathrooms</label><input type="number" min="0" className={inputCls} value={d.baths} onChange={set('baths')} /></div>
-              <div><label className="label">Garages</label><input type="number" min="0" className={inputCls} value={d.garages} onChange={set('garages')} /></div>
-              <div><label className="label">Erf Size (m²)</label><input type="number" min="0" className={inputCls} value={d.erf} onChange={set('erf')} placeholder="600" /></div>
-              <div><label className="label">Floor Size (m²)</label><input type="number" min="0" className={inputCls} value={d.floor} onChange={set('floor')} placeholder="280" /></div>
-              <div><label className="label">Asking Price (R) *</label><input type="number" min="0" className={inputCls} value={d.price} onChange={set('price')} placeholder="3500000" /></div>
+              <div><label className="label-light">Bedrooms</label><input type="number" min="0" className={inputCls} value={d.beds} onChange={set('beds')} /></div>
+              <div><label className="label-light">Bathrooms</label><input type="number" min="0" className={inputCls} value={d.baths} onChange={set('baths')} /></div>
+              <div><label className="label-light">Garages</label><input type="number" min="0" className={inputCls} value={d.garages} onChange={set('garages')} /></div>
+              <div><label className="label-light">Erf Size (m²)</label><input type="number" min="0" className={inputCls} value={d.erf} onChange={set('erf')} placeholder="600" /></div>
+              <div><label className="label-light">Floor Size (m²)</label><input type="number" min="0" className={inputCls} value={d.floor} onChange={set('floor')} placeholder="280" /></div>
+              <div><label className="label-light">Asking Price (R) *</label><input type="number" min="0" className={inputCls} value={d.price} onChange={set('price')} placeholder="3500000" /></div>
             </div>
           </div>
 
           <div>
-            <h3 className="text-lg font-bold text-white mb-3">Key Features</h3>
-            <FeatureChips selected={d.features} onToggle={f => setD(prev => ({
+            <h3 className="text-lg font-bold text-ink-900 mb-3">Key Features</h3>
+            <FeatureChips light selected={d.features} onToggle={f => setD(prev => ({
               ...prev,
               features: prev.features.includes(f) ? prev.features.filter(x => x !== f) : [...prev.features, f],
             }))} />
@@ -473,12 +477,12 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
       {step === 1 && (
         <div className="space-y-4">
           <div>
-            <h3 className="text-lg font-bold text-white">Listing Photos</h3>
-            <p className="text-sm text-ink-400">Upload all photos. You can bulk-edit them with AI before generating your listing.</p>
+            <h3 className="text-lg font-bold text-ink-900">Listing Photos</h3>
+            <p className="text-sm text-ink-600">Upload all photos. You can bulk-edit them with AI before generating your listing.</p>
           </div>
-          <label className="flex flex-col items-center justify-center gap-2 py-10 border-2 border-dashed border-purple-500/30 rounded-xl cursor-pointer hover:border-purple-500/60 transition bg-purple-950/10">
-            <Upload className="w-7 h-7 text-purple-400" />
-            <span className="text-sm text-white font-medium">Click to upload listing photos</span>
+          <label className="flex flex-col items-center justify-center gap-2 py-10 border-2 border-dashed border-purple-500/40 rounded-xl cursor-pointer hover:border-purple-600 transition bg-purple-50">
+            <Upload className="w-7 h-7 text-purple-600" />
+            <span className="text-sm text-ink-900 font-medium">Click to upload listing photos</span>
             <span className="text-xs text-ink-500">JPG, PNG up to 25MB each</span>
             <input
               ref={photosInputRef}
@@ -492,17 +496,17 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
           </label>
 
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <p className="text-sm text-white">{photos.length} photo{photos.length === 1 ? '' : 's'} uploaded</p>
+            <p className="text-sm text-ink-900">{photos.length} photo{photos.length === 1 ? '' : 's'} uploaded</p>
             <div className="flex gap-2">
               <button
                 onClick={() => { toast.info('Open the Studio photo tab for Bulk AI Edit — your listing photos carry over once saved.', 'AI editing'); navigate('/studio?tab=photo'); }}
-                className="btn btn-ghost text-sm"
+                className="btn btn-quiet text-sm"
               >
                 <Wand2 className="w-4 h-4" /> Bulk AI Edit
               </button>
               <button
                 onClick={() => { toast.info('Virtual Staging lives in the Studio photo tab — stage any uploaded photo there.', 'Virtual staging'); navigate('/studio?tab=photo'); }}
-                className="btn text-sm border border-purple-500/40 text-purple-300 hover:bg-purple-600/10"
+                className="btn text-sm border border-purple-500/50 text-purple-700 hover:bg-purple-50"
               >
                 <Sparkles className="w-4 h-4" /> Virtual Staging
               </button>
@@ -512,7 +516,7 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
           {photos.length > 0 && (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
               {photos.map((url, i) => (
-                <div key={url + i} className="relative group aspect-square rounded-lg overflow-hidden bg-ink-800">
+                <div key={url + i} className="relative group aspect-square rounded-lg overflow-hidden bg-ink-100">
                   <img src={url} alt={`Listing photo ${i + 1}`} className="w-full h-full object-cover" />
                   <span className="absolute bottom-1 left-1 text-[10px] bg-black/70 rounded px-1">{i + 1}</span>
                   <button
@@ -526,7 +530,7 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
               ))}
             </div>
           )}
-          {uploading && <p className="text-xs text-purple-300 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</p>}
+          {uploading && <p className="text-xs text-purple-600 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</p>}
         </div>
       )}
 
@@ -534,35 +538,35 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
       {step === 2 && (
         <div className="space-y-4">
           <div>
-            <h3 className="text-lg font-bold text-white">Generate Description</h3>
-            <p className="text-sm text-ink-400">Choose a tone, add any extra instructions, then generate your listing description with AI.</p>
+            <h3 className="text-lg font-bold text-ink-900">Generate Description</h3>
+            <p className="text-sm text-ink-600">Choose a tone, add any extra instructions, then generate your listing description with AI.</p>
           </div>
 
           <div>
-            <label className="label">Choose description tone</label>
+            <label className="label-light">Choose description tone</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {TONES.map(t => (
                 <button
                   key={t.id}
                   onClick={() => setTone(t.id)}
                   className={`text-left rounded-xl border p-3 transition ${
-                    tone === t.id ? 'border-purple-500 bg-purple-600/10' : 'border-white/10 bg-white/[0.03] hover:border-purple-500/40'
+                    tone === t.id ? 'border-purple-600 bg-purple-50' : 'border-ink-200 bg-white hover:border-purple-500'
                   }`}
                 >
-                  <span className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <span className="flex items-center gap-2 text-sm font-semibold text-ink-900">
                     <span>{t.icon}</span> {TONE_BLURBS[t.id] ? `${t.label}` : t.label}
-                    {tone === t.id && <Check className="w-4 h-4 text-purple-400 ml-auto" />}
+                    {tone === t.id && <Check className="w-4 h-4 text-purple-600 ml-auto" />}
                   </span>
-                  <span className="block text-xs text-ink-400 mt-1">{TONE_BLURBS[t.id]}</span>
+                  <span className="block text-xs text-ink-600 mt-1">{TONE_BLURBS[t.id]}</span>
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <label className="label">Additional AI instructions (optional)</label>
+            <label className="label-light">Additional AI instructions (optional)</label>
             <input
-              className="input w-full"
+              className="input-light w-full"
               placeholder="e.g. Emphasise the mountain views, mention the excellent school catchment…"
               value={instructions}
               onChange={e => setInstructions(e.target.value)}
@@ -576,16 +580,16 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
           {description && (
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="label mb-0">Generated Description</label>
+                <label className="label-light mb-0">Generated Description</label>
                 <button
                   onClick={() => { navigator.clipboard.writeText(description); toast.success('Copied to clipboard'); }}
-                  className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                  className="text-xs text-purple-600 hover:text-purple-700 flex items-center gap-1"
                 >
                   <Copy className="w-3.5 h-3.5" /> Copy
                 </button>
               </div>
               <textarea
-                className="input w-full h-56 leading-relaxed"
+                className="input-light w-full h-56 leading-relaxed"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
               />
@@ -599,38 +603,38 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
       {step === 3 && (
         <div className="space-y-5">
           <div>
-            <h3 className="text-lg font-bold text-white">Export Listing</h3>
-            <p className="text-sm text-ink-400">Export your listing description and photos for South African property portals.</p>
+            <h3 className="text-lg font-bold text-ink-900">Export Listing</h3>
+            <p className="text-sm text-ink-600">Export your listing description and photos for South African property portals.</p>
           </div>
 
-          <div className="bg-ink-800/50 rounded-xl p-4">
-            <h4 className="font-semibold text-white mb-3">Listing Summary</h4>
+          <div className="bg-ink-50 rounded-xl p-4">
+            <h4 className="font-semibold text-ink-900 mb-3">Listing Summary</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-y-2 gap-x-4 text-sm">
-              <p className="text-ink-400">Type: <span className="text-white">{d.propertyType}</span></p>
-              <p className="text-ink-400">Price: <span className="text-purple-300 font-semibold">{d.price ? formatZar(Number(d.price)) : '—'}</span></p>
-              <p className="text-ink-400">Beds: <span className="text-white">{d.beds || '—'}</span></p>
-              <p className="text-ink-400">Baths: <span className="text-white">{d.baths || '—'}</span></p>
-              <p className="text-ink-400">Garages: <span className="text-white">{d.garages || '—'}</span></p>
-              <p className="text-ink-400">Erf: <span className="text-white">{d.erf ? `${d.erf}m²` : '—'}</span></p>
-              <p className="text-ink-400">Suburb: <span className="text-white">{d.suburb || '—'}</span></p>
-              <p className="text-ink-400">Photos: <span className="text-white">{photos.length}</span></p>
+              <p className="text-ink-600">Type: <span className="text-ink-900">{d.propertyType}</span></p>
+              <p className="text-ink-600">Price: <span className="text-purple-700 font-semibold">{d.price ? formatZar(Number(d.price)) : '—'}</span></p>
+              <p className="text-ink-600">Beds: <span className="text-ink-900">{d.beds || '—'}</span></p>
+              <p className="text-ink-600">Baths: <span className="text-ink-900">{d.baths || '—'}</span></p>
+              <p className="text-ink-600">Garages: <span className="text-ink-900">{d.garages || '—'}</span></p>
+              <p className="text-ink-600">Erf: <span className="text-ink-900">{d.erf ? `${d.erf}m²` : '—'}</span></p>
+              <p className="text-ink-600">Suburb: <span className="text-ink-900">{d.suburb || '—'}</span></p>
+              <p className="text-ink-600">Photos: <span className="text-ink-900">{photos.length}</span></p>
             </div>
           </div>
 
           <div>
-            <h4 className="font-semibold text-white mb-1">Export for Portal</h4>
-            <p className="text-xs text-ink-400 mb-3">Download a formatted text file optimised for each portal's listing requirements.</p>
+            <h4 className="font-semibold text-ink-900 mb-1">Export for Portal</h4>
+            <p className="text-xs text-ink-600 mb-3">Download a formatted text file optimised for each portal's listing requirements.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="bg-ink-800/50 rounded-xl p-4 space-y-3">
-                <p className="text-sm font-semibold text-white flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline" /> Property24</p>
-                <p className="text-xs text-ink-400">SA's largest property portal. Formatted for their listing submission requirements.</p>
+              <div className="bg-ink-50 rounded-xl p-4 space-y-3">
+                <p className="text-sm font-semibold text-ink-900 flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline" /> Property24</p>
+                <p className="text-xs text-ink-600">SA's largest property portal. Formatted for their listing submission requirements.</p>
                 <button onClick={() => downloadText('property24-listing.txt', portalText('property24'))} className="btn w-full bg-red-600 hover:bg-red-500 text-white text-sm">
                   <Download className="w-4 h-4" /> Download for Property24
                 </button>
               </div>
-              <div className="bg-ink-800/50 rounded-xl p-4 space-y-3">
-                <p className="text-sm font-semibold text-white flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline" /> Private Property</p>
-                <p className="text-xs text-ink-400">Second-largest SA portal. Optimised description length and feature format.</p>
+              <div className="bg-ink-50 rounded-xl p-4 space-y-3">
+                <p className="text-sm font-semibold text-ink-900 flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline" /> Private Property</p>
+                <p className="text-xs text-ink-600">Second-largest SA portal. Optimised description length and feature format.</p>
                 <button onClick={() => downloadText('privateproperty-listing.txt', portalText('privateproperty'))} className="btn w-full bg-blue-600 hover:bg-blue-500 text-white text-sm">
                   <Download className="w-4 h-4" /> Download for Private Property
                 </button>
@@ -638,17 +642,17 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             </div>
           </div>
 
-          <div className="bg-ink-800/50 rounded-xl p-4">
+          <div className="bg-ink-50 rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
-              <h4 className="font-semibold text-white flex items-center gap-2"><FileText className="w-4 h-4 text-purple-400" /> Listing Description</h4>
+              <h4 className="font-semibold text-ink-900 flex items-center gap-2"><FileText className="w-4 h-4 text-purple-600" /> Listing Description</h4>
               <button
                 onClick={() => { navigator.clipboard.writeText(description); toast.success('Copied to clipboard'); }}
-                className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                className="text-xs text-purple-600 hover:text-purple-700 flex items-center gap-1"
               >
                 <Copy className="w-3.5 h-3.5" /> Copy all
               </button>
             </div>
-            <p className="text-sm text-ink-300 leading-relaxed line-clamp-5">
+            <p className="text-sm text-ink-700 leading-relaxed line-clamp-5">
               {description || 'No description yet — go back a step and generate one.'}
             </p>
           </div>
@@ -656,8 +660,8 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
       )}
 
       {/* Wizard nav */}
-      <div className="flex items-center justify-between pt-2 border-t border-white/5">
-        <button onClick={() => (step === 0 ? onClose() : setStep(s => s - 1))} className="btn btn-ghost text-sm">
+      <div className="flex items-center justify-between pt-4 border-t border-ink-200">
+        <button onClick={() => (step === 0 ? onClose() : setStep(s => s - 1))} className="btn btn-quiet text-sm">
           <ChevronLeft className="w-4 h-4" /> {step === 0 ? 'Cancel' : 'Back'}
         </button>
         {step < 3 ? (
@@ -670,11 +674,35 @@ function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () 
           </button>
         )}
       </div>
+      </div>
     </div>
   );
 }
 
 // ─── Page ───────────────────────────────────────────────────────────────────
+
+/**
+ * Full-page New Listing flow — /dashboard/listings/new.
+ * Mirrors base44's listings/new: stepper on the dark backdrop, white wizard card.
+ */
+export function NewListingPage() {
+  const navigate = useNavigate();
+  const goBack = () => navigate('/dashboard/listings');
+  return (
+    <div className="max-w-3xl mx-auto animate-fade-in">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-2xl font-bold text-white">New Listing</h1>
+          <p className="text-sm text-ink-400">Property details → photos → AI description → portal export.</p>
+        </div>
+        <button onClick={goBack} className="btn btn-ghost text-sm">
+          <ChevronLeft className="w-4 h-4" /> All listings
+        </button>
+      </div>
+      <ListingWizard onClose={goBack} onSaved={goBack} />
+    </div>
+  );
+}
 
 export default function PropertyListings() {
   const { user } = useCredit();
@@ -685,7 +713,6 @@ export default function PropertyListings() {
   const [tab, setTab] = useState<'listings' | 'videos'>('listings');
   const [filter, setFilter] = useState<'ALL' | MarketStatus>('ALL');
   const [sort, setSort] = useState<'new' | 'old' | 'price'>('new');
-  const [wizard, setWizard] = useState(false);
   const [player, setPlayer] = useState<Project | null>(null);
 
   const load = () => {
@@ -766,15 +793,12 @@ export default function PropertyListings() {
           <h1 className="text-2xl font-bold text-white">Property Listings</h1>
           <p className="text-sm text-ink-400">Manage your portfolio and trigger video creation.</p>
         </div>
-        <button onClick={() => setWizard(true)} className="btn btn-primary text-sm">
+        <button onClick={() => navigate('/dashboard/listings/new')} className="btn btn-primary text-sm">
           <Plus className="w-4 h-4" /> New Listing
         </button>
       </div>
 
-      {wizard ? (
-        <ListingWizard onClose={() => setWizard(false)} onSaved={load} />
-      ) : (
-        <>
+      <>
           {/* Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="card-dark p-4 flex items-center gap-3">
@@ -835,7 +859,7 @@ export default function PropertyListings() {
                   : 'Add your first property — the wizard takes under a minute.'}
               </p>
               {tab === 'listings' && (
-                <button onClick={() => setWizard(true)} className="btn btn-primary text-sm">
+                <button onClick={() => navigate('/dashboard/listings/new')} className="btn btn-primary text-sm">
                   <Plus className="w-4 h-4" /> New Listing
                 </button>
               )}
@@ -884,8 +908,7 @@ export default function PropertyListings() {
               ))}
             </div>
           )}
-        </>
-      )}
+      </>
 
       {player && <VideoLightbox project={player} onClose={() => setPlayer(null)} />}
     </div>
