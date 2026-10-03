@@ -173,7 +173,7 @@ export const PropReelAPI = {
     return data.text || '';
   },
 
-  // ── Account deletion (Supabase + DynamoDB row) ─────────────────────────
+  // ── Account deletion (DynamoDB user row + projects) ──────────────
   async deleteAccount(userId: string): Promise<void> {
     await j<{ success: boolean }>(
       await fetch(`${API_BASE}/api/users?action=delete`, {

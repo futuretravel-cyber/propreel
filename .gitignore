@@ -58,6 +58,9 @@ Thumbs.db
 # Supabase local development
 .supabase/
 
+# Archived backups (contain user data — never commit)
+backups/
+
 # Test results
 test-results/
 playwright-report/

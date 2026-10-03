@@ -28,8 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const amount = Math.round((result.data.amount || 0) / 100); // Convert from kobo
     const email = result.data.customer_email;
 
-    // Find user by email in our users table (webhook-style local lookup;
-    // supabase-js v2 has no auth.admin.getUserByEmail on GoTrueAdminApi)
+    // Find user by email in our users table (webhook-style local lookup)
     let userId: string | undefined;
     {
       const { getUserByEmail } = await import('../../lib/userService');

@@ -109,8 +109,10 @@ Current state: **test mode everywhere** (`sk_test_` in Vercel production,
       video render end-to-end (Studio → project READY)
 - [ ] Cron endpoint: without `CRON_SECRET` → 401, with it → 200 (already verified — recheck after env swaps)
 - [ ] Plausible analytics receiving events (`/api` + SPA pageviews)
-- [ ] Archive local backups (`admin-row-backup.json`, `supabase-final-backup.json`)
-      somewhere safe, then remove from workspace root
+- [x] Archive local backups — moved to git-ignored `backups/`
+      (`admin-row-backup.json`, `supabase-final-backup.json`,
+      `supabase-preexisting-rows-backup.json`); copy them somewhere off-laptop
+      when convenient
 
 ---
 

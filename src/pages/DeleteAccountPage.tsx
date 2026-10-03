@@ -15,8 +15,8 @@ export default function DeleteAccountPage() {
   const [confirmText, setConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  // Real account deletion: removes the DynamoDB user row, the user's
-  // projects, and the Supabase auth identity via /api/users?action=delete.
+  // Real account deletion: removes the DynamoDB user row and the user's
+  // projects via /api/users?action=delete.
   const handleDelete = async () => {
     if (!user) return;
     setDeleting(true);

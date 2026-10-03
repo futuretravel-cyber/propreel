@@ -183,12 +183,13 @@ src/
 All documentation lives in `docs/`:
 
 - `README.md` - Project overview (repo root)
-- `docs/SUPABASE_MIGRATION.md` - Database migration runbook
-- `docs/ARCHITECTURE_STORAGE_DECISION.md` - Why S3 for storage
+- `docs/DEPLOYMENT_STATUS.md` - Current production status
+- `docs/GO_LIVE_CHECKLIST.md` - Test→live launch checklist
+- `docs/RESEND_DNS_SETUP.md` - Resend domain verification runbook
+- `docs/ARCHITECTURE_STORAGE_DECISION.md` - Why S3 for storage (Supabase sections archived)
 - `docs/GITHUB_VERCEL_DEPLOYMENT.md` - Deployment guide
 - `docs/MODAL_ENDPOINT_SETUP.md` - Modal render worker setup
 - `docs/MODAL_API_URLS.md` - The two Modal URLs (common gotcha)
-- `docs/DEPLOYMENT_STATUS.md` - Current production status
 - `docs/WEBSITE_IMPROVEMENT_PLAN.md` - Prioritised improvement plan
 - `docs/WEBSITE_IMPROVEMENT_SUGGESTIONS.md` - Longer-term ideas
 
