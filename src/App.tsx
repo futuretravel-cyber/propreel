@@ -2368,14 +2368,15 @@ function AdminPage() {
         <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {['overview', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music'].map(t => (
+        {['overview', 'pnl', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music'].map(t => (
           <button key={t} onClick={() => setTab(t)} className={`tab-pill ${tab === t ? 'tab-pill-active' : ''}`}>
-            {t === 'music' ? 'Music Library' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'music' ? 'Music Library' : t === 'pnl' ? 'P&L' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
       <div className="card-dark p-6">
         {tab === 'overview' && <AdminOverview />}
+        {tab === 'pnl' && <AdminPnl />}
         {tab === 'users' && <AdminUsers />}
         {tab === 'agencies' && <AdminAgencies />}
         {tab === 'reviews' && <AdminReviews />}
@@ -2573,6 +2574,298 @@ function AdminOverview() {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Admin: monthly Profit & Loss statement (derived from the real credit
+// ledger) with admin-entered operating expenses and a PDF export. ──────────
+function PnlLine({ label, value, bold, tone, dim }: { label: string; value: string; bold?: boolean; tone?: string; dim?: boolean }) {
+  return (
+    <tr className={bold ? 'border-t border-white/10' : ''}>
+      <td className={`px-3 py-1.5 ${bold ? 'text-white font-semibold' : dim ? 'text-ink-500' : 'text-ink-300'}`}>{label}</td>
+      <td className={`px-3 py-1.5 text-right tabular-nums ${bold ? 'text-white font-semibold' : tone || 'text-ink-200'}`}>{value}</td>
+    </tr>
+  );
+}
+
+function PnlSectionRow({ title }: { title: string }) {
+  return (
+    <tr>
+      <td colSpan={2} className="px-3 pt-4 pb-1 text-[11px] font-semibold text-purple-300 uppercase tracking-wider">{title}</td>
+    </tr>
+  );
+}
+
+function AdminPnl() {
+  const { user } = useCredit();
+  const toast = useToast();
+  const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [form, setForm] = useState({ label: '', category: 'fal.ai', amount: '', note: '' });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user?.email) return;
+    setData(null);
+    setError('');
+    fetch(`/api/users?action=pln_get&email=${encodeURIComponent(user.email)}&month=${month}`)
+      .then(r => { if (!r.ok) throw new Error('P&L statement unavailable'); return r.json(); })
+      .then(setData)
+      .catch(e => setError(e.message));
+  }, [user?.email, month, reloadKey]);
+
+  const refresh = () => setReloadKey(k => k + 1);
+  const fmt = formatZar;
+
+  const addExpense = async () => {
+    if (!user?.email || saving) return;
+    if (!form.label.trim() || !(Number(form.amount) > 0)) {
+      toast.error('Enter a label and a positive amount');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/users?action=pln_expense_add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, month, label: form.label, category: form.category, amount: Number(form.amount), note: form.note }),
+      });
+      if (!res.ok) throw new Error();
+      setForm({ label: '', category: form.category, amount: '', note: '' });
+      toast.success('Expense added');
+      refresh();
+    } catch {
+      toast.error('Failed to save expense');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeExpense = async (itemId: string) => {
+    if (!user?.email) return;
+    try {
+      const res = await fetch('/api/users?action=pln_expense_delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, month, itemId }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success('Expense removed');
+      refresh();
+    } catch {
+      toast.error('Failed to remove expense');
+    }
+  };
+
+  const downloadPdf = async () => {
+    if (!user?.email || pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      const res = await fetch(`/api/users?action=pln_pdf&email=${encodeURIComponent(user.email)}&month=${month}`);
+      if (!res.ok) throw new Error();
+      const d = await res.json();
+      if (d.url) window.open(d.url, '_blank', 'noopener');
+      toast.success('P&L PDF generated');
+    } catch {
+      toast.error('PDF generation failed');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  const s = data?.statement;
+  const kpis = s ? [
+    { label: 'Revenue (cash)', value: fmt(s.revenue.total), sub: 'collected this month', tone: 'text-white' },
+    { label: 'Net profit (cash)', value: fmt(s.net.cash), sub: s.margin.cash !== null ? `${(s.margin.cash * 100).toFixed(1)}% margin` : 'no revenue yet', tone: s.net.cash >= 0 ? 'text-green-400' : 'text-red-400' },
+    { label: 'Recognised from usage', value: fmt(s.usage.recognizedRevenue), sub: `${s.usage.creditsConsumed.toLocaleString('en-ZA')} credits consumed`, tone: 'text-white' },
+    { label: 'Operating expenses', value: fmt(s.expenses.total), sub: `${s.expenses.items.length} line item${s.expenses.items.length === 1 ? '' : 's'}`, tone: 'text-white' },
+  ] : [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <label htmlFor="pnl-month" className="text-xs text-ink-400">Month</label>
+          <input id="pnl-month" type="month" className="input w-44" value={month} onChange={e => setMonth(e.target.value)} />
+          {s?.inProgress && <span className="badge badge-warning">IN PROGRESS</span>}
+        </div>
+        <button onClick={downloadPdf} disabled={!s || pdfBusy} className="btn btn-primary text-sm">
+          <Download className="w-4 h-4" /> {pdfBusy ? 'Generating…' : 'Download PDF'}
+        </button>
+      </div>
+
+      {error && <div className="bg-red-950/30 border border-red-500/30 rounded-xl p-4 text-sm text-red-300">{error}</div>}
+      {!s && !error && <p className="text-sm text-ink-400">Building statement from the credit ledger…</p>}
+
+      {s && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {kpis.map(k => (
+              <div key={k.label} className="bg-ink-800/50 rounded-xl p-4">
+                <p className="text-xs text-ink-400">{k.label}</p>
+                <p className={`text-xl font-bold mt-1 ${k.tone}`}>{k.value}</p>
+                <p className="text-[11px] text-ink-500 mt-0.5">{k.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Line item</th>
+                  <th className="text-right px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Amount (ZAR)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <PnlSectionRow title="Revenue — cash collected" />
+                <PnlLine label="Subscription revenue" value={fmt(s.revenue.subscription)} />
+                <PnlLine label="Credit top-ups (one-off)" value={fmt(s.revenue.topups)} />
+                {s.revenue.refunds !== 0 && <PnlLine label="Refunds & adjustments" value={fmt(s.revenue.refunds)} />}
+                <PnlLine label="Total revenue" value={fmt(s.revenue.total)} bold />
+
+                <PnlSectionRow title="Usage — accrual view (credits used by all users)" />
+                <PnlLine label="Credits consumed" value={`${s.usage.creditsConsumed.toLocaleString('en-ZA')} cr`} />
+                <PnlLine label="Recognised revenue @ R1.00/credit" value={fmt(s.usage.recognizedRevenue)} />
+                <PnlLine label="Credits granted (still to consume)" value={`${s.usage.creditsGranted.toLocaleString('en-ZA')} cr`} dim />
+
+                <PnlSectionRow title="Operating expenses" />
+                {s.expenses.byCategory.length === 0
+                  ? <PnlLine label="No expenses logged" value={fmt(0)} dim />
+                  : s.expenses.byCategory.map((c: any) => <PnlLine key={c.category} label={c.category} value={fmt(c.total)} />)}
+                <PnlLine label="Total expenses" value={fmt(s.expenses.total)} bold />
+
+                <PnlSectionRow title="Profit" />
+                <PnlLine label="Net profit — cash basis" value={fmt(s.net.cash)} bold tone={s.net.cash >= 0 ? 'text-green-400' : 'text-red-400'} />
+                <PnlLine label="Profit margin — cash basis" value={s.margin.cash !== null ? `${(s.margin.cash * 100).toFixed(1)}%` : '—'} />
+                <PnlLine label="Net profit — usage basis" value={fmt(s.net.usage)} bold tone={s.net.usage >= 0 ? 'text-green-400' : 'text-red-400'} />
+                <PnlLine label="Profit margin — usage basis" value={s.margin.usage !== null ? `${(s.margin.usage * 100).toFixed(1)}%` : '—'} />
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-ink-800/50 rounded-xl p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <FileText className="w-4 h-4 text-purple-400" /> Expense entries — {s.monthLabel}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+              <input className="input md:col-span-4" placeholder="e.g. fal.ai October usage" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} />
+              <select className="input md:col-span-2" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} aria-label="Expense category">
+                {['fal.ai', 'Modal', 'AWS', 'Paystack', 'Marketing', 'Payroll', 'Software', 'Office', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <input className="input md:col-span-2" type="number" min="0" step="0.01" placeholder="Amount (R)" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
+              <input className="input md:col-span-3" placeholder="Note (optional)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} />
+              <button onClick={addExpense} disabled={saving} className="btn btn-primary justify-center"><Plus className="w-4 h-4" /> Add</button>
+            </div>
+            {s.expenses.items.length === 0 ? (
+              <p className="text-xs text-ink-500">No expenses for this month yet — log Fal monthly usage, Modal, AWS, Paystack fees, salaries, anything the business pays for.</p>
+            ) : (
+              <ul className="space-y-1">
+                {s.expenses.items.map((e: any) => (
+                  <li key={e.id} className="flex items-center justify-between gap-3 bg-ink-900/60 rounded-lg px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm text-white truncate">{e.label}</p>
+                      <p className="text-[11px] text-ink-500">{e.category}{e.note ? ` · ${e.note}` : ''}</p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span className="text-sm text-white tabular-nums">{fmt(e.amount)}</span>
+                      <button onClick={() => removeExpense(e.id)} className="text-ink-500 hover:text-red-400 transition-colors" aria-label={`Delete ${e.label}`}>
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {Array.isArray(data.series) && (
+            <div className="bg-ink-800/50 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-purple-400" /> Revenue vs expenses — trailing 12 months
+                </h3>
+                <span className="text-xs text-ink-500">cash basis · SAST months</span>
+              </div>
+              <div className="h-[240px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.series} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis dataKey="month" tickFormatter={(v: string) => v.slice(5)} tick={{ fill: '#8b8b9e', fontSize: 10 }} tickLine={false} axisLine={{ stroke: 'rgba(255,255,255,0.08)' }} />
+                    <YAxis tick={{ fill: '#8b8b9e', fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <RTooltip
+                      formatter={(v: any) => formatZar(Number(v))}
+                      contentStyle={{ background: '#111827', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
+                    />
+                    <Bar dataKey="revenue" name="Revenue" fill="#a855f7" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="expenses" name="Expenses" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          <PnlAnalyst data={data} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// Analyst panel attached to the P&L dashboard — deterministic insights
+// computed server-side (the same text lands in the PDF export) plus
+// unit-economics KPIs derived from the ledger and expense entries.
+function PnlAnalyst({ data }: { data: any }) {
+  if (!data?.statement) return null;
+  const s = data.statement;
+  const m = data.metrics;
+  const margin = s.margin.cash;
+  const verdict = margin === null
+    ? { label: 'AWAITING REVENUE', cls: 'badge-muted' }
+    : margin >= 0.3 ? { label: 'HEALTHY', cls: 'badge-success' }
+    : margin >= 0.1 ? { label: 'WORKABLE', cls: 'badge-muted' }
+    : margin >= 0 ? { label: 'THIN MARGIN', cls: 'badge-warning' }
+    : { label: 'LOSS-MAKING', cls: 'badge-danger' };
+
+  const stats = [
+    { label: 'Cost per credit consumed', value: m.costPerCredit !== null ? formatZar(m.costPerCredit) : '—' },
+    { label: 'Paying customers', value: String(m.payingCustomers) },
+    { label: 'Active subscribers', value: String(m.activeSubscriptions) },
+    { label: 'New signups', value: String(m.newSignups) },
+  ];
+
+  return (
+    <div className="bg-ink-800/50 rounded-xl p-4 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-purple-400" /> Analyst — {s.monthLabel}
+        </h3>
+        <span className={`badge ${verdict.cls}`}>{verdict.label}</span>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {stats.map(st => (
+          <div key={st.label} className="bg-ink-900/60 rounded-lg p-3">
+            <p className="text-[11px] text-ink-400">{st.label}</p>
+            <p className="text-lg font-bold text-white mt-0.5">{st.value}</p>
+          </div>
+        ))}
+      </div>
+      <ul className="space-y-2">
+        {(data.insights || []).map((ins: string, i: number) => (
+          <li key={i} className="flex gap-2 text-sm text-ink-300 leading-relaxed">
+            <span className="text-purple-400 mt-0.5 flex-shrink-0">▸</span>
+            <span>{ins}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-ink-500">These notes are included in the PDF export.</p>
     </div>
   );
 }

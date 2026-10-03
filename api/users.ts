@@ -572,6 +572,71 @@ async function adminLedger(req: VercelRequest, res: VercelResponse) {
   });
 }
 
+/**
+ * Nested route: GET/POST /api/users?action=pln_* — monthly Profit & Loss
+ * statement for the admin dashboard (admin-only, Hobby-cap consolidation).
+ *   GET  pln_get            &month=YYYY-MM → statement + 12-month series + analyst insights
+ *   POST pln_expense_add    {month, label, category, amount, note?}
+ *   POST pln_expense_delete {month, itemId}
+ *   GET  pln_pdf            &month=YYYY-MM → downloadable P&L PDF (S3 URL)
+ */
+async function pnlRoutes(req: VercelRequest, res: VercelResponse, action: string) {
+  const body = (req.body || {}) as any;
+  const email = String(req.query.email || body.email || '').toLowerCase();
+  if (!isAdminEmail(email)) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const { isMonthKey, buildPnlReport, addPnlExpense, deletePnlExpense, generatePnlPdf, EXPENSE_CATEGORIES } =
+    await import('../lib/pnl');
+
+  const month = String(req.query.month || body.month || '').trim();
+  if (!isMonthKey(month)) {
+    return res.status(400).json({ error: 'month must be YYYY-MM' });
+  }
+
+  try {
+    if (action === 'pln_get' && req.method === 'GET') {
+      const report = await buildPnlReport(month);
+      return res.status(200).json({ success: true, ...report });
+    }
+
+    if (action === 'pln_expense_add' && req.method === 'POST') {
+      const label = String(body.label || '').trim().slice(0, 120);
+      const amount = Math.round(Number(body.amount) * 100) / 100;
+      const category = String(body.category || 'Other');
+      if (!label || !Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ error: 'label and a positive amount are required' });
+      }
+      const safeCategory = (EXPENSE_CATEGORIES as readonly string[]).includes(category) ? category : 'Other';
+      const item = await addPnlExpense(month, {
+        label,
+        category: safeCategory,
+        amount,
+        note: String(body.note || '').trim().slice(0, 300) || undefined,
+      });
+      return res.status(201).json({ success: true, item });
+    }
+
+    if (action === 'pln_expense_delete' && req.method === 'POST') {
+      const itemId = String(body.itemId || '');
+      if (!itemId) return res.status(400).json({ error: 'itemId is required' });
+      const removed = await deletePnlExpense(month, itemId);
+      return res.status(200).json({ success: removed });
+    }
+
+    if (action === 'pln_pdf' && req.method === 'GET') {
+      const url = await generatePnlPdf(month);
+      return res.status(200).json({ success: true, url });
+    }
+
+    return res.status(404).json({ error: `Unknown P&L action: ${action}` });
+  } catch (err) {
+    console.error('P&L error:', err);
+    return res.status(500).json({ error: 'P&L request failed' });
+  }
+}
+
 /** Strip auth secrets before a user row leaves the API. */
 function safeUser(user: any) {
   if (!user) return user;
@@ -868,6 +933,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.method === 'GET' && req.query.action === 'admin_ledger') {
     return adminLedger(req, res);
+  }
+  if (String(req.query.action || '').startsWith('pln_')) {
+    return pnlRoutes(req, res, String(req.query.action));
   }
   if (String(req.query.action || '').startsWith('agency_') || req.query.action === 'admin_agencies' || req.query.action === 'feature_flags') {
     return agencyRoutes(req, res, String(req.query.action));
