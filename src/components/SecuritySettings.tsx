@@ -141,11 +141,11 @@ export default function SecuritySettings() {
                   { name: 'Email Verification', desc: 'Receive codes via email', icon: <Mail className="w-5 h-5" />, recommended: false },
                 ].map((m, i) => (
                   <div key={i} className={`p-4 rounded-xl border transition ${i === 0 && twoFAEnabled ? 'border-purple-500/30 bg-purple-950/20' : 'border-white/5 bg-ink-800/50'}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="text-ink-300">{m.icon}</span>
-                        <div>
-                          <p className="text-sm font-medium text-white flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-ink-300 shrink-0">{m.icon}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-white flex items-center gap-2 flex-wrap">
                             {m.name}
                             {m.recommended && <span className="badge badge-brand text-[10px]">Recommended</span>}
                           </p>
@@ -164,7 +164,7 @@ export default function SecuritySettings() {
                           }
                         }}
                         disabled={i > 0 || busy}
-                        className={`btn text-xs py-1 px-3 ${i === 0 && twoFAEnabled ? 'btn-danger' : 'btn-secondary'}`}
+                        className={`btn text-xs py-1 px-3 ml-auto shrink-0 ${i === 0 && twoFAEnabled ? 'btn-danger' : 'btn-secondary'}`}
                       >
                         {i === 0 && twoFAEnabled ? 'Disable' : 'Enable'}
                       </button>

@@ -186,9 +186,9 @@ export default function NotificationCenter() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
             <Bell className="w-6 h-6 text-purple-400" /> Notifications
             {unreadCount > 0 && (
               <span className="badge badge-brand">{unreadCount} unread</span>
@@ -196,7 +196,7 @@ export default function NotificationCenter() {
           </h1>
           <p className="text-ink-400 mt-1">Stay updated with your account activity</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap ml-auto">
           <button
             onClick={markAllAsRead}
             className="btn btn-secondary text-sm"

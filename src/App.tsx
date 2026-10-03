@@ -1662,7 +1662,7 @@ function SocialTab() {
       </div>
 
       {/* Detail sections */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+      <div className="flex flex-wrap gap-2 pb-1">
         {sectionTabs.map(s => (
           <button
             key={s.id}
