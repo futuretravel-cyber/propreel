@@ -15,6 +15,12 @@
  * the admin and stored per month in the settings table as
  * `pl_expenses_<YYYY-MM>`. Month boundaries are SAST (UTC+2) so the books
  * line up with South African calendar months.
+ *
+ * Closing the books: `finalizePnlMonth` (run by the monthly cron) pins the
+ * statement PDF at a deterministic S3 key and freezes the computed report as
+ * a `pl_snapshot_<YYYY-MM>` settings row — later reads serve the snapshot
+ * instantly and stay correct even after the ledger outgrows the scan window.
+ * Editing an expense on a closed month invalidates both (the month re-opens).
  */
 
 import { TABLES, scanItems, getItem, putItem, deleteItem } from './db';
@@ -115,6 +121,7 @@ export async function addPnlExpense(month: string, input: {
     items,
     updatedAt: new Date().toISOString(),
   } satisfies PnlExpenseRow);
+  await invalidatePnlSnapshot(month).catch(() => {}); // a closed month re-opens on edit
   return item;
 }
 
@@ -122,6 +129,7 @@ export async function deletePnlExpense(month: string, itemId: string): Promise<b
   const items = await loadPnlExpenses(month);
   const next = items.filter(i => i.id !== itemId);
   if (next.length === items.length) return false;
+  await invalidatePnlSnapshot(month).catch(() => {}); // a closed month re-opens on edit
   if (next.length === 0) {
     await deleteItem(TABLES.SETTINGS, { id: `pl_expenses_${month}` }).catch(() => {});
     return true;
@@ -149,6 +157,8 @@ interface MonthAgg {
   subscriptionUsers: Set<string>;
   topupUsers: Set<string>;
   spenders: Set<string>;
+  /** Subscription revenue per plan id (cohort mix). */
+  planRevenue: Map<string, { zar: number; customers: Set<string> }>;
   renders: number;
   video: { renders: number; credits: number };
   flash: { renders: number; credits: number };
@@ -160,6 +170,7 @@ const emptyAgg = (): MonthAgg => ({
   creditsConsumed: 0, creditsGranted: 0,
   subscriptionEvents: 0, topupEvents: 0,
   subscriptionUsers: new Set(), topupUsers: new Set(), spenders: new Set(),
+  planRevenue: new Map(),
   renders: 0,
   video: { renders: 0, credits: 0 },
   flash: { renders: 0, credits: 0 },
@@ -199,12 +210,52 @@ export interface PnlMetrics {
   costPerCredit: number | null;
 }
 
+export interface PnlPlanMixEntry {
+  planId: string;
+  zar: number;
+  customers: number;
+  /** Same plan's subscription revenue in the previous month (MoM compare). */
+  prevZar: number;
+}
+
+export interface PnlSubscriberStats {
+  newSubscribers: number;
+  renewed: number;
+  /** Paid period ended inside the month without renewal (status CANCELLED). */
+  churned: number;
+  /** Paid period ended inside the month with payment failing (PAST_DUE). */
+  pastDue: number;
+  active: number;
+}
+
+export type PnlForecastStatus =
+  | 'already_covered'
+  | 'projected'
+  | 'stalled'
+  | 'insufficient_data'
+  | 'no_expenses';
+
+export interface PnlForecast {
+  status: PnlForecastStatus;
+  /** Trailing average of the months that carry logged expenses (R/month). */
+  expenseBase: number;
+  currentUsageRevenue: number;
+  /** Least-squares slope of usage revenue over usage-active months (R/month). */
+  monthlyTrend: number;
+  sampleMonths: number;
+  breakEvenMonth: string | null;
+  monthsToBreakEven: number | null;
+}
+
 export interface PnlReport {
   statement: PnlStatement;
   metrics: PnlMetrics;
   series: PnlSeriesPoint[];
   prev: PnlSeriesPoint | null;
   insights: string[];
+  planMix: PnlPlanMixEntry[];
+  subscribers: PnlSubscriberStats;
+  forecast: PnlForecast;
 }
 
 const zar = (n: number) =>
@@ -212,14 +263,83 @@ const zar = (n: number) =>
 
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
+/** One-line break-even status — shared by insights, PDF and the report email. */
+export function forecastHeadline(f: PnlForecast): string {
+  switch (f.status) {
+    case 'already_covered':
+      return `Usage-basis revenue (${zar(f.currentUsageRevenue)}) already covers the ${zar(f.expenseBase)} monthly expense base — break-even achieved.`;
+    case 'projected':
+      return `Break-even forecast: usage revenue trending ${zar(f.monthlyTrend)}/month against a ${zar(f.expenseBase)} expense base — covered by ${monthLabel(f.breakEvenMonth!)} (≈${f.monthsToBreakEven} month${f.monthsToBreakEven === 1 ? '' : 's'} out, ${f.sampleMonths}-month sample, directional).`;
+    case 'stalled':
+      return `Usage revenue trend is flat or declining (${zar(f.monthlyTrend)}/month) — no break-even date projected at this trajectory.`;
+    case 'insufficient_data':
+      return `Break-even forecast needs at least 2 months of usage data (have ${f.sampleMonths}).`;
+    case 'no_expenses':
+      return 'Break-even forecast unavailable — no operating expenses logged yet.';
+  }
+}
+
+/**
+ * Break-even forecast: when usage-basis revenue is projected to cover the
+ * trailing expense base. Least-squares trend over usage-active months;
+ * directional until at least 3 months of data exist.
+ */
+function computeForecast(month: string, series: PnlSeriesPoint[]): PnlForecast {
+  const usagePts = series.filter(p => p.creditsConsumed > 0);
+  const expensePts = series.filter(p => p.expenses > 0);
+  const cur = series.find(p => p.month === month);
+  const currentUsageRevenue = (cur?.creditsConsumed || 0) * CREDIT_FACE_VALUE;
+  const sampleMonths = usagePts.length;
+  const base = {
+    expenseBase: 0,
+    currentUsageRevenue,
+    monthlyTrend: 0,
+    sampleMonths,
+    breakEvenMonth: null,
+    monthsToBreakEven: null,
+  };
+
+  const expenseBase = expensePts.length > 0
+    ? expensePts.slice(-3).reduce((s, p) => s + p.expenses, 0) / Math.min(3, expensePts.length)
+    : 0;
+  base.expenseBase = expenseBase;
+
+  if (expenseBase <= 0) return { ...base, status: 'no_expenses' };
+  if (currentUsageRevenue >= expenseBase) return { ...base, status: 'already_covered' };
+  if (usagePts.length < 2) return { ...base, status: 'insufficient_data' };
+
+  const n = usagePts.length;
+  const ys = usagePts.map(p => p.creditsConsumed * CREDIT_FACE_VALUE);
+  const mx = (n - 1) / 2;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (i - mx) * (ys[i] - my);
+    den += (i - mx) * (i - mx);
+  }
+  const slope = den > 0 ? num / den : 0;
+  if (slope <= 0) return { ...base, monthlyTrend: slope, status: 'stalled' };
+
+  const monthsNeeded = Math.max(1, Math.ceil((expenseBase - currentUsageRevenue) / slope));
+  return {
+    ...base,
+    monthlyTrend: slope,
+    status: 'projected',
+    monthsToBreakEven: monthsNeeded,
+    breakEvenMonth: shiftMonthKey(month, monthsNeeded),
+  };
+}
+
 /**
  * Build the full monthly P&L report: statement + customer metrics +
  * 12-month series + analyst insights. One ledger scan serves all of it.
  */
 export async function buildPnlReport(month: string): Promise<PnlReport> {
   const { start, end } = monthWindowSAST(month);
-  const months = lastNMonths(month, 12);
-  const monthSet = new Set(months);
+  const seriesMonths = lastNMonths(month, 12);
+  const bucketMonths = lastNMonths(month, 24); // 24 months bucketed → YoY (month−12) aggregates
+  const monthSet = new Set(bucketMonths);
   const now = Date.now();
 
   // One paginated scan of the ledger (event_index dedupe rows excluded
@@ -242,6 +362,13 @@ export async function buildPnlReport(month: string): Promise<PnlReport> {
     let a = aggs.get(key);
     if (!a) { a = emptyAgg(); aggs.set(key, a); }
     return a;
+  };
+
+  const trackPlan = (a: MonthAgg, planId: string, zarValue: number, userId: string) => {
+    let p = a.planRevenue.get(planId);
+    if (!p) { p = { zar: 0, customers: new Set<string>() }; a.planRevenue.set(planId, p); }
+    p.zar += zarValue;
+    p.customers.add(userId);
   };
 
   const featureBucket = (a: MonthAgg, desc: string, credits: number, isRender: boolean) => {
@@ -267,19 +394,23 @@ export async function buildPnlReport(month: string): Promise<PnlReport> {
         a.creditsGranted += amount; // top-ups expand the outstanding credit supply
       } else if (t.metadata?.kind === 'PLAN_UPGRADE') {
         // Prorated upgrade charge recorded as a negative purchase row.
-        a.subscriptionZar += Number(t.metadata.chargeZar) || Math.abs(amount);
+        const upgradeZar = Number(t.metadata.chargeZar) || Math.abs(amount);
+        a.subscriptionZar += upgradeZar;
         a.subscriptionEvents += 1;
         a.subscriptionUsers.add(t.userId);
+        trackPlan(a, String(t.metadata.toPlan || 'UPGRADE'), upgradeZar, t.userId);
       }
     } else if (type === 'subscription' && amount > 0) {
       const planId = String(t.metadata?.planId || '');
       const cycle = t.metadata?.cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY';
       const plan = plans[planId];
-      if (plan) a.subscriptionZar += cycle === 'ANNUAL' ? plan.annualZar : plan.monthlyZar;
-      else a.subscriptionZar += 0; // unknown plan — report as 0, not guessed
+      // Unknown plan → 0, not guessed.
+      const planZar = plan ? (cycle === 'ANNUAL' ? plan.annualZar : plan.monthlyZar) : 0;
+      a.subscriptionZar += planZar;
       a.subscriptionEvents += 1;
       a.subscriptionUsers.add(t.userId);
       a.creditsGranted += amount;
+      trackPlan(a, planId || 'UNKNOWN', planZar, t.userId);
     } else if (type === 'refund' && amount > 0) {
       a.refundZar += amount;
     } else if (type === 'deduction' && amount < 0) {
@@ -293,12 +424,12 @@ export async function buildPnlReport(month: string): Promise<PnlReport> {
     }
   }
 
-  // Expenses for the 12-month window.
-  const expenseLists = await Promise.all(months.map(loadPnlExpenses));
+  // Expenses for the 12-month chart window.
+  const expenseLists = await Promise.all(seriesMonths.map(loadPnlExpenses));
   const expensesByMonth = new Map<string, PnlExpense[]>();
-  months.forEach((m, i) => expensesByMonth.set(m, expenseLists[i]));
+  seriesMonths.forEach((m, i) => expensesByMonth.set(m, expenseLists[i]));
 
-  const series: PnlSeriesPoint[] = months.map(m => {
+  const series: PnlSeriesPoint[] = seriesMonths.map(m => {
     const a = aggs.get(m) || emptyAgg();
     const revenue = a.subscriptionZar + a.topupZar - a.refundZar;
     const expenses = (expensesByMonth.get(m) || []).reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -375,14 +506,68 @@ export async function buildPnlReport(month: string): Promise<PnlReport> {
   const prevIdx = series.findIndex(p => p.month === month) - 1;
   const prev = prevIdx >= 0 ? series[prevIdx] : null;
 
-  const insights = buildInsights(statement, metrics, prev);
+  // ── Cohort analysis: revenue by plan (MoM compare) ────────────────
+  const prevAgg = aggs.get(shiftMonthKey(month, -1)) || emptyAgg();
+  const planMix: PnlPlanMixEntry[] = [...cur.planRevenue.entries()]
+    .map(([planId, v]) => ({
+      planId,
+      zar: v.zar,
+      customers: v.customers.size,
+      prevZar: prevAgg.planRevenue.get(planId)?.zar || 0,
+    }))
+    .sort((a, b) => b.zar - a.zar);
 
-  return { statement, metrics, series, prev, insights };
+  // ── Subscriber movement: first-time vs renewed vs lapsed ──────────
+  const priorSubUsers = new Set<string>();
+  for (const [key, a] of aggs) {
+    if (key < month) for (const uid of a.subscriptionUsers) priorSubUsers.add(uid);
+  }
+  let renewed = 0;
+  let newSubscribers = 0;
+  for (const uid of cur.subscriptionUsers) {
+    if (priorSubUsers.has(uid)) renewed++;
+    else newSubscribers++;
+  }
+  let churned = 0;
+  let pastDue = 0;
+  for (const u of users) {
+    const sub = u.subscription;
+    if (!sub?.currentPeriodEnd) continue;
+    const pe = Date.parse(sub.currentPeriodEnd);
+    if (Number.isNaN(pe) || pe < start || pe >= end) continue;
+    if (sub.status === 'CANCELLED') churned++;
+    else if (sub.status === 'PAST_DUE') pastDue++;
+  }
+  const subscribers: PnlSubscriberStats = { newSubscribers, renewed, churned, pastDue, active: activeSubscriptions };
+
+  // ── Break-even forecast (usage basis vs expense base) ─────────────
+  const forecast = computeForecast(month, series);
+
+  // ── Year-over-year cohort baseline ────────────────────────────────
+  const yoyMonth = shiftMonthKey(month, -12);
+  const yoyAgg = aggs.get(yoyMonth);
+  const yoyRevenue = yoyAgg ? yoyAgg.subscriptionZar + yoyAgg.topupZar - yoyAgg.refundZar : 0;
+
+  const insights = buildInsights(statement, metrics, prev, { planMix, subscribers, forecast, yoyRevenue, yoyMonth });
+
+  return { statement, metrics, series, prev, insights, planMix, subscribers, forecast };
 }
 
 // ─── Analyst: deterministic insight narrative (also printed in the PDF) ─────
 
-function buildInsights(s: PnlStatement, m: PnlMetrics, prev: PnlSeriesPoint | null): string[] {
+function buildInsights(
+  s: PnlStatement,
+  m: PnlMetrics,
+  prev: PnlSeriesPoint | null,
+  ctx: {
+    planMix: PnlPlanMixEntry[];
+    subscribers: PnlSubscriberStats;
+    forecast: PnlForecast;
+    yoyRevenue: number;
+    yoyMonth: string;
+  }
+): string[] {
+  const { planMix, subscribers, forecast, yoyRevenue, yoyMonth } = ctx;
   const out: string[] = [];
   const rev = s.revenue.total;
 
@@ -449,7 +634,32 @@ function buildInsights(s: PnlStatement, m: PnlMetrics, prev: PnlSeriesPoint | nu
   if (m.topupEvents > 0) cust.push(`${m.topupEvents} top-up${m.topupEvents === 1 ? '' : 's'} from ${m.topupCustomers} customer${m.topupCustomers === 1 ? '' : 's'}`);
   if (cust.length) out.push(`Revenue from ${m.payingCustomers} paying customer${m.payingCustomers === 1 ? '' : 's'}: ${cust.join('; ')} — ${m.activeSubscriptions} active subscriber${m.activeSubscriptions === 1 ? '' : 's'} on the platform.`);
 
-  // 7. Housekeeping notes
+  // 7. Revenue by plan (cohort mix, MoM)
+  if (planMix.length > 0) {
+    const parts = planMix.map(p => `${p.planId} ${zar(p.zar)} (${p.customers} cust.)`);
+    let line = `Subscription revenue by plan: ${parts.join(', ')}.`;
+    const mover = planMix
+      .filter(p => p.prevZar > 0 && p.prevZar !== p.zar)
+      .sort((a, b) => Math.abs(b.zar - b.prevZar) - Math.abs(a.zar - a.prevZar))[0];
+    if (mover) line += ` ${mover.planId} moved ${mover.zar >= mover.prevZar ? '+' : '−'}${pct(Math.abs(mover.zar - mover.prevZar) / mover.prevZar)} month-over-month.`;
+    out.push(line);
+  }
+
+  // 8. Subscriber movement
+  out.push(`Subscribers this month: ${subscribers.newSubscribers} new, ${subscribers.renewed} renewed, ${subscribers.churned} churned, ${subscribers.pastDue} past due — ${subscribers.active} active overall.`);
+
+  // 9. Year-over-year cohort
+  if (yoyRevenue > 0) {
+    const d = (rev - yoyRevenue) / yoyRevenue;
+    out.push(`Year-over-year: ${zar(rev)} versus ${zar(yoyRevenue)} in ${monthLabel(yoyMonth)} — ${d >= 0 ? 'up' : 'down'} ${pct(Math.abs(d))}.`);
+  } else {
+    out.push(`No year-over-year baseline yet — ${monthLabel(yoyMonth)} had no activity.`);
+  }
+
+  // 10. Break-even forecast (usage basis)
+  out.push(forecastHeadline(forecast));
+
+  // 11. Housekeeping notes
   if (s.inProgress) out.push('This month is still in progress — figures are month-to-date and will move until the month closes.');
   if (m.activeSubscriptions > 0 && s.revenue.subscription === 0 && rev > 0) {
     out.push(`${m.activeSubscriptions} active subscriber${m.activeSubscriptions === 1 ? '' : 's'} but no subscription charges landed this month — renewals likely fall on other days of the month.`);
@@ -460,13 +670,11 @@ function buildInsights(s: PnlStatement, m: PnlMetrics, prev: PnlSeriesPoint | nu
 
 // ─── PDF export (pdfkit → S3, same pattern as lib/invoice.ts) ───────────────
 
-export async function generatePnlPdf(month: string): Promise<string> {
-  const report = await buildPnlReport(month);
+async function renderPnlPdf(report: PnlReport): Promise<Buffer> {
   const s = report.statement;
   const m = report.metrics;
 
   const PDFDocument = (await import('pdfkit')).default;
-  const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
 
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   const chunks: Buffer[] = [];
@@ -559,6 +767,26 @@ export async function generatePnlPdf(month: string): Promise<string> {
     `${m.creditsByFeature.video} / ${m.creditsByFeature.flashhead} / ${m.creditsByFeature.image}`);
   row('Direct cost per credit consumed', m.costPerCredit !== null ? money(m.costPerCredit) : 'n/a');
 
+  // Revenue by plan (cohort mix)
+  if (report.planMix.length > 0) {
+    sectionTitle('Revenue by plan');
+    for (const p of report.planMix) {
+      row(`${p.planId} (${p.customers} cust.${p.prevZar ? `, prev ${money(p.prevZar)}` : ''})`, money(p.zar));
+    }
+  }
+
+  // Subscriber movement
+  sectionTitle('Subscriber movement');
+  row('New subscribers (first subscription)', String(report.subscribers.newSubscribers));
+  row('Renewed', String(report.subscribers.renewed));
+  row('Churned (period ended)', String(report.subscribers.churned));
+  row('Past due (period ended)', String(report.subscribers.pastDue));
+  row('Active subscribers', String(report.subscribers.active));
+
+  // Break-even forecast
+  sectionTitle('Break-even forecast (usage basis)');
+  bullet(forecastHeadline(report.forecast));
+
   // Analyst notes
   sectionTitle('Analyst notes');
   for (const insight of report.insights) bullet(insight);
@@ -574,24 +802,118 @@ export async function generatePnlPdf(month: string): Promise<string> {
   );
 
   doc.end();
-  const pdf = await done;
+  return done;
+}
 
-  const bucket = process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets';
-  const region = process.env.AWS_REGION || 'af-south-1';
-  const s3 = new S3Client({
-    region,
+// ─── S3 helpers, finalization & snapshots ───────────────────────────────────
+
+const bucketName = () => process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets';
+const s3Region = () => process.env.AWS_REGION || 'af-south-1';
+const publicUrl = (key: string) => `https://${bucketName()}.s3.${s3Region()}.amazonaws.com/${key}`;
+
+async function s3() {
+  const { S3Client } = await import('@aws-sdk/client-s3');
+  return new S3Client({
+    region: s3Region(),
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
     },
   });
-  const key = `pnl/PropReel_PL_${month}_${Date.now()}.pdf`;
-  await s3.send(new PutObjectCommand({
-    Bucket: bucket,
+}
+
+async function uploadPnlPdf(key: string, pdf: Buffer): Promise<void> {
+  const { PutObjectCommand } = await import('@aws-sdk/client-s3');
+  await (await s3()).send(new PutObjectCommand({
+    Bucket: bucketName(),
     Key: key,
     Body: pdf,
     ContentType: 'application/pdf',
   }));
+}
 
-  return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+/** Deterministic, pinned key for a finalized month's statement. */
+export const finalPnlPdfKey = (month: string) => `pnl/final/PropReel_PL_${month}.pdf`;
+const snapshotId = (month: string) => `pl_snapshot_${month}`;
+
+/** Who receives the monthly emailed statement (env-overridable via PNL_REPORT_EMAILS). */
+export const PNL_REPORT_RECIPIENTS = (process.env.PNL_REPORT_EMAILS ||
+  'futuretravel@gmail.com,ulric@propreel.co.za')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+export interface PnlSnapshot {
+  report: PnlReport;
+  pdfUrl: string;
+  finalizedAt: string;
+}
+
+async function pinnedPdfExists(month: string): Promise<boolean> {
+  try {
+    const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
+    await (await s3()).send(new HeadObjectCommand({ Bucket: bucketName(), Key: finalPnlPdfKey(month) }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Snapshot of a closed month's finalized report, if the books were closed. */
+export async function loadPnlSnapshot(month: string): Promise<PnlSnapshot | null> {
+  try {
+    const row = await getItem<any>(TABLES.SETTINGS, { id: snapshotId(month) });
+    if (row?.kind === 'pl_snapshot' && row.report?.statement) {
+      return {
+        report: row.report as PnlReport,
+        pdfUrl: String(row.pdfUrl || ''),
+        finalizedAt: String(row.finalizedAt || ''),
+      };
+    }
+  } catch {
+    // fall through to live computation
+  }
+  return null;
+}
+
+/**
+ * Drop a month's finalized PDF + snapshot. Called whenever an expense entry
+ * changes a closed month — the month re-opens and recomputes live.
+ */
+export async function invalidatePnlSnapshot(month: string): Promise<void> {
+  try { await deleteItem(TABLES.SETTINGS, { id: snapshotId(month) }); } catch { /* absent is fine */ }
+  try {
+    const { DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+    await (await s3()).send(new DeleteObjectCommand({ Bucket: bucketName(), Key: finalPnlPdfKey(month) }));
+  } catch { /* absent is fine */ }
+}
+
+/**
+ * Statement PDF for a month. Closed months are pinned at a deterministic key
+ * — repeat downloads are instant and history stays addressable at a stable
+ * URL — re-rendered only after an invalidating expense edit.
+ */
+export async function generatePnlPdf(month: string): Promise<{ url: string; instant: boolean }> {
+  const closed = month < monthKeyAt(Date.now());
+  if (closed && (await pinnedPdfExists(month))) {
+    return { url: publicUrl(finalPnlPdfKey(month)), instant: true };
+  }
+  const report = await buildPnlReport(month);
+  const pdf = await renderPnlPdf(report);
+  const key = closed ? finalPnlPdfKey(month) : `pnl/PropReel_PL_${month}_${Date.now()}.pdf`;
+  await uploadPnlPdf(key, pdf);
+  return { url: publicUrl(key), instant: false };
+}
+
+/**
+ * Close the books for a month: render + pin the PDF and freeze the computed
+ * report as a snapshot. pln_get serves the snapshot instantly afterwards —
+ * immune to the ledger scan window as history grows.
+ */
+export async function finalizePnlMonth(month: string): Promise<PnlSnapshot> {
+  const report = await buildPnlReport(month);
+  const pdf = await renderPnlPdf(report);
+  const key = finalPnlPdfKey(month);
+  await uploadPnlPdf(key, pdf);
+  const snapshot: PnlSnapshot = { report, pdfUrl: publicUrl(key), finalizedAt: new Date().toISOString() };
+  await putItem(TABLES.SETTINGS, { id: snapshotId(month), kind: 'pl_snapshot', month, ...snapshot });
+  return snapshot;
 }

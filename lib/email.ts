@@ -9,6 +9,8 @@
  * verify the domain (DNS records at the registrar) before real traffic.
  */
 
+import type { PnlReport } from './pnl';
+
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
 const BRANDED_FROM = process.env.EMAIL_FROM || 'PropReel <no-reply@propreel.co.za>';
@@ -20,6 +22,8 @@ export interface SendEmailInput {
   html: string;
   text?: string;
   replyTo?: string;
+  /** Optional attachments — `content` is base64 (e.g. a statement PDF). */
+  attachments?: Array<{ filename: string; content: string; type?: string }>;
 }
 
 export interface SendEmailResult {
@@ -44,6 +48,15 @@ async function postEmail(from: string, input: SendEmailInput): Promise<{ status:
       html: input.html,
       text: input.text,
       ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+      ...(input.attachments?.length
+        ? {
+            attachments: input.attachments.map(a => ({
+              filename: a.filename,
+              content: a.content,
+              ...(a.type ? { type: a.type } : {}),
+            })),
+          }
+        : {}),
     }),
   });
   let body: any = {};
@@ -139,4 +152,61 @@ export function resetPasswordTemplate(resetUrl: string): { subject: string; html
     ),
     text: `Reset your PropReel password: ${resetUrl} (expires in 1 hour)`,
   };
+}
+
+/**
+ * Monthly Profit & Loss report — emailed by the 1st-of-month cron after the
+ * books close. Carries the headline P&L numbers, every analyst insight and a
+ * CTA to the pinned statement PDF (also attached by the caller).
+ */
+export function pnlReportTemplate(
+  report: PnlReport,
+  pdfUrl: string
+): { subject: string; html: string; text: string } {
+  const s = report.statement;
+  const money = (n: number) =>
+    `R${(n || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const margin = s.margin.cash !== null ? `${(s.margin.cash * 100).toFixed(1)}%` : 'n/a';
+
+  const subject = `PropReel P&L — ${s.monthLabel}: revenue ${money(s.revenue.total)}, net ${money(s.net.cash)}`;
+
+  const kpiRow = (label: string, value: string) =>
+    `<tr><td style="padding:7px 0;color:#9a9ab8;border-bottom:1px solid #262643">${label}</td>` +
+    `<td align="right" style="padding:7px 0;color:#ffffff;font-weight:bold;border-bottom:1px solid #262643">${value}</td></tr>`;
+  const rows = [
+    kpiRow('Revenue (cash collected)', money(s.revenue.total)),
+    kpiRow('Operating expenses', money(s.expenses.total)),
+    kpiRow('Net profit (cash basis)', money(s.net.cash)),
+    kpiRow('Cash margin', margin),
+    kpiRow('Credits consumed (recognised)', `${s.usage.creditsConsumed.toLocaleString('en-ZA')} cr ≈ ${money(s.usage.recognizedRevenue)}`),
+    kpiRow('Net profit (usage basis)', money(s.net.usage)),
+    kpiRow('Paying customers', String(report.metrics.payingCustomers)),
+    kpiRow('Active subscribers', String(report.subscribers.active)),
+  ].join('');
+
+  const bullets = report.insights.map(i => `<li style="margin:7px 0">${i}</li>`).join('');
+  const status = s.inProgress
+    ? 'month in progress — figures are month-to-date'
+    : 'final — books closed for this month';
+
+  const html = layout(
+    `P&amp;L statement — ${s.monthLabel}`,
+    `<p>Monthly profit &amp; loss for <b>${s.monthLabel}</b> (${status}). Month boundaries SAST; all amounts in ZAR.</p>
+     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;background:#0f0f1e;border:1px solid #262643;border-radius:10px;padding:6px 16px">${rows}</table>
+     <p style="margin:20px 0 6px;font-size:12px;color:#9a9ab8;text-transform:uppercase;letter-spacing:1px">Analyst notes</p>
+     <ul style="margin:0;padding-left:18px">${bullets}</ul>`,
+    { url: pdfUrl, label: 'Open the PDF statement' }
+  );
+
+  const text = [
+    `PropReel P&L — ${s.monthLabel} (${status})`,
+    `Revenue: ${money(s.revenue.total)} | Expenses: ${money(s.expenses.total)} | Net (cash): ${money(s.net.cash)} (${margin})`,
+    `Credits consumed: ${s.usage.creditsConsumed.toLocaleString('en-ZA')} cr ≈ ${money(s.usage.recognizedRevenue)} | Net (usage): ${money(s.net.usage)}`,
+    '',
+    ...report.insights.map(i => `- ${i}`),
+    '',
+    `PDF: ${pdfUrl}`,
+  ].join('\n');
+
+  return { subject, html, text };
 }

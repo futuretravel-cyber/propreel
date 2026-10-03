@@ -2694,7 +2694,9 @@ function AdminPnl() {
         <div className="flex items-center gap-2">
           <label htmlFor="pnl-month" className="text-xs text-ink-400">Month</label>
           <input id="pnl-month" type="month" className="input w-44" value={month} onChange={e => setMonth(e.target.value)} />
-          {s?.inProgress && <span className="badge badge-warning">IN PROGRESS</span>}
+          {data?.finalized
+            ? <span className="badge badge-success">FINALIZED</span>
+            : s?.inProgress && <span className="badge badge-warning">IN PROGRESS</span>}
         </div>
         <button onClick={downloadPdf} disabled={!s || pdfBusy} className="btn btn-primary text-sm">
           <Download className="w-4 h-4" /> {pdfBusy ? 'Generating…' : 'Download PDF'}
@@ -2841,6 +2843,21 @@ function PnlAnalyst({ data }: { data: any }) {
     { label: 'New signups', value: String(m.newSignups) },
   ];
 
+  const forecastText = (f: any): string => {
+    switch (f.status) {
+      case 'already_covered':
+        return `Usage-basis revenue (${formatZar(f.currentUsageRevenue)}) already covers the ${formatZar(f.expenseBase)} expense base — break-even achieved.`;
+      case 'projected':
+        return `Usage revenue is trending ${formatZar(f.monthlyTrend)}/month against a ${formatZar(f.expenseBase)} expense base — break-even projected by ${f.breakEvenMonth} (about ${f.monthsToBreakEven} month${f.monthsToBreakEven === 1 ? '' : 's'} out).`;
+      case 'stalled':
+        return `Usage revenue trend is flat or declining (${formatZar(f.monthlyTrend)}/month) — no break-even date projected at this trajectory.`;
+      case 'insufficient_data':
+        return `Break-even forecast needs at least 2 months of usage data (have ${f.sampleMonths}).`;
+      default:
+        return 'No expense base logged yet — add fal.ai, Modal, AWS and Paystack bills to project break-even.';
+    }
+  };
+
   return (
     <div className="bg-ink-800/50 rounded-xl p-4 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -2857,6 +2874,64 @@ function PnlAnalyst({ data }: { data: any }) {
           </div>
         ))}
       </div>
+
+      {/* Cohort analysis: revenue by plan, this month vs last */}
+      {Array.isArray(data.planMix) && data.planMix.length > 0 && (
+        <div>
+          <p className="text-[11px] text-ink-400 uppercase tracking-wide mb-2">Revenue by plan — this month vs last</p>
+          <div className="space-y-1">
+            {data.planMix.map((p: any) => {
+              const delta = p.zar - p.prevZar;
+              return (
+                <div key={p.planId} className="flex items-center justify-between text-sm">
+                  <span className="text-white">{p.planId} <span className="text-ink-500 text-xs">· {p.customers} cust.</span></span>
+                  <span className="tabular-nums flex items-center gap-2">
+                    <span className="text-ink-200">{formatZar(p.zar)}</span>
+                    {p.prevZar > 0 && (
+                      <span className={`text-xs ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {delta >= 0 ? '▲' : '▼'} {formatZar(Math.abs(delta))}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Subscriber movement: new / renewed / churned / past due / active */}
+      {data.subscribers && (
+        <div>
+          <p className="text-[11px] text-ink-400 uppercase tracking-wide mb-2">Subscriber movement</p>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              { label: 'New', value: data.subscribers.newSubscribers, tone: 'text-green-400' },
+              { label: 'Renewed', value: data.subscribers.renewed, tone: 'text-white' },
+              { label: 'Churned', value: data.subscribers.churned, tone: data.subscribers.churned > 0 ? 'text-red-400' : 'text-white' },
+              { label: 'Past due', value: data.subscribers.pastDue, tone: data.subscribers.pastDue > 0 ? 'text-yellow-400' : 'text-white' },
+              { label: 'Active', value: data.subscribers.active, tone: 'text-purple-300' },
+            ].map(x => (
+              <div key={x.label} className="bg-ink-900/60 rounded-lg p-3">
+                <p className="text-[11px] text-ink-400">{x.label}</p>
+                <p className={`text-lg font-bold mt-0.5 ${x.tone}`}>{x.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Break-even forecast: when usage-basis profit covers the expense base */}
+      {data.forecast && (
+        <div className="bg-ink-900/60 rounded-lg p-4 space-y-1">
+          <p className="text-[11px] text-ink-400 uppercase tracking-wide">Break-even forecast — usage basis</p>
+          <p className="text-sm text-ink-200 leading-relaxed">{forecastText(data.forecast)}</p>
+          <p className="text-[11px] text-ink-500">
+            Expense base {formatZar(data.forecast.expenseBase)}/mo · usage trend {formatZar(data.forecast.monthlyTrend)}/mo · {data.forecast.sampleMonths}-month sample
+          </p>
+        </div>
+      )}
+
       <ul className="space-y-2">
         {(data.insights || []).map((ins: string, i: number) => (
           <li key={i} className="flex gap-2 text-sm text-ink-300 leading-relaxed">
@@ -2866,6 +2941,11 @@ function PnlAnalyst({ data }: { data: any }) {
         ))}
       </ul>
       <p className="text-[11px] text-ink-500">These notes are included in the PDF export.</p>
+      {data.finalized && (
+        <p className="text-[11px] text-green-400">
+          Books closed {new Date(data.finalizedAt).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg' })} — figures frozen; editing an expense re-opens the month.
+        </p>
+      )}
     </div>
   );
 }

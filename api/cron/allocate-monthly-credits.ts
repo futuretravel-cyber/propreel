@@ -2,6 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { scanItems, queryItems, TABLES } from '../../lib/db';
 import { allocateMonthlyCredits, getUser, updateUser } from '../../lib/userService';
 import { recordCronRun } from '../../lib/cronRuns';
+import { sendEmail } from '../../lib/email';
 
 interface MonthlySummary {
   month: string; // YYYY-MM being summarized (the month that just ended)
@@ -151,7 +152,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('Agency report sweep failed (non-fatal):', repErr);
     }
 
-    await recordCronRun('allocate-monthly-credits', 'success', Date.now() - started, `allocated=${allocated} summaries=${summariesWritten} errors=${errors.length} reports=${reportsGenerated} agentReports=${agentReportsGenerated}`);
+    // ── Monthly P&L: close the books + email the statement ────────────
+    // Runs on the 1st (00:00 UTC = 02:00 SAST) for the month that just
+    // ended: pins the statement PDF in S3, freezes the computed report as
+    // a snapshot (instant + scan-window-proof reads), and emails the PDF
+    // with the analyst notes to the admin recipients. Non-fatal on error —
+    // credit allocation and agency reports must still land.
+    let pnl: any = null;
+    const justEndedMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 1))
+      .toISOString().slice(0, 7);
+    try {
+      const { finalizePnlMonth, PNL_REPORT_RECIPIENTS } = await import('../../lib/pnl');
+      const { pnlReportTemplate } = await import('../../lib/email');
+
+      const snapshot = await finalizePnlMonth(justEndedMonth);
+      const tpl = pnlReportTemplate(snapshot.report, snapshot.pdfUrl);
+
+      // Attach the statement PDF (public S3 URL → base64 for Resend).
+      let attachment: { filename: string; content: string; type: string } | undefined;
+      try {
+        const pdfRes = await fetch(snapshot.pdfUrl);
+        if (pdfRes.ok) {
+          attachment = {
+            filename: `PropReel_PL_${justEndedMonth}.pdf`,
+            content: Buffer.from(await pdfRes.arrayBuffer()).toString('base64'),
+            type: 'application/pdf',
+          };
+        }
+      } catch (attErr) {
+        console.error('P&L attachment fetch failed (non-fatal):', attErr);
+      }
+
+      let emailed = 0;
+      const emailErrors: string[] = [];
+      for (const to of PNL_REPORT_RECIPIENTS) {
+        const sent = await sendEmail({
+          to,
+          subject: tpl.subject,
+          html: tpl.html,
+          text: tpl.text,
+          ...(attachment ? { attachments: [attachment] } : {}),
+        });
+        if (sent.ok) emailed++;
+        else emailErrors.push(`${to}: ${sent.error}`);
+      }
+
+      pnl = { month: justEndedMonth, pdfUrl: snapshot.pdfUrl, emailed, recipients: PNL_REPORT_RECIPIENTS.length, emailErrors };
+      console.log(`P&L closed for ${justEndedMonth}: ${snapshot.pdfUrl} (emailed ${emailed}/${PNL_REPORT_RECIPIENTS.length})`);
+    } catch (pnlErr: any) {
+      console.error('Monthly P&L close failed (non-fatal):', pnlErr);
+      pnl = { month: justEndedMonth, error: String(pnlErr?.message || pnlErr) };
+    }
+
+    await recordCronRun('allocate-monthly-credits', 'success', Date.now() - started, `allocated=${allocated} summaries=${summariesWritten} errors=${errors.length} reports=${reportsGenerated} agentReports=${agentReportsGenerated} pnl=${pnl?.error ? 'error' : 'ok'}`);
 
     return res.status(200).json({
       success: true,
@@ -161,6 +214,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       errors_count: errors.length,
       errors: errors.slice(0, 10), // First 10 errors
       agency_reports: { generated: reportsGenerated, agent_reports: agentReportsGenerated, failed: reportErrors.length },
+      pnl,
     });
   } catch (error) {
     console.error('Monthly credit allocation error:', error);

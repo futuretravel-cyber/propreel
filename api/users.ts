@@ -587,7 +587,7 @@ async function pnlRoutes(req: VercelRequest, res: VercelResponse, action: string
     return res.status(403).json({ error: 'Admin access required' });
   }
 
-  const { isMonthKey, buildPnlReport, addPnlExpense, deletePnlExpense, generatePnlPdf, EXPENSE_CATEGORIES } =
+  const { isMonthKey, buildPnlReport, loadPnlSnapshot, addPnlExpense, deletePnlExpense, generatePnlPdf, EXPENSE_CATEGORIES } =
     await import('../lib/pnl');
 
   const month = String(req.query.month || body.month || '').trim();
@@ -597,8 +597,20 @@ async function pnlRoutes(req: VercelRequest, res: VercelResponse, action: string
 
   try {
     if (action === 'pln_get' && req.method === 'GET') {
+      // Finalized months serve their frozen snapshot — instant, and immune
+      // to the ledger scan window as history grows.
+      const snapshot = await loadPnlSnapshot(month);
+      if (snapshot) {
+        return res.status(200).json({
+          success: true,
+          ...snapshot.report,
+          finalized: true,
+          finalizedAt: snapshot.finalizedAt,
+          pdfUrl: snapshot.pdfUrl,
+        });
+      }
       const report = await buildPnlReport(month);
-      return res.status(200).json({ success: true, ...report });
+      return res.status(200).json({ success: true, ...report, finalized: false });
     }
 
     if (action === 'pln_expense_add' && req.method === 'POST') {
@@ -626,8 +638,8 @@ async function pnlRoutes(req: VercelRequest, res: VercelResponse, action: string
     }
 
     if (action === 'pln_pdf' && req.method === 'GET') {
-      const url = await generatePnlPdf(month);
-      return res.status(200).json({ success: true, url });
+      const { url, instant } = await generatePnlPdf(month);
+      return res.status(200).json({ success: true, url, instant });
     }
 
     return res.status(404).json({ error: `Unknown P&L action: ${action}` });
