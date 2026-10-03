@@ -50,11 +50,14 @@ Recreate anytime with `npm run create-tables` (idempotent).
 
 - [ ] **Resend** → add & verify domain `propreel.co.za` (DKIM/SPF TXT records
       at the registrar, zadns) — until then only `onboarding@resend.dev` →
-      the account address can receive mail
-- [ ] **Paystack** → Settings → Webhooks: `https://propreel.co.za/api/paystack/webhook`
-      (use the vercel.app URL until DNS is live)
-- [ ] **DNS at registrar:** A `@` → `76.76.21.21`, CNAME `www` → `cname.vercel-dns.com`;
-      then attach both domains in Vercel → Project → Settings → Domains
+      the account address can receive mail.
+      **Step-by-step: [`docs/RESEND_DNS_SETUP.md`](RESEND_DNS_SETUP.md)**
+- [ ] **Paystack** → Settings → Webhooks: `https://www.propreel.co.za/api/paystack/webhook`
+      (**`www` required** — apex 308-redirects to www; endpoint verified live:
+      unsigned POST → 401 Invalid signature)
+- [x] **DNS at registrar** (verified 3 Oct): apex + `www` resolve, apex → `308` →
+      `https://www.propreel.co.za` (site 200). Consider setting `www` as the
+      primary domain in Vercel to avoid the redirect hop
 - [x] **Stale Vercel env vars pruned** (30 Sep): 17 removed (Firebase, JWT, S3,
       GROK, RENDERFUL, MODAL_API_TOKEN, DATABASE_URL, VITE_API_BASE_URL…);
       production now holds exactly the 17 required vars and was redeployed + smoke-tested
@@ -62,7 +65,11 @@ Recreate anytime with `npm run create-tables` (idempotent).
 
 ## Go-live checklist (test → live mode)
 
+**Full, maintained checklist → [`docs/GO_LIVE_CHECKLIST.md`](GO_LIVE_CHECKLIST.md)**
+
 - [ ] Recreate all 8 Paystack plans in **live mode**; swap `PAYSTACK_PLAN_*` values in Vercel
-- [ ] Swap `PAYSTACK_SECRET_KEY` to live key; update webhook URL in live dashboard
+- [ ] Swap `PAYSTACK_SECRET_KEY` to live key; set webhook URL (`www` host) in live dashboard
 - [ ] Rotate any secret that ever appeared in chat (AWS keys, Paystack test keys, Supabase keys)
 - [ ] Point-in-time recovery on `propreel-users` (PITR is per-table)
+- [ ] Vercel Hobby → Pro (cron clamp + 12-function cap)
+- [x] Leftover Supabase env purged from Preview/Development (3 Oct) — only AWS keys remain for PR previews
