@@ -1,41 +1,33 @@
 /**
- * Database driver dispatcher.
+ * Database access layer — AWS DynamoDB is the ONLY backend.
  *
- * Every caller imports from './db' and gets the active driver's
- * implementation of the same helper interface:
+ * Every caller imports from './db' and gets the DynamoDB implementation of
+ * the shared helper interface:
  *   getItem, putItem, updateItem, queryItems, scanItems, deleteItem,
  *   transactWriteItems, putItemIfNotExists, decrementIfEnough,
  *   incrementValue, updateWhere, TABLES
  *
- *   DB_DRIVER=dynamodb (default) → lib/db-dynamodb.ts  (AWS DynamoDB)
- *   DB_DRIVER=supabase           → lib/db-supabase.ts  (Supabase Postgres)
- *
- * The Supabase schema lives in supabase/schema.sql; migration steps in
- * docs/SUPABASE_MIGRATION.md. Atomic guarantees (balance decrements,
- * idempotency locks) are implemented natively by BOTH drivers, so the
- * credit system behaves identically on either backend.
+ * (Historically this file dispatched on DB_DRIVER between DynamoDB and
+ * Supabase. Supabase was fully removed on 3 Oct 2026 — all production data
+ * lives in AWS DynamoDB, af-south-1.)
  */
 
 import * as dynamodb from './db-dynamodb';
-import * as supabase from './db-supabase';
 
-const driver = process.env.DB_DRIVER === 'supabase' ? supabase : dynamodb;
+export const dbDriver = dynamodb.dbDriver;
+export const TABLES = dynamodb.TABLES;
+export const getItem = dynamodb.getItem;
+export const putItem = dynamodb.putItem;
+export const putItemIfNotExists = dynamodb.putItemIfNotExists;
+export const updateItem = dynamodb.updateItem;
+export const queryItems = dynamodb.queryItems;
+export const scanItems = dynamodb.scanItems;
+export const deleteItem = dynamodb.deleteItem;
+export const transactWriteItems = dynamodb.transactWriteItems;
+export const decrementIfEnough = dynamodb.decrementIfEnough;
+export const incrementValue = dynamodb.incrementValue;
+export const updateWhere = dynamodb.updateWhere;
 
-export const dbDriver = driver.dbDriver;
-export const TABLES = driver.TABLES;
-export const getItem = driver.getItem;
-export const putItem = driver.putItem;
-export const putItemIfNotExists = driver.putItemIfNotExists;
-export const updateItem = driver.updateItem;
-export const queryItems = driver.queryItems;
-export const scanItems = driver.scanItems;
-export const deleteItem = driver.deleteItem;
-export const transactWriteItems = driver.transactWriteItems;
-export const decrementIfEnough = driver.decrementIfEnough;
-export const incrementValue = driver.incrementValue;
-export const updateWhere = driver.updateWhere;
-
-/** Legacy raw escape hatch — DynamoDB only. New code must use the helpers
- *  above so it works on both drivers. */
+/** Legacy raw escape hatch (DynamoDB DocumentClient). */
 export const docClient = dynamodb.docClient;
 export { ddbClient } from './db-dynamodb';

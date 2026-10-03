@@ -1,6 +1,26 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { supabase } from '../lib/supabase';
 import { BackendAPI } from '../lib/backendAPI';
+
+// ─── First-party auth over the shared /api/users function ───────────────────
+// Sessions are HttpOnly cookies issued by the API (lib/auth.ts) — no third-
+// party auth service. Every call sends credentials so the cookie rides along.
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+async function authFetch(action: string, init?: RequestInit): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/users?action=${action}`, {
+    ...init,
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data.error || `Authentication failed (${res.status})`);
+    err.code = data.code;
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
 
 export type PlanId = 'STARTER' | 'PROFESSIONAL' | 'PREMIUM' | 'AGENCY' | 'FREE';
 export type BillingCycle = 'MONTHLY' | 'ANNUAL';
@@ -87,7 +107,6 @@ interface CreditContextType {
   lowCreditWarning: 'none' | 'info' | 'warning' | 'critical';
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<{ needsConfirmation: boolean }>;
-  loginWithGoogle: (redirectTo?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   acceptPendingAgencyInvite: (userId: string) => Promise<void>;
@@ -140,35 +159,21 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Ensure a backend user exists for the Supabase auth identity, then load it.
-  // The backend POST /api/users is an idempotent upsert: existing users are
-  // updated, new users are created with the 5-credit signup bonus (and the
-  // admin grant when the email is on the admin list).
-  const fetchUserData = useCallback(async (_authUserId: string) => {
+  // Load the signed-in user from the first-party session cookie. The API
+  // returns the full profile row (minus auth secrets) in one round trip.
+  const loadSessionUser = useCallback(async (): Promise<User | null> => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const authUser = session?.user;
-      if (!authUser?.email) throw new Error('No authenticated Supabase user');
-      const meta = (authUser.user_metadata || {}) as Record<string, any>;
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supabaseUserId: authUser.id,
-          email: authUser.email,
-          fullName: meta.full_name || meta.fullName || meta.name || authUser.email.split('@')[0],
-          agencyName: meta.agency_name || undefined,
-          planId: meta.plan_id || undefined,
-        }),
-      });
-      if (!response.ok) throw new Error(`Backend user lookup failed (${response.status})`);
-      const data = await response.json();
-      setUser(data.user);
-      // If this user was invited to an agency before signing up, attach them now
-      acceptPendingAgencyInvite(data.user.id).catch(() => {});
-      return data.user;
+      const data = await authFetch('auth_session');
+      if (data.user) {
+        setUser(data.user);
+        // If this user was invited to an agency before signing up, attach them now
+        acceptPendingAgencyInvite(data.user.id).catch(() => {});
+        return data.user;
+      }
+      setUser(null);
+      return null;
     } catch (error) {
-      console.error('Failed to load user from backend:', error);
+      console.error('Failed to load session user:', error);
       setUser(null);
       return null;
     }
@@ -177,11 +182,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const init = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (session?.user) {
-          await fetchUserData(session.user.id);
-        }
+        await loadSessionUser();
       } catch (error) {
         console.error('Auth init error:', error);
         setUser(null);
@@ -191,18 +192,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     };
 
     init();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
-      if (session?.user) {
-        await fetchUserData(session.user.id);
-      } else {
-        setUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [fetchUserData]);
+  }, [loadSessionUser]);
 
   // Calculate balance
   const balance: Balance = {
@@ -233,103 +223,60 @@ export function CreditProvider({ children }: { children: ReactNode }) {
   })();
 
   const login = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-  }, []);
+    const data = await authFetch('auth_login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    setUser(data.user);
+    acceptPendingAgencyInvite(data.user.id).catch(() => {});
+  }, [acceptPendingAgencyInvite]);
 
   const register = useCallback(async (data: RegisterData): Promise<{ needsConfirmation: boolean }> => {
-    // Register with Supabase auth. When the project requires email
-    // confirmation (mailer_autoconfirm=false) signUp returns NO session —
-    // callers must not assume the user is signed in yet.
-    const { error } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-      options: {
-        data: {
-          full_name: data.fullName,
-          plan_id: data.planId,
-          agency_name: data.agencyName,
-        },
-        emailRedirectTo: data.emailRedirectTo,
-      },
+    // First-party signup: the API provisions the row (signup bonus, admin
+    // grant) and emails a Resend confirmation link. There is NO session yet —
+    // callers must not assume the user is signed in (needsConfirmation=true).
+    const res = await authFetch('auth_register', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: data.email,
+        password: data.password,
+        fullName: data.fullName,
+        phone: data.phone,
+        agencyName: data.agencyName,
+        planId: data.planId,
+        cycle: data.cycle,
+        redirect: data.emailRedirectTo,
+      }),
     });
-    if (error) throw error;
-
-    // Create user in backend
-    let hasSession = false;
-    try {
-      const { data: authData } = await supabase.auth.getSession();
-      if (authData.session?.user) {
-        hasSession = true;
-        await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            supabaseUserId: authData.session.user.id,
-            email: data.email,
-            fullName: data.fullName,
-            phone: data.phone,
-            role: 'AGENT',
-            agencyName: data.agencyName,
-            planId: data.planId,
-            cycle: data.cycle,
-          }),
-        });
-      }
-    } catch (error) {
-      console.error('Failed to create user in backend:', error);
-      // Non-critical error, continue
-    }
 
     // Referral: credit the referrer if this signup came via ?ref=
-    if (data.referralCode) {
+    if (data.referralCode && res.userId) {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const newUserId = sessionData.session?.user?.id;
-        if (newUserId) {
-          await fetch(`${import.meta.env.VITE_API_URL || ''}/api/leads?action=referral`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ referrer: data.referralCode, newUserId, newUserEmail: data.email }),
-          });
-        }
+        await fetch(`${API_BASE}/api/leads?action=referral`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ referrer: data.referralCode, newUserId: res.userId, newUserEmail: data.email }),
+        });
       } catch (refError) {
         console.error('Referral apply failed (non-critical):', refError);
       }
     }
 
-    return { needsConfirmation: !hasSession };
-  }, []);
-
-  const loginWithGoogle = useCallback(async (redirectTo?: string) => {
-    import('../lib/analytics').then(m => m.track('google_login')).catch(() => {});
-    // Remember where the user was headed (defaults to the dashboard); the
-    // login/signup pages read it back when Google returns. Same-app paths
-    // only — never an external URL.
-    import('../lib/postAuth').then(m => m.setPostAuthRedirect(
-      redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard'
-    ));
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/login`,
-        scopes: 'profile email',
-      },
-    });
-    if (error) throw error;
+    return { needsConfirmation: !!res.needsConfirmation };
   }, []);
 
   const logout = useCallback(async () => {
-    await supabase.auth.signOut();
+    try {
+      await authFetch('auth_logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Logout failed (clearing local state anyway):', error);
+    }
     setUser(null);
   }, []);
 
   const refresh = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      await fetchUserData(session.user.id);
-    }
-  }, [fetchUserData]);
+    await loadSessionUser();
+  }, [loadSessionUser]);
 
   const purchaseCredits = useCallback(async (amount: number) => {
     if (amount < 50) throw new Error('Minimum purchase is R50 (50 credits)');
@@ -464,7 +411,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
   return (
     <CreditContext.Provider value={{
       user, balance, loading: isInitialLoad, isAdmin, isAgencyOwner, lowCreditWarning,
-      login, register, loginWithGoogle, logout, refresh, acceptPendingAgencyInvite,
+      login, register, logout, refresh, acceptPendingAgencyInvite,
       purchaseCredits, setAutoTopup, giftCredits,
       upgradePlan, downgradePlan, acknowledgeLowCredit,
       deductCredits, addCredits,

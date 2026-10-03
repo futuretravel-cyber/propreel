@@ -6,29 +6,24 @@ Create stunning property videos instantly with AI. Built for South African estat
 
 - **Frontend**: React + Vite + Tailwind CSS 4
 - **Backend**: Vercel Serverless Functions (Node.js)
-- **Database**: AWS DynamoDB (live) with a Supabase Postgres driver ready — see [docs/SUPABASE_MIGRATION.md](docs/SUPABASE_MIGRATION.md)
-- **Authentication**: Supabase Auth (Google OAuth only)
+- **Database**: AWS DynamoDB (af-south-1) — the only backend
+- **Authentication**: First-party email/password sessions in DynamoDB (`lib/auth.ts`) with confirmation/reset emails via **Resend**
 - **Payments**: Paystack
 - **Video Rendering**: Modal + Fal.ai (Minimax Hailuo-02)
 - **File Storage**: AWS S3
 
 ## Data Layer
 
-All database access goes through `lib/db.ts`, which dispatches on the `DB_DRIVER`
-environment variable:
+All database access goes through `lib/db.ts` → `lib/db-dynamodb.ts`
+(AWS DynamoDB). Every helper — including the atomic credit operations
+(conditional balance decrements, idempotency locks) — lives there.
 
-| `DB_DRIVER` | Backend | Status |
-|---|---|---|
-| unset (default) | AWS DynamoDB (`lib/db-dynamodb.ts`) | Live in production |
-| `supabase` | Supabase Postgres (`lib/db-supabase.ts`) | Ready; cut over via the runbook |
-
-Both drivers implement identical helpers **including the atomic credit
-operations** (conditional balance decrements, idempotency locks), so the credit
-system behaves the same on either backend. Moving between them is one Vercel
-environment variable plus a redeploy — and rolling back is removing it.
-
-Supabase is also the auth provider (Google OAuth + email). File storage is
-AWS S3 in both cases; see [docs/ARCHITECTURE_STORAGE_DECISION.md](docs/ARCHITECTURE_STORAGE_DECISION.md).
+Auth is first-party too: `lib/auth.ts` (scrypt passwords, opaque session
+cookies, DynamoDB `propreel-sessions` table) and `lib/email.ts` (Resend for
+email confirmation + password resets). Supabase was fully removed on
+3 Oct 2026; pricing tiers and monthly/annual plan prices are served from the
+`settings/pricing_config` row (seed with `npx tsx scripts/seed_pricing_config.ts`).
+File storage is AWS S3; see [docs/ARCHITECTURE_STORAGE_DECISION.md](docs/ARCHITECTURE_STORAGE_DECISION.md).
 
 > A previous Express + Prisma + PostgreSQL monorepo attempt (and its deployment
 > scripts) was removed — `api/` + `lib/` on Vercel is the only backend.
@@ -99,23 +94,21 @@ cp .env.example .env
 Required variables:
 - `AWS_ACCESS_KEY_ID` - AWS IAM access key
 - `AWS_SECRET_ACCESS_KEY` - AWS IAM secret key
-- `VITE_SUPABASE_URL` - Supabase project URL
-- `VITE_SUPABASE_ANON_KEY` - Supabase anon key
-- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (for server-side)
+- `RESEND_API_KEY` - Resend API key (confirmation + password-reset emails)
 - `PAYSTACK_SECRET_KEY` - Paystack secret key
 - `VITE_MODAL_ENDPOINT` - Modal render endpoint
 
-## Google OAuth Setup (Supabase)
+## Authentication & Email (first-party, Supabase-free)
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create OAuth 2.0 credentials
-3. Add authorized redirect URIs:
-   - `https://agcchttiomlbuuycwdgy.supabase.co/auth/v1/callback` (Supabase callback)
-   - `http://localhost:3000` (local dev)
-4. In Supabase Dashboard → Authentication → Providers → Google:
-   - Enable Google provider
-   - Add your Google Client ID and Secret
-   - Add redirect URLs
+- Signup → `POST /api/users?action=auth_register` provisions the DynamoDB row
+  and emails a confirmation link (Resend, `EMAIL_FROM` defaults to
+  `PropReel <no-reply@propreel.co.za>`).
+- **Resend domain verification**: until `propreel.co.za` is added at
+  <https://resend.com/domains> with the DKIM/SPF TXT records published at the
+  registrar (zadns), Resend only accepts `onboarding@resend.dev` → the account
+  address. Verify the domain for real traffic.
+- Sessions are HttpOnly cookies (`propreel_session`) backed by the
+  `propreel-sessions` table; reset links live at `/forgot-password`.
 
 ## Local Development
 
@@ -201,7 +194,8 @@ Attributes:
   - autoTopup: Object { enabled, threshold, amount }
   - agencyId: String or null
   - agencyName: String or null
-  - supabaseUserId: String (links to Supabase auth)
+  - passwordHash: String (scrypt, server-side only — never sent to clients)
+  - emailVerified: Boolean
   - createdAt: String (ISO date)
 ```
 
@@ -271,9 +265,7 @@ Attributes:
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 - `AWS_REGION` (default: af-south-1)
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `RESEND_API_KEY`
 - `PAYSTACK_SECRET_KEY`
 - `VITE_MODAL_ENDPOINT`
 

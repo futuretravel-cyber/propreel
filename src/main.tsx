@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { bootstrapPricing } from './lib/pricing';
 
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
@@ -16,8 +17,12 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+// Load DB-backed pricing before the first paint so plan prices / render
+// tiers shown anywhere come from DynamoDB (constants are the fallback).
+bootstrapPricing().finally(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+});

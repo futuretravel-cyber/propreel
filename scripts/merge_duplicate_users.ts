@@ -7,9 +7,8 @@
  * balances from the signup race are auto-grants, not real money — they are
  * documented in the archive, not merged into the canonical balance.
  *
- * Run once per backend (Dynamo is live truth; Supabase holds the migrated copy):
+ * Run once against DynamoDB (the only backend):
  *   npx tsx scripts/merge_duplicate_users.ts
- *   DB_DRIVER=supabase npx tsx scripts/merge_duplicate_users.ts
  *
  * Optional: EMAIL=other@example.com to target a different account.
  */

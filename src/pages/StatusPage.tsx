@@ -6,8 +6,6 @@ import {
 import { formatRelative } from '../lib/utils';
 
 const WORKER_URL = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://agcchttiomlbuuycwdgy.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 type State = 'up' | 'down' | 'degraded' | 'unknown';
 
@@ -133,18 +131,14 @@ export default function StatusPage() {
       next.fal = { state: 'unknown', detail: 'Probe unreachable', latencyMs: null, checkedAt: null };
     }
 
-    // 4) Supabase authentication
-    if (SUPABASE_ANON_KEY) {
-      try {
-        const r = await probeWithRetry(`${SUPABASE_URL}/auth/v1/health`, { headers: { apikey: SUPABASE_ANON_KEY } });
-        next.auth = r.ok
-          ? { state: 'up', detail: 'Sign-in service responding', latencyMs: r.latencyMs }
-          : { state: 'unknown', detail: `Health endpoint returned ${r.status}`, latencyMs: r.latencyMs };
-      } catch {
-        next.auth = { state: 'down', detail: 'No response from authentication service', latencyMs: null };
-      }
-    } else {
-      next.auth = { state: 'unknown', detail: 'Not configured on this deployment', latencyMs: null };
+    // 4) First-party authentication (session endpoint → DynamoDB read)
+    try {
+      const r = await probeWithRetry('/api/users?action=auth_session', { credentials: 'include' });
+      next.auth = r.ok
+        ? { state: 'up', detail: 'Sign-in service responding', latencyMs: r.latencyMs }
+        : { state: 'unknown', detail: `Session endpoint returned ${r.status}`, latencyMs: r.latencyMs };
+    } catch {
+      next.auth = { state: 'down', detail: 'No response from authentication service', latencyMs: null };
     }
 
     next.generatedAt = new Date().toISOString();
@@ -164,7 +158,7 @@ export default function StatusPage() {
 
   const services = [
     { key: 'api', icon: Activity, name: 'PropReel API', description: 'Accounts, credits, projects, billing', ...data.api },
-    { key: 'auth', icon: ShieldCheck, name: 'Authentication', description: 'Supabase sign-in service', ...data.auth },
+    { key: 'auth', icon: ShieldCheck, name: 'Authentication', description: 'PropReel accounts — sessions & passwords (DynamoDB)', ...data.auth },
     { key: 'worker', icon: Cpu, name: 'Render pipeline', description: 'Modal video & image processing', ...data.worker },
     { key: 'fal', icon: Mic, name: 'AI models (fal.ai)', description: 'Video, lip-sync, image & text models', ...data.fal },
     { key: 'storage', icon: Cloud, name: 'Media storage', description: 'AWS S3 — uploads and render outputs', state: data.storage.state, detail: data.storage.detail, latencyMs: null },

@@ -123,6 +123,18 @@ const TABLES = [
     ],
     billingMode: 'PAY_PER_REQUEST' as const,
   },
+  {
+    // First-party auth sessions (opaque token id → userId). expiresAt is
+    // epoch-seconds for DynamoDB TTL cleanup.
+    name: 'propreel-sessions',
+    attributes: [
+      { name: 'id', type: 'S' },
+    ],
+    keySchema: [
+      { name: 'id', keyType: 'HASH' },
+    ],
+    billingMode: 'PAY_PER_REQUEST' as const,
+  },
 ];
 
 async function createTables() {

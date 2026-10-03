@@ -1,9 +1,13 @@
 /**
  * Grant the platform admins their testing credits and ensure ADMIN role.
  * Usage: set -a; source .env; set +a; npx tsx scripts/grant_admin_credits.ts
+ *
+ * Auth is first-party now (DynamoDB row + password) — when an admin row is
+ * missing this script creates it; the admin sets a password once via the
+ * /forgot-password email flow.
  */
 import { getUserByEmail, updateUser, addCredits } from '../lib/userService';
-import { TABLES, queryItems } from '../lib/db';
+import { TABLES, queryItems, putItem } from '../lib/db';
 
 const ADMINS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
 const GRANT = 1000;
@@ -13,38 +17,7 @@ async function main() {
   for (const email of ADMINS) {
     let user = await getUserByEmail(email);
     if (!user) {
-      // Provision the account via the Supabase admin API + DynamoDB row
-      // (mirrors POST /api/users) so the admin exists before first sign-in.
-      const supabaseUrl = process.env.VITE_SUPABASE_URL;
-      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      if (!supabaseUrl || !serviceKey) {
-        console.log(`✗ ${email} — no user row and no Supabase service key to create one`);
-        continue;
-      }
-      const { createClient } = await import('@supabase/supabase-js');
-      const admin = createClient(supabaseUrl, serviceKey);
-      let { data, error } = await admin.auth.admin.createUser({
-        email,
-        email_confirm: true,
-        user_metadata: { full_name: 'Ulric (PropReel Admin)' },
-      });
-      if (error && /already.*registered/i.test(error.message)) {
-        // Auth identity already exists (e.g. signed up earlier) — reuse it.
-        // (This supabase-js version has no admin.getUserByEmail; list + filter.)
-        const listed = await admin.auth.admin.listUsers({ page: 1, perPage: 500 });
-        const match = listed.data?.users?.find(u => (u.email || '').toLowerCase() === email);
-        if (match) {
-          data = { user: match } as any;
-          error = null;
-          console.log(`• ${email} — Supabase auth identity already existed, reusing`);
-        }
-      }
-      if (error || !data?.user) {
-        console.log(`✗ ${email} — Supabase account creation failed: ${error?.message}`);
-        continue;
-      }
-      // Create the app-database row directly (mirrors POST /api/users)
-      const { putItem } = await import('../lib/db');
+      // Provision the app-database row directly (mirrors POST /api/users)
       const now = new Date().toISOString();
       await putItem(TABLES.USERS, {
         id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -60,7 +33,6 @@ async function main() {
         avatarUrl: null,
         emailVerified: true,
         lastLowCreditWarnedAt: null,
-        supabaseUserId: data.user.id,
         notificationPreferences: {
           emailNotifications: true, pushNotifications: true, renderComplete: true,
           lowCredits: true, newFeatures: true, billingAlerts: true, marketingEmails: false,
@@ -74,7 +46,6 @@ async function main() {
         continue;
       }
       console.log(`• ${email} — app-database row created (${user.id})`);
-      console.log(`• ${email} — account provisioned (supabase ${data.user.id})`);
     }
     if (user.role !== 'ADMIN') {
       await updateUser(user.id, { role: 'ADMIN' });

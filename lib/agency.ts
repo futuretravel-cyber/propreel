@@ -8,7 +8,7 @@
  */
 
 import { getItem, putItem, updateItem, queryItems, scanItems, TABLES } from './db';
-import { getUser, recordTransaction, PLANS } from './userService';
+import { getUser, recordTransaction } from './userService';
 
 /** Hard cap — agencies needing more agents create a second agency. */
 export const MAX_AGENTS_PER_AGENCY = 10;

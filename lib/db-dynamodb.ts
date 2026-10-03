@@ -1,6 +1,5 @@
 /**
- * DynamoDB driver (default) — see lib/db.ts for the driver dispatcher and
- * lib/db-supabase.ts for the Supabase twin (DB_DRIVER=supabase).
+ * DynamoDB driver — the ONLY database backend (AWS, af-south-1).
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -37,6 +36,7 @@ export const TABLES = {
   REVIEWS: `${TABLE_PREFIX}reviews`,
   PROJECTS: `${TABLE_PREFIX}projects`,
   SETTINGS: `${TABLE_PREFIX}settings`,
+  SESSIONS: `${TABLE_PREFIX}sessions`,
 };
 
 // Generic CRUD helpers
@@ -132,7 +132,7 @@ export async function queryItems<T>(tableName: string, keyCondition: any, option
     delete params.ExpressionAttributeValues;
   }
 
-  if (options?.limit) {
+  if (options?.limit && !options?.filter) {
     params.Limit = options.limit;
   }
 
@@ -141,8 +141,22 @@ export async function queryItems<T>(tableName: string, keyCondition: any, option
   }
 
   try {
-    const result = await docClient.send(new QueryCommand(params));
-    return (result.Items as T[]) || [];
+    // DynamoDB applies Limit BEFORE the FilterExpression — a bounded read
+    // with a filter can silently return fewer (or zero) matching rows.
+    // With a filter we page until `limit` matches survive (or the key range
+    // is exhausted); without one, a single bounded read is exact.
+    const out: T[] = [];
+    let exclusiveStartKey: Record<string, any> | undefined;
+    do {
+      const page: any = { ...params };
+      if (options?.filter && options.limit) page.Limit = Math.max(options.limit, 100);
+      if (exclusiveStartKey) page.ExclusiveStartKey = exclusiveStartKey;
+      const result = await docClient.send(new QueryCommand(page));
+      out.push(...((result.Items as T[]) || []));
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (options?.filter && exclusiveStartKey && (options.limit === undefined || out.length < options.limit));
+
+    return options?.filter && options.limit ? out.slice(0, options.limit) : out;
   } catch (error) {
     console.error(`DynamoDB Query error on ${tableName}:`, error);
     return [];
@@ -153,10 +167,6 @@ export async function scanItems<T>(tableName: string, options?: { filter?: any; 
   const params: any = {
     TableName: tableName,
   };
-
-  if (options?.limit) {
-    params.Limit = options.limit;
-  }
 
   if (options?.filter) {
     params.FilterExpression = options.filter.expression;
@@ -169,8 +179,24 @@ export async function scanItems<T>(tableName: string, options?: { filter?: any; 
   }
 
   try {
-    const result = await docClient.send(new ScanCommand(params));
-    return (result.Items as T[]) || [];
+    // Same Limit-before-filter pitfall as queryItems: with a filter, a
+    // `Limit: 1` scan reads ONE item and returns [] whenever it isn't a
+    // match — getUserByEmail used exactly that pattern and missed existing
+    // users, which then got duplicate rows. Page until `limit` matches
+    // survive the filter; a filter without a limit pages the whole table;
+    // an unfiltered read uses Limit directly (exact + cheap).
+    const out: T[] = [];
+    let exclusiveStartKey: Record<string, any> | undefined;
+    do {
+      const page: any = { ...params };
+      if (options?.filter && options.limit) page.Limit = Math.max(options.limit, 100);
+      if (exclusiveStartKey) page.ExclusiveStartKey = exclusiveStartKey;
+      const result = await docClient.send(new ScanCommand(page));
+      out.push(...((result.Items as T[]) || []));
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (options?.filter && exclusiveStartKey && (options.limit === undefined || out.length < options.limit));
+
+    return options?.filter && options.limit ? out.slice(0, options.limit) : out;
   } catch (error) {
     console.error(`DynamoDB Scan error on ${tableName}:`, error);
     return [];

@@ -43,7 +43,12 @@ export interface User {
   lastLowCreditWarnedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  supabaseUserId?: string; // Links to Supabase auth user
+  /** First-party auth (scrypt) — never leaves the API (stripped by safeUser) */
+  passwordHash?: string;
+  /** Single-use tokens mirrored here for clean rotation (server-side only) */
+  emailConfirmToken?: string | null;
+  confirmEmailLastSentAt?: string;
+  passwordResetToken?: string | null;
   notificationPreferences?: Record<string, boolean>;
   projectFolders?: Array<{ id: string; name: string; icon: string; createdAt: string }>;
   planId?: string | null;
@@ -95,13 +100,49 @@ export interface CreditTransaction {
   createdAt: string;
 }
 
-// Plan details (exported for the prorated-upgrade math in api/subscriptions.ts)
+// Plan details — built-in fallback. The live source of truth is the
+// `pricing_config` row in the settings table (seeded from these values);
+// getPlans() below reads it so DB edits drive real billing.
 export const PLANS: Record<string, { monthlyZar: number; annualZar: number; monthlyCredits: number }> = {
   'STARTER': { monthlyZar: 129, annualZar: 110, monthlyCredits: 130 },
   'PROFESSIONAL': { monthlyZar: 589, annualZar: 560, monthlyCredits: 600 },
   'PREMIUM': { monthlyZar: 1270, annualZar: 1200, monthlyCredits: 1300 },
   'AGENCY': { monthlyZar: 5000, annualZar: 5000, monthlyCredits: 5000 },
 };
+
+let plansCache: { at: number; plans: Record<string, typeof PLANS[string]> } | null = null;
+
+/**
+ * DB-backed plan table: reads `settings/pricing_config`.plans (60s in-memory
+ * cache) so monthly/annual prices and credit allocations stored in DynamoDB
+ * are what billing actually charges. Falls back to the built-in PLANS when
+ * the row is missing or unreadable.
+ */
+export async function getPlans(): Promise<Record<string, typeof PLANS[string]>> {
+  if (plansCache && Date.now() - plansCache.at < 60_000) return plansCache.plans;
+  try {
+    const { getItem, TABLES } = await import('./db');
+    const row = await getItem<any>(TABLES.SETTINGS, { id: 'pricing_config' });
+    const dbPlans = row?.plans;
+    if (Array.isArray(dbPlans) && dbPlans.length > 0) {
+      const merged: Record<string, typeof PLANS[string]> = { ...PLANS };
+      for (const p of dbPlans) {
+        if (!p?.id || !merged[p.id]) continue;
+        merged[p.id] = {
+          monthlyZar: Number.isFinite(Number(p.monthlyZar)) ? Number(p.monthlyZar) : merged[p.id].monthlyZar,
+          annualZar: Number.isFinite(Number(p.annualZar)) ? Number(p.annualZar) : merged[p.id].annualZar,
+          monthlyCredits: Number.isFinite(Number(p.monthlyCredits)) ? Number(p.monthlyCredits) : merged[p.id].monthlyCredits,
+        };
+      }
+      plansCache = { at: Date.now(), plans: merged };
+      return merged;
+    }
+  } catch (e) {
+    console.error('pricing_config read failed — using built-in plans:', e);
+  }
+  plansCache = { at: Date.now(), plans: PLANS };
+  return PLANS;
+}
 
 // Get user by ID
 export async function getUser(id: string): Promise<User | null> {
@@ -111,18 +152,6 @@ export async function getUser(id: string): Promise<User | null> {
 // NOTE: The users table has no GSIs (hash key = id only), so non-key lookups
 // use Scan with a FilterExpression. Values use ":" placeholders; attribute names
 // are only referenced literally (reserved words avoided).
-
-// Get user by Supabase user ID (for OAuth callback)
-export async function getUserBySupabaseId(supabaseUserId: string): Promise<User | null> {
-  const users = await scanItems<User>(TABLES.USERS, {
-    filter: {
-      expression: 'supabaseUserId = :sid',
-      values: { ':sid': supabaseUserId },
-    },
-    limit: 1,
-  });
-  return users[0] || null;
-}
 
 // Get user by email
 export async function getUserByEmail(email: string): Promise<User | null> {
@@ -484,7 +513,7 @@ export async function createSubscription(
   paystackSubCode?: string,
   paystackCustomerCode?: string
 ): Promise<{ subscription: Subscription; creditsAllocated: number }> {
-  const plan = PLANS[planId];
+  const plan = (await getPlans())[planId];
   if (!plan) {
     throw new Error('Invalid plan');
   }
@@ -556,7 +585,7 @@ export async function allocateMonthlyCredits(userId: string): Promise<{ allocate
     return null;
   }
 
-  const plan = PLANS[user.subscription.planId];
+  const plan = (await getPlans())[user.subscription.planId];
   if (!plan) {
     return null;
   }
@@ -667,8 +696,8 @@ export async function queryLedgerWindow(
 // Paystack plan codes come from env (PAYSTACK_PLAN_<PLAN>_<CYCLE>, e.g.
 // PAYSTACK_PLAN_STARTER_MONTHLY=PLN_68okgs5e0ge03g6) so real dashboard codes
 // are used; falls back to the legacy generated name.
-export function getPlanDetails(planId: string, cycle: 'MONTHLY' | 'ANNUAL') {
-  const plan = PLANS[planId];
+export async function getPlanDetails(planId: string, cycle: 'MONTHLY' | 'ANNUAL') {
+  const plan = (await getPlans())[planId];
   if (!plan) return null;
   const envCode = process.env[`PAYSTACK_PLAN_${planId}_${cycle}`];
   return {
@@ -740,12 +769,13 @@ export async function applyPendingUpgrade(
   toPlanId: string,
   cycle: 'MONTHLY' | 'ANNUAL'
 ): Promise<{ chargedZar: number; carriedOver: number; creditsAllocated: number }> {
-  const newPlan = PLANS[toPlanId];
+  const plans = await getPlans();
+  const newPlan = plans[toPlanId];
   const sub = user.subscription;
   if (!newPlan) throw new Error(`Unknown plan: ${toPlanId}`);
   if (!sub) throw new Error('User has no subscription');
 
-  const oldPlan = PLANS[sub.planId];
+  const oldPlan = plans[sub.planId];
   if (!oldPlan) throw new Error(`Unknown current plan: ${sub.planId}`);
 
   const oldPrice = sub.cycle === 'MONTHLY' ? oldPlan.monthlyZar : oldPlan.annualZar * 12;

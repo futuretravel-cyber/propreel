@@ -2,6 +2,13 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser, updateUser, getUserByEmail, deleteUser, getOrCreateUserByEmail } from '../lib/userService';
 import { TABLES, queryItems, putItem, getItem } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
+import {
+  hashPassword, verifyPassword, createSession, getSessionUser, deleteSession,
+  deleteSessionsForUser, sessionCookie, clearSessionCookie, getTokenFromRequest,
+  issueEmailConfirmToken, consumeEmailConfirmToken, issuePasswordResetToken,
+  consumePasswordResetToken,
+} from '../lib/auth';
+import { sendEmail, confirmEmailTemplate, resetPasswordTemplate } from '../lib/email';
 
 const isAdminEmail = (email: string | undefined | null) =>
   !!email && ADMIN_EMAILS.includes(String(email).toLowerCase());
@@ -315,8 +322,8 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
 
 /**
  * Nested route: POST /api/users?action=delete — real account deletion.
- * Removes the DynamoDB user row, the user's projects, and the Supabase auth
- * identity (so the email can never sign in again). Credits are intentionally
+ * Removes the DynamoDB user row, the user's projects, and every auth
+ * session (so the email can never sign in again). Credits are intentionally
  * forfeited per the deletion flow the user confirms in the UI.
  */
 async function deleteAccount(req: VercelRequest, res: VercelResponse) {
@@ -339,17 +346,8 @@ async function deleteAccount(req: VercelRequest, res: VercelResponse) {
   // 2) Delete the DynamoDB user row
   await deleteUser(user_id);
 
-  // 3) Delete the Supabase auth identity (requires service role key)
-  try {
-    if (user.supabaseUserId && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.VITE_SUPABASE_URL) {
-      const { createClient } = await import('@supabase/supabase-js');
-      const admin = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-      const { error } = await admin.auth.admin.deleteUser(user.supabaseUserId);
-      if (error) console.error('Supabase auth user deletion error:', error);
-    }
-  } catch (e) {
-    console.error('Supabase deletion error:', e);
-  }
+  // 3) Revoke every first-party session for the account
+  await deleteSessionsForUser(user_id);
 
   console.log(`Account deleted: ${user_id} (${user.email})`);
   return res.status(200).json({ success: true, message: 'Account permanently deleted' });
@@ -574,13 +572,277 @@ async function adminLedger(req: VercelRequest, res: VercelResponse) {
   });
 }
 
+/** Strip auth secrets before a user row leaves the API. */
+function safeUser(user: any) {
+  if (!user) return user;
+  const { passwordHash, emailConfirmToken, passwordResetToken, confirmEmailLastSentAt, ...rest } = user;
+  return rest;
+}
+
+interface ProvisionInput {
+  email: string;
+  fullName: string;
+  phone?: string | null;
+  role?: string;
+  agencyName?: string | null;
+  planId?: string | null;
+  cycle?: string;
+}
+
+/**
+ * Idempotent user provisioning shared by POST /api/users and
+ * POST ?action=auth_register: one row per email even under concurrent
+ * first-login requests, profile refresh, the 5-credit signup bonus and the
+ * admin allocation on first creation.
+ */
+async function provisionUser(input: ProvisionInput): Promise<{ user: any; created: boolean }> {
+  const normalizedEmail = String(input.email).toLowerCase();
+  const { user: provisioned, created } = await getOrCreateUserByEmail({
+    email: normalizedEmail,
+    fullName: input.fullName,
+    role: input.role || 'AGENT',
+    credits: 0, // bonuses credited separately below
+    creditExpiries: [],
+    subscription: null,
+    autoTopup: { enabled: false, threshold: 50, amount: 200 },
+    agencyId: null,
+    agencyName: input.agencyName || null,
+    avatarUrl: null,
+    emailVerified: false,
+    lastLowCreditWarnedAt: null,
+    notificationPreferences: { ...DEFAULT_NOTIFICATION_PREFERENCES },
+    planId: input.planId || null,
+    cycle: input.cycle || 'MONTHLY',
+  } as any);
+
+  // Profile fields on an existing row are refreshed either way.
+  const profileUpdates: Record<string, any> = { fullName: input.fullName, email: normalizedEmail };
+  if (input.agencyName) profileUpdates.agencyName = input.agencyName;
+  if (input.phone) profileUpdates.phone = input.phone;
+  await updateUser(provisioned.id, profileUpdates);
+
+  if (!created) {
+    return { user: (await getUser(provisioned.id)) || provisioned, created: false };
+  }
+
+  // Grant 5-credit signup bonus (best effort)
+  try {
+    const { addCredits } = await import('../lib/userService');
+    const bonusExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    await addCredits(
+      provisioned.id,
+      5,
+      'bonus',
+      'Signup bonus — welcome to PropReel!',
+      { kind: 'signup_bonus' },
+      bonusExpiry
+    );
+
+    // Admin accounts: 1000 credits, no expiry (spec doc)
+    if (ADMIN_EMAILS.includes(normalizedEmail)) {
+      try {
+        await addCredits(
+          provisioned.id,
+          ADMIN_GRANT_CREDITS,
+          'bonus',
+          'Admin account allocation',
+          { kind: 'admin_grant' }
+        );
+        await updateUser(provisioned.id, { role: 'ADMIN' } as any);
+      } catch (adminErr) {
+        console.error('Admin credit grant error:', adminErr);
+      }
+    }
+  } catch (bonusError) {
+    console.error('Signup bonus error:', bonusError);
+  }
+  return { user: (await getUser(provisioned.id)) || provisioned, created: true };
+}
+
+// ─── First-party auth routes (Supabase replaced — see lib/auth.ts) ─────────
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Canonical origin for links inside confirmation / reset emails. */
+function siteOrigin(req: VercelRequest): string {
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  if (host && host !== 'localhost') {
+    const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+    return `${proto}://${host}`;
+  }
+  return process.env.VITE_APP_URL || 'https://propreel-xi.vercel.app';
+}
+
+/**
+ *   POST auth_register  {email, password, fullName, phone?, planId?, cycle?, redirect?}
+ *                        → provisions the row, emails a Resend confirmation link
+ *   GET  auth_confirm   &token= → verifies the address, opens a session
+ *   POST auth_resend    {email, redirect?} → re-sends the confirmation email
+ *   POST auth_login     {email, password} → session cookie
+ *   GET  auth_session   → current user from the session cookie (or null)
+ *   POST auth_logout    → clears the session
+ *   POST auth_forgot    {email} → password-reset email
+ *   POST auth_reset     {token, password} → sets a new password, kills sessions
+ */
+async function authRoutes(req: VercelRequest, res: VercelResponse, action: string) {
+  try {
+    const body = req.body || {};
+
+    // ── POST auth_register ───────────────────────────────────────────
+    if (action === 'auth_register') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect } = body;
+      if (!email || !fullName) return res.status(400).json({ error: 'Missing email or fullName' });
+      if (!EMAIL_RE.test(String(email))) return res.status(400).json({ error: 'Enter a valid email address' });
+      if (typeof password !== 'string' || password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      }
+
+      const normalized = String(email).toLowerCase();
+      const existing = await getUserByEmail(normalized);
+      if (existing?.emailVerified) {
+        return res.status(409).json({
+          error: existing.passwordHash
+            ? 'An account with this email already exists — sign in instead.'
+            : 'An account with this email already exists. Use "Forgot password" to set a password.',
+        });
+      }
+
+      // Provision (creates the row + signup bonus + admin grant) or reuse the
+      // still-unconfirmed row (re-register with a corrected password).
+      const { user } = await provisionUser({ email: normalized, fullName, phone, agencyName, planId, cycle });
+      await updateUser(user.id, { passwordHash: hashPassword(password), emailVerified: false } as any);
+      const fresh = (await getUser(user.id)) || user;
+
+      const token = await issueEmailConfirmToken(fresh, redirect);
+      const confirmUrl = `${siteOrigin(req)}/confirm-email?token=${token}`;
+      const tpl = confirmEmailTemplate(fresh.fullName || '', confirmUrl);
+      const sent = await sendEmail({ to: fresh.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+      if (!sent.ok) {
+        console.error('Confirmation email failed:', sent.error);
+        return res.status(502).json({
+          error: `Account created, but the confirmation email could not be sent (${sent.error}). Use "Resend email" to retry.`,
+          needsConfirmation: true,
+        });
+      }
+      return res.status(201).json({ success: true, needsConfirmation: true, email: fresh.email, userId: fresh.id });
+    }
+
+    // ── GET auth_confirm&token= ───────────────────────────────────────
+    if (action === 'auth_confirm') {
+      const token = String(req.query.token || body.token || '');
+      const row = await consumeEmailConfirmToken(token);
+      if (!row) {
+        return res.status(410).json({ error: 'This confirmation link is invalid or has expired. Request a new one.' });
+      }
+      const user = await getUser(row.userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      await updateUser(user.id, { emailVerified: true, emailConfirmToken: null } as any);
+      await deleteItem(TABLES.SETTINGS, { id: row.id }).catch(() => {});
+      const sessionToken = await createSession(user.id);
+      res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
+      const updated = await getUser(user.id);
+      return res.status(200).json({ success: true, redirect: row.redirect || null, user: safeUser(updated) });
+    }
+
+    // ── POST auth_resend {email, redirect?} ───────────────────────────
+    if (action === 'auth_resend') {
+      const email = String(body.email || '').toLowerCase();
+      if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
+      const user = await getUserByEmail(email);
+      if (user && !user.emailVerified) {
+        const last = (user as any).confirmEmailLastSentAt;
+        if (last && Date.now() - new Date(last).getTime() < 30_000) {
+          return res.status(200).json({ success: true, message: 'A confirmation email was just sent — give it a moment.' });
+        }
+        const token = await issueEmailConfirmToken(user, body.redirect);
+        const tpl = confirmEmailTemplate(user.fullName || '', `${siteOrigin(req)}/confirm-email?token=${token}`);
+        const sent = await sendEmail({ to: user.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+        if (!sent.ok) return res.status(502).json({ error: `Could not send the email: ${sent.error}` });
+      }
+      // Generic success — never reveals whether the address exists
+      return res.status(200).json({ success: true, message: 'If that address needs confirmation, the email is on its way.' });
+    }
+
+    // ── POST auth_login {email, password} ────────────────────────────
+    if (action === 'auth_login') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const email = String(body.email || '').toLowerCase();
+      const password = String(body.password || '');
+      const user = await getUserByEmail(email);
+      if (!user || !user.passwordHash) {
+        // Equalize timing so probing can't distinguish unknown emails
+        verifyPassword(password, 'scrypt$16384$dummy$dummy');
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+      if (!verifyPassword(password, user.passwordHash)) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+      if (!user.emailVerified) {
+        return res.status(403).json({
+          error: 'Confirm your email first — open the confirmation link we sent you.',
+          code: 'EMAIL_NOT_CONFIRMED',
+        });
+      }
+      const sessionToken = await createSession(user.id);
+      res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
+      return res.status(200).json({ success: true, user: safeUser(user) });
+    }
+
+    // ── GET auth_session ──────────────────────────────────────────────
+    if (action === 'auth_session') {
+      const user = await getSessionUser(getTokenFromRequest(req));
+      return res.status(200).json({ user: user ? safeUser(user) : null });
+    }
+
+    // ── POST auth_logout ──────────────────────────────────────────────
+    if (action === 'auth_logout') {
+      await deleteSession(getTokenFromRequest(req));
+      res.setHeader('Set-Cookie', clearSessionCookie(req));
+      return res.status(200).json({ success: true });
+    }
+
+    // ── POST auth_forgot {email} ──────────────────────────────────────
+    if (action === 'auth_forgot') {
+      const email = String(body.email || '').toLowerCase();
+      const user = EMAIL_RE.test(email) ? await getUserByEmail(email) : null;
+      if (user) {
+        const token = await issuePasswordResetToken(user);
+        const tpl = resetPasswordTemplate(`${siteOrigin(req)}/reset-password?token=${token}`);
+        const sent = await sendEmail({ to: user.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+        if (!sent.ok) console.error('Password-reset email failed:', sent.error);
+      }
+      return res.status(200).json({ success: true, message: 'If that address has an account, a reset link is on its way.' });
+    }
+
+    // ── POST auth_reset {token, password} ─────────────────────────────
+    if (action === 'auth_reset') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const token = String(body.token || '');
+      const password = String(body.password || '');
+      if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      const row = await consumePasswordResetToken(token);
+      if (!row) return res.status(410).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
+      await updateUser(row.userId, { passwordHash: hashPassword(password), passwordResetToken: null } as any);
+      await deleteItem(TABLES.SETTINGS, { id: `pwreset_${token}` }).catch(() => {});
+      await deleteSessionsForUser(row.userId);
+      return res.status(200).json({ success: true });
+    }
+
+    return res.status(404).json({ error: `Unknown auth action: ${action}` });
+  } catch (error) {
+    console.error(`Auth action ${action} error:`, error);
+    return res.status(500).json({ error: 'Authentication request failed' });
+  }
+}
+
 /**
  * GET    /api/users?email=xxx   → find user by email
  * GET    /api/users?id=xxx      → get user by id
- * POST   /api/users             → create or update user after OAuth/signup
+ * POST   /api/users             → create or update a user row (provisioning)
  *
  * Body (POST):
- *   supabaseUserId, email, fullName, phone?, role?, agencyName?, planId?, cycle?
+ *   email, fullName, phone?, role?, agencyName?, planId?, cycle?
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Nested routes (function consolidation)
@@ -592,6 +854,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.query.action === 'delete' && req.method === 'POST') {
     return deleteAccount(req, res);
+  }
+  if (String(req.query.action || '').startsWith('auth_')) {
+    return authRoutes(req, res, String(req.query.action));
   }
   if (req.method === 'GET' && req.query.action === 'admin_stats') {
     return adminStats(req, res);
@@ -618,7 +883,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
-      return res.status(200).json(user);
+      return res.status(200).json(safeUser(user));
     } catch (error) {
       console.error('Get user error:', error);
       return res.status(500).json({ error: 'Failed to get user' });
@@ -627,7 +892,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'POST') {
     const {
-      supabaseUserId,
       email,
       fullName,
       phone = null,
@@ -642,86 +906,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-      const normalizedEmail = String(email).toLowerCase();
-
-      // Idempotent provisioning: one row per email even under concurrent
-      // first-login requests (the old check-then-create produced duplicates,
-      // each collecting the signup bonus and, for admins, an extra allocation).
-      const { user: provisioned, created } = await getOrCreateUserByEmail({
-        email: normalizedEmail,
-        fullName,
-        role,
-        credits: 0, // bonuses credited separately below
-        creditExpiries: [],
-        subscription: null,
-        autoTopup: { enabled: false, threshold: 50, amount: 200 },
-        agencyId: null,
-        agencyName,
-        avatarUrl: null,
-        emailVerified: false,
-        lastLowCreditWarnedAt: null,
-        supabaseUserId: supabaseUserId || undefined,
-        notificationPreferences: {
-          emailNotifications: true,
-          pushNotifications: true,
-          renderComplete: true,
-          lowCredits: true,
-          newFeatures: true,
-          billingAlerts: true,
-          marketingEmails: false,
-        },
-        planId,
-        cycle,
-      } as any);
-
-      // Profile fields on an existing row are refreshed either way.
-      const profileUpdates: Record<string, any> = { fullName, email: normalizedEmail };
-      if (supabaseUserId) profileUpdates.supabaseUserId = supabaseUserId;
-      if (agencyName) profileUpdates.agencyName = agencyName;
-      if (phone) profileUpdates.phone = phone;
-      await updateUser(provisioned.id, profileUpdates);
-
-      if (!created) {
-        const updated = await getUser(provisioned.id);
-        return res.status(200).json({ success: true, user: updated || provisioned, created: false });
-      }
-
-      // Grant 5-credit signup bonus (best effort)
-      try {
-        const { addCredits } = await import('../lib/userService');
-        const bonusExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-        await addCredits(
-          provisioned.id,
-          5,
-          'bonus',
-          'Signup bonus — welcome to PropReel!',
-          { kind: 'signup_bonus' },
-          bonusExpiry
-        );
-
-        // Admin accounts: 1000 credits, no expiry (spec doc)
-        const email = normalizedEmail.toLowerCase();
-        if (ADMIN_EMAILS.includes(email)) {
-          try {
-            await addCredits(
-              provisioned.id,
-              ADMIN_GRANT_CREDITS,
-              'bonus',
-              'Admin account allocation',
-              { kind: 'admin_grant' }
-            );
-            await updateUser(provisioned.id, { role: 'ADMIN' } as any);
-          } catch (adminErr) {
-            console.error('Admin credit grant error:', adminErr);
-          }
-        }
-
-        const withBonus = await getUser(provisioned.id);
-        return res.status(201).json({ success: true, user: withBonus || provisioned, created: true });
-      } catch (bonusError) {
-        console.error('Signup bonus error:', bonusError);
-        return res.status(201).json({ success: true, user: provisioned, created: true });
-      }
+      const { user, created } = await provisionUser({ email, fullName, phone, role, agencyName, planId, cycle });
+      return res.status(created ? 201 : 200).json({ success: true, user: safeUser(user), created });
     } catch (error) {
       console.error('Create user error:', error);
       return res.status(500).json({ error: 'Failed to create user' });

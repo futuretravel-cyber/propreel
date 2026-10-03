@@ -2,6 +2,10 @@
 
 ## ✅ Architecture Decision: AWS S3 for All Storage
 
+> **SUPERSEDED (3 Oct 2026):** Supabase has been removed entirely — database,
+> auth and all. AWS DynamoDB is the only data store; auth is first-party
+> (`lib/auth.ts`); emails go through Resend. This document is kept as history.
+
 **Supabase storage is NOT used in this deployment.**
 
 All file storage uses **AWS S3** exclusively, while Supabase is used ONLY for:

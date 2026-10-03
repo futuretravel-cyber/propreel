@@ -61,19 +61,6 @@ export async function findUserByEmail(email: string) {
   return results[0] || null;
 }
 
-// Get user by Supabase user ID (users table has no GSI on supabaseUserId,
-// so we scan with a filter)
-export async function findUserBySupabaseId(supabaseUserId: string) {
-  const results = await scanItems<any>(TABLES.USERS, {
-    filter: {
-      expression: 'supabaseUserId = :sid',
-      values: { ':sid': supabaseUserId },
-    },
-    limit: 1,
-  });
-  return results[0] || null;
-}
-
 // Batch write items (for bulk operations)
 export async function batchWriteItems(
   items: Array<{ table: string; item: Record<string, any> }>,

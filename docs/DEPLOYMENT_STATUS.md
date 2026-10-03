@@ -1,6 +1,6 @@
 # PropReel — Deployment Status
 
-**Last updated:** 2 October 2026 — **database cut over to Supabase** (`DB_DRIVER=supabase` in Vercel Production)
+**Last updated:** 3 October 2026 — **Supabase fully retired**; AWS DynamoDB is the only database, auth is first-party (`lib/auth.ts`), emails via Resend (`lib/email.ts`)
 
 ## Production
 
@@ -9,8 +9,8 @@
 | URL | https://propreel-xi.vercel.app (auto-aliases latest deploy) |
 | Project | `futuretravel-5761s-projects/propreel` (`prj_WoZmzg7PbpE7OdIqRUtm8TA7fmbp`) |
 | Repo | https://github.com/futuretravel-cyber/propreel.co.za (`main`) |
-| Database | **Supabase Postgres** (project `agcchttiomlbuuycwdgy`, eu-west-1) via `lib/db-supabase.ts` |
-| Rollback | Remove `DB_DRIVER` from Vercel → redeploy (returns to DynamoDB) — see [SUPABASE_MIGRATION.md](SUPABASE_MIGRATION.md) |
+| Database | **AWS DynamoDB** (af-south-1) — `lib/db-dynamodb.ts`, all tables incl. `propreel-sessions` |
+| Rollback | Supabase project deleted 3 Oct 2026 — no rollback; restore from DynamoDB backups only |
 | Region | eu-west-1 (Supabase), iad1 (Vercel functions) |
 | Plan | Vercel Hobby — 12-function cap, currently **11** functions |
 
@@ -48,9 +48,9 @@ Recreate anytime with `npm run create-tables` (idempotent).
 
 ## Remaining manual steps (dashboard-only)
 
-- [ ] **Supabase** → Authentication → URL Configuration: Site URL `https://propreel.co.za`;
-      Redirect URLs: `https://propreel.co.za/**`, `https://www.propreel.co.za/**`,
-      `https://propreel.vercel.app/**`
+- [ ] **Resend** → add & verify domain `propreel.co.za` (DKIM/SPF TXT records
+      at the registrar, zadns) — until then only `onboarding@resend.dev` →
+      the account address can receive mail
 - [ ] **Paystack** → Settings → Webhooks: `https://propreel.co.za/api/paystack/webhook`
       (use the vercel.app URL until DNS is live)
 - [ ] **DNS at registrar:** A `@` → `76.76.21.21`, CNAME `www` → `cname.vercel-dns.com`;

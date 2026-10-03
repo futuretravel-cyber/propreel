@@ -5,9 +5,9 @@ import {
   cancelSubscription as cancelDbSubscription,
   hasActiveSubscription,
   getPlanDetails,
+  getPlans,
   updateUser,
   recordTransaction,
-  PLANS,
   applyPendingUpgrade,
   markUpgradePaid,
 } from '../lib/userService';
@@ -22,6 +22,24 @@ import { createSubscription as createPaystackSub, cancelSubscription as cancelPa
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = (req.query.action as string) || '';
+
+  // GET ?action=pricing — public, read-only pricing source of truth.
+  // Serves the DynamoDB `settings/pricing_config` row (plans + render tiers)
+  // so the site's displayed pricing comes from the database, not constants.
+  if (req.method === 'GET' && action === 'pricing') {
+    try {
+      const { getItem, TABLES } = await import('../lib/db');
+      const row = await getItem<any>(TABLES.SETTINGS, { id: 'pricing_config' });
+      if (!row) return res.status(200).json({ success: true, pricing: null });
+      return res.status(200).json({
+        success: true,
+        pricing: { plans: row.plans || null, tiers: row.tiers || null, updatedAt: row.updatedAt || null },
+      });
+    } catch (e) {
+      console.error('pricing read failed:', e);
+      return res.status(200).json({ success: true, pricing: null });
+    }
+  }
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -53,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const planDetails = getPlanDetails(plan_id, cycle);
+      const planDetails = await getPlanDetails(plan_id, cycle);
       if (!planDetails) {
         return res.status(400).json({ error: 'Invalid plan' });
       }
@@ -141,7 +159,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await getUser(user_id);
       if (!user) return res.status(404).json({ error: 'User not found' });
 
-      const newPlan = PLANS[plan_id];
+      const dbPlans = await getPlans();
+      const newPlan = dbPlans[plan_id];
       if (!newPlan) return res.status(400).json({ error: 'Invalid plan' });
 
       const sub = user.subscription;
@@ -149,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'No active subscription to upgrade' });
       }
 
-      const oldPlan = PLANS[sub.planId];
+      const oldPlan = dbPlans[sub.planId];
       if (!oldPlan) return res.status(400).json({ error: 'Current plan is invalid' });
 
       // Same plan & cycle → nothing to do

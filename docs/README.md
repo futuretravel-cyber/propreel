@@ -12,7 +12,7 @@ sign-in, **AWS S3** stores every file, **Modal + fal.ai** render video, and
 
 | Document | What it covers |
 |---|---|
-| [SUPABASE_MIGRATION.md](SUPABASE_MIGRATION.md) | Moving the database from DynamoDB to Supabase — 6 phases, including the gated AWS deletion |
+| ARCHIVE — Supabase retired (3 Oct 2026) | The DynamoDB→Supabase runbook was deleted with Supabase; AWS DynamoDB is the only database |
 | [ARCHITECTURE_STORAGE_DECISION.md](ARCHITECTURE_STORAGE_DECISION.md) | Why all storage is AWS S3 (and why Supabase Storage is not used) |
 | [GITHUB_VERCEL_DEPLOYMENT.md](GITHUB_VERCEL_DEPLOYMENT.md) | Push-to-`main` → Vercel deployment flow |
 | [DEPLOYMENT_STATUS.md](DEPLOYMENT_STATUS.md) | Current production status and live endpoints |

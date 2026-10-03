@@ -75,10 +75,8 @@ git push -u origin main
 #### Required Environment Variables
 
 ```bash
-# Supabase
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# Resend (transactional email)
+RESEND_API_KEY=re_xxxxx
 
 # AWS
 AWS_ACCESS_KEY_ID=your-access-key
