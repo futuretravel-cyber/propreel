@@ -5,7 +5,7 @@ import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { PLANS, SIGNUP_BONUS, PHONE_COUNTRY_CODES } from '../lib/constants';
 import { formatZar } from '../lib/utils';
-import { Check, ArrowRight, ArrowLeft, Sparkles, Building2, User, CreditCard, Shield, Mail, RefreshCw } from 'lucide-react';
+import { Check, ArrowRight, ArrowLeft, Sparkles, Building2, User, CreditCard, Shield, Mail, RefreshCw, AlertTriangle } from 'lucide-react';
 
 type Step = 'plan' | 'details' | 'payment' | 'confirm';
 
@@ -36,6 +36,13 @@ export default function SignupPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  // Registration created/reused the (still-unconfirmed) account but the
+  // confirmation email failed — the confirm step shows resend/sign-in
+  // options instead of leaving the user to resubmit into the same failure.
+  const [emailFailed, setEmailFailed] = useState('');
+  // 409 — this email belongs to an already-confirmed account: sign in (or
+  // reset the password) rather than retrying registration.
+  const [existingAccount, setExistingAccount] = useState(false);
   const { register, user } = useCredit();
   const toast = useToast();
   const navigate = useNavigate();
@@ -82,6 +89,8 @@ export default function SignupPage() {
     if (!formData.agreed) { setError('You must acknowledge the AI disclaimer'); return; }
     setLoading(true);
     setError('');
+    setExistingAccount(false);
+    setEmailFailed('');
     try {
       // Where the confirmation-email link should land: straight on this
       // plan's payment page, already signed in.
@@ -116,7 +125,19 @@ export default function SignupPage() {
         navigate(paymentUrl);
       }
     } catch (err: any) {
-      setError(err.message || 'Registration failed');
+      const msg = err.message || 'Registration failed';
+      if (err.needsConfirmation || /confirmation email could not be sent/i.test(msg)) {
+        // The account exists but is unconfirmed — resubmitting would just
+        // try to send the same email again. Offer resend / sign-in instead.
+        setEmailFailed(msg);
+        setStep('confirm');
+      } else if (err.status === 409) {
+        // Already-confirmed account: continue by signing in, not retrying.
+        setExistingAccount(true);
+        setError(msg);
+      } else {
+        setError(msg);
+      }
     }
     setLoading(false);
   };
@@ -134,6 +155,9 @@ export default function SignupPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Could not resend the email');
+      // Worked — leave the failed state; the standard inbox instructions apply.
+      setEmailFailed('');
+      setError('');
       toast.success(`Confirmation link re-sent to ${formData.email}`, 'Email sent');
     } catch (err: any) {
       toast.error(err.message || 'Could not resend the email');
@@ -175,6 +199,19 @@ export default function SignupPage() {
         )}
 
         {error && <div className="mb-4 p-3 rounded-lg bg-red-950/50 border border-red-500/30 text-red-300 text-sm text-center">{error}</div>}
+
+        {/* Already-confirmed account (409): give the way forward inline instead
+            of a retry that can only fail again. */}
+        {existingAccount && step === 'details' && (
+          <div className="mb-4 p-4 rounded-lg bg-ink-800/70 border border-white/10 space-y-2 text-center">
+            <button type="button" onClick={() => navigate('/login')} className="btn btn-primary w-full">
+              Sign in to your account
+            </button>
+            <Link to="/forgot-password" className="text-sm text-purple-400 hover:text-purple-300">
+              No password yet? Set one via “Forgot password”
+            </Link>
+          </div>
+        )}
 
         {/* Step 1: Plan Selection */}
         {step === 'plan' && (
@@ -318,14 +355,32 @@ export default function SignupPage() {
         {/* Step 4: Confirm your email (mailer_autoconfirm=false) */}
         {step === 'confirm' && (
           <div className="card-dark p-8 text-center animate-fade-in max-w-lg mx-auto">
-            <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
-              <Mail className="w-8 h-8 text-purple-400" />
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${emailFailed ? 'bg-amber-500/15' : 'bg-purple-500/20'}`}>
+              {emailFailed ? <AlertTriangle className="w-8 h-8 text-amber-400" /> : <Mail className="w-8 h-8 text-purple-400" />}
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Check your inbox</h2>
-            <p className="text-ink-400 mb-2">
-              We sent a confirmation link to
-            </p>
-            <p className="text-white font-semibold break-all mb-4">{formData.email}</p>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              {emailFailed ? 'Confirmation email not sent' : 'Check your inbox'}
+            </h2>
+            {emailFailed ? (
+              <>
+                <p className="text-ink-400 mb-3">
+                  Your account for <span className="text-white font-semibold break-all">{formData.email}</span> exists, but the confirmation email didn’t go out:
+                </p>
+                <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-3 mb-4 text-left">
+                  <p className="text-xs text-amber-300">{emailFailed}</p>
+                </div>
+                <p className="text-sm text-ink-400 mb-4 text-left">
+                  Your account and {SIGNUP_BONUS} free credits are safe — it just needs its address confirmed. Try resending below, or sign in if you’ve already confirmed it.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-ink-400 mb-2">
+                  We sent a confirmation link to
+                </p>
+                <p className="text-white font-semibold break-all mb-4">{formData.email}</p>
+              </>
+            )}
             <div className="bg-ink-800/50 rounded-xl p-4 mb-6 text-left">
               <ol className="space-y-2 text-sm text-ink-300 list-decimal list-inside">
                 <li>Click the link in the email to confirm your address</li>
@@ -336,10 +391,15 @@ export default function SignupPage() {
                 Your {SIGNUP_BONUS} free credits are added the moment your account is created.
               </p>
             </div>
-            <button onClick={resendConfirmation} disabled={resending} className="btn btn-secondary w-full mb-3">
+            <button onClick={resendConfirmation} disabled={resending} className={`w-full mb-3 ${emailFailed ? 'btn btn-primary' : 'btn btn-secondary'}`}>
               {resending ? <><RefreshCw className="w-4 h-4 animate-spin" /> Sending…</> : <>Resend confirmation email</>}
             </button>
-            <button onClick={() => setStep('details')} className="btn w-full">Back</button>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => { setEmailFailed(''); setError(''); setStep('details'); }} className="btn btn-secondary flex-1">
+                <ArrowLeft className="w-4 h-4" /> Back
+              </button>
+              <Link to="/login" className="btn flex-1 justify-center">Sign in</Link>
+            </div>
             <p className="text-xs text-ink-500 mt-4">
               Wrong email? Go back and fix it. The link expires — request a new one if it does.
             </p>

@@ -423,6 +423,10 @@ function LoginPage() {
   const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorBusy, setTwoFactorBusy] = useState(false);
+  // Unconfirmed account (403 EMAIL_NOT_CONFIRMED): offer a resend right here
+  // so signing in doesn't become a dead end when the email never arrived.
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const [resendingConfirm, setResendingConfirm] = useState(false);
   const { login, loginWithTwoFactor, user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -450,6 +454,7 @@ function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setUnconfirmed(false);
     try {
       // Store the destination BEFORE login() fires the auth listener — the
       // user-effect below can otherwise consume a stale/default redirect and
@@ -471,8 +476,29 @@ function LoginPage() {
       toast.success('Welcome back!');
     } catch (err: any) {
       setError(err.message || 'Invalid credentials');
+      setUnconfirmed(err.code === 'EMAIL_NOT_CONFIRMED');
       setLoading(false);
     }
+  };
+
+  // Re-request the confirmation email for the address typed into the form.
+  // No redirect param: the server's stored one is absent, so /confirm-email
+  // falls back to this tab's post-auth redirect (payment page or ?next=).
+  const resendConfirmation = async () => {
+    setResendingConfirm(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users?action=auth_resend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not resend the email');
+      toast.success(`Confirmation link re-sent to ${email}`, 'Email sent');
+    } catch (err: any) {
+      toast.error(err.message || 'Could not resend the email');
+    }
+    setResendingConfirm(false);
   };
 
   const handleTwoFactor = async (e: React.FormEvent) => {
@@ -506,6 +532,14 @@ function LoginPage() {
             {twoFactorToken ? 'Enter the 6-digit code from your authenticator app' : 'Sign in to your account'}
           </p>
           {error && <div className="mb-4 p-3 rounded-lg bg-red-950/50 border border-red-500/30 text-red-300 text-sm">{error}</div>}
+          {unconfirmed && (
+            <div className="mb-4 p-3 rounded-lg bg-ink-800/70 border border-white/10 text-center">
+              <p className="text-xs text-ink-400 mb-2">Haven’t received the confirmation email? Check your spam folder, or resend it:</p>
+              <button onClick={resendConfirmation} disabled={resendingConfirm} className="btn btn-secondary w-full">
+                {resendingConfirm ? <><RefreshCw className="w-4 h-4 animate-spin" /> Sending…</> : 'Resend confirmation email'}
+              </button>
+            </div>
+          )}
           {twoFactorToken ? (
             <form onSubmit={handleTwoFactor} className="space-y-4">
               <div>

@@ -17,6 +17,11 @@ async function authFetch(action: string, init?: RequestInit): Promise<any> {
     const err: any = new Error(data.error || `Authentication failed (${res.status})`);
     err.code = data.code;
     err.status = res.status;
+    // Error bodies can still carry flow flags: auth_register answers 502
+    // "account created, but the confirmation email failed" with
+    // needsConfirmation:true — callers need it to offer resend/sign-in
+    // instead of retrying the same registration into the same failure.
+    err.needsConfirmation = !!data.needsConfirmation;
     throw err;
   }
   return data;
