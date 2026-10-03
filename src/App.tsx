@@ -9,6 +9,7 @@ import { DashboardSkeleton, BillingSkeleton, ProjectsSkeleton, StudioSkeleton, u
 import { useAuth, useCredit, AuthProvider, CreditProvider } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
 import SignupPage from './pages/SignupPage';
+import TwoFactorSetupPage from './pages/TwoFactorSetupPage';
 import { ConfirmEmailPage, ForgotPasswordPage, ResetPasswordPage } from './pages/AuthEmailPages';
 import PaymentPage from './pages/PaymentPage';
 import RefundPolicyPage from './pages/RefundPolicyPage';
@@ -418,7 +419,11 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login, user } = useAuth();
+  // Two-step verification: pending challenge from auth_login
+  const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorBusy, setTwoFactorBusy] = useState(false);
+  const { login, loginWithTwoFactor, user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -452,11 +457,35 @@ function LoginPage() {
       // (e.g. the payment page).
       const { setPostAuthRedirect } = await import('./lib/postAuth');
       setPostAuthRedirect(nextPath && nextPath.startsWith('/') ? nextPath : '/dashboard');
-      await login(email, password);
+      const result = await login(email, password);
+      if (result.requires2fa) {
+        // Password accepted — ask for the authenticator code next.
+        setTwoFactorToken(result.token || '');
+        setLoading(false);
+        return;
+      }
+      if (result.setupRequired) {
+        // Signed up with the two-step checkbox — finish setup before the dashboard.
+        setPostAuthRedirect('/2fa-setup');
+      }
       toast.success('Welcome back!');
     } catch (err: any) {
       setError(err.message || 'Invalid credentials');
       setLoading(false);
+    }
+  };
+
+  const handleTwoFactor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!twoFactorToken) return;
+    setTwoFactorBusy(true);
+    setError('');
+    try {
+      await loginWithTwoFactor(email, twoFactorToken, twoFactorCode);
+      toast.success('Welcome back!');
+    } catch (err: any) {
+      setError(err.message || 'Invalid code');
+      setTwoFactorBusy(false);
     }
   };
 
@@ -473,13 +502,40 @@ function LoginPage() {
         </div>
         <div className="card-dark p-8">
           <h2 className="text-2xl font-bold text-white mb-2">Welcome back</h2>
-          <p className="text-ink-400 mb-6">Sign in to your account</p>
+          <p className="text-ink-400 mb-6">
+            {twoFactorToken ? 'Enter the 6-digit code from your authenticator app' : 'Sign in to your account'}
+          </p>
           {error && <div className="mb-4 p-3 rounded-lg bg-red-950/50 border border-red-500/30 text-red-300 text-sm">{error}</div>}
+          {twoFactorToken ? (
+            <form onSubmit={handleTwoFactor} className="space-y-4">
+              <div>
+                <label className="label">Verification code</label>
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  className="input text-center text-xl tracking-[0.5em]"
+                  value={twoFactorCode}
+                  onChange={e => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  autoFocus
+                  required
+                />
+              </div>
+              <button type="submit" disabled={twoFactorBusy || twoFactorCode.length !== 6} className="btn btn-primary w-full">
+                {twoFactorBusy ? 'Verifying…' : 'Verify & Sign In'}
+              </button>
+              <button type="button" onClick={() => { setTwoFactorToken(null); setTwoFactorCode(''); setError(''); }} className="btn btn-ghost w-full text-sm">
+                Back to email & password
+              </button>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div><label className="label">Email</label><input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required /></div>
             <div><label className="label">Password</label><input type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /></div>
             <button type="submit" disabled={loading} className="btn btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
           </form>
+          )}
             <div className="mt-4">
               <button onClick={() => navigate('/forgot-password')} className="btn w-full mb-3 text-sm">Forgot your password?</button>
             </div>
@@ -3294,6 +3350,7 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/confirm-email" element={<ConfirmEmailPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/2fa-setup" element={<RequireAuth><TwoFactorSetupPage /></RequireAuth>} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/register" element={<SignupPage />} />
       <Route path="/signup" element={<SignupPage />} />

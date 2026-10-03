@@ -9,6 +9,7 @@ import {
   consumePasswordResetToken,
 } from '../lib/auth';
 import { sendEmail, confirmEmailTemplate, resetPasswordTemplate } from '../lib/email';
+import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/totp';
 
 const isAdminEmail = (email: string | undefined | null) =>
   !!email && ADMIN_EMAILS.includes(String(email).toLowerCase());
@@ -676,7 +677,7 @@ async function pnlRoutes(req: VercelRequest, res: VercelResponse, action: string
 /** Strip auth secrets before a user row leaves the API. */
 function safeUser(user: any) {
   if (!user) return user;
-  const { passwordHash, emailConfirmToken, passwordResetToken, confirmEmailLastSentAt, ...rest } = user;
+  const { passwordHash, emailConfirmToken, passwordResetToken, confirmEmailLastSentAt, twoFactorSecret, twoFactorPendingToken, ...rest } = user;
   return rest;
 }
 
@@ -805,7 +806,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
     // ── POST auth_register ───────────────────────────────────────────
     if (action === 'auth_register') {
       if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-      const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect } = body;
+      const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect, enableTwoFactor = false } = body;
       if (!email || !fullName) return res.status(400).json({ error: 'Missing email or fullName' });
       if (!EMAIL_RE.test(String(email))) return res.status(400).json({ error: 'Enter a valid email address' });
       if (typeof password !== 'string' || password.length < 8) {
@@ -825,7 +826,11 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       // Provision (creates the row + signup bonus + admin grant) or reuse the
       // still-unconfirmed row (re-register with a corrected password).
       const { user } = await provisionUser({ email: normalized, fullName, phone, agencyName, planId, cycle });
-      await updateUser(user.id, { passwordHash: hashPassword(password), emailVerified: false } as any);
+      await updateUser(user.id, {
+        passwordHash: hashPassword(password),
+        emailVerified: false,
+        ...(enableTwoFactor ? { twoFactorOptIn: true } : {}),
+      } as any);
       const fresh = (await getUser(user.id)) || user;
 
       const token = await issueEmailConfirmToken(fresh, redirect);
@@ -901,8 +906,24 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
           code: 'EMAIL_NOT_CONFIRMED',
         });
       }
+
+      // Two-step verification: password OK, but the authenticator code is
+      // still required — issue a 5-minute pending challenge instead of a session.
+      if (user.twoFactorEnabled && user.twoFactorSecret) {
+        const pending = randomToken();
+        await updateUser(user.id, {
+          twoFactorPendingToken: pending,
+          twoFactorPendingExpires: new Date(Date.now() + 5 * 60_000).toISOString(),
+        } as any);
+        return res.status(200).json({ requires2fa: true, token: pending });
+      }
+
       const sessionToken = await createSession(user.id);
       res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
+      // Signed up with the two-step checkbox but not configured yet → land on setup.
+      if (user.twoFactorOptIn && !user.twoFactorEnabled) {
+        return res.status(200).json({ success: true, setupRequired: true, user: safeUser(user) });
+      }
       return res.status(200).json({ success: true, user: safeUser(user) });
     }
 
@@ -1025,9 +1046,73 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
       const row = await consumePasswordResetToken(token);
       if (!row) return res.status(410).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
-      await updateUser(row.userId, { passwordHash: hashPassword(password), passwordResetToken: null } as any);
+      await updateUser(row.userId, { passwordHash: hashPassword(password), passwordResetToken: null, twoFactorEnabled: false, twoFactorSecret: null, twoFactorOptIn: false, twoFactorPendingToken: null } as any);
       await deleteSessionsForUser(row.userId);
       return res.status(200).json({ success: true });
+    }
+
+    // ── POST auth_2fa_setup (session) — mint a fresh TOTP secret ───────
+    if (action === 'auth_2fa_setup') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const sessionUser = await getSessionUser(getTokenFromRequest(req));
+      if (!sessionUser) return res.status(401).json({ error: 'Sign in to manage two-step verification' });
+      const secret = generateTotpSecret();
+      await updateUser(sessionUser.id, { twoFactorSecret: secret, twoFactorEnabled: false } as any);
+      return res.status(200).json({ success: true, secret, otpauthUrl: otpauthUrl(sessionUser.email, secret) });
+    }
+
+    // ── POST auth_2fa_confirm {code} (session) — activate ──────────────
+    if (action === 'auth_2fa_confirm') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const sessionUser = await getSessionUser(getTokenFromRequest(req));
+      if (!sessionUser) return res.status(401).json({ error: 'Sign in to manage two-step verification' });
+      if (!sessionUser.twoFactorSecret) return res.status(400).json({ error: 'Start the setup first' });
+      if (!verifyTotp(sessionUser.twoFactorSecret, body.code)) {
+        return res.status(400).json({ error: 'Invalid code — check your authenticator app and try again' });
+      }
+      const updated = await updateUser(sessionUser.id, { twoFactorEnabled: true, twoFactorOptIn: false } as any);
+      return res.status(200).json({ success: true, user: safeUser(updated) });
+    }
+
+    // ── POST auth_2fa_disable {code} (session) ─────────────────────────
+    if (action === 'auth_2fa_disable') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const sessionUser = await getSessionUser(getTokenFromRequest(req));
+      if (!sessionUser) return res.status(401).json({ error: 'Sign in to manage two-step verification' });
+      if (!sessionUser.twoFactorEnabled) return res.status(400).json({ error: 'Two-step verification is not enabled' });
+      if (!verifyTotp(sessionUser.twoFactorSecret || '', body.code)) {
+        return res.status(400).json({ error: 'Invalid code — enter the current code from your authenticator app' });
+      }
+      const updated = await updateUser(sessionUser.id, { twoFactorEnabled: false, twoFactorSecret: null, twoFactorOptIn: false } as any);
+      return res.status(200).json({ success: true, user: safeUser(updated) });
+    }
+
+    // ── POST auth_2fa_skip (session) — "set up later" after signup ─────
+    if (action === 'auth_2fa_skip') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const sessionUser = await getSessionUser(getTokenFromRequest(req));
+      if (!sessionUser) return res.status(401).json({ error: 'Sign in required' });
+      await updateUser(sessionUser.id, { twoFactorOptIn: false } as any);
+      return res.status(200).json({ success: true });
+    }
+
+    // ── POST auth_2fa_verify {email, token, code} — sign-in challenge ──
+    if (action === 'auth_2fa_verify') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const email = String(body.email || '').toLowerCase();
+      const token = String(body.token || '');
+      const pendingUser = email ? await getUserByEmail(email) : null;
+      const expires = pendingUser ? Date.parse(pendingUser.twoFactorPendingExpires || '') : NaN;
+      if (!pendingUser || !token || pendingUser.twoFactorPendingToken !== token || Number.isNaN(expires) || expires < Date.now()) {
+        return res.status(400).json({ error: 'This verification expired — sign in again' });
+      }
+      if (!verifyTotp(pendingUser.twoFactorSecret || '', body.code)) {
+        return res.status(401).json({ error: 'Invalid code — check your authenticator app' });
+      }
+      await updateUser(pendingUser.id, { twoFactorPendingToken: null, twoFactorPendingExpires: null } as any);
+      const sessionToken = await createSession(pendingUser.id);
+      res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
+      return res.status(200).json({ success: true, user: safeUser(pendingUser) });
     }
 
     return res.status(404).json({ error: `Unknown auth action: ${action}` });

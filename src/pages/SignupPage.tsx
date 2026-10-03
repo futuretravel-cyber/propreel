@@ -31,6 +31,7 @@ export default function SignupPage() {
     fullName: '', email: '', password: '', phone: '',
     agencyName: '', companyName: '', companyReg: '', companyVat: '', companyAddress: '',
     agreed: false,
+    twoStep: false,
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -101,6 +102,7 @@ export default function SignupPage() {
         companyVat: formData.companyVat,
         companyAddress: formData.companyAddress,
         referralCode: referralCode || undefined,
+        enableTwoFactor: formData.twoStep,
       });
       track('signup_completed', { plan: selectedPlan, cycle });
       if (result.needsConfirmation) {
@@ -291,6 +293,14 @@ export default function SignupPage() {
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" checked={formData.agreed} onChange={e => setFormData({...formData, agreed: e.target.checked})} className="mt-1 w-4 h-4 rounded" />
                 <span className="text-xs text-ink-400">I understand that PropReel uses AI technology, which may produce imperfect results, and I agree that spent credits are non-refundable.</span>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={formData.twoStep} onChange={e => setFormData({...formData, twoStep: e.target.checked})} className="mt-1 w-4 h-4 rounded" />
+                <span className="text-xs text-ink-400">
+                  <span className="text-white font-semibold">Protect my account with two-step verification.</span>{' '}
+                  After confirming your email you'll scan a QR code with an authenticator app (Google Authenticator, Authy, …) and sign in with a 6-digit code.
+                </span>
               </label>
 
               <div className="flex gap-3">

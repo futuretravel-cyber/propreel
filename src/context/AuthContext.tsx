@@ -101,6 +101,9 @@ export interface User {
   autoTopupAuthAmount?: number;
   /** Agent branding profiles (Agent Branding tab) */
   agentProfiles?: AgentProfile[];
+  /** Two-step verification (authenticator app) */
+  twoFactorEnabled?: boolean;
+  twoFactorOptIn?: boolean;
 }
 
 export interface Balance {
@@ -120,7 +123,8 @@ interface CreditContextType {
   isAdmin: boolean;
   isAgencyOwner: boolean;
   lowCreditWarning: 'none' | 'info' | 'warning' | 'critical';
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }>;
+  loginWithTwoFactor: (email: string, token: string, code: string) => Promise<void>;
   register: (data: RegisterData) => Promise<{ needsConfirmation: boolean }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -151,6 +155,8 @@ export interface RegisterData {
   companyVat?: string;
   companyAddress?: string;
   referralCode?: string;
+  /** Sign up with the two-step verification prompt (authenticator app) */
+  enableTwoFactor?: boolean;
 }
 
 const CreditContext = createContext<CreditContextType | null>(null);
@@ -237,10 +243,23 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     return 'none';
   })();
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }> => {
     const data = await authFetch('auth_login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    });
+    // Two-step verification: no session yet — the caller prompts for the
+    // 6-digit authenticator code and finishes with loginWithTwoFactor.
+    if (data.requires2fa) return { requires2fa: true, token: data.token };
+    setUser(data.user);
+    acceptPendingAgencyInvite(data.user.id).catch(() => {});
+    return data.setupRequired ? { setupRequired: true } : {};
+  }, [acceptPendingAgencyInvite]);
+
+  const loginWithTwoFactor = useCallback(async (email: string, token: string, code: string) => {
+    const data = await authFetch('auth_2fa_verify', {
+      method: 'POST',
+      body: JSON.stringify({ email, token, code }),
     });
     setUser(data.user);
     acceptPendingAgencyInvite(data.user.id).catch(() => {});
@@ -261,6 +280,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
         planId: data.planId,
         cycle: data.cycle,
         redirect: data.emailRedirectTo,
+        enableTwoFactor: data.enableTwoFactor,
       }),
     });
 
@@ -426,7 +446,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
   return (
     <CreditContext.Provider value={{
       user, balance, loading: isInitialLoad, isAdmin, isAgencyOwner, lowCreditWarning,
-      login, register, logout, refresh, acceptPendingAgencyInvite,
+      login, loginWithTwoFactor, register, logout, refresh, acceptPendingAgencyInvite,
       purchaseCredits, setAutoTopup, giftCredits,
       upgradePlan, downgradePlan, acknowledgeLowCredit,
       deductCredits, addCredits,

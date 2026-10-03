@@ -49,6 +49,14 @@ export interface User {
   emailConfirmToken?: string | null;
   confirmEmailLastSentAt?: string;
   passwordResetToken?: string | null;
+  /** Two-step verification (TOTP) — server-side only, stripped by safeUser */
+  twoFactorSecret?: string | null;
+  twoFactorEnabled?: boolean;
+  /** Chose the two-step checkbox at sign-up but hasn't scanned the QR yet */
+  twoFactorOptIn?: boolean;
+  /** Short-lived sign-in challenge (auth_login → auth_2fa_verify) */
+  twoFactorPendingToken?: string | null;
+  twoFactorPendingExpires?: string | null;
   notificationPreferences?: Record<string, boolean>;
   projectFolders?: Array<{ id: string; name: string; icon: string; createdAt: string }>;
   planId?: string | null;

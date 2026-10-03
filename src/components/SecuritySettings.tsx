@@ -26,11 +26,73 @@ const auditLogs = [
 ];
 
 export default function SecuritySettings() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const toast = useToast();
   const [tab, setTab] = useState<'2fa' | 'sessions' | 'audit' | 'privacy'>('2fa');
-  const [twoFAEnabled, setTwoFAEnabled] = useState(false);
+  const [twoFAEnabled, setTwoFAEnabled] = useState(!!user?.twoFactorEnabled);
+  // Live TOTP setup / disable panel — backed by the auth_2fa_* endpoints
+  const [setup, setSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null);
+  const [disabling, setDisabling] = useState(false);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
+
+  const auth2fa = async (action: string, payload: Record<string, any> = {}) => {
+    const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users?action=${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  };
+
+  const startSetup = async () => {
+    setBusy(true);
+    try {
+      const d = await auth2fa('auth_2fa_setup');
+      setSetup({ secret: d.secret, otpauthUrl: d.otpauthUrl });
+      setDisabling(false);
+      setCode('');
+    } catch (e: any) {
+      toast.error(e.message || 'Could not start setup', 'Security');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmSetup = async () => {
+    setBusy(true);
+    try {
+      await auth2fa('auth_2fa_confirm', { code });
+      setTwoFAEnabled(true);
+      setSetup(null);
+      setCode('');
+      await refresh();
+      toast.success('Two-step verification enabled — you\'ll need a code at sign in', 'Security');
+    } catch (e: any) {
+      toast.error(e.message || 'Invalid code', 'Security');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmDisable = async () => {
+    setBusy(true);
+    try {
+      await auth2fa('auth_2fa_disable', { code });
+      setTwoFAEnabled(false);
+      setDisabling(false);
+      setCode('');
+      await refresh();
+      toast.success('Two-step verification disabled', 'Security');
+    } catch (e: any) {
+      toast.error(e.message || 'Invalid code', 'Security');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -92,11 +154,16 @@ export default function SecuritySettings() {
                       </div>
                       <button
                         onClick={() => {
-                          if (i === 0) {
-                            setTwoFAEnabled(!twoFAEnabled);
-                            toast.success(twoFAEnabled ? '2FA disabled' : '2FA enabled successfully!', twoFAEnabled ? 'Security' : 'Security');
+                          if (i !== 0) return;
+                          if (twoFAEnabled) {
+                            setDisabling(true);
+                            setSetup(null);
+                            setCode('');
+                          } else {
+                            startSetup();
                           }
                         }}
+                        disabled={i > 0 || busy}
                         className={`btn text-xs py-1 px-3 ${i === 0 && twoFAEnabled ? 'btn-danger' : 'btn-secondary'}`}
                       >
                         {i === 0 && twoFAEnabled ? 'Disable' : 'Enable'}
@@ -104,6 +171,53 @@ export default function SecuritySettings() {
                     </div>
                   </div>
                 ))}
+
+                {/* Live TOTP panel — QR setup / confirm / disable */}
+                {(setup || disabling) && (
+                  <div className="p-4 rounded-xl border border-purple-500/30 bg-purple-950/20 space-y-3">
+                    <p className="text-sm font-medium text-white">
+                      {setup ? 'Scan with your authenticator app' : 'Confirm with your authenticator app'}
+                    </p>
+                    {setup && (
+                      <div className="flex flex-col items-center gap-2">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(setup.otpauthUrl)}`}
+                          alt="Scan with your authenticator app"
+                          className="bg-white rounded-lg p-1.5"
+                          width={180}
+                          height={180}
+                        />
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(setup.secret); toast.success('Setup key copied'); }}
+                          className="text-[11px] font-mono text-ink-300 bg-ink-800 border border-white/10 rounded px-2 py-1 hover:border-purple-500/50"
+                          title="Copy the setup key"
+                        >
+                          {setup.secret}
+                        </button>
+                      </div>
+                    )}
+                    <input
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      className="input text-center text-lg tracking-[0.4em]"
+                      value={code}
+                      onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={setup ? confirmSetup : confirmDisable} disabled={busy || code.length !== 6} className="btn btn-primary text-xs flex-1">
+                        {busy ? 'Verifying…' : setup ? 'Enable two-step' : 'Disable two-step'}
+                      </button>
+                      <button
+                        onClick={() => { setSetup(null); setDisabling(false); setCode(''); }}
+                        className="btn btn-ghost text-xs"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
