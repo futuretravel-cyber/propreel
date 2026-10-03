@@ -403,7 +403,7 @@ async function updateUserFields(req: VercelRequest, res: VercelResponse) {
 
   await updateUser(user_id, clean as any);
   const updated = await getUser(user_id);
-  return res.status(200).json({ success: true, user: updated });
+  return res.status(200).json({ success: true, user: safeUser(updated) });
 }
 
 /**
