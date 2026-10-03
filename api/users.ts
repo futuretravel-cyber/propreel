@@ -368,11 +368,35 @@ async function updateUserFields(req: VercelRequest, res: VercelResponse) {
   const allowed = [
     'fullName', 'phone', 'avatarUrl', 'agencyName',
     'autoTopup', 'notificationPreferences', 'businessProfile',
+    'agentProfiles',
   ] as const;
   const clean: Record<string, any> = {};
   for (const key of allowed) {
     if (key in updates) clean[key] = updates[key as keyof typeof updates];
   }
+
+  // Agent branding profiles — server-side shape enforcement (cap, field
+  // whitelisting, exactly one default) so the user row stays predictable.
+  if ('agentProfiles' in clean) {
+    const list = Array.isArray(clean.agentProfiles) ? clean.agentProfiles : [];
+    let seenDefault = false;
+    clean.agentProfiles = list.slice(0, 12).map((p: any) => {
+      const isDefault = !!p?.isDefault && !seenDefault;
+      if (isDefault) seenDefault = true;
+      return {
+        id: String(p?.id || `ap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
+        profileName: String(p?.profileName || '').slice(0, 120),
+        fullName: String(p?.fullName || '').slice(0, 120),
+        email: String(p?.email || '').slice(0, 200),
+        phone: String(p?.phone || '').slice(0, 40),
+        photoUrl: p?.photoUrl ? String(p.photoUrl).slice(0, 600) : undefined,
+        logoUrl: p?.logoUrl ? String(p.logoUrl).slice(0, 600) : undefined,
+        isDefault,
+        includeBranding: p?.includeBranding !== false,
+      };
+    });
+  }
+
   if (Object.keys(clean).length === 0) {
     return res.status(400).json({ error: 'No updatable fields provided' });
   }

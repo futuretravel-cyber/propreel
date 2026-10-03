@@ -39,6 +39,7 @@ import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress'
 import RenderProgressBar from './components/RenderProgressBar';
 import EnhancedProjects from './components/EnhancedProjects';
 import PropertyListings, { NewListingPage } from './components/PropertyListings';
+import AgentBranding from './components/AgentBranding';
 import SecuritySettings from './components/SecuritySettings';
 import AITalkingProfile from './components/AITalkingProfile';
 import AdminMusicLibrary from './components/AdminMusicLibrary';
@@ -606,6 +607,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     { path: '/dashboard/listings', icon: <List className="w-5 h-5" />, label: 'Listings' },
     { path: '/dashboard/projects', icon: <FolderOpen className="w-5 h-5" />, label: 'My Projects' },
     { path: '/studio', icon: <Video className="w-5 h-5" />, label: 'Studio' },
+    { path: '/dashboard/branding', icon: <Palette className="w-5 h-5" />, label: 'Agent Branding' },
     { path: '/dashboard/analytics', icon: <BarChart3 className="w-5 h-5" />, label: 'Analytics' },
     { path: '/dashboard/billing', icon: <CreditCard className="w-5 h-5" />, label: 'Billing' },
     // Agency tab only appears once an agency signup exists (or for admins,
@@ -778,6 +780,11 @@ function DashboardListings() {
   // Property portfolio — stats, filters, rendered-reel players, and a
   // dedicated New Listing page (see components/PropertyListings.tsx).
   return <PropertyListings />;
+}
+
+function DashboardBranding() {
+  // Agent Profile Branding — saved once, auto-applied to every render.
+  return <AgentBranding />;
 }
 
 function DashboardMyProjects() {
@@ -1728,6 +1735,12 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
   const script = sharedScript;
   const setScript = onScriptChange;
   const [branding, setBranding] = useState(true);
+  // The default Agent Branding profile drives the initial toggle state
+  useEffect(() => {
+    const def = user?.agentProfiles?.find(p => p.isDefault);
+    if (def && typeof def.includeBranding === 'boolean') setBranding(def.includeBranding);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.agentProfiles]);
   const [aiTalkingProfile, setAiTalkingProfile] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [selectedMusic, setSelectedMusic] = useState<string | null>(null);
@@ -3248,6 +3261,7 @@ function AppRoutes() {
       <Route path="/dashboard/listings" element={<RequireAuth><DashboardLayout><DashboardListings /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/listings/new" element={<RequireAuth><DashboardLayout><NewListingPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/projects" element={<RequireAuth><DashboardLayout><DashboardMyProjects /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/branding" element={<RequireAuth><DashboardLayout><DashboardBranding /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/analytics" element={<RequireAuth><DashboardLayout><DashboardAnalytics /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/billing" element={<RequireAuth><DashboardLayout><DashboardBilling /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/agency" element={<RequireAuth><DashboardLayout><DashboardAgency /></DashboardLayout></RequireAuth>} />

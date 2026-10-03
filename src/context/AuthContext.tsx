@@ -48,6 +48,19 @@ export interface AutoTopup {
   amount: number;
 }
 
+/** Agent branding profile — saved once, auto-applied to video output */
+export interface AgentProfile {
+  id: string;
+  profileName: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  photoUrl?: string;
+  logoUrl?: string;
+  isDefault?: boolean;
+  includeBranding?: boolean;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -86,6 +99,8 @@ export interface User {
   /** Set by the nightly auto-topup sweep when it needs a one-time checkout */
   autoTopupNeedsAuth?: boolean;
   autoTopupAuthAmount?: number;
+  /** Agent branding profiles (Agent Branding tab) */
+  agentProfiles?: AgentProfile[];
 }
 
 export interface Balance {
