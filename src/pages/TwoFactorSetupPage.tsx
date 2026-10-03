@@ -30,18 +30,22 @@ export default function TwoFactorSetupPage() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Persistent inline error — a wrong code must keep its explanation on
+  // screen (a toast vanishes before the user has re-typed the code).
+  const [error, setError] = useState('');
 
   // Not enabled yet → mint a secret straight away (page exists for exactly this)
   useEffect(() => {
     if (enabled) return;
     auth2fa('auth_2fa_setup')
       .then(d => setSetup({ secret: d.secret, otpauthUrl: d.otpauthUrl }))
-      .catch(e => toast.error(e.message || 'Could not start setup', 'Two-step verification'));
+      .catch(e => setError(e.message || 'Could not start setup — check your connection and reload'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
   const submit = async () => {
     setBusy(true);
+    setError('');
     try {
       if (enabled) {
         await auth2fa('auth_2fa_disable', { code });
@@ -53,7 +57,7 @@ export default function TwoFactorSetupPage() {
       await refresh();
       navigate('/dashboard/settings');
     } catch (e: any) {
-      toast.error(e.message || 'Invalid code');
+      setError(e.message || 'Invalid code — check your authenticator app and try again');
       setBusy(false);
     }
   };
@@ -118,11 +122,20 @@ export default function TwoFactorSetupPage() {
             inputMode="numeric"
             autoComplete="one-time-code"
             maxLength={6}
+            aria-invalid={!!error}
             className="input text-center text-xl tracking-[0.5em]"
             value={code}
-            onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            onChange={e => {
+              setCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+              if (error) setError(''); // stale once they retype
+            }}
             placeholder="000000"
           />
+          {error && (
+            <div role="alert" className="p-3 rounded-lg bg-red-950/50 border border-red-500/30 text-red-300 text-sm text-center">
+              {error}
+            </div>
+          )}
         </div>
 
         <div className="space-y-3">
