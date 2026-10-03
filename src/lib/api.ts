@@ -74,11 +74,15 @@ export const PropReelAPI = {
   },
 
   async createProject(input: Omit<Project, 'id' | 'userId' | 'status' | 'videoUrl' | 'thumbnailUrl' | 'createdAt' | 'updatedAt'> & { userId: string; status?: ProjectStatus }): Promise<Project> {
+    // API expects snake_case user_id — camelCase userId was rejected with a
+    // 400 and swallowed by callers' non-fatal catch, so renders left no
+    // project row (dashboard history + reaper reconciliation both broke).
+    const { userId, ...rest } = input;
     const data = await j<{ project: Project }>(
       await fetch(`${API_BASE}/api/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ ...rest, user_id: userId }),
       })
     );
     return data.project;

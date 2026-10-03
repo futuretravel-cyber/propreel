@@ -262,14 +262,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── POST /api/projects — create ──────────────────────────────────
     if (req.method === 'POST') {
       const b = req.body || {};
-      if (!b.user_id) return res.status(400).json({ error: 'Missing user_id' });
+      // Accept camelCase too — older bundles sent `userId` and got a 400
+      // that callers swallowed, silently losing the render's project row.
+      const owner = b.user_id || b.userId;
+      if (!owner) return res.status(400).json({ error: 'Missing user_id' });
 
-      const user = await getUser(b.user_id);
+      const user = await getUser(owner);
       if (!user) return res.status(404).json({ error: 'User not found' });
 
       const now = new Date().toISOString();
       const project: ProjectRecord = {
-        userId: b.user_id,
+        userId: owner,
         id: `prj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         title: String(b.title || 'Untitled Property').slice(0, 120),
         address: b.address || '',

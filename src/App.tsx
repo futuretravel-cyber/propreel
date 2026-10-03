@@ -1982,7 +1982,10 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
       let measuredDuration: number | undefined;
       let thumbUrl: string | undefined;
       if (!finalUrl && result?.record_id) {
-        const deadline = Date.now() + 12 * 60 * 1000;
+        // 25 min: measured end-to-end renders land ~14 min (5 MiniMax clips +
+        // assembly); the old 12-minute deadline expired first and fell through
+        // to the success toast with no video URL.
+        const deadline = Date.now() + 25 * 60 * 1000;
         while (Date.now() < deadline) {
           await new Promise(r => setTimeout(r, 5000));
           try {
@@ -2002,7 +2005,11 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab }: { sharedScrip
           }
         }
       }
-      if (finalUrl) setLastRenderUrl(finalUrl);
+      if (!finalUrl) {
+        // Never report success without a video — refund instead.
+        throw new Error('The render did not finish within 25 minutes — your credits were refunded. Please try again from the Studio.');
+      }
+      setLastRenderUrl(finalUrl);
 
       // 5) Talking Head add-on: render it on the dedicated tab (script carries
       // over; FlashHead's own 8-credit charge happens there — no double billing)
