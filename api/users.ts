@@ -357,6 +357,37 @@ async function deleteAccount(req: VercelRequest, res: VercelResponse) {
 }
 
 /**
+ * Nested route: POST /api/users?action=data_export — POPIA right of access
+ * (section 23) + data portability (section 26). Session-authed: returns ONLY
+ * the signed-in user's own data (profile with secrets stripped by safeUser,
+ * projects, full credit ledger). Agency rows are deliberately excluded —
+ * they contain other members' personal information. The client downloads
+ * this payload as JSON / derives CSVs from it (SecuritySettings privacy tab).
+ */
+async function dataExport(req: VercelRequest, res: VercelResponse) {
+  const user = await getSessionUser(getTokenFromRequest(req));
+  if (!user) return res.status(401).json({ error: 'Sign in to export your data' });
+  try {
+    const [projects, transactions] = await Promise.all([
+      queryItems<any>(TABLES.PROJECTS, { expression: 'userId = :u', values: { ':u': user.id } }),
+      queryItems<any>(TABLES.CREDIT_TRANSACTIONS, { expression: 'userId = :u', values: { ':u': user.id } },
+        { limit: 2000, scanIndexForward: false }),
+    ]);
+    return res.status(200).json({
+      service: 'PropReel',
+      generatedAt: new Date().toISOString(),
+      exportedBy: { id: user.id, email: user.email },
+      profile: safeUser(user),
+      projects,
+      creditTransactions: transactions,
+    });
+  } catch (e) {
+    console.error('data_export failed:', e);
+    return res.status(500).json({ error: 'Data export failed — try again' });
+  }
+}
+
+/**
  * Nested route: POST /api/users?action=update — whitelisted profile updates.
  */
 async function updateUserFields(req: VercelRequest, res: VercelResponse) {
@@ -1398,6 +1429,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.query.action === 'delete' && req.method === 'POST') {
     return deleteAccount(req, res);
+  }
+  if (req.query.action === 'data_export' && req.method === 'POST') {
+    return dataExport(req, res);
   }
   if (String(req.query.action || '').startsWith('auth_') || req.query.action === 'worker_token') {
     return authRoutes(req, res, String(req.query.action));

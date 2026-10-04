@@ -1,3 +1,5 @@
+import { hasAnalyticsConsent } from './consent';
+
 /**
  * Lightweight analytics event tracking.
  * Wire a real provider (Plausible/GA4) later by implementing `send`;
@@ -33,6 +35,9 @@ function send(event: EventName, props?: Record<string, unknown>) {
   if (import.meta.env.DEV) {
     console.debug(`[analytics] ${event}`, props || {});
   }
+  // POPIA: never touch an analytics provider without an explicit "Accept
+  // all" cookie-consent choice (src/lib/consent.ts, banner component).
+  if (!hasAnalyticsConsent()) return;
   try {
     window.plausible?.(event, { props });
     window.gtag?.('event', event, props);

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Cookie, Shield, Settings } from 'lucide-react';
+import { ArrowLeft, Cookie, Shield, Settings, RefreshCw } from 'lucide-react';
+import { clearConsent } from '../lib/consent';
 
 export default function CookiePolicyPage() {
   return (
@@ -235,16 +236,25 @@ export default function CookiePolicyPage() {
           <section className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">6. Consent</h2>
             <p className="text-gray-700 leading-relaxed mb-4">
-              When you first visit our website, we display a cookie banner asking for your consent to use 
+              When you first visit our website, we display a cookie banner asking for your consent to use
               non-essential cookies. You can:
             </p>
             <ul className="list-disc pl-6 text-gray-700 space-y-2 mb-4">
-              <li><strong>Accept all:</strong> Allow all cookies for the best experience</li>
-              <li><strong>Reject non-essential:</strong> Only allow essential cookies</li>
-              <li><strong>Customize:</strong> Choose which categories of cookies to allow</li>
+              <li><strong>Accept all:</strong> Essential cookies plus privacy-friendly analytics</li>
+              <li><strong>Essential only:</strong> Strictly necessary cookies — the service works exactly the same</li>
             </ul>
-            <p className="text-gray-700 leading-relaxed">
-              You can change your cookie preferences at any time through your browser settings or by contacting us.
+            <p className="text-gray-700 leading-relaxed mb-4">
+              Your choice is remembered on this device, and analytics is never loaded without an explicit
+              “Accept all”. You can also change cookies at any time through your browser settings.
+            </p>
+            <button
+              onClick={() => clearConsent()}
+              className="inline-flex items-center gap-2 bg-purple-700 hover:bg-purple-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition"
+            >
+              <RefreshCw className="w-4 h-4" /> Change cookie preferences
+            </button>
+            <p className="text-xs text-gray-500 mt-2">
+              Clears your choice — the consent banner reappears so you can pick again.
             </p>
           </section>
 

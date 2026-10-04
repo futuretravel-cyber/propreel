@@ -184,7 +184,9 @@ export default function PrivacyPolicyPage() {
 
             <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">7.1 Right to Access</h3>
             <p className="text-gray-700 leading-relaxed mb-4">
-              You can request a copy of the personal information we hold about you.
+              You can request a copy of the personal information we hold about you. You don't need to ask —
+              sign in and download it instantly from <strong>Settings → Privacy → Data Export</strong>
+              (profile, projects and your full credit ledger as JSON or CSV).
             </p>
 
             <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">7.2 Right to Correction</h3>
@@ -195,6 +197,12 @@ export default function PrivacyPolicyPage() {
             <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">7.3 Right to Deletion</h3>
             <p className="text-gray-700 leading-relaxed mb-4">
               You can request deletion of your personal information, subject to legal obligations.
+              Self-service: <strong>Settings → Privacy → Request Account Deletion</strong> (or{' '}
+              <Link to="/dashboard/delete-account" className="text-purple-700 hover:text-purple-800 underline">Delete Account</Link>),
+              confirmed with your password. Your profile, projects and sessions are removed immediately and
+              generated media is purged within 30 days; invoice records are kept only as long as tax law
+              requires. If you can no longer sign in, contact our Information Officer (section 12) and we'll
+              verify you by email before deleting.
             </p>
 
             <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">7.4 Right to Object</h3>
@@ -204,7 +212,8 @@ export default function PrivacyPolicyPage() {
 
             <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">7.5 Right to Data Portability</h3>
             <p className="text-gray-700 leading-relaxed mb-4">
-              You can request your data in a structured, machine-readable format.
+              You can request your data in a structured, machine-readable format — the Data Export in
+              Settings downloads it as JSON (or CSV for transactions) immediately.
             </p>
 
             <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">7.6 Right to Withdraw Consent</h3>

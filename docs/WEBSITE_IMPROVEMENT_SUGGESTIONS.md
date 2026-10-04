@@ -70,6 +70,13 @@ node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8'))"  # Vercel
   and are toggled from **Admin → Integrations** (feature flags) — set a real
   WhatsApp number there to switch it on. No work remains in code.
 - Contact page shows email + office only (placeholder phone number removed).
+- **POPIA compliance pass** — cookie consent banner (`CookieConsent.tsx` +
+  `lib/consent.ts`: Essential-only / Accept-all, persisted, re-openable from
+  `/cookies`), analytics gated on consent in `lib/analytics.ts`, **real**
+  data export (`POST api/users?action=data_export`, session-authed JSON →
+  Settings → Privacy downloads full/projects/CSV), the existing password-
+  confirmed deletion flow surfaced in the Privacy Policy rights section, and
+  policy pages aligned with what the app actually does.
 - **7-day temporary accounts** (`lib/trial.ts` + signup opt-in checkbox):
   uncommitted visitors can test the app with the 5-credit signup bonus for 7
   days, no card. Daily "days left" email (9am cron) + dashboard banner;

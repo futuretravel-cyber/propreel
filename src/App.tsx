@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
+import CookieConsent from './components/CookieConsent';
 import NotFoundPage from './pages/NotFoundPage';
 import OfflineBanner from './components/OfflineBanner';
 import { useState, useEffect, useRef } from 'react';
@@ -3785,6 +3786,7 @@ export default function App() {
             <ShortcutsHelpListener />
             <OnboardingAndHelp />
             <OfflineBanner />
+            <CookieConsent />
           </CreditProvider>
         </ToastProvider>
       </BrowserRouter>

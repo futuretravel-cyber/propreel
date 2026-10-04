@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatDate, formatRelative } from '../lib/utils';
@@ -36,6 +37,60 @@ export default function SecuritySettings() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
+  const navigate = useNavigate();
+
+  // ── POPIA data export (POST ?action=data_export, session-authed) ────────
+  // One server endpoint feeds all three buttons: full JSON, projects-only
+  // JSON, and a CSV derived client-side from the same ledger payload.
+  const [exporting, setExporting] = useState<null | 'full' | 'projects' | 'txns'>(null);
+  const fetchExport = async () => {
+    const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users?action=data_export`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Data export failed');
+    return data;
+  };
+  const downloadBlob = (content: string, filename: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+  const runExport = async (kind: 'full' | 'projects' | 'txns') => {
+    if (exporting) return;
+    setExporting(kind);
+    try {
+      const data = await fetchExport();
+      const stamp = String(data.generatedAt || new Date().toISOString()).slice(0, 10);
+      if (kind === 'full') {
+        downloadBlob(JSON.stringify(data, null, 2), `propreel-data-export-${stamp}.json`, 'application/json');
+      } else if (kind === 'projects') {
+        downloadBlob(
+          JSON.stringify({ service: data.service, generatedAt: data.generatedAt, exportedBy: data.exportedBy, projects: data.projects || [] }, null, 2),
+          `propreel-projects-${stamp}.json`,
+          'application/json'
+        );
+      } else {
+        const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const txns = data.creditTransactions || [];
+        const csv = [
+          ['id', 'createdAt', 'type', 'amount', 'description'].map(esc).join(','),
+          ...txns.map((t: any) => [t.id, t.createdAt, t.type, t.amount, t.description].map(esc).join(',')),
+        ].join('\n');
+        downloadBlob(csv, `propreel-transactions-${stamp}.csv`, 'text/csv;charset=utf-8');
+      }
+      toast.success('Your download has started.', 'Export ready');
+    } catch (e: any) {
+      toast.error(e.message || 'Data export failed');
+    }
+    setExporting(null);
+  };
 
   const auth2fa = async (action: string, payload: Record<string, any> = {}) => {
     const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users?action=${action}`, {
@@ -325,22 +380,23 @@ export default function SecuritySettings() {
             <h3 className="font-semibold text-white mb-4">Data Export (POPIA/GDPR)</h3>
             <p className="text-ink-400 text-sm mb-4">Download all your personal data stored by PropReel. This includes your profile, projects, transactions, and settings.</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button onClick={() => toast.success('Data export started. You\'ll receive an email when ready.', 'Export')} className="p-4 rounded-xl bg-ink-800/50 hover:bg-ink-800 text-left transition">
-                <Download className="w-5 h-5 text-purple-400 mb-2" />
+              <button onClick={() => runExport('full')} disabled={!!exporting} className="p-4 rounded-xl bg-ink-800/50 hover:bg-ink-800 text-left transition disabled:opacity-60">
+                {exporting === 'full' ? <RefreshCw className="w-5 h-5 text-purple-400 mb-2 animate-spin" /> : <Download className="w-5 h-5 text-purple-400 mb-2" />}
                 <p className="text-sm font-medium text-white">Full Data Export</p>
-                <p className="text-xs text-ink-400 mt-1">All data in JSON format</p>
+                <p className="text-xs text-ink-400 mt-1">Profile, projects & ledger — JSON</p>
               </button>
-              <button onClick={() => toast.success('Project export started.')} className="p-4 rounded-xl bg-ink-800/50 hover:bg-ink-800 text-left transition">
-                <Download className="w-5 h-5 text-blue-400 mb-2" />
+              <button onClick={() => runExport('projects')} disabled={!!exporting} className="p-4 rounded-xl bg-ink-800/50 hover:bg-ink-800 text-left transition disabled:opacity-60">
+                {exporting === 'projects' ? <RefreshCw className="w-5 h-5 text-blue-400 mb-2 animate-spin" /> : <Download className="w-5 h-5 text-blue-400 mb-2" />}
                 <p className="text-sm font-medium text-white">Projects Only</p>
                 <p className="text-xs text-ink-400 mt-1">All projects with media</p>
               </button>
-              <button onClick={() => toast.success('Transaction history exported.')} className="p-4 rounded-xl bg-ink-800/50 hover:bg-ink-800 text-left transition">
-                <Download className="w-5 h-5 text-green-400 mb-2" />
+              <button onClick={() => runExport('txns')} disabled={!!exporting} className="p-4 rounded-xl bg-ink-800/50 hover:bg-ink-800 text-left transition disabled:opacity-60">
+                {exporting === 'txns' ? <RefreshCw className="w-5 h-5 text-green-400 mb-2 animate-spin" /> : <Download className="w-5 h-5 text-green-400 mb-2" />}
                 <p className="text-sm font-medium text-white">Transaction History</p>
                 <p className="text-xs text-ink-400 mt-1">CSV format for accounting</p>
               </button>
             </div>
+            <p className="text-xs text-ink-500 mt-3">Instant download — nothing is emailed. (POPIA right of access & portability.)</p>
           </div>
 
           <div className="card-dark p-6">
@@ -349,7 +405,7 @@ export default function SecuritySettings() {
             <div className="p-4 rounded-xl bg-red-950/20 border border-red-500/20">
               <p className="text-sm text-red-300 font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Warning: This is irreversible</p>
               <p className="text-xs text-ink-400 mt-2">All your projects, renders, credits, and personal data will be permanently deleted within 30 days.</p>
-              <button className="btn btn-danger text-xs mt-4">Request Account Deletion</button>
+              <button onClick={() => navigate('/dashboard/delete-account')} className="btn btn-danger text-xs mt-4">Request Account Deletion</button>
             </div>
           </div>
 
