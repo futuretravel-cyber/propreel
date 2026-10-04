@@ -258,7 +258,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         captionBody,
         '',
         '── WhatsApp status ──',
-        `🎬 New video tour: ${shortHeadline}${loc ? ` in ${loc}` : ''}. ${stats ? `${stats}. ` : ''}Take a look 👇`,
+        `🎬 New video tour: ${shortHeadline}${loc ? ` in ${loc}` : ''}${/[.!?…]$/.test(shortHeadline) ? '' : '.'} ${stats ? `${stats}. ` : ''}Take a look 👇`,
       ].join('\n'));
 
       // 4) Branding / README
