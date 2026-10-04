@@ -1,7 +1,8 @@
-const CACHE_NAME = 'propreel-v2';
+const CACHE_NAME = 'propreel-v3';
 const urlsToCache = [
-  '/',
-  '/index.html',
+  // HTML is deliberately NOT precached: a cached document replays its
+  // original response headers, including a Content-Security-Policy from an
+  // older deploy. Navigations always hit the network (see fetch handler).
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png'
@@ -29,6 +30,12 @@ self.addEventListener('fetch', (event) => {
 
   // Skip API calls — always go to network
   if (event.request.url.includes('/api/')) return;
+
+  // Navigations (HTML documents) go straight to the network. Serving a
+  // cached document would replay its original response headers — including
+  // a stale Content-Security-Policy from an older deploy — so the enforcing
+  // policy and deploy freshness both depend on this bypass.
+  if (event.request.mode === 'navigate') return;
 
   // Cross-origin (fonts, S3 media, analytics) — never intercept. The worker
   // scope carries our own CSP, whose connect-src would otherwise block these
@@ -65,9 +72,7 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() =>
-        caches.match(event.request).then((cached) => cached || caches.match('/'))
-      )
+      .catch(() => caches.match(event.request))
   );
 });
 
