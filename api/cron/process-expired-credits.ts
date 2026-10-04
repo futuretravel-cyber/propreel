@@ -2,6 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { processExpiredCredits } from '../../lib/userService';
 import { recordCronRun } from '../../lib/cronRuns';
 import { reapStaleProjects } from '../../lib/projectReaper';
+import { purgeExpiredMedia, RETENTION_DAYS } from '../../lib/mediaRetention';
 import { runAutoTopupSweep, AutoTopupOutcome } from '../../lib/autoTopup';
 import { runDunningSweep, DunningOutcome } from '../../lib/dunning';
 
@@ -63,11 +64,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       dunningSummary = `dunningError=${String((dunningErr as any)?.message || dunningErr).slice(0, 120)}`;
     }
 
+    // Same nightly slot: 30-day media retention — permanently delete every
+    // user media object in S3 (videos, thumbnails, edited images, uploads)
+    // that has outlived RETENTION_DAYS. The UI promises this (RETENTION_NOTICE).
+    let mediaSummary = 'mediaError';
+    let media: Awaited<ReturnType<typeof purgeExpiredMedia>> | null = null;
+    try {
+      media = await purgeExpiredMedia(RETENTION_DAYS);
+      mediaSummary = `mediaScanned=${media.scanned} mediaDeleted=${media.deleted} mediaErrors=${media.errors}`;
+    } catch (mediaErr) {
+      console.error('Media retention purge failed (non-fatal):', mediaErr);
+      mediaSummary = `mediaError=${String((mediaErr as any)?.message || mediaErr).slice(0, 120)}`;
+    }
+
     await recordCronRun(
       'process-expired-credits',
       'success',
       Date.now() - started,
-      `processed=${result.processed} expiredCredits=${result.expiredAmount} ${reapSummary} ${topupSummary} ${dunningSummary}`
+      `processed=${result.processed} expiredCredits=${result.expiredAmount} ${reapSummary} ${topupSummary} ${dunningSummary} ${mediaSummary}`
     );
 
     console.log(`Expired credits processing complete: ${result.processed} users, ${result.expiredAmount} credits expired; reaper: ${reapSummary}; topup: ${topupSummary}; dunning: ${dunningSummary}`);
@@ -106,6 +120,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         failed: dunning.filter(o => o.action === 'failed').length,
         outcomes: dunning,
       },
+      media_retention: media ? {
+        retention_days: RETENTION_DAYS,
+        scanned: media.scanned,
+        deleted: media.deleted,
+        errors: media.errors,
+        cutoff: media.cutoff,
+      } : null,
     });
   } catch (error) {
     console.error('Expired credits processing error:', error);

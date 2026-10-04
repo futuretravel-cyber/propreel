@@ -227,7 +227,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Account Data:</strong> While your account is active</li>
               <li><strong>Transaction Records:</strong> 7 years (tax compliance)</li>
               <li><strong>Project Data:</strong> Until account deletion</li>
-              <li><strong>Generated Media:</strong> 90 days after project deletion</li>
+              <li><strong>Generated Media:</strong> 30 days from creation — uploaded photos, AI-edited images (Photo Editor, Virtual Staging, Furniture Removal, Twilight), rendered videos and Talking Head clips are permanently deleted from AWS storage after 30 days, automatically every night. Download anything you want to keep before it expires.</li>
               <li><strong>Audit Logs:</strong> 2 years</li>
               <li><strong>Login History:</strong> 1 year</li>
             </ul>

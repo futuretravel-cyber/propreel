@@ -360,7 +360,7 @@ export default function SecuritySettings() {
                 { label: 'Project Data', retention: 'Retained until account deletion', icon: '📁' },
                 { label: 'Transaction Records', retention: 'Retained for 7 years (tax compliance)', icon: '💰' },
                 { label: 'Audit Logs', retention: 'Retained for 2 years', icon: '📋' },
-                { label: 'Generated Media', retention: 'Retained for 90 days after project deletion', icon: '🎬' },
+                { label: 'Generated Media', retention: 'Stored for 30 days, then permanently deleted', icon: '🎬' },
                 { label: 'Login History', retention: 'Retained for 1 year', icon: '🔐' },
               ].map(item => (
                 <div key={item.label} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">

@@ -3,26 +3,27 @@
  *
  * - Stats row (active listings, monthly revenue, properties sold)
  * - Market-status filters (All / Active / Draft / Sold / Expired) + sort
- * - A Videos tab where every rendered reel plays inline (media player)
+ * - A Videos tab was removed: rendered videos live in My Projects now
  * - Listing cards with price/specs, a media-player overlay when a reel
- *   exists, Create Reel → Studio, and a status menu
+ *   exists, Create Reel → Studio, a Quick Edit button and a status menu
+ *   (mark Sold yourself; Delete moves a listing to Expired, not oblivion)
  * - A 4-step New Listing wizard: Property Details → Photos → AI Description
  *   → Export (Property24 / Private Property downloads + Save Listing)
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Home as HomeIcon, Plus, MapPin, BedDouble, Bath, Car, Square, Play, Download,
   Copy, X, Check, Sparkles, Upload, Trash2, MoreVertical, Video, ChevronLeft,
-  ChevronRight, Loader2, Wand2, FileText, ArrowRight,
+  ChevronRight, Loader2, Wand2, FileText, Pencil,
 } from 'lucide-react';
 import { useCredit } from '../context/AuthContext';
 import { queueVideoRender } from '../lib/videoPrefill';
 import { useToast } from '../context/ToastContext';
 import { PropReelAPI, type Project } from '../lib/api';
 import { formatZar, downloadText } from '../lib/utils';
-import { TONES } from '../lib/constants';
+import { TONES, RETENTION_NOTICE } from '../lib/constants';
 import FeatureChips from './FeatureChips';
 import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from '../lib/propertyListing';
 
@@ -44,8 +45,15 @@ const TONE_BLURBS: Record<string, string> = {
 
 type MarketStatus = 'ACTIVE' | 'DRAFT' | 'SOLD' | 'EXPIRED';
 
-const marketState = (p: Project): MarketStatus =>
-  p.marketStatus || (p.status === 'DRAFT' ? 'DRAFT' : 'ACTIVE');
+/** A listing is incomplete without a street address or an asking price —
+ *  incomplete listings always present as Draft (spec: incomplete → Draft). */
+const isIncomplete = (p: Project): boolean =>
+  !String(p.address || '').trim() || !(Number(p.price) > 0);
+
+const marketState = (p: Project): MarketStatus => {
+  const base: MarketStatus = p.marketStatus || (p.status === 'DRAFT' ? 'DRAFT' : 'ACTIVE');
+  return base === 'ACTIVE' && isIncomplete(p) ? 'DRAFT' : base;
+};
 
 const STATUS_BADGE: Record<MarketStatus, string> = {
   ACTIVE: 'badge badge-success',
@@ -54,7 +62,7 @@ const STATUS_BADGE: Record<MarketStatus, string> = {
   EXPIRED: 'badge badge-danger',
 };
 
-// ─── Media player lightbox (shared by listings + videos tab) ────────────────
+// ─── Media player lightbox (shared by listings + My Projects) ──────────────────
 
 export function VideoLightbox({ project, onClose }: { project: Project; onClose: () => void }) {
   if (!project.videoUrl) return null;
@@ -102,13 +110,14 @@ function Spec({ icon, value, label }: { icon: React.ReactNode; value: number | s
 }
 
 function ListingCard({
-  project, onPlay, onReel, onStatus, onDelete,
+  project, onPlay, onReel, onStatus, onDelete, onEdit,
 }: {
   project: Project;
   onPlay: () => void;
   onReel: () => void;
   onStatus: (s: MarketStatus) => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   const [menu, setMenu] = useState(false);
   const status = marketState(project);
@@ -157,7 +166,7 @@ function ListingCard({
                 <button className="w-full text-left px-3 py-2 hover:bg-white/5" onClick={() => { setMenu(false); onStatus('DRAFT'); }}>Move to Draft</button>
               )}
               <button className="w-full text-left px-3 py-2 hover:bg-red-950/60 text-red-400" onClick={() => { setMenu(false); onDelete(); }}>
-                <Trash2 className="w-3.5 h-3.5 inline mr-1 -mt-0.5" /> Delete listing
+                <Trash2 className="w-3.5 h-3.5 inline mr-1 -mt-0.5" /> Delete (moves to Expired)
               </button>
             </div>
           )}
@@ -183,6 +192,9 @@ function ListingCard({
         <div className="flex items-center gap-2 pt-1">
           <button onClick={onReel} className="btn btn-primary text-xs flex-1 justify-center">
             <Video className="w-3.5 h-3.5" /> {project.videoUrl ? 'View reel' : 'Create Reel'}
+          </button>
+          <button onClick={onEdit} className="btn btn-secondary text-xs" aria-label={`Edit ${project.title}`} title="Quick edit this listing">
+            <Pencil className="w-3.5 h-3.5" /> Edit
           </button>
           {project.videoUrl && (
             <button onClick={onPlay} className="btn btn-ghost text-xs" aria-label="Play video">
@@ -210,13 +222,26 @@ const emptyDraft: DraftDetails = {
 
 const STEPS = ['Property Details', 'Photos', 'Description', 'Export'];
 
-export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => void; onSaved: () => void; initial?: Project }) {
   const { user, deductCredits, addCredits, refresh } = useCredit();
   const toast = useToast();
   const navigate = useNavigate();
 
   const [step, setStep] = useState(0);
-  const [d, setD] = useState<DraftDetails>(emptyDraft);
+  const [d, setD] = useState<DraftDetails>(initial ? {
+    street: initial.address || '',
+    suburb: initial.suburb || '',
+    city: initial.city || '',
+    province: initial.province || 'Western Cape',
+    propertyType: initial.propertyType || 'House',
+    beds: initial.bedrooms != null ? String(initial.bedrooms) : '',
+    baths: initial.bathrooms != null ? String(initial.bathrooms) : '',
+    garages: initial.garages != null ? String(initial.garages) : '',
+    erf: initial.erfSize ? String(initial.erfSize) : '',
+    floor: initial.floorSize ? String(initial.floorSize) : '',
+    price: initial.price ? String(initial.price) : '',
+    features: initial.features || [],
+  } : emptyDraft);
   const set = (k: keyof DraftDetails) => (e: any) => setD(prev => ({ ...prev, [k]: e.target.value }));
 
   // Step 1 extras — address verification (OSM geocode + amenities)
@@ -225,14 +250,14 @@ export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSav
   const [amenities, setAmenities] = useState<string[]>([]);
 
   // Step 2 — photos
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<string[]>(initial?.photos || []);
   const [uploading, setUploading] = useState(false);
   const photosInputRef = useRef<HTMLInputElement>(null);
 
   // Step 3 — AI description
   const [tone, setTone] = useState('Professional');
   const [instructions, setInstructions] = useState('');
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(initial?.description || '');
   const [generating, setGenerating] = useState(false);
 
   const [saving, setSaving] = useState(false);
@@ -366,6 +391,42 @@ export function ListingWizard({ onClose, onSaved }: { onClose: () => void; onSav
 
   const saveListing = async () => {
     if (!user) return;
+    const complete = !!d.street.trim() && Number(d.price) > 0;
+
+    // Quick-edit saves update in place — no new-listing charge, no 2-credit
+    // ledger entry. An incomplete listing always drops to Draft.
+    if (initial) {
+      setSaving(true);
+      try {
+        await PropReelAPI.updateProject(user.id, initial.id, {
+          title: `${d.propertyType} · ${d.suburb || d.street}`.slice(0, 120),
+          address: d.street,
+          suburb: d.suburb,
+          city: d.city,
+          province: d.province,
+          price: Number(d.price) || 0,
+          bedrooms: Number(d.beds) || 0,
+          bathrooms: Number(d.baths) || 0,
+          garages: Number(d.garages) || 0,
+          propertyType: d.propertyType,
+          features: d.features,
+          photos,
+          description,
+          ...(complete ? {} : { marketStatus: 'DRAFT' as const }),
+          ...(Number(d.erf) ? { erfSize: Number(d.erf) } : {}),
+          ...(Number(d.floor) ? { floorSize: Number(d.floor) } : {}),
+        } as any);
+        toast.success('Listing updated');
+        onSaved();
+        onClose();
+      } catch (e: any) {
+        toast.error(e.message || 'Could not save the listing');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     if ((user.credits ?? 0) < NEW_LISTING_COST) {
       toast.error(`A new listing costs ${NEW_LISTING_COST} credits — top up in Billing.`, 'Insufficient credits');
       return;
@@ -713,21 +774,84 @@ export function NewListingPage() {
   );
 }
 
+/**
+ * Quick-edit target — /dashboard/listings/:id/edit.
+ * Reuses the 4-step wizard prefilled from the listing; saves in place via
+ * updateProject (no new-listing charge). Only real listings are editable.
+ */
+export function ListingEditPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useCredit();
+  const [project, setProject] = useState<Project | null>(null);
+  const [missing, setMissing] = useState(false);
+  const goBack = () => navigate('/dashboard/listings');
+
+  useEffect(() => {
+    if (!user?.id || !id) return;
+    PropReelAPI.listProjects(user.id)
+      .then(list => {
+        const found = list.find(p => p.id === id && p.marketStatus !== undefined);
+        if (found) setProject(found);
+        else setMissing(true);
+      })
+      .catch(() => setMissing(true));
+  }, [user?.id, id]);
+
+  if (missing) {
+    return (
+      <div className="max-w-3xl mx-auto animate-fade-in">
+        <div className="card-dark p-8 text-center">
+          <p className="text-white font-medium mb-1">Listing not found</p>
+          <p className="text-ink-400 text-sm mb-4">It may have been removed, or the link is out of date.</p>
+          <button onClick={goBack} className="btn btn-primary text-sm">
+            <ChevronLeft className="w-4 h-4" /> All listings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto animate-fade-in">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Edit Listing</h1>
+          <p className="text-sm text-ink-400">Update the details, photos and description — no extra credits.</p>
+        </div>
+        <button onClick={goBack} className="btn btn-ghost text-sm">
+          <ChevronLeft className="w-4 h-4" /> All listings
+        </button>
+      </div>
+      {project ? (
+        <ListingWizard key={project.id} initial={project} onClose={goBack} onSaved={goBack} />
+      ) : (
+        <div className="card-dark p-10 text-center">
+          <Loader2 className="w-6 h-6 text-purple-400 animate-spin mx-auto" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PropertyListings() {
   const { user } = useCredit();
   const toast = useToast();
   const navigate = useNavigate();
 
   const [projects, setProjects] = useState<Project[] | null>(null);
-  const [tab, setTab] = useState<'listings' | 'videos'>('listings');
   const [filter, setFilter] = useState<'ALL' | MarketStatus>('ALL');
   const [sort, setSort] = useState<'new' | 'old' | 'price'>('new');
   const [player, setPlayer] = useState<Project | null>(null);
 
   const load = () => {
     if (!user?.id) return;
+    // Only rows created in the Listings tab count as listings — reels,
+    // Talking Heads and image/social outputs live in My Projects.
     PropReelAPI.listProjects(user.id)
-      .then(list => setProjects([...list].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))))
+      .then(list => setProjects(list
+        .filter(p => p.marketStatus !== undefined)
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))))
       .catch(() => { setProjects([]); toast.error('Could not load your listings'); });
   };
   useEffect(load, [user?.id]);
@@ -751,12 +875,11 @@ export default function PropertyListings() {
 
   const filtered = useMemo(() => {
     let list = projects || [];
-    if (tab === 'videos') return list.filter(p => !!p.videoUrl);
     if (filter !== 'ALL') list = list.filter(p => marketState(p) === filter);
     if (sort === 'old') list = [...list].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
     if (sort === 'price') list = [...list].sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
     return list;
-  }, [projects, tab, filter, sort]);
+  }, [projects, filter, sort]);
 
   const setStatus = async (p: Project, status: MarketStatus) => {
     try {
@@ -771,14 +894,16 @@ export default function PropertyListings() {
     }
   };
 
+  // Deleted listings are NOT destroyed — they move to Expired, where the
+  // card's status menu can restore them (spec: deleted → Expired).
   const remove = async (p: Project) => {
-    if (!window.confirm(`Delete "${p.title}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Move "${p.title}" to Expired? You can restore it any time from the card's status menu.`)) return;
     try {
-      await PropReelAPI.deleteProject(user!.id, p.id);
-      toast.success('Listing deleted');
+      await PropReelAPI.updateProject(user!.id, p.id, { marketStatus: 'EXPIRED' } as any);
+      toast.success('Listing moved to Expired');
       load();
     } catch {
-      toast.error('Could not delete the listing');
+      toast.error('Could not update the listing');
     }
   };
 
@@ -801,6 +926,7 @@ export default function PropertyListings() {
         <div>
           <h1 className="text-2xl font-bold text-white">Property Listings</h1>
           <p className="text-sm text-ink-400">Manage your portfolio and trigger video creation.</p>
+          <p className="text-xs text-ink-500 mt-1">{RETENTION_NOTICE}</p>
         </div>
         <button onClick={() => navigate('/dashboard/listings/new')} className="btn btn-primary text-sm">
           <Plus className="w-4 h-4" /> New Listing
@@ -824,17 +950,8 @@ export default function PropertyListings() {
             </div>
           </div>
 
-          {/* Tabs: listings vs rendered videos (media player) */}
-          <div className="flex gap-2">
-            {(['listings', 'videos'] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)} className={`tab-pill ${tab === t ? 'tab-pill-active' : ''}`}>
-                {t === 'listings' ? 'Listings' : <span className="inline-flex items-center gap-1"><Video className="w-3.5 h-3.5" /> Rendered Videos</span>}
-              </button>
-            ))}
-          </div>
-
-          {tab === 'listings' && (
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Status filters + sort */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex gap-1 bg-ink-800/60 rounded-xl p-1">
                 {FILTERS.map(f => (
                   <button
@@ -854,29 +971,24 @@ export default function PropertyListings() {
                 <option value="price">Price: high to low</option>
               </select>
             </div>
-          )}
 
           {/* Empty states */}
           {filtered.length === 0 && (
             <div className="card-dark p-10 text-center">
               <p className="text-white font-medium">
-                {tab === 'videos' ? 'No rendered videos yet' : filter === 'ALL' ? 'No listings yet' : `No ${filter.toLowerCase()} listings`}
+                {filter === 'ALL' ? 'No listings yet' : `No ${filter.toLowerCase()} listings`}
               </p>
               <p className="text-ink-400 text-sm mt-1 mb-4">
-                {tab === 'videos'
-                  ? 'Render a reel from any listing and it will play here.'
-                  : 'Add your first property — the wizard takes under a minute.'}
+                Add your first property — the wizard takes under a minute.
               </p>
-              {tab === 'listings' && (
-                <button onClick={() => navigate('/dashboard/listings/new')} className="btn btn-primary text-sm">
-                  <Plus className="w-4 h-4" /> New Listing
-                </button>
-              )}
+              <button onClick={() => navigate('/dashboard/listings/new')} className="btn btn-primary text-sm">
+                <Plus className="w-4 h-4" /> New Listing
+              </button>
             </div>
           )}
 
-          {/* Cards */}
-          {tab === 'listings' && filtered.length > 0 && (
+          {/* Cards — listings only */}
+          {filtered.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {filtered.map(p => (
                 <ListingCard
@@ -890,34 +1002,8 @@ export default function PropertyListings() {
                   }}
                   onStatus={s => setStatus(p, s)}
                   onDelete={() => remove(p)}
+                  onEdit={() => navigate(`/dashboard/listings/${p.id}/edit`)}
                 />
-              ))}
-            </div>
-          )}
-
-          {/* Videos tab — every rendered reel plays inline */}
-          {tab === 'videos' && filtered.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filtered.map(p => (
-                <div key={p.id} className="card-dark overflow-hidden">
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video
-                    controls
-                    preload="metadata"
-                    poster={p.thumbnailUrl || undefined}
-                    src={p.videoUrl!}
-                    className="w-full aspect-video bg-black"
-                  />
-                  <div className="p-3 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm text-white font-medium truncate">{p.title}</p>
-                      <p className="text-xs text-ink-500">{p.kind === 'FLASHHEAD' ? 'Talking Head' : 'Reel'}{p.durationSeconds ? ` · ${Math.round(p.durationSeconds)}s` : ''}</p>
-                    </div>
-                    <button onClick={() => setPlayer(p)} className="btn btn-ghost text-xs flex-shrink-0">
-                      <ArrowRight className="w-3.5 h-3.5" /> Expand
-                    </button>
-                  </div>
-                </div>
               ))}
             </div>
           )}

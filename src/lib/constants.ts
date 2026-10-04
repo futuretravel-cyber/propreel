@@ -242,3 +242,14 @@ export const PLANS = [
 export const SIGNUP_BONUS = 5;
 export const STRENGTH_MIN = 0.25;
 export const STRENGTH_MAX = 0.35;
+
+// ─── 30-day media retention ───────────────────────────────────────────────
+// Every user media object in AWS S3 (rendered videos, thumbnails, AI-edited
+// images, uploaded photos, talking-head clips) is purged by the nightly cron
+// once it is older than RETENTION_DAYS — see lib/mediaRetention.ts. UI copy
+// must use these shared strings so the promise and the cron never drift.
+export const RETENTION_DAYS = 30;
+export const RETENTION_NOTICE =
+  `Media storage: ${RETENTION_DAYS} days — uploaded photos, AI-edited images and rendered videos are kept for ${RETENTION_DAYS} days only, then permanently deleted from AWS.`;
+export const RETENTION_NOTICE_LONG =
+  `Your media is stored for ${RETENTION_DAYS} days only. Photos you upload, images produced by the Photo Editor, Virtual Staging, Furniture Removal and Twilight tools, rendered videos and Talking Head clips are kept in secure AWS storage for ${RETENTION_DAYS} days and then permanently deleted — automatically, every night. Download anything you want to keep before it expires.`;

@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react';
 import { falEditImage } from './falImage';
 import { useCredit } from '../context/AuthContext';
 import { track } from './analytics';
+import { PropReelAPI } from './api';
+import { IMAGE_PRESETS } from './imagePrompts';
 
 const IMAGE_EDIT_COST = 2;
 
@@ -84,6 +86,22 @@ export function useImageEdit() {
         customPrompt: opts.customPrompt,
       });
       track('render_completed', { kind: 'IMAGE_EDIT', presetId: opts.presetId });
+      // Store the output in My Projects (kind: IMAGE) so every Photo Editor /
+      // Staging / Removal / Twilight render has a home. Best-effort: the edit
+      // itself already succeeded, so a failed row write must not surface.
+      try {
+        const preset = IMAGE_PRESETS.find(p => p.id === opts.presetId);
+        const base = opts.file.name.replace(/\.[^.]+$/, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+        await PropReelAPI.createProject({
+          userId: user.id,
+          title: `${preset?.label || 'Image edit'}${base ? ` — ${base}` : ''}`.slice(0, 120),
+          kind: 'IMAGE',
+          status: 'READY',
+          thumbnailUrl: result.imageUrl,
+          tags: [opts.presetId],
+          description: opts.customPrompt || preset?.label || '',
+        } as any);
+      } catch { /* non-fatal — the image edit itself succeeded */ }
       setStage('done');
       return { imageUrl: result.imageUrl };
     } catch (e: any) {

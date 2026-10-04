@@ -6,8 +6,9 @@ import { formatZar, formatRelative } from '../lib/utils';
 import { PropReelAPI, Project } from '../lib/api';
 import {
   Search, Grid, List as ListIcon, FolderOpen, FolderPlus, Pencil, Trash2,
-  Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2, Mic, Video, Download,
+  Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2, Mic, Video, Download, Copy,
 } from 'lucide-react';
+import { RETENTION_NOTICE } from '../lib/constants';
 import { VideoLightbox } from './PropertyListings';
 import { queueVideoRender } from '../lib/videoPrefill';
 
@@ -51,7 +52,7 @@ export default function EnhancedProjects() {
   const [search, setSearch] = useState('');
   const [selectedFolder, setSelectedFolder] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [kindFilter, setKindFilter] = useState<'all' | 'REEL' | 'FLASHHEAD'>('all');
+  const [kindFilter, setKindFilter] = useState<'all' | 'REEL' | 'FLASHHEAD' | 'IMAGE' | 'SOCIAL'>('all');
   const [selected, setSelected] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'date' | 'price' | 'name'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -67,7 +68,13 @@ export default function EnhancedProjects() {
   const [player, setPlayer] = useState<Project | null>(null);
   const openProject = (p: Project) => {
     if (p.videoUrl && p.status === 'READY') setPlayer(p);
-    else navigate('/studio');
+    else if (p.kind === 'IMAGE' && p.thumbnailUrl) window.open(p.thumbnailUrl, '_blank', 'noopener');
+    else if (p.kind === 'SOCIAL' && p.description) {
+      navigator.clipboard.writeText(p.description).then(
+        () => toast.success('Caption copied to clipboard'),
+        () => toast.error('Could not copy the caption'),
+      );
+    } else navigate('/studio');
   };
 
   // ── Real data: load projects + folders from backend ────────────────────
@@ -79,7 +86,9 @@ export default function EnhancedProjects() {
         PropReelAPI.listProjects(user.id),
         fetch(`/api/projects?action=folders&user_id=${encodeURIComponent(user.id)}`).then(r => (r.ok ? r.json() : { folders: [] })).catch(() => ({ folders: [] })),
       ]);
-      setProjects(projects);
+      // My Projects stores generated media only — property listings (rows
+      // with a marketStatus, created in the Listings tab) live there.
+      setProjects(projects.filter(p => p.marketStatus === undefined));
       if (Array.isArray(foldersRes.folders) && foldersRes.folders.length > 0) {
         setFolders(foldersRes.folders);
       }
@@ -245,6 +254,7 @@ export default function EnhancedProjects() {
           <p className="text-ink-400 mt-1">
             {loading ? 'Loading…' : `${filtered.length} projects ${selected.length > 0 ? `• ${selected.length} selected` : ''}`}
           </p>
+          <p className="text-xs text-ink-500 mt-1">{RETENTION_NOTICE}</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={reload} className="btn btn-secondary text-sm" title="Reload projects"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
@@ -369,7 +379,7 @@ export default function EnhancedProjects() {
                 <Star className={`w-3 h-3 ${favoritesOnly ? 'fill-yellow-400' : ''}`} /> Favorites only
               </button>
               <div className="flex items-center gap-1 px-1" role="group" aria-label="Filter by project type">
-                {([['all', 'All'], ['REEL', 'Reels'], ['FLASHHEAD', 'Talking Head']] as const).map(([k, label]) => (
+                {([['all', 'All'], ['REEL', 'Video'], ['FLASHHEAD', 'Talking Head'], ['IMAGE', 'Images'], ['SOCIAL', 'Social']] as const).map(([k, label]) => (
                   <button key={k} onClick={() => setKindFilter(k)} className={`px-3 py-1 rounded-full text-xs font-medium transition ${kindFilter === k ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-400 hover:text-white border border-transparent'}`}>
                     {label}
                   </button>
@@ -423,7 +433,7 @@ export default function EnhancedProjects() {
             <div className="card-dark p-12 text-center">
               <FolderOpen className="w-10 h-10 text-ink-500 mx-auto mb-3" />
               <p className="text-white font-medium">No projects yet</p>
-              <p className="text-ink-400 text-sm mt-1 mb-4">Projects you create in the Studio will appear here.</p>
+              <p className="text-ink-400 text-sm mt-1 mb-4">Photo edits, virtual staging, furniture removal, twilight renders, social posts, video reels and Talking Head clips all land here.</p>
               <button onClick={() => navigate('/studio')} className="btn btn-primary text-sm"><Plus className="w-4 h-4" /> Create in Studio</button>
             </div>
           )}
@@ -437,7 +447,7 @@ export default function EnhancedProjects() {
                     {p.thumbnailUrl ? (
                       <img src={p.thumbnailUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl">{p.kind === 'FLASHHEAD' ? '🎙️' : '🏡'}</div>
+                      <div className="w-full h-full flex items-center justify-center text-4xl">{p.kind === 'FLASHHEAD' ? '🎙️' : p.kind === 'IMAGE' ? '📷' : p.kind === 'SOCIAL' ? '✍️' : '🏡'}</div>
                     )}
                     {p.videoUrl && p.status === 'READY' && (
                       <video src={p.videoUrl} muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-300" aria-hidden="true" />
@@ -448,6 +458,10 @@ export default function EnhancedProjects() {
                       </span>
                       {p.kind === 'FLASHHEAD' ? (
                         <span className="badge badge-brand text-[10px] flex items-center gap-1"><Mic className="w-3 h-3" /> Talking Head</span>
+                      ) : p.kind === 'IMAGE' ? (
+                        <span className="badge badge-brand text-[10px]">Image Edit</span>
+                      ) : p.kind === 'SOCIAL' ? (
+                        <span className="badge badge-brand text-[10px]">Social Post</span>
                       ) : (
                         <span className="badge badge-brand text-[10px]">{p.videoTier}</span>
                       )}
@@ -501,13 +515,32 @@ export default function EnhancedProjects() {
                           <Share2 className="w-3 h-3" /> Video
                         </button>
                       )}
-                      {(!p.videoUrl || p.status !== 'READY') && (
+                      {(p.kind === 'REEL' || !p.kind || p.kind === 'FLASHHEAD') && (!p.videoUrl || p.status !== 'READY') && (
                         <button
                           onClick={() => { queueVideoRender({ images: p.photos || [], script: p.description || '', title: p.title }); navigate('/studio?tab=video'); }}
                           className="flex-1 btn btn-ghost text-xs py-1.5 text-purple-300 hover:text-purple-200"
                           title="Auto-format this project's photos into a video render, using its description as the voiceover"
                         >
                           <Video className="w-3 h-3" /> Render
+                        </button>
+                      )}
+                      {p.kind === 'IMAGE' && p.thumbnailUrl && (
+                        <a
+                          href={p.thumbnailUrl}
+                          download
+                          className="flex-1 btn btn-ghost text-xs py-1.5 text-purple-300 hover:text-purple-200"
+                          title="Download the edited image"
+                        >
+                          <Download className="w-3 h-3" /> Download
+                        </a>
+                      )}
+                      {p.kind === 'SOCIAL' && p.description && (
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(p.description || '').then(() => toast.success('Caption copied to clipboard'), () => toast.error('Could not copy the caption')); }}
+                          className="flex-1 btn btn-ghost text-xs py-1.5 text-purple-300 hover:text-purple-200"
+                          title="Copy the generated caption"
+                        >
+                          <Copy className="w-3 h-3" /> Copy
                         </button>
                       )}
                       <button onClick={() => deleteProjects([p.id])} className="flex-1 btn btn-ghost text-xs py-1.5 text-red-400 hover:text-red-300" title="Delete project">
@@ -538,7 +571,7 @@ export default function EnhancedProjects() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-ink-800 flex items-center justify-center text-lg overflow-hidden">
-                            {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" className="w-full h-full object-cover" /> : '🏡'}
+                            {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" className="w-full h-full object-cover" /> : (p.kind === 'FLASHHEAD' ? '🎙️' : p.kind === 'IMAGE' ? '📷' : p.kind === 'SOCIAL' ? '✍️' : '🏡')}
                           </div>
                           <div>
                             <p className="text-sm font-medium text-white">{p.title}</p>

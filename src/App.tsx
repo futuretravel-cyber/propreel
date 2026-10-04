@@ -28,7 +28,7 @@ import GlobalSearch from './components/GlobalSearch';
 import { SearchButton } from './components/GlobalSearch';
 import OnboardingTutorial from './components/OnboardingTutorial';
 import CollaborationPanel from './components/CollaborationPanel';
-import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS } from './lib/constants';
+import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG } from './lib/constants';
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI } from './lib/api';
 import FeatureChips from './components/FeatureChips';
@@ -39,7 +39,7 @@ import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
 import RenderProgressBar from './components/RenderProgressBar';
 import EnhancedProjects from './components/EnhancedProjects';
-import PropertyListings, { NewListingPage, PROVINCES, PROPERTY_TYPES } from './components/PropertyListings';
+import PropertyListings, { NewListingPage, ListingEditPage, PROVINCES, PROPERTY_TYPES } from './components/PropertyListings';
 import AgentBranding from './components/AgentBranding';
 import { queueVideoRender, takeVideoRender } from './lib/videoPrefill';
 import SecuritySettings from './components/SecuritySettings';
@@ -680,8 +680,13 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { unreadCount, stats } = useActivity(user?.id);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // Top-left profile picture menu (profile / settings / billing / sign out)
+  const [profileMenu, setProfileMenu] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Close the profile menu whenever the route changes.
+  useEffect(() => { setProfileMenu(false); }, [location.pathname]);
 
   // App-wide low-credit banner (20/10/5% of plan allowance) — acknowledged
   // per session via lastLowCreditWarnedAt so it stays visible until acted on.
@@ -798,9 +803,53 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="sticky top-0 z-40 bg-ink-950/80 backdrop-blur-xl border-b border-white/5 px-4 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden text-ink-400 hover:text-white" aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'} aria-expanded={sidebarOpen}>
             <Menu className="w-6 h-6" />
           </button>
+          {/* Profile picture — top-left account menu */}
+          <div className="relative" onMouseLeave={() => setProfileMenu(false)}>
+            <button
+              onClick={() => setProfileMenu(m => !m)}
+              className="flex items-center gap-2 p-1 pr-2 rounded-full hover:bg-white/5 transition"
+              aria-haspopup="menu"
+              aria-expanded={profileMenu}
+              aria-label="Account menu"
+            >
+              {user?.avatarUrl ? (
+                <img src={user.avatarUrl} alt={user.fullName || 'Profile'} className="w-9 h-9 rounded-full object-cover border border-white/10 shrink-0" />
+              ) : (
+                <span className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                  {user?.fullName?.[0] || 'U'}
+                </span>
+              )}
+              <span className="hidden sm:block text-sm text-ink-300 max-w-[140px] truncate">{user?.fullName}</span>
+              <ChevronDown className={`w-4 h-4 text-ink-400 transition ${profileMenu ? 'rotate-180' : ''}`} />
+            </button>
+            {profileMenu && (
+              <div role="menu" className="absolute left-0 mt-2 w-56 bg-ink-900 border border-white/10 rounded-xl shadow-xl py-1 z-50">
+                <div className="px-3 py-2 border-b border-white/5">
+                  <p className="text-sm text-white font-medium truncate">{user?.fullName}</p>
+                  <p className="text-xs text-ink-500 truncate">{user?.email}</p>
+                </div>
+                <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/settings?tab=profile'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
+                  <User className="w-4 h-4" /> Go to profile
+                </button>
+                <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/settings?tab=security'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
+                  <Settings className="w-4 h-4" /> Go to Settings
+                </button>
+                <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/billing'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
+                  <CreditCard className="w-4 h-4" /> Go to Billing
+                </button>
+                <div className="border-t border-white/5 mt-1 pt-1">
+                  <button role="menuitem" onClick={() => { setProfileMenu(false); logout(); navigate('/'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-950/40 text-left">
+                    <LogOut className="w-4 h-4" /> Sign out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          </div>
           <div className="flex items-center gap-4 ml-auto">
             <SearchButton />
             <Link to="/dashboard/notifications" className="relative text-ink-400 hover:text-white" aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}>
@@ -906,7 +955,18 @@ function AgencySignup() {
 
 function DashboardSettings() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<'profile' | 'security' | 'account'>('profile');
+  // Tab lives in the URL (?tab=profile|security|account) so the profile
+  // menu's "Go to profile" / "Go to Settings" land on the right section.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const TABS = ['profile', 'security', 'account'] as const;
+  type SettingsTab = typeof TABS[number];
+  const param = searchParams.get('tab');
+  const tab: SettingsTab = (TABS as readonly string[]).includes(param || '') ? (param as SettingsTab) : 'profile';
+  const setTab = (t: SettingsTab) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', t);
+    setSearchParams(next, { replace: true });
+  };
   
   return (
     <div className="space-y-6 animate-fade-in">
@@ -957,6 +1017,10 @@ function DashboardSettings() {
                 <Link to="/dashboard/delete-account" className="btn btn-danger w-full">
                   <Trash2 className="w-4 h-4" /> Delete Account
                 </Link>
+              </div>
+              <div className="p-4 bg-ink-800/50 rounded-xl">
+                <h4 className="font-medium text-white mb-2">Data retention</h4>
+                <p className="text-sm text-ink-400">{RETENTION_NOTICE_LONG}</p>
               </div>
             </div>
           </div>
@@ -1018,6 +1082,7 @@ function StudioPageInner() {
         <div>
           <h1 className="text-2xl font-bold text-white">Studio</h1>
           <p className="text-ink-400 mt-1">8 AI-powered tools to market your properties.</p>
+          <p className="text-xs text-ink-500 mt-1 flex items-center gap-1"><Clock className="w-3 h-3 shrink-0" /> {RETENTION_NOTICE}</p>
         </div>
         <Link
           to="/dashboard/credits"
@@ -1669,7 +1734,23 @@ function SocialTab() {
         images
       );
       setCaption(text.trim().replace(/^"|"$/g, ''));
-      toast.success('Post generated', 'AI · ⚡' + cost + ' credits');
+      // Store every generated post in My Projects (kind: SOCIAL) — best-effort,
+      // the caption itself already succeeded.
+      const captionText = text.trim().replace(/^"|"$/g, '');
+      let savedToProjects = false;
+      try {
+        await PropReelAPI.createProject({
+          userId: user.id,
+          title: `Social post — ${socialFields.suburb || socialFields.propertyType}`.slice(0, 120),
+          kind: 'SOCIAL',
+          status: 'READY',
+          description: captionText,
+          tags: [SOCIAL_PLATFORMS.find(p => p.id === platform)?.label || platform],
+          thumbnailUrl: images[0] || null,
+        } as any);
+        savedToProjects = true;
+      } catch { /* non-fatal */ }
+      toast.success(savedToProjects ? 'Post generated — saved to My Projects' : 'Post generated', 'AI · ⚡' + cost + ' credits');
     } catch (e: any) {
       if (charged) await addCredits(cost, 'refund', 'Refund — failed social media post').catch(() => {});
       toast.error(e.message ? `${e.message} — your credits were refunded` : 'Caption generation failed — your credits were refunded');
@@ -1982,13 +2063,21 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
     const recordId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     try {
-      // 1) Create the project record first (real data in propreel-projects)
+      // 1) Create the project record first (real data in propreel-projects).
+      // Titles feed the Social Pack captions, so never cut mid-word (legacy
+      // rows showed "…three-bedroo") — and keep the full script as the
+      // project description so captions can quote a complete sentence.
+      const scriptClean = script.replace(/\s+/g, ' ').trim();
+      const videoTitle = !scriptClean ? 'Property Video'
+        : scriptClean.length > 60 ? `${scriptClean.slice(0, 57).replace(/\s+\S*$/, '')}…`
+        : scriptClean;
       let projectId: string | null = null;
       if (user) {
         try {
           const project = await PropReelAPI.createProject({
             userId: user.id,
-            title: script ? script.slice(0, 60).replace(/\n/g, ' ') : 'Property Video',
+            title: videoTitle,
+            description: scriptClean || undefined,
             status: 'PROCESSING',
             videoTier: tier,
             durationSeconds: selectedConfig.duration,
@@ -3394,6 +3483,7 @@ function AppRoutes() {
       <Route path="/dashboard/credits" element={<RequireAuth><DashboardLayout><CreditSystemDashboard /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/listings" element={<RequireAuth><DashboardLayout><DashboardListings /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/listings/new" element={<RequireAuth><DashboardLayout><NewListingPage /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/listings/:id/edit" element={<RequireAuth><DashboardLayout><ListingEditPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/projects" element={<RequireAuth><DashboardLayout><DashboardMyProjects /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/branding" element={<RequireAuth><DashboardLayout><DashboardBranding /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/analytics" element={<RequireAuth><DashboardLayout><DashboardAnalytics /></DashboardLayout></RequireAuth>} />

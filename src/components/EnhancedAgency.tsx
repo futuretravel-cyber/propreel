@@ -70,7 +70,7 @@ interface AgencyUsageData {
 interface AgencyProject {
   id: string;
   title: string;
-  kind?: 'REEL' | 'FLASHHEAD';
+  kind?: 'REEL' | 'FLASHHEAD' | 'IMAGE' | 'SOCIAL';
   status?: string;
   videoUrl?: string | null;
   thumbnailUrl?: string | null;

@@ -23,8 +23,10 @@ export interface Project {
   propertyType: string;
   features: string[];
   status: ProjectStatus;
-  /** REEL = AI video render, FLASHHEAD = Talking Head lip-sync clip */
-  kind?: 'REEL' | 'FLASHHEAD';
+  /** REEL = AI video render, FLASHHEAD = Talking Head clip, IMAGE = photo-tool
+   *  output (Photo Editor / Staging / Removal / Twilight), SOCIAL = generated
+   *  social caption — all stored in My Projects */
+  kind?: 'REEL' | 'FLASHHEAD' | 'IMAGE' | 'SOCIAL';
   voice?: string;
   /** Modal job id — lets the reaper reconcile abandoned renders */
   jobId?: string;
