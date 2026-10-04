@@ -8,7 +8,7 @@ import { PropReelAPI, CreditReportData } from '../lib/api';
 import {
   CreditCard, Zap, Download, Search,
   Gift, Package, TrendingUp,
-  Check, Star, Info, Sparkles, History, BarChart3, XCircle, Lightbulb,
+  Check, Star, Info, Sparkles, History, BarChart3, XCircle, Lightbulb, Copy,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -47,6 +47,7 @@ export default function EnhancedBilling() {
   const [giftAmount, setGiftAmount] = useState(50);
   const [giftEmail, setGiftEmail] = useState('');
   const [gifting, setGifting] = useState(false);
+  const [refCopied, setRefCopied] = useState(false);
 
   const loadReport = useCallback(async () => {
     if (!user?.id) return;
@@ -223,6 +224,44 @@ export default function EnhancedBilling() {
               </div>
             </div>
           </div>
+
+          {/* Give 5, get 5 — referral link */}
+          {user && (
+            <div className="card-dark p-6 border border-purple-500/30 bg-purple-950/20">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white flex items-center gap-2">
+                    <Gift className="w-4 h-4 text-purple-400" /> Give 5, get 5 — refer a colleague
+                  </h3>
+                  <p className="text-xs text-ink-400 mt-1">
+                    Share your link: they get <span className="text-purple-300 font-semibold">5 bonus credits</span> on signup,
+                    and you get <span className="text-purple-300 font-semibold">5 credits</span> the moment they make their first purchase.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={`${window.location.origin}/register?ref=${user.id}`}
+                    onFocus={e => e.currentTarget.select()}
+                    className="input text-xs w-full sm:w-72 font-mono"
+                    aria-label="Your referral link"
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`${window.location.origin}/register?ref=${user.id}`).then(() => {
+                        setRefCopied(true);
+                        toast.success('Referral link copied', 'Share it!');
+                        setTimeout(() => setRefCopied(false), 2500);
+                      }).catch(() => toast.error('Copy failed — select the link and copy manually'));
+                    }}
+                    className="btn btn-primary text-sm py-2 px-4 shrink-0"
+                  >
+                    {refCopied ? <><Check className="w-4 h-4" /> Copied</> : <><Copy className="w-4 h-4" /> Copy</>}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Payment issue banner (dunning) — honest, actionable */}
           {user?.paymentFailure && (

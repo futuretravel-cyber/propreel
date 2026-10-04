@@ -23,18 +23,14 @@ import { queueVideoRender } from '../lib/videoPrefill';
 import { useToast } from '../context/ToastContext';
 import { PropReelAPI, type Project } from '../lib/api';
 import { formatZar, downloadText } from '../lib/utils';
-import { TONES, RETENTION_NOTICE } from '../lib/constants';
+import { TONES, RETENTION_NOTICE, PROVINCES, PROPERTY_TYPES } from '../lib/constants';
 import FeatureChips from './FeatureChips';
 import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from '../lib/propertyListing';
 
 const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (AI) — parity with the Studio
 const NEW_LISTING_COST = 2; // ⚡ charged server-side when a listing is saved
 
-export const PROVINCES = [
-  'Western Cape', 'Eastern Cape', 'Northern Cape', 'Free State', 'Gauteng',
-  'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West',
-];
-export const PROPERTY_TYPES = ['House', 'Apartment', 'Townhouse', 'Vacant Land', 'Farm', 'Commercial', 'Industrial'];
+export { PROVINCES, PROPERTY_TYPES };
 
 const TONE_BLURBS: Record<string, string> = {
   Professional: 'Clear, factual and authoritative. Ideal for corporate buyers.',

@@ -115,6 +115,63 @@ function Hero() {
 }
 
 /* ── Bento visual showcase ────────────────────────────────────────── */
+/* ── Demo reel: a real render playing right below the hero ────────── */
+function DemoReel() {
+  // Only fetch the 864 KB reel once the visitor scrolls near it.
+  const ref = useRef<HTMLDivElement>(null);
+  const near = useInView(ref, { once: true, margin: '150px' });
+  return (
+    <section ref={ref} className="relative py-20 bg-ink-950 border-b border-white/5 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(700px_350px_at_80%_50%,rgba(168,85,247,0.10),transparent_70%)]" />
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <Reveal>
+          <span className="badge badge-brand mb-4">Live Demo · Real Output</span>
+          <h2 className="text-3xl sm:text-4xl font-black text-white">Watch One Photo Become a Reel</h2>
+          <p className="mt-4 text-lg text-ink-300">
+            An actual PropReel render — AI motion, voiceover and captions from a single listing photo. No editor, no studio.
+          </p>
+          <ul className="mt-6 space-y-3">
+            {[
+              'One phone photo in',
+              'SA voiceover, music and captions added automatically',
+              'Download, share to WhatsApp, or post to the portals',
+            ].map(item => (
+              <li key={item} className="flex items-start gap-3 text-sm text-ink-200">
+                <Check className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" /> {item}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-8 flex flex-col sm:flex-row gap-4">
+            <Link to="/register" onClick={() => track('cta_clicked', { cta: 'demo_reel' })} className="btn btn-primary px-8">
+              Start Free — {SIGNUP_BONUS} Credits <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link to="/tutorial" className="btn glass text-white px-8 hover:bg-white/10">Watch the tutorial</Link>
+          </div>
+        </Reveal>
+        <Reveal delay={0.1} className="justify-self-center w-full max-w-[300px]">
+          <div className="rounded-[2.5rem] border border-white/10 bg-ink-900 p-2.5 shadow-[0_40px_120px_-30px_rgba(128,0,128,0.6)]">
+            <div className="rounded-[2rem] overflow-hidden bg-black">
+              {near && (
+                <video
+                  src="/media/kitchen-after.mp4"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  controls
+                  preload="metadata"
+                  className="aspect-[9/16] w-full object-cover"
+                />
+              )}
+            </div>
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">A real 65-second reel, rendered by the Studio.</p>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
 function BentoCard({ children, className = '', delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
   return (
     <Reveal delay={delay} className={className}>
@@ -430,32 +487,35 @@ function EditorDemo() {
 /* ── Social proof + FAQ + CTA ────────────────────────────────────── */
 function SocialProof() {
   const { reviews } = useApprovedReviews();
+  // No approved reviews yet → render nothing rather than an empty-looking
+  // "Be the first…" section on the marketing homepage. It appears
+  // automatically once real reviews are submitted and approved.
+  if (reviews.length === 0) return null;
   return (
     <section className="py-24 bg-ink-950/60">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <Reveal className="text-center mb-12">
           <h2 className="text-3xl sm:text-4xl font-black text-white">Loved by SA Agents</h2>
         </Reveal>
-        {reviews.length === 0 ? (
-          <Reveal className="text-center">
-            <p className="text-ink-400">Be the first to share your PropReel story.</p>
-          </Reveal>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {reviews.slice(0, 3).map((r, i) => (
-              <Reveal key={r.id} delay={i * 0.07}>
-                <div className="glass rounded-2xl p-6 h-full">
-                  <div className="flex gap-1 mb-3">
-                    {Array.from({ length: r.rating }).map((_, j) => <Star key={j} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
-                  </div>
-                  <p className="text-ink-200 text-sm mb-4">"{r.comment}"</p>
-                  <p className="font-semibold text-white text-sm">{r.fullName}</p>
-                  <p className="text-ink-400 text-xs">{r.agency}</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {reviews.slice(0, 3).map((r, i) => (
+            <Reveal key={r.id} delay={i * 0.07}>
+              <div className="glass rounded-2xl p-6 h-full">
+                <div className="flex gap-1 mb-3">
+                  {Array.from({ length: r.rating }).map((_, j) => <Star key={j} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
                 </div>
-              </Reveal>
-            ))}
-          </div>
-        )}
+                <p className="text-ink-200 text-sm mb-4">"{r.comment}"</p>
+                <p className="font-semibold text-white text-sm">{r.fullName}</p>
+                <p className="text-ink-400 text-xs">{r.agency}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+        <Reveal delay={0.2} className="text-center mt-10">
+          <Link to="/reviews" className="btn glass text-white px-8 hover:bg-white/10">
+            Read all reviews <ArrowRight className="w-4 h-4" />
+          </Link>
+        </Reveal>
       </div>
     </section>
   );
@@ -487,6 +547,7 @@ export default function HomePage() {
   return (
     <PublicLayout>
       <Hero />
+      <DemoReel />
       <VisualShowcase />
       <PropertyShowcase />
       <HowItWorks />

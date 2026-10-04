@@ -74,6 +74,12 @@ export interface User {
   invoices?: Array<{ invoiceNumber: string; url: string; amountZar: number; paidAt: string; reference: string; description?: string }>;
   /** Shared agency credit pool (AGENCY plan); spent first for tier features */
   agencyPoolCredits?: number;
+  /** Give 5, get 5 referrals — see lib/referral.ts */
+  referredBy?: string | null;
+  /** Friend's +5 signup grant has been claimed (exactly-once guard) */
+  referralRedeemed?: boolean;
+  /** Referrer's +5 paid after this user's first purchase */
+  referralPaid?: boolean;
   /** Set when a no-saved-card upgrade is awaiting hosted-checkout payment */
   pendingPlanUpgrade?: {
     toPlanId: string;

@@ -138,6 +138,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Give 5, get 5: first purchase by a referred user pays their referrer +5.
+    const { grantReferralPayout } = await import('../../lib/referral');
+    await grantReferralPayout(userId);
+
     // Capture the card authorization for auto-topup / dunning retries, and
     // clear any dunning state (payment recovered via hosted checkout).
     const authCode = result.data.authorization?.authorization_code;

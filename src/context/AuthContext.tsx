@@ -286,21 +286,9 @@ export function CreditProvider({ children }: { children: ReactNode }) {
         cycle: data.cycle,
         redirect: data.emailRedirectTo,
         enableTwoFactor: data.enableTwoFactor,
+        referralCode: data.referralCode,
       }),
     });
-
-    // Referral: credit the referrer if this signup came via ?ref=
-    if (data.referralCode && res.userId) {
-      try {
-        await fetch(`${API_BASE}/api/leads?action=referral`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ referrer: data.referralCode, newUserId: res.userId, newUserEmail: data.email }),
-        });
-      } catch (refError) {
-        console.error('Referral apply failed (non-critical):', refError);
-      }
-    }
 
     return { needsConfirmation: !!res.needsConfirmation };
   }, []);

@@ -98,6 +98,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         paystackCustomerCode
       );
 
+      // Give 5, get 5: first purchase by a referred user pays their referrer +5.
+      const { grantReferralPayout } = await import('../lib/referral');
+      await grantReferralPayout(user_id);
+
       return res.status(200).json({
         success: true,
         subscription: result.subscription,

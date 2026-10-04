@@ -1,15 +1,13 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { putItem, getItem, TABLES } from '../lib/db';
-import { getUser, updateUser, addCredits, getUserByEmail } from '../lib/userService';
+import { getUser, updateUser, getUserByEmail } from '../lib/userService';
 
 /**
  * Unified growth/leads endpoint (Hobby plan has a 12-function limit).
  * Routes on ?action= :
  *   demo     — anonymous homepage demo-render lead capture (1/IP/day)
- *   referral — credit the referrer when a new referred user signs up
+ *   referral — legacy path; auth_register now attributes ?ref= server-side
  */
-
-const REFERRAL_BONUS_CREDITS = 20;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ── GET /api/leads?action=reviews — public, approved reviews only ──
@@ -184,6 +182,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // ── POST /api/leads?action=referral ─────────────────────────────
+    // Legacy path — auth_register now attributes ?ref= server-side. Kept so
+    // any in-flight signup from an older bundle still lands; delegates to the
+    // shared idempotent logic (friend +5, referrer +5 on first purchase).
     if (action === 'referral') {
       const { referrer, newUserId, newUserEmail } = req.body || {};
 
@@ -191,35 +192,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'referrer and newUserId are required' });
       }
 
-      let referrerUser = await getUser(referrer);
-      if (!referrerUser && typeof referrer === 'string' && referrer.includes('@')) {
-        referrerUser = await getUserByEmail(referrer.toLowerCase());
-      }
-      if (!referrerUser) {
-        return res.status(404).json({ error: 'Referrer not found' });
-      }
-
-      const newUser = await getUser(newUserId);
-      if (!newUser) {
-        return res.status(404).json({ error: 'New user not found' });
-      }
-      if ((newUser as any).referralRedeemed) {
-        return res.status(200).json({ success: true, alreadyRedeemed: true });
-      }
-
-      await updateUser(newUserId, { referralRedeemed: true, referredBy: referrerUser.id } as any);
-      await addCredits(
-        referrerUser.id,
-        REFERRAL_BONUS_CREDITS,
-        'bonus',
-        `Referral bonus — ${newUserEmail || newUser.email} joined via your invite`,
-        { kind: 'referral', newUserId }
-      );
+      const { attributeReferral, REFERRAL_FRIEND_CREDITS } = await import('../lib/referral');
+      await attributeReferral(newUserId, newUserEmail || '', referrer);
 
       return res.status(200).json({
         success: true,
-        creditsGranted: REFERRAL_BONUS_CREDITS,
-        referrerEmail: referrerUser.email,
+        creditsGranted: REFERRAL_FRIEND_CREDITS,
       });
     }
 

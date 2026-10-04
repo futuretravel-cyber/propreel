@@ -1,34 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import NotFoundPage from './pages/NotFoundPage';
-import HelpModal from './components/HelpModal';
 import OfflineBanner from './components/OfflineBanner';
 import { useState, useEffect, useRef } from 'react';
 import MobileNav from './components/MobileNav';
 import { DashboardSkeleton, BillingSkeleton, ProjectsSkeleton, StudioSkeleton, useSimulatedLoading } from './components/Skeleton';
 import { useAuth, useCredit, AuthProvider, CreditProvider } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
-import SignupPage from './pages/SignupPage';
-import TwoFactorSetupPage from './pages/TwoFactorSetupPage';
-import { ConfirmEmailPage, ForgotPasswordPage, ResetPasswordPage } from './pages/AuthEmailPages';
-import PaymentPage from './pages/PaymentPage';
-import RefundPolicyPage from './pages/RefundPolicyPage';
-import TermsOfServicePage from './pages/TermsOfServicePage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
-import CookiePolicyPage from './pages/CookiePolicyPage';
-import PAIAManualPage from './pages/PAIAManualPage';
-import DataProcessingAgreementPage from './pages/DataProcessingAgreementPage';
-import TutorialVideoPage from './pages/TutorialVideoPage';
-import CancelSubscriptionPage from './pages/CancelSubscriptionPage';
-import DeleteAccountPage from './pages/DeleteAccountPage';
-import CreditSystemDashboard from './components/CreditSystemDashboard';
-import AdminIntegrations from './components/AdminIntegrations';
-import NotificationCenter from './components/NotificationCenter';
-import GlobalSearch from './components/GlobalSearch';
 import { SearchButton } from './components/GlobalSearch';
-import OnboardingTutorial from './components/OnboardingTutorial';
-import CollaborationPanel from './components/CollaborationPanel';
-import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG } from './lib/constants';
+import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, PROVINCES, PROPERTY_TYPES } from './lib/constants';
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI } from './lib/api';
 import FeatureChips from './components/FeatureChips';
@@ -38,14 +18,7 @@ import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
 import RenderProgressBar from './components/RenderProgressBar';
-import EnhancedProjects from './components/EnhancedProjects';
-import PropertyListings, { NewListingPage, ListingEditPage, PROVINCES, PROPERTY_TYPES } from './components/PropertyListings';
-import AgentBranding from './components/AgentBranding';
 import { queueVideoRender, takeVideoRender } from './lib/videoPrefill';
-import SecuritySettings from './components/SecuritySettings';
-import AITalkingProfile from './components/AITalkingProfile';
-import AdminMusicLibrary from './components/AdminMusicLibrary';
-import FlashHeadVideo from './components/FlashHeadVideo';
 import {
   Home as HomeIcon, Video, Image, Wand2, Sofa, Trash2, Moon, Share2, Play,
   LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield,
@@ -56,15 +29,13 @@ import {
   FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle, FolderOpen
 } from 'lucide-react';
 
-import { lazy, Suspense } from 'react';
-import ShareSheet from './components/ShareSheet';
-import ImageWorkbench from './components/ImageWorkbench';
+import { lazy, Suspense, type ComponentProps } from 'react';
 import { buildPromptRotation } from './lib/videoPrompts';
 import { ThemeProvider } from './lib/theme';
 import HomePage from './components/HomePage';
-import StatusPage from './pages/StatusPage';
 import { PublicLayout } from './components/PublicLayout';
 import { track } from './lib/analytics';
+import { RouteSEO } from './lib/seo';
 
 // Code-split the heavy dashboard sections (recharts, framer-motion, admin UI)
 // so the marketing site loads without them.
@@ -72,6 +43,87 @@ const EnhancedOverview = lazy(() => import('./components/EnhancedOverview'));
 const EnhancedBilling = lazy(() => import('./components/EnhancedBilling'));
 const EnhancedAnalytics = lazy(() => import('./components/EnhancedAnalytics'));
 const EnhancedAgency = lazy(() => import('./components/EnhancedAgency'));
+
+// ── Dashboard-only code, split out of the main chunk ──────────────────
+// The marketing homepage never needs these; deferring them keeps the
+// first-load bundle small for visitors who haven't signed up yet.
+const PropertyListingsBase = lazy(() => import('./components/PropertyListings'));
+const EnhancedProjectsBase = lazy(() => import('./components/EnhancedProjects'));
+const AgentBrandingBase = lazy(() => import('./components/AgentBranding'));
+const SecuritySettingsBase = lazy(() => import('./components/SecuritySettings'));
+const AITalkingProfileBase = lazy(() => import('./components/AITalkingProfile'));
+const AdminMusicLibraryBase = lazy(() => import('./components/AdminMusicLibrary'));
+const FlashHeadVideoBase = lazy(() => import('./components/FlashHeadVideo'));
+const ShareSheetBase = lazy(() => import('./components/ShareSheet'));
+const ImageWorkbenchBase = lazy(() => import('./components/ImageWorkbench'));
+const CreditSystemDashboard = lazy(() => import('./components/CreditSystemDashboard'));
+const AdminIntegrations = lazy(() => import('./components/AdminIntegrations'));
+const NotificationCenter = lazy(() => import('./components/NotificationCenter'));
+const OnboardingTutorialBase = lazy(() => import('./components/OnboardingTutorial'));
+const HelpModalBase = lazy(() => import('./components/HelpModal'));
+
+// Public/auth route pages — caught by the top-level Suspense around <Routes>.
+const SignupPage = lazy(() => import('./pages/SignupPage'));
+const TwoFactorSetupPage = lazy(() => import('./pages/TwoFactorSetupPage'));
+const ConfirmEmailPage = lazy(() => import('./pages/AuthEmailPages').then(m => ({ default: m.ConfirmEmailPage })));
+const ForgotPasswordPage = lazy(() => import('./pages/AuthEmailPages').then(m => ({ default: m.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import('./pages/AuthEmailPages').then(m => ({ default: m.ResetPasswordPage })));
+const PaymentPage = lazy(() => import('./pages/PaymentPage'));
+const StatusPage = lazy(() => import('./pages/StatusPage'));
+const TutorialVideoPage = lazy(() => import('./pages/TutorialVideoPage'));
+const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
+const TermsOfServicePage = lazy(() => import('./pages/TermsOfServicePage'));
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
+const CookiePolicyPage = lazy(() => import('./pages/CookiePolicyPage'));
+const PAIAManualPage = lazy(() => import('./pages/PAIAManualPage'));
+const DataProcessingAgreementPage = lazy(() => import('./pages/DataProcessingAgreementPage'));
+const CancelSubscriptionPage = lazy(() => import('./pages/CancelSubscriptionPage'));
+const DeleteAccountPage = lazy(() => import('./pages/DeleteAccountPage'));
+
+// Thin wrappers: same names as before (usage sites unchanged), each with its
+// own Suspense so a tab-level chunk load never blanks the whole route.
+function PropertyListings() {
+  return <Suspense fallback={<DashboardSkeleton />}><PropertyListingsBase /></Suspense>;
+}
+function NewListingPage() {
+  return <Suspense fallback={<DashboardSkeleton />}><PropertyListingsNewPage /></Suspense>;
+}
+function ListingEditPage() {
+  return <Suspense fallback={<DashboardSkeleton />}><PropertyListingsEditPage /></Suspense>;
+}
+const PropertyListingsNewPage = lazy(() => import('./components/PropertyListings').then(m => ({ default: m.NewListingPage })));
+const PropertyListingsEditPage = lazy(() => import('./components/PropertyListings').then(m => ({ default: m.ListingEditPage })));
+function EnhancedProjects() {
+  return <Suspense fallback={<ProjectsSkeleton />}><EnhancedProjectsBase /></Suspense>;
+}
+function AgentBranding() {
+  return <Suspense fallback={<DashboardSkeleton />}><AgentBrandingBase /></Suspense>;
+}
+function SecuritySettings() {
+  return <Suspense fallback={<DashboardSkeleton />}><SecuritySettingsBase /></Suspense>;
+}
+function AITalkingProfile(props: ComponentProps<typeof AITalkingProfileBase>) {
+  return <Suspense fallback={null}><AITalkingProfileBase {...props} /></Suspense>;
+}
+function AdminMusicLibrary() {
+  return <Suspense fallback={<DashboardSkeleton />}><AdminMusicLibraryBase /></Suspense>;
+}
+function FlashHeadVideo(props: ComponentProps<typeof FlashHeadVideoBase>) {
+  return <Suspense fallback={<DashboardSkeleton />}><FlashHeadVideoBase {...props} /></Suspense>;
+}
+function ShareSheet(props: ComponentProps<typeof ShareSheetBase>) {
+  return <Suspense fallback={null}><ShareSheetBase {...props} /></Suspense>;
+}
+function ImageWorkbench(props: ComponentProps<typeof ImageWorkbenchBase>) {
+  return <Suspense fallback={null}><ImageWorkbenchBase {...props} /></Suspense>;
+}
+// Rendered outside AppRoutes (no surrounding Suspense) — keep their own.
+function OnboardingTutorial(props: ComponentProps<typeof OnboardingTutorialBase>) {
+  return <Suspense fallback={null}><OnboardingTutorialBase {...props} /></Suspense>;
+}
+function HelpModal(props: ComponentProps<typeof HelpModalBase>) {
+  return <Suspense fallback={null}><HelpModalBase {...props} /></Suspense>;
+}
 
 // Keyboard shortcuts modal
 function KeyboardShortcutsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -354,7 +406,6 @@ function ContactPage() {
             <div>
               <div className="space-y-6">
                 <div className="flex items-start gap-4"><Mail className="w-5 h-5 text-purple-700 mt-1" /><div><p className="font-semibold">Email</p><p className="text-gray-600">support@propreel.co.za</p></div></div>
-                <div className="flex items-start gap-4"><Phone className="w-5 h-5 text-purple-700 mt-1" /><div><p className="font-semibold">Phone</p><p className="text-gray-600">+27 21 123 4567</p></div></div>
                 <div className="flex items-start gap-4"><MapPin className="w-5 h-5 text-purple-700 mt-1" /><div><p className="font-semibold">Office</p><p className="text-gray-600">Cape Town, South Africa</p></div></div>
               </div>
             </div>
@@ -887,10 +938,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
               <div className="flex gap-2">
                 <button onClick={() => navigate('/dashboard/credits')} className="btn btn-primary text-xs py-2 px-3">Recharge Now</button>
                 <button onClick={acknowledgeLowCredit} className="btn btn-ghost text-xs py-2 px-2" aria-label="Dismiss low credit warning"><X className="w-4 h-4" /></button>
-              </div>
-            </div>
-          )}
-          {children}
+              </div>              </div>
+            )}
+          <Suspense fallback={<DashboardSkeleton />}>{children}</Suspense>
         </main>
       </div>
 
@@ -3459,6 +3509,14 @@ function AppRoutes() {
 
   return (
     <ErrorBoundary>
+    {/* Route-level code splitting: public pages lazy-load behind this boundary. */}
+    <Suspense fallback={(
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center animate-pulse">
+          <Play className="w-5 h-5 text-white fill-white" />
+        </div>
+      </div>
+    )}>
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/pricing" element={<PricingPage />} />
@@ -3502,6 +3560,7 @@ function AppRoutes() {
       <Route path="/admin/integrations" element={<RequireAdmin><DashboardLayout><AdminIntegrations /></DashboardLayout></RequireAdmin>} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </Suspense>
     </ErrorBoundary>
   );
 }

@@ -689,6 +689,8 @@ interface ProvisionInput {
   agencyName?: string | null;
   planId?: string | null;
   cycle?: string;
+  /** True when the address was verified by an IdP (Google) — skips email confirmation. */
+  emailVerified?: boolean;
 }
 
 /**
@@ -710,7 +712,7 @@ async function provisionUser(input: ProvisionInput): Promise<{ user: any; create
     agencyId: null,
     agencyName: input.agencyName || null,
     avatarUrl: null,
-    emailVerified: false,
+    emailVerified: !!input.emailVerified,
     lastLowCreditWarnedAt: null,
     notificationPreferences: { ...DEFAULT_NOTIFICATION_PREFERENCES },
     planId: input.planId || null,
@@ -778,6 +780,18 @@ function googleConfigError(title = 'Google sign-in is not configured', detail = 
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Read one cookie value by name (hand-rolled — req.cookies is Vercel-only). */
+function readCookie(req: VercelRequest, name: string): string | undefined {
+  const header = req.headers.cookie;
+  if (!header) return undefined;
+  for (const part of String(header).split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
+  }
+  return undefined;
+}
+
 /** Canonical origin for links inside confirmation / reset emails. */
 function siteOrigin(req: VercelRequest): string {
   const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
@@ -806,7 +820,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
     // ── POST auth_register ───────────────────────────────────────────
     if (action === 'auth_register') {
       if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-      const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect, enableTwoFactor = false } = body;
+      const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect, enableTwoFactor = false, referralCode } = body;
       if (!email || !fullName) return res.status(400).json({ error: 'Missing email or fullName' });
       if (!EMAIL_RE.test(String(email))) return res.status(400).json({ error: 'Enter a valid email address' });
       if (typeof password !== 'string' || password.length < 8) {
@@ -831,6 +845,10 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         emailVerified: false,
         ...(enableTwoFactor ? { twoFactorOptIn: true } : {}),
       } as any);
+      // Give 5, get 5: attribute to ?ref= and grant the friend's +5 now; the
+      // referrer's +5 is paid on this account's first purchase (lib/referral).
+      const { attributeReferral } = await import('../lib/referral');
+      await attributeReferral(user.id, user.email, referralCode);
       const fresh = (await getUser(user.id)) || user;
 
       const token = await issueEmailConfirmToken(fresh, redirect);
@@ -938,12 +956,24 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       }
       const redirect = String(req.query.redirect || '/dashboard');
       const safe = redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/dashboard';
+      // CSRF guard: bind a one-time nonce into both the state param and an
+      // HttpOnly cookie; the callback rejects any state whose nonce mismatches.
+      const nonce = randomToken();
+      const cookieAttrs = [
+        `propreel_oauth_state=${nonce}`,
+        'Path=/',
+        'HttpOnly',
+        'SameSite=Lax',
+        'Max-Age=600',
+      ];
+      if (String(req.headers['x-forwarded-proto'] || 'https') === 'https' || process.env.VERCEL) cookieAttrs.push('Secure');
+      res.setHeader('Set-Cookie', cookieAttrs.join('; '));
       const params = new URLSearchParams({
         client_id: clientId,
         redirect_uri: `${siteOrigin(req)}/api/users?action=auth_google_callback`,
         response_type: 'code',
         scope: 'openid email profile',
-        state: safe,
+        state: `${nonce}:${safe}`,
         prompt: 'select_account',
       });
       return res.redirect(302, `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
@@ -959,6 +989,29 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (!code) {
         const detail = String(req.query.error_description || req.query.error || 'Missing authorization code');
         return res.status(400).send(googleConfigError('Google sign-in failed', detail));
+      }
+
+      // CSRF guard: the nonce in state must match the cookie we set on start.
+      const sep = state.indexOf(':');
+      const stateNonce = sep > 0 ? state.slice(0, sep) : '';
+      const dest = sep > 0 && state.slice(sep + 1).startsWith('/') && !state.slice(sep + 1).startsWith('//')
+        ? state.slice(sep + 1)
+        : '/dashboard';
+      const cookieNonce = readCookie(req, 'propreel_oauth_state');
+      if (!stateNonce || !cookieNonce || stateNonce !== cookieNonce) {
+        return res.status(400).send(googleConfigError(
+          'Google sign-in could not be verified',
+          'This sign-in attempt expired or was initiated from another tab. Please try again.'
+        ));
+      }
+      // One-time use — clear it whether the rest of the flow succeeds or not.
+      // (Re-set as an array when the session cookie is issued below so both land.)
+      let clearOauthCookie: string;
+      {
+        const clearAttrs = ['propreel_oauth_state=', 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
+        if (String(req.headers['x-forwarded-proto'] || 'https') === 'https' || process.env.VERCEL) clearAttrs.push('Secure');
+        clearOauthCookie = clearAttrs.join('; ');
+        res.setHeader('Set-Cookie', clearOauthCookie);
       }
 
       try {
@@ -993,19 +1046,24 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
           return res.status(400).send(googleConfigError('Google account not verified', 'Use a Google account with a verified email address.'));
         }
 
-        // 3) Find-or-create the account (new Google users get the standard
-        //    signup bonus via provisionUser; existing accounts keep their name).
+        // 3) Find-or-create the account. Google asserts email_verified, so
+        //    these users are emailVerified — otherwise password login would be
+        //    permanently blocked while Resend stays unverified (it isn't).
         const existing = await getUserByEmail(email);
-        const user = existing || (await provisionUser({
+        let user = existing || (await provisionUser({
           email,
           fullName: String(profile.name || email).slice(0, 120),
           role: 'AGENT',
+          emailVerified: true,
         })).user;
+        if (existing && !existing.emailVerified) {
+          await updateUser(existing.id, { emailVerified: true } as any);
+          user = { ...existing, emailVerified: true };
+        }
 
         // 4) First-party session + land on the requested destination
         const token = await createSession(user.id);
-        res.setHeader('Set-Cookie', sessionCookie(token, req));
-        const dest = state.startsWith('/') && !state.startsWith('//') ? state : '/dashboard';
+        res.setHeader('Set-Cookie', [sessionCookie(token, req), clearOauthCookie]);
         return res.redirect(302, dest);
       } catch (oauthErr: any) {
         console.error('Google OAuth error:', oauthErr);

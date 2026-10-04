@@ -1,5 +1,5 @@
 # PropReel robots.txt
-# https://propreel.co.za
+# https://www.propreel.co.za
 
 User-agent: *
 Allow: /
@@ -25,12 +25,11 @@ Disallow: /admin
 Disallow: /payment
 Disallow: /api
 
-# Disallow static assets from being indexed
-Disallow: /*.js$
-Disallow: /*.css$
+# NOTE: do not disallow /*.js$ — Googlebot must fetch the JS bundle to render
+# this single-page app, otherwise every route indexes as an empty page.
 
 # Sitemap location
-Sitemap: https://propreel.co.za/sitemap.xml
+Sitemap: https://www.propreel.co.za/sitemap.xml
 
 # Crawl-delay for polite crawling
 Crawl-delay: 1

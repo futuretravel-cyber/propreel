@@ -180,6 +180,15 @@ export const TONES = [
 // Import new image prompts
 import { IMAGE_PRESETS, getPresetsByCategory } from './imagePrompts';
 
+// SA listing form options — live here (not in PropertyListings) so App.tsx's
+// own listing form doesn't pull the 47 KB PropertyListings module into the
+// main bundle.
+export const PROVINCES = [
+  'Western Cape', 'Eastern Cape', 'Northern Cape', 'Free State', 'Gauteng',
+  'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West',
+];
+export const PROPERTY_TYPES = ['House', 'Apartment', 'Townhouse', 'Vacant Land', 'Farm', 'Commercial', 'Industrial'];
+
 // Legacy exports for backward compatibility - now using comprehensive prompt library
 export const PHOTO_PRESETS = getPresetsByCategory('photo_editor').map(p => ({
   id: p.id,
