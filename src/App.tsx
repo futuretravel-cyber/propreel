@@ -566,13 +566,16 @@ function LoginPage() {
           ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div><label className="label">Email</label><input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required /></div>
-            <div><label className="label">Password</label><input type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /></div>
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="label mb-0">Password</label>
+                <Link to="/forgot-password" className="text-xs text-purple-400 hover:text-purple-300 font-semibold">Forgot Password?</Link>
+              </div>
+              <input type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
+            </div>
             <button type="submit" disabled={loading} className="btn btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
           </form>
           )}
-            <div className="mt-4">
-              <button onClick={() => navigate('/forgot-password')} className="btn w-full mb-3 text-sm">Forgot your password?</button>
-            </div>
             <div className="flex items-center gap-3 my-1">
               <div className="h-px flex-1 bg-white/10" />
               <span className="text-xs text-ink-500">or</span>
