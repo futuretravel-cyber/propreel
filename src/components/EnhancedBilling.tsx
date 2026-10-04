@@ -4,11 +4,13 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar, formatDate } from '../lib/utils';
 import { PLANS, TIERS } from '../lib/constants';
-import { PropReelAPI, CreditReportData } from '../lib/api';
+import { PropReelAPI, CreditReportData, ReferralStats } from '../lib/api';
+import { track } from '../lib/analytics';
 import {
   CreditCard, Zap, Download, Search,
   Gift, Package, TrendingUp,
   Check, Star, Info, Sparkles, History, BarChart3, XCircle, Lightbulb, Copy,
+  MessageCircle, Facebook, Twitter, Linkedin, Mail, Users, UserCheck,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -48,6 +50,34 @@ export default function EnhancedBilling() {
   const [giftEmail, setGiftEmail] = useState('');
   const [gifting, setGifting] = useState(false);
   const [refCopied, setRefCopied] = useState(false);
+  const [refStats, setRefStats] = useState<ReferralStats | null>(null);
+  const [refStatsLoading, setRefStatsLoading] = useState(true);
+
+  // Give-5-get-5 numbers: signups by link, first purchases (paid), pending payout
+  useEffect(() => {
+    if (!user?.id) { setRefStatsLoading(false); return; }
+    let alive = true;
+    PropReelAPI.referralStats(user.id)
+      .then(s => { if (alive) setRefStats(s); })
+      .catch(() => { /* stats are non-critical — card renders without them */ })
+      .finally(() => { if (alive) setRefStatsLoading(false); });
+    return () => { alive = false; };
+  }, [user?.id]);
+
+  // Share targets for the referral link (WhatsApp first — it is how SA agents share)
+  const refLink = user ? `${window.location.origin}/register?ref=${user.id}` : '';
+  const shareMsg = 'Get 5 free credits on PropReel — AI property videos for estate agents:';
+  const shareTargets: Array<{ id: string; label: string; icon: typeof Users; url: () => string }> = [
+    { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, url: () => `https://wa.me/?text=${encodeURIComponent(`${shareMsg}\n${refLink}`)}` },
+    { id: 'facebook', label: 'Facebook', icon: Facebook, url: () => `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(refLink)}` },
+    { id: 'x', label: 'X', icon: Twitter, url: () => `https://twitter.com/intent/tweet?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent(shareMsg)}` },
+    { id: 'linkedin', label: 'LinkedIn', icon: Linkedin, url: () => `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(refLink)}` },
+    { id: 'email', label: 'Email', icon: Mail, url: () => `mailto:?subject=${encodeURIComponent('5 free credits on PropReel')}&body=${encodeURIComponent(`${shareMsg}\n\n${refLink}`)}` },
+  ];
+  const shareReferral = (t: typeof shareTargets[number]) => {
+    track('share_clicked', { platform: `referral_${t.id}` });
+    window.open(t.url(), '_blank', 'noopener,width=640,height=560');
+  };
 
   const loadReport = useCallback(async () => {
     if (!user?.id) return;
@@ -225,7 +255,7 @@ export default function EnhancedBilling() {
             </div>
           </div>
 
-          {/* Give 5, get 5 — referral link */}
+          {/* Give 5, get 5 — referral link, share buttons, stats */}
           {user && (
             <div className="card-dark p-6 border border-purple-500/30 bg-purple-950/20">
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -241,14 +271,14 @@ export default function EnhancedBilling() {
                 <div className="flex items-center gap-2">
                   <input
                     readOnly
-                    value={`${window.location.origin}/register?ref=${user.id}`}
+                    value={refLink}
                     onFocus={e => e.currentTarget.select()}
                     className="input text-xs w-full sm:w-72 font-mono"
                     aria-label="Your referral link"
                   />
                   <button
                     onClick={() => {
-                      navigator.clipboard?.writeText(`${window.location.origin}/register?ref=${user.id}`).then(() => {
+                      navigator.clipboard?.writeText(refLink).then(() => {
                         setRefCopied(true);
                         toast.success('Referral link copied', 'Share it!');
                         setTimeout(() => setRefCopied(false), 2500);
@@ -260,6 +290,59 @@ export default function EnhancedBilling() {
                   </button>
                 </div>
               </div>
+
+              {/* One-tap share targets */}
+              <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-white/5">
+                <span className="text-xs text-ink-400 mr-1">Share your link:</span>
+                {shareTargets.map(t => {
+                  const Icon = t.icon;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => shareReferral(t)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-xs text-ink-200 hover:text-white hover:bg-white/10 transition"
+                    >
+                      <Icon className="w-3.5 h-3.5" /> {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Referral stats */}
+              {(refStatsLoading || refStats) && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                  <div className="rounded-xl bg-white/5 border border-white/10 p-3">
+                    <p className="text-lg font-bold text-white flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-purple-400" />
+                      {refStatsLoading ? '…' : refStats!.signups}
+                    </p>
+                    <p className="text-[11px] text-ink-400 mt-0.5">Signups via your link</p>
+                  </div>
+                  <div className="rounded-xl bg-white/5 border border-white/10 p-3">
+                    <p className="text-lg font-bold text-white flex items-center gap-1.5">
+                      <UserCheck className="w-4 h-4 text-purple-400" />
+                      {refStatsLoading ? '…' : refStats!.activated}
+                    </p>
+                    <p className="text-[11px] text-ink-400 mt-0.5">Made their first purchase</p>
+                  </div>
+                  <div className="rounded-xl bg-white/5 border border-purple-500/30 p-3">
+                    <p className="text-lg font-bold text-purple-300 flex items-center gap-1.5">
+                      <Zap className="w-4 h-4" />
+                      {refStatsLoading ? '…' : `${refStats!.pendingCredits} ⚡`}
+                    </p>
+                    <p className="text-[11px] text-ink-400 mt-0.5">
+                      Pending payout{refStats && refStats.pending > 0 ? ` — ${refStats.pending} friend${refStats.pending === 1 ? '' : 's'} yet to buy` : ''}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white/5 border border-white/10 p-3">
+                    <p className="text-lg font-bold text-emerald-400 flex items-center gap-1.5">
+                      <Zap className="w-4 h-4" />
+                      {refStatsLoading ? '…' : `${refStats!.earnedCredits} ⚡`}
+                    </p>
+                    <p className="text-[11px] text-ink-400 mt-0.5">Earned from referrals</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

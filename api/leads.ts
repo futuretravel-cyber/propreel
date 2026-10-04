@@ -81,6 +81,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ── GET /api/leads?action=referral_stats&user_id=… ────────────────────
+  // Give-5-get-5 numbers for the billing page: signups attributed to this
+  // user, how many have made their first purchase (referrer already paid),
+  // and the pending/earned payout totals. The session cookie must belong to
+  // the requested user — these are private growth numbers.
+  if (req.method === 'GET' && (req.query.action as string) === 'referral_stats') {
+    try {
+      const userId = req.query.user_id as string;
+      if (!userId) return res.status(400).json({ error: 'user_id is required' });
+
+      const { getTokenFromRequest, getSessionUser } = await import('../lib/auth');
+      const sessionUser = await getSessionUser(getTokenFromRequest(req));
+      if (!sessionUser || sessionUser.id !== userId) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+
+      // The users table has no GSI on referredBy, so filter server-side in a
+      // paginated scan (returns only matches; the table is small).
+      const { scanItems, TABLES: T } = await import('../lib/db');
+      const { REFERRAL_FRIEND_CREDITS, REFERRAL_PAYOUT_CREDITS } = await import('../lib/referral');
+      const referred = await scanItems<any>(T.USERS, {
+        filter: { expression: 'referredBy = :rid', values: { ':rid': userId } },
+      });
+      const activated = referred.filter((u: any) => u.referralPaid === true).length;
+      const signups = referred.length;
+      const pending = signups - activated;
+
+      return res.status(200).json({
+        success: true,
+        signups,
+        activated,
+        pending,
+        pendingCredits: pending * REFERRAL_PAYOUT_CREDITS,
+        earnedCredits: activated * REFERRAL_PAYOUT_CREDITS,
+        friendCredits: REFERRAL_FRIEND_CREDITS,
+        payoutCredits: REFERRAL_PAYOUT_CREDITS,
+      });
+    } catch (e) {
+      console.error('Referral stats error:', e);
+      return res.status(500).json({ error: 'Failed to load referral stats' });
+    }
+  }
+
   // ── GET /api/leads?action=status — public system health (no secrets) ──
   // Feeds the /status page: cron freshness from the settings table + a real
   // S3 HeadBucket (verifies credentials and bucket reachability). The API

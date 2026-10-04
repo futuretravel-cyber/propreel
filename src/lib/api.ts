@@ -65,6 +65,19 @@ export interface CreditReportData {
   creditsByFeature: { videoGeneration: number; imageEditing: number; flashHead: number; other: number };
 }
 
+export interface ReferralStats {
+  /** Friends who signed up with this user's ?ref= link */
+  signups: number;
+  /** …of whom made their first purchase (referrer has been paid) */
+  activated: number;
+  /** Signups not yet purchased — each still owes the referrer a payout */
+  pending: number;
+  pendingCredits: number;
+  earnedCredits: number;
+  friendCredits: number;
+  payoutCredits: number;
+}
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({} as any));
@@ -160,6 +173,22 @@ export const PropReelAPI = {
       totalPurchased: data.total_credits_purchased ?? 0,
       transactions,
       creditsByFeature,
+    };
+  },
+
+  // ── Give-5-get-5 referral stats (billing page) ──────────────────────
+  async referralStats(userId: string): Promise<ReferralStats> {
+    const data = await j<any>(
+      await fetch(`${API_BASE}/api/leads?action=referral_stats&user_id=${encodeURIComponent(userId)}`)
+    );
+    return {
+      signups: data.signups ?? 0,
+      activated: data.activated ?? 0,
+      pending: data.pending ?? 0,
+      pendingCredits: data.pendingCredits ?? 0,
+      earnedCredits: data.earnedCredits ?? 0,
+      friendCredits: data.friendCredits ?? 5,
+      payoutCredits: data.payoutCredits ?? 5,
     };
   },
 
