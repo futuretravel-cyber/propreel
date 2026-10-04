@@ -108,7 +108,7 @@ image = modal.Image.debian_slim().apt_install(
     "fal-client==1.0.3",
     "fastapi",
     "pydantic"
-).add_local_file("image_prompts.py", remote_path="/root/image_prompts.py")
+).add_local_file(str(Path(__file__).parent / "image_prompts.py"), remote_path="/root/image_prompts.py")
 
 
 def _friendly_fal_error(e: Exception) -> str:
