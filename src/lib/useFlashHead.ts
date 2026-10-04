@@ -5,6 +5,7 @@ import { PropReelAPI } from './api';
 
 const FLASHHEAD_COST = 8;
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+import { workerHeaders } from './workerAuth';
 
 const POLL_INTERVAL_MS = 5000;
 const MAX_WAIT_MS = 10 * 60 * 1000; // fal FlashHead takes ~4–6 min for real scripts
@@ -94,7 +95,7 @@ export function useFlashHead() {
     try {
       const submitRes = await fetch(`${MODAL_ENDPOINT}/flashhead`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
         body: JSON.stringify({
           profile_image_url: publicUrl,
           voiceover_text: opts.voiceoverText,
@@ -130,7 +131,7 @@ export function useFlashHead() {
       const deadline = Date.now() + MAX_WAIT_MS;
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-        const statusRes = await fetch(`${MODAL_ENDPOINT}/flashhead_status?job_id=${encodeURIComponent(jobId)}`);
+        const statusRes = await fetch(`${MODAL_ENDPOINT}/flashhead_status?job_id=${encodeURIComponent(jobId)}`, { headers: await workerHeaders() });
         if (!statusRes.ok) continue; // transient — retry until deadline
         const job = await statusRes.json();
         setJobStatus(String(job.status || ''));

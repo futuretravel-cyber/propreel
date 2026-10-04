@@ -1,5 +1,6 @@
 import { TABLES, scanItems, updateWhere, updateItem } from './db';
 import { addCredits } from './userService';
+import { workerTokenHeaders } from './workerToken';
 
 const WORKER_URL = process.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
@@ -30,7 +31,7 @@ async function lookupJob(kind: string | undefined, jobId: string | undefined): P
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
-      const res = await fetch(`${WORKER_URL}${path}${encodeURIComponent(jobId)}`, { signal: ctrl.signal });
+      const res = await fetch(`${WORKER_URL}${path}${encodeURIComponent(jobId)}`, { signal: ctrl.signal, headers: workerTokenHeaders() });
       if (!res.ok) return null; // 404 etc → unknown outcome
       const data = await res.json();
       return {

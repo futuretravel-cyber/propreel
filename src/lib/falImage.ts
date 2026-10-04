@@ -26,6 +26,8 @@ export interface FalEditResult {
   guidanceUsed: number;
 }
 
+import { workerHeaders } from './workerAuth';
+
 const POLL_INTERVAL_MS = 3000;
 const MAX_WAIT_MS = 8 * 60 * 1000; // 8 minutes — fal queues can be long; UI shows live status
 
@@ -33,7 +35,7 @@ export async function falEditImage(params: FalEditParams): Promise<FalEditResult
   // 1) Submit the async job
   const submitRes = await fetch(`${MODAL_ENDPOINT}/edit_image`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
     body: JSON.stringify({
       image_url: params.imageUrl,
       preset_id: params.presetId,
@@ -68,7 +70,7 @@ export async function falEditImage(params: FalEditParams): Promise<FalEditResult
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 
-    const statusRes = await fetch(`${MODAL_ENDPOINT}/edit_status?edit_id=${encodeURIComponent(editId)}`);
+    const statusRes = await fetch(`${MODAL_ENDPOINT}/edit_status?edit_id=${encodeURIComponent(editId)}`, { headers: await workerHeaders() });
     if (!statusRes.ok) {
       // Transient 404/5xx right after submit — retry until deadline
       continue;

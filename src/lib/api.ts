@@ -198,9 +198,10 @@ export const PropReelAPI = {
     fields: Record<string, any>,
     images: string[] = []
   ): Promise<string> {
+    const { workerHeaders } = await import('./workerAuth');
     const res = await fetch(`${MODAL_ENDPOINT}/generate_text`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
       body: JSON.stringify({ kind, fields, images }),
     });
     if (!res.ok) {

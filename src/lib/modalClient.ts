@@ -7,6 +7,8 @@
 
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
+import { workerHeaders } from './workerAuth';
+
 export interface RenderVideoParams {
   record_id: string;
   tier: string;
@@ -89,6 +91,7 @@ export const ModalAPI = {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
+          ...(await workerHeaders()),
         },
         body: JSON.stringify(params),
       });
@@ -114,6 +117,7 @@ export const ModalAPI = {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
+          ...(await workerHeaders()),
         },
         body: JSON.stringify(params),
       });
@@ -139,6 +143,7 @@ export const ModalAPI = {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
+          ...(await workerHeaders()),
         },
         body: JSON.stringify(params),
       });
@@ -160,7 +165,7 @@ export const ModalAPI = {
    */
   async getImagePresets(): Promise<any[]> {
     try {
-      const response = await fetch(`${MODAL_ENDPOINT}/get_image_presets`);
+      const response = await fetch(`${MODAL_ENDPOINT}/get_image_presets`, { headers: await workerHeaders() });
 
       if (!response.ok) {
         throw new Error('Failed to get image presets');

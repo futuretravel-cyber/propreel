@@ -36,6 +36,7 @@ import HomePage from './components/HomePage';
 import { PublicLayout } from './components/PublicLayout';
 import { track } from './lib/analytics';
 import { RouteSEO } from './lib/seo';
+import { workerHeaders } from './lib/workerAuth';
 
 // Code-split the heavy dashboard sections (recharts, framer-motion, admin UI)
 // so the marketing site loads without them.
@@ -2156,7 +2157,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
       // 3) Start the async render job
       const response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
         body: JSON.stringify({
           record_id: recordId,
           tier,
@@ -2194,7 +2195,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         while (Date.now() < deadline) {
           await new Promise(r => setTimeout(r, 5000));
           try {
-            const s = await fetch(`${RENDER_ENDPOINT}/render_status?record_id=${encodeURIComponent(result.record_id)}`).then(r => r.json());
+            const s = await fetch(`${RENDER_ENDPOINT}/render_status?record_id=${encodeURIComponent(result.record_id)}`, { headers: await workerHeaders() }).then(r => r.json());
             setRenderStatus(String(s.status || '').toLowerCase());
             if (s.status === 'completed' && s.video_url) {
               finalUrl = s.video_url;

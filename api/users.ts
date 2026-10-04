@@ -817,6 +817,25 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
   try {
     const body = req.body || {};
 
+    // ── GET/POST worker_token — short-lived HMAC token for the Modal render
+    // worker (sent as X-PropReel-Token). Shared secret RENDER_API_TOKEN:
+    // this endpoint signs "v1.<exp>.<uid>", the worker verifies signature and
+    // a 10-minute expiry. Session is optional — anonymous callers get 'anon' —
+    // but minting only ever happens through here, so the worker URL in the
+    // public bundle is useless to direct scrapers.
+    if (action === 'worker_token') {
+      if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const secret = process.env.RENDER_API_TOKEN;
+      if (!secret) return res.status(500).json({ error: 'RENDER_API_TOKEN is not configured' });
+      const { createHmac } = await import('crypto');
+      const sessionUser = await getSessionUser(getTokenFromRequest(req));
+      const uid = sessionUser?.id || 'anon';
+      const exp = Math.floor(Date.now() / 1000) + 600; // 10 minutes
+      const msg = `v1.${exp}.${uid}`;
+      const sig = createHmac('sha256', secret).update(msg).digest('base64url');
+      return res.status(200).json({ token: `${msg}.${sig}`, expiresAt: exp * 1000 });
+    }
+
     // ── POST auth_register ───────────────────────────────────────────
     if (action === 'auth_register') {
       if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -1199,7 +1218,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.action === 'delete' && req.method === 'POST') {
     return deleteAccount(req, res);
   }
-  if (String(req.query.action || '').startsWith('auth_')) {
+  if (String(req.query.action || '').startsWith('auth_') || req.query.action === 'worker_token') {
     return authRoutes(req, res, String(req.query.action));
   }
   if (req.method === 'GET' && req.query.action === 'admin_stats') {

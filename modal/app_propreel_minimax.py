@@ -11,6 +11,10 @@ This Modal app handles:
 import modal
 import os
 import json
+import time
+import hmac
+import hashlib
+import base64
 import requests
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
@@ -35,6 +39,62 @@ web_app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Worker auth: every endpoint except /health and /probe requires ─────────
+# X-PropReel-Token = "v1.<exp_unix>.<uid>.<base64url hmac_sha256(secret, "v1.<exp>.<uid>")>"
+# minted by the PropReel Vercel API (RENDER_API_TOKEN, shared via the
+# render-auth Modal secret). The browser holds only short-lived signed
+# tokens, so the worker URL in the public bundle is useless to scrapers.
+# If the secret is not configured the check is SKIPPED (loud warning) so a
+# deploy without the secret can never take renders down.
+_token_header = "X-PropReel-Token"
+_token_allow_paths = {"/health", "/probe", "/docs", "/openapi.json", "/favicon.ico"}
+_warned_no_secret = False
+
+
+def _token_error(value: Optional[str]) -> Optional[str]:
+    global _warned_no_secret
+    secret = os.environ.get("RENDER_API_TOKEN", "")
+    if not secret:
+        if not _warned_no_secret:
+            print("[auth] RENDER_API_TOKEN not set — worker auth DISABLED (open access)")
+            _warned_no_secret = True
+        return None
+    if not value:
+        return "missing X-PropReel-Token"
+    parts = value.split(".")
+    if len(parts) != 4 or parts[0] != "v1":
+        return "malformed token"
+    _, exp_s, _uid, sig = parts
+    try:
+        exp = int(exp_s)
+    except ValueError:
+        return "malformed token expiry"
+    now = int(time.time())
+    if exp < now or exp > now + 900:  # minted with 600s TTL, 15 min acceptance window
+        return "token expired"
+    msg = f"v1.{exp_s}.{_uid}".encode()
+    expected = hmac.new(secret.encode(), msg, hashlib.sha256).digest()
+    pad = "=" * (-len(sig) % 4)
+    try:
+        got = base64.urlsafe_b64decode(sig + pad)
+    except Exception:
+        return "bad token signature"
+    if not hmac.compare_digest(got, expected):
+        return "bad token signature"
+    return None
+
+
+@web_app.middleware("http")
+async def require_worker_token(request: Request, call_next):
+    # OPTIONS is the CORS preflight (handled below by CORSMiddleware).
+    if request.method == "OPTIONS" or request.url.path in _token_allow_paths:
+        return await call_next(request)
+    err = _token_error(request.headers.get(_token_header))
+    if err:
+        # This middleware wraps CORS, so mirror the CORS header ourselves.
+        return JSONResponse(status_code=401, content={"error": err}, headers={"Access-Control-Allow-Origin": "*"})
+    return await call_next(request)
 
 # Define the image with required dependencies
 image = modal.Image.debian_slim().apt_install(
@@ -1479,7 +1539,7 @@ async def api_get_image_presets():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Mount the FastAPI app to Modal
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials")])
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("render-auth")])
 @modal.asgi_app()
 def web():
     """Mount FastAPI app as Modal web endpoint"""
