@@ -102,6 +102,15 @@ function setCanonical(href: string) {
   el.href = href;
 }
 
+/** ` /dashboard/billing ` -> `Billing` — readable tab titles for app areas. */
+function humanize(pathname: string) {
+  const parts = pathname.split('/').filter(Boolean);
+  if (!parts.length) return SUFFIX;
+  const seg =
+    [...parts].reverse().find(p => !p.includes('_') && !/^\d+$/.test(p)) ?? parts[parts.length - 1];
+  return seg.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export function RouteSEO() {
   const { pathname } = useLocation();
 
@@ -109,7 +118,7 @@ export function RouteSEO() {
     const entry = ROUTES[pathname];
     const noindex = entry?.noindex || NOINDEX_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'));
     const url = `${SITE}${pathname}`;
-    const title = entry?.title || `Page not found | ${SUFFIX}`;
+    const title = entry?.title || (noindex ? `${humanize(pathname)} | ${SUFFIX}` : `Page not found | ${SUFFIX}`);
     const description =
       entry?.description || 'The page you were looking for does not exist on PropReel.';
 
