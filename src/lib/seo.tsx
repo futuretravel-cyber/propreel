@@ -50,6 +50,11 @@ const ROUTES: Record<string, SeoEntry> = {
     description:
       'Watch a step-by-step tutorial: upload listing photos, pick a tier and voice, and render a narrated property reel in minutes.',
   },
+  '/blog': {
+    title: `Blog — Property marketing tips for SA estate agents | ${SUFFIX}`,
+    description:
+      'Practical guides for South African estate agents: property video marketing, social media playbooks, virtual staging, WhatsApp marketing and AI tools.',
+  },
   '/status': {
     title: `System status | ${SUFFIX}`,
     description: 'Live uptime and render-pipeline status for the PropReel platform.',
@@ -115,23 +120,54 @@ export function RouteSEO() {
   const { pathname } = useLocation();
 
   useEffect(() => {
+    const apply = (title: string, description: string, noindex: boolean) => {
+      document.title = title;
+      setMeta('meta[name="description"]', 'name', 'description', description);
+      setCanonical(`${SITE}${pathname}`);
+
+      setMeta('meta[property="og:title"]', 'property', 'og:title', title);
+      setMeta('meta[property="og:description"]', 'property', 'og:description', description);
+      setMeta('meta[property="og:url"]', 'property', 'og:url', `${SITE}${pathname}`);
+      setMeta('meta[name="twitter:title"]', 'name', 'twitter:title', title);
+      setMeta('meta[name="twitter:description"]', 'name', 'twitter:description', description);
+      setMeta('meta[name="robots"]', 'name', 'robots', noindex ? 'noindex, nofollow' : 'index, follow');
+    };
+
     const entry = ROUTES[pathname];
     const noindex = entry?.noindex || NOINDEX_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'));
-    const url = `${SITE}${pathname}`;
-    const title = entry?.title || (noindex ? `${humanize(pathname)} | ${SUFFIX}` : `Page not found | ${SUFFIX}`);
-    const description =
-      entry?.description || 'The page you were looking for does not exist on PropReel.';
 
-    document.title = title;
-    setMeta('meta[name="description"]', 'name', 'description', description);
-    setCanonical(url);
+    if (entry) {
+      apply(entry.title, entry.description, noindex);
+      return;
+    }
 
-    setMeta('meta[property="og:title"]', 'property', 'og:title', title);
-    setMeta('meta[property="og:description"]', 'property', 'og:description', description);
-    setMeta('meta[property="og:url"]', 'property', 'og:url', url);
-    setMeta('meta[name="twitter:title"]', 'name', 'twitter:title', title);
-    setMeta('meta[name="twitter:description"]', 'name', 'twitter:description', description);
-    setMeta('meta[name="robots"]', 'name', 'robots', noindex ? 'noindex, nofollow' : 'index, follow');
+    // /blog/<slug> — post meta lives in the blog chunk, so resolve it via
+    // dynamic import; this keeps post titles/descriptions out of the main bundle.
+    const blogMatch = pathname.match(/^\/blog\/([^/]+)\/?$/);
+    if (blogMatch) {
+      apply(`Blog | ${SUFFIX}`, 'Property marketing guides for South African estate agents.', false);
+      let cancelled = false;
+      import('../blog/posts')
+        .then(m => {
+          if (cancelled) return;
+          const post = m.getPost(decodeURIComponent(blogMatch[1]));
+          if (post) {
+            apply(`${post.title} | ${SUFFIX}`, post.description, false);
+          } else {
+            apply(`Article not found | ${SUFFIX}`, 'That blog post does not exist on PropReel.', true);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    apply(
+      noindex ? `${humanize(pathname)} | ${SUFFIX}` : `Page not found | ${SUFFIX}`,
+      'The page you were looking for does not exist on PropReel.',
+      noindex
+    );
   }, [pathname]);
 
   return null;

@@ -21,6 +21,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           </Link>
           <div className="hidden md:flex items-center gap-8">
             <Link to="/pricing" className="text-sm font-medium text-ink-300 hover:text-white transition">Pricing</Link>
+            <Link to="/blog" className="text-sm font-medium text-ink-300 hover:text-white transition">Blog</Link>
             <Link to="/reviews" className="text-sm font-medium text-ink-300 hover:text-white transition">Reviews</Link>
             <Link to="/about" className="text-sm font-medium text-ink-300 hover:text-white transition">About</Link>
             <Link to="/contact" className="text-sm font-medium text-ink-300 hover:text-white transition">Contact</Link>
@@ -53,6 +54,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <div className="md:hidden border-t border-white/5 bg-ink-950/95 backdrop-blur-xl p-4 space-y-1">
             {[
               ['/pricing', 'Pricing'],
+              ['/blog', 'Blog'],
               ['/reviews', 'Reviews'],
               ['/about', 'About'],
               ['/contact', 'Contact'],
@@ -96,6 +98,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               <h4 className="font-semibold text-white mb-3">Company</h4>
               <div className="space-y-2 text-sm">
                 <Link to="/about" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">About</Link>
+                <Link to="/blog" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Blog</Link>
                 <Link to="/contact" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Contact</Link>
                 <Link to="/dashboard/agency" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Agency Login</Link>
               </div>

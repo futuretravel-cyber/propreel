@@ -71,6 +71,8 @@ const ResetPasswordPage = lazy(() => import('./pages/AuthEmailPages').then(m => 
 const PaymentPage = lazy(() => import('./pages/PaymentPage'));
 const StatusPage = lazy(() => import('./pages/StatusPage'));
 const TutorialVideoPage = lazy(() => import('./pages/TutorialVideoPage'));
+const BlogIndexPage = lazy(() => import('./pages/BlogIndexPage'));
+const BlogPostPage = lazy(() => import('./pages/BlogPostPage'));
 const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 const TermsOfServicePage = lazy(() => import('./pages/TermsOfServicePage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
@@ -3532,6 +3534,8 @@ function AppRoutes() {
       <Route path="/dpa" element={<DataProcessingAgreementPage />} />
       <Route path="/tutorial" element={<TutorialVideoPage />} />
       <Route path="/status" element={<PublicLayout><StatusPage /></PublicLayout>} />
+      <Route path="/blog" element={<BlogIndexPage />} />
+      <Route path="/blog/:slug" element={<BlogPostPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/confirm-email" element={<ConfirmEmailPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
