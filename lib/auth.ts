@@ -87,7 +87,14 @@ export async function getSessionUser(token: string | undefined | null): Promise<
       return null;
     }
     const user = await getItem<User>(TABLES.USERS, { id: row.userId });
-    return user || null;
+    if (!user) return null;
+    // Temporary (trial) account soft-deleted at day 7: existing sessions are
+    // treated as dead so stale cookies can't outlive the trial. The nightly
+    // sweep also revokes the rows themselves — this closes the window before
+    // it runs. Re-login (with reactivate) re-enters legitimately.
+    const { isTrialLocked } = await import('./trial');
+    if (isTrialLocked(user)) return null;
+    return user;
   } catch (e) {
     console.error('Session lookup failed:', e);
     return null;

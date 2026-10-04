@@ -20,14 +20,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('Expiry notifications job started...');
   const started = Date.now();
 
-  // TODO: Implement email notifications for users with expiring credits
-  // This would integrate with an email service (SendGrid, AWS SES, etc.)
+  // Daily 9am: one "days left on your trial" email per temporary account per
+  // UTC day (sendTrialReminders dedupes via trialLastReminderDate and skips
+  // subscribed / opted-out / already-expired users).
+  let summary = 'trialError';
+  let sent = 0;
+  try {
+    const { sendTrialReminders } = await import('../../lib/trial');
+    const r = await sendTrialReminders();
+    sent = r.sent;
+    summary = `scanned=${r.scanned} sent=${r.sent} skipped=${r.skipped} failed=${r.failed}`;
+  } catch (e) {
+    console.error('Trial reminders failed (non-fatal):', e);
+    summary = `trialError=${String((e as any)?.message || e).slice(0, 120)}`;
+  }
 
-  await recordCronRun('send-expiry-notifications', 'success', Date.now() - started, 'no-op — email integration not built yet');
+  await recordCronRun('send-expiry-notifications', 'success', Date.now() - started, summary);
 
   return res.status(200).json({
     success: true,
-    message: 'Expiry notifications job completed (not yet implemented)',
-    sent: 0,
+    message: 'Trial reminder emails processed',
+    sent,
+    detail: summary,
   });
 }

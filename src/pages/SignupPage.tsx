@@ -26,6 +26,9 @@ export default function SignupPage() {
   // Remember referral code from ?ref= across the multi-step flow
   const referralCode = searchParams.get('ref') || '';
   const [isAgency, setIsAgency] = useState(false);
+  // 7-day temporary account (individual agents only) — the standard 5-credit
+  // signup bonus doubles as their trial fuel; no card required.
+  const [startTrial, setStartTrial] = useState(true);
   const [dial, setDial] = useState('+27');
   const [formData, setFormData] = useState({
     fullName: '', email: '', password: '', phone: '',
@@ -78,6 +81,10 @@ export default function SignupPage() {
   };
 
   const paymentUrl = `/payment?plan=${selectedPlan}&cycle=${cycle}&price=${price}`;
+  // Trial accounts skip checkout entirely — post-auth lands on the dashboard
+  // (they can subscribe later from the in-app banner or Billing).
+  const trialSelected = !isAgency && startTrial;
+  const postAuthUrl = trialSelected ? '/dashboard' : paymentUrl;
   // Combine the selected dial code with the number; if the user typed an
   // international number (+…) themselves, strip that prefix so it isn't
   // double-dialled.
@@ -93,9 +100,9 @@ export default function SignupPage() {
     setEmailFailed('');
     try {
       // Where the confirmation-email link should land: straight on this
-      // plan's payment page, already signed in.
-      const emailRedirectTo = `${window.location.origin}${paymentUrl}`;
-      import('../lib/postAuth').then(m => m.setPostAuthRedirect(paymentUrl));
+      // plan's payment page, already signed in — or the dashboard for a trial.
+      const emailRedirectTo = `${window.location.origin}${postAuthUrl}`;
+      import('../lib/postAuth').then(m => m.setPostAuthRedirect(postAuthUrl));
       const result = await register({
         email: formData.email,
         password: formData.password,
@@ -112,8 +119,9 @@ export default function SignupPage() {
         companyAddress: formData.companyAddress,
         referralCode: referralCode || undefined,
         enableTwoFactor: formData.twoStep,
+        startTrial: trialSelected || undefined,
       });
-      track('signup_completed', { plan: selectedPlan, cycle });
+      track('signup_completed', { plan: selectedPlan, cycle, trial: trialSelected });
       if (result.needsConfirmation) {
         // Email confirmation required (mailer_autoconfirm=false): there is no
         // session yet, so we can't go to the payment page — show the
@@ -122,7 +130,7 @@ export default function SignupPage() {
         toast.success(`We sent a confirmation link to ${formData.email}`, 'Confirm your email');
       } else {
         toast.success(`Welcome! You've received ${SIGNUP_BONUS} free credits!`, 'Account Created');
-        navigate(paymentUrl);
+        navigate(postAuthUrl);
       }
     } catch (err: any) {
       const msg = err.message || 'Registration failed';
@@ -150,7 +158,7 @@ export default function SignupPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: formData.email,
-          redirect: `${window.location.origin}${paymentUrl}`,
+          redirect: `${window.location.origin}${postAuthUrl}`,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -327,6 +335,16 @@ export default function SignupPage() {
                 </div>
               )}
 
+              {!isAgency && (
+                <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-purple-950/30 border border-purple-500/20">
+                  <input type="checkbox" checked={startTrial} onChange={e => setStartTrial(e.target.checked)} className="mt-1 w-4 h-4 rounded" />
+                  <span className="text-xs text-ink-300">
+                    <span className="text-white font-semibold">Start my 7-day free trial.</span>{' '}
+                    Get {SIGNUP_BONUS} credits to test PropReel — no card needed. Daily reminders included; if you haven't subscribed by day 7 the temporary account is deleted (your work is kept 30 days in case you upgrade later).
+                  </span>
+                </label>
+              )}
+
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" checked={formData.agreed} onChange={e => setFormData({...formData, agreed: e.target.checked})} className="mt-1 w-4 h-4 rounded" />
                 <span className="text-xs text-ink-400">I understand that PropReel uses AI technology, which may produce imperfect results, and I agree that spent credits are non-refundable.</span>
@@ -342,7 +360,7 @@ export default function SignupPage() {
 
               <div className="flex gap-3">
                 <button type="button" onClick={() => setStep('plan')} className="btn btn-secondary"><ArrowLeft className="w-4 h-4" /> Back</button>
-                <button type="submit" disabled={loading} className="btn btn-primary flex-1">{loading ? 'Creating account...' : 'Continue to Payment'}</button>
+                <button type="submit" disabled={loading} className="btn btn-primary flex-1">{loading ? 'Creating account...' : trialSelected ? 'Start my free trial' : 'Continue to Payment'}</button>
               </div>
             </form>
 
@@ -384,8 +402,17 @@ export default function SignupPage() {
             <div className="bg-ink-800/50 rounded-xl p-4 mb-6 text-left">
               <ol className="space-y-2 text-sm text-ink-300 list-decimal list-inside">
                 <li>Click the link in the email to confirm your address</li>
-                <li>You'll land on the {plan.name} payment page, signed in</li>
-                <li>Pay with Paystack → straight to your dashboard, where a welcome message and a short tour are waiting</li>
+                {trialSelected ? (
+                  <>
+                    <li>You'll land on your dashboard with {SIGNUP_BONUS} free trial credits</li>
+                    <li>Upgrade any time from the trial banner — everything carries over</li>
+                  </>
+                ) : (
+                  <>
+                    <li>You'll land on the {plan.name} payment page, signed in</li>
+                    <li>Pay with Paystack → straight to your dashboard, where a welcome message and a short tour are waiting</li>
+                  </>
+                )}
               </ol>
               <p className="text-xs text-ink-500 mt-3">
                 Your {SIGNUP_BONUS} free credits are added the moment your account is created.

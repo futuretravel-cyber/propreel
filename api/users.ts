@@ -971,7 +971,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
     // ── POST auth_register ───────────────────────────────────────────
     if (action === 'auth_register') {
       if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-      const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect, enableTwoFactor = false, referralCode } = body;
+      const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect, enableTwoFactor = false, referralCode, startTrial = false } = body;
       if (!email || !fullName) return res.status(400).json({ error: 'Missing email or fullName' });
       if (!EMAIL_RE.test(String(email))) return res.status(400).json({ error: 'Enter a valid email address' });
       if (typeof password !== 'string' || password.length < 8) {
@@ -996,6 +996,16 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         emailVerified: false,
         ...(enableTwoFactor ? { twoFactorOptIn: true } : {}),
       } as any);
+      // Temporary account (opt-in): 7-day trial clock on top of the standard
+      // 5-credit signup bonus — no extra credits. Only set when the row is
+      // new or has never had a trial, so a re-register can't reset expiry.
+      if (startTrial) {
+        const freshBefore = await getUser(user.id);
+        if (!freshBefore?.trialExpiresAt) {
+          const { startTrial: beginTrial } = await import('../lib/trial');
+          await beginTrial(user.id);
+        }
+      }
       // Give 5, get 5: attribute to ?ref= and grant the friend's +5 now; the
       // referrer's +5 is paid on this account's first purchase (lib/referral).
       const { attributeReferral } = await import('../lib/referral');
@@ -1074,6 +1084,23 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
           error: 'Confirm your email first — open the confirmation link we sent you.',
           code: 'EMAIL_NOT_CONFIRMED',
         });
+      }
+
+      // Expired temporary account: sign-in is locked until they subscribe.
+      // reactivate:true (correct password already verified above) lets them
+      // back in to browse/pay — rendering stays blocked by deductCredits.
+      {
+        const { isTrialLocked } = await import('../lib/trial');
+        if (isTrialLocked(user as any)) {
+          if (body.reactivate !== true) {
+            return res.status(403).json({
+              error: 'Your 7-day trial has ended. Sign in again with "Keep browsing" to review your account, or subscribe to restore full access.',
+              code: 'TRIAL_EXPIRED',
+            });
+          }
+          await updateUser(user.id, { trialReactivatedAt: new Date().toISOString() } as any);
+          user.trialReactivatedAt = new Date().toISOString();
+        }
       }
 
       // Two-step verification: password OK, but the authenticator code is
@@ -1212,6 +1239,15 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
           user = { ...existing, emailVerified: true };
         }
 
+        // 3b) Expired temporary account → send back to login with a clear reason
+        //     (the OAuth state carries no reactivate flag; password login does).
+        {
+          const { isTrialLocked } = await import('../lib/trial');
+          if (isTrialLocked(user as any)) {
+            return res.redirect(302, '/login?trial=expired');
+          }
+        }
+
         // 4) First-party session + land on the requested destination
         const token = await createSession(user.id);
         res.setHeader('Set-Cookie', [sessionCookie(token, req), clearOauthCookie]);
@@ -1317,6 +1353,19 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       }
       if (!verifyTotp(pendingUser.twoFactorSecret || '', body.code)) {
         return res.status(401).json({ error: 'Invalid code — check your authenticator app' });
+      }
+      // Trial lock mirrors auth_login: blocked unless explicitly reactivating.
+      {
+        const { isTrialLocked } = await import('../lib/trial');
+        if (isTrialLocked(pendingUser as any)) {
+          if (body.reactivate !== true) {
+            return res.status(403).json({
+              error: 'Your 7-day trial has ended. Sign in again with "Keep browsing" to review your account, or subscribe to restore full access.',
+              code: 'TRIAL_EXPIRED',
+            });
+          }
+          await updateUser(pendingUser.id, { trialReactivatedAt: new Date().toISOString() } as any);
+        }
       }
       await updateUser(pendingUser.id, { twoFactorPendingToken: null, twoFactorPendingExpires: null } as any);
       const sessionToken = await createSession(pendingUser.id);

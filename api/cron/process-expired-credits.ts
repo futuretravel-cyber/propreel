@@ -77,11 +77,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mediaSummary = `mediaError=${String((mediaErr as any)?.message || mediaErr).slice(0, 120)}`;
     }
 
+    // Same nightly slot: temporary (trial) accounts — soft-delete trials that
+    // hit day 7 without subscribing, convert stray trial fields on subscribed
+    // users, and purge rows whose trial expired >30 days ago (no subscription).
+    let trialSummary = 'trialError';
+    try {
+      const { runTrialSweep } = await import('../../lib/trial');
+      const trial = await runTrialSweep();
+      trialSummary = `trialSoftDeleted=${trial.softDeleted} trialPurged=${trial.purged} trialEndedEmails=${trial.endedEmails} trialConverted=${trial.converted} trialErrors=${trial.errors}`;
+    } catch (trialErr) {
+      console.error('Trial sweep failed (non-fatal):', trialErr);
+      trialSummary = `trialError=${String((trialErr as any)?.message || trialErr).slice(0, 120)}`;
+    }
+
     await recordCronRun(
       'process-expired-credits',
       'success',
       Date.now() - started,
-      `processed=${result.processed} expiredCredits=${result.expiredAmount} ${reapSummary} ${topupSummary} ${dunningSummary} ${mediaSummary}`
+      `processed=${result.processed} expiredCredits=${result.expiredAmount} ${reapSummary} ${topupSummary} ${dunningSummary} ${mediaSummary} ${trialSummary}`
     );
 
     console.log(`Expired credits processing complete: ${result.processed} users, ${result.expiredAmount} credits expired; reaper: ${reapSummary}; topup: ${topupSummary}; dunning: ${dunningSummary}`);
@@ -99,6 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       processed: result.processed,
       expired_amount: result.expiredAmount,
+      trial_sweep: trialSummary,
       reaper: reap ? {
         stale: reap.stale,
         refunded: reap.refundedJobs,

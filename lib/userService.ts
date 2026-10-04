@@ -88,6 +88,14 @@ export interface User {
     reference: string;
     createdAt: string;
   };
+  /** Temporary ("trial") account — see lib/trial.ts. All optional; wiped on subscription. */
+  trialExpiresAt?: string;
+  /** Day-7 soft delete: sessions revoked, sign-in locked until reactivation/subscribe */
+  trialEndedAt?: string;
+  /** User re-entered with their password after expiry (browse-only, no rendering) */
+  trialReactivatedAt?: string;
+  /** Last day (YYYY-MM-DD UTC) a daily trial reminder email went out */
+  trialLastReminderDate?: string;
   /** Computed by the allocate-monthly-credits cron for the Billing page */
   monthlySummary?: {
     month: string;
@@ -264,6 +272,19 @@ export async function deductCredits(
   const useAgencyPool = pool === 'agency';
   const balanceExpr = useAgencyPool ? 'agencyPoolCredits' : 'credits';
   try {
+    // Expired trial accounts (even after reactivation) may not spend until
+    // they subscribe. Dynamic import keeps lib/trial.ts out of the import
+    // graph at module-load time.
+    const trial = await import('./trial');
+    const spendUser = await getUser(userId);
+    if (spendUser && trial.isTrialSpendingBlocked(spendUser)) {
+      return {
+        success: false,
+        newBalance: spendUser.credits,
+        error: 'Your free trial has ended — subscribe to a plan to keep rendering.',
+      };
+    }
+
     // Per-agent monthly cap (owner-set via the agency dashboard) — enforced
     // here so no caller can bypass it. Dynamic import avoids the load cycle
     // with lib/agency.
@@ -552,11 +573,18 @@ export async function createSubscription(
     ? new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()
     : new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString();
 
-  // Update user with subscription and credits
+  // Update user with subscription and credits. A subscription converts a
+  // temporary (trial) account into a normal one — every trial field is
+  // removed (undefined = REMOVE in updateItem) so the sweep/reminders/lock
+  // and the day-7 purge can never touch a paying account.
   await updateUser(userId, {
     subscription,
     credits,
     creditExpiries: [{ amount: credits, expiresAt: expiryDate, source: 'subscription' }],
+    trialExpiresAt: undefined,
+    trialEndedAt: undefined,
+    trialReactivatedAt: undefined,
+    trialLastReminderDate: undefined,
   });
 
   // Record transaction

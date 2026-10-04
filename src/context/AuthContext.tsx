@@ -109,6 +109,12 @@ export interface User {
   /** Two-step verification (authenticator app) */
   twoFactorEnabled?: boolean;
   twoFactorOptIn?: boolean;
+  /** Temporary ("trial") account — 7 days from signup, see lib/trial.ts */
+  trialExpiresAt?: string;
+  /** Day-7 soft delete (sessions revoked, sign-in locked) */
+  trialEndedAt?: string;
+  /** Re-entered after expiry with password — browse-only until they subscribe */
+  trialReactivatedAt?: string;
 }
 
 export interface Balance {
@@ -128,8 +134,8 @@ interface CreditContextType {
   isAdmin: boolean;
   isAgencyOwner: boolean;
   lowCreditWarning: 'none' | 'info' | 'warning' | 'critical';
-  login: (email: string, password: string) => Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }>;
-  loginWithTwoFactor: (email: string, token: string, code: string) => Promise<void>;
+  login: (email: string, password: string, opts?: { reactivate?: boolean }) => Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }>;
+  loginWithTwoFactor: (email: string, token: string, code: string, opts?: { reactivate?: boolean }) => Promise<void>;
   register: (data: RegisterData) => Promise<{ needsConfirmation: boolean }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -162,6 +168,8 @@ export interface RegisterData {
   referralCode?: string;
   /** Sign up with the two-step verification prompt (authenticator app) */
   enableTwoFactor?: boolean;
+  /** Opt in to the 7-day temporary account (5 free test credits, no card) */
+  startTrial?: boolean;
 }
 
 const CreditContext = createContext<CreditContextType | null>(null);
@@ -248,10 +256,10 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     return 'none';
   })();
 
-  const login = useCallback(async (email: string, password: string): Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }> => {
+  const login = useCallback(async (email: string, password: string, opts?: { reactivate?: boolean }): Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }> => {
     const data = await authFetch('auth_login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, ...(opts?.reactivate ? { reactivate: true } : {}) }),
     });
     // Two-step verification: no session yet — the caller prompts for the
     // 6-digit authenticator code and finishes with loginWithTwoFactor.
@@ -261,10 +269,10 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     return data.setupRequired ? { setupRequired: true } : {};
   }, [acceptPendingAgencyInvite]);
 
-  const loginWithTwoFactor = useCallback(async (email: string, token: string, code: string) => {
+  const loginWithTwoFactor = useCallback(async (email: string, token: string, code: string, opts?: { reactivate?: boolean }) => {
     const data = await authFetch('auth_2fa_verify', {
       method: 'POST',
-      body: JSON.stringify({ email, token, code }),
+      body: JSON.stringify({ email, token, code, ...(opts?.reactivate ? { reactivate: true } : {}) }),
     });
     setUser(data.user);
     acceptPendingAgencyInvite(data.user.id).catch(() => {});
@@ -287,6 +295,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
         redirect: data.emailRedirectTo,
         enableTwoFactor: data.enableTwoFactor,
         referralCode: data.referralCode,
+        startTrial: data.startTrial,
       }),
     });
 

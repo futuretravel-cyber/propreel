@@ -70,6 +70,13 @@ node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8'))"  # Vercel
   and are toggled from **Admin → Integrations** (feature flags) — set a real
   WhatsApp number there to switch it on. No work remains in code.
 - Contact page shows email + office only (placeholder phone number removed).
+- **7-day temporary accounts** (`lib/trial.ts` + signup opt-in checkbox):
+  uncommitted visitors can test the app with the 5-credit signup bonus for 7
+  days, no card. Daily "days left" email (9am cron) + dashboard banner;
+  day 7 without a subscription → soft delete (sessions revoked, sign-in
+  locked, one "trial ended" email), reactivates on password re-login
+  (browse-only until they subscribe); upgrading wipes the trial fields and a
+  30-day retention purge removes never-converted accounts.
 
 ### Housekeeping
 - This document rewritten to match reality.

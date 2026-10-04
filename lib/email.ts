@@ -155,6 +155,61 @@ export function resetPasswordTemplate(resetUrl: string): { subject: string; html
 }
 
 /**
+ * Daily trial reminder — sent by the 9am cron while a temporary account's
+ * 7-day clock is still ticking. Copy nudges the one conversion action:
+ * subscribe before the deadline or the account is deleted.
+ */
+export function trialReminderTemplate(
+  name: string,
+  daysLeft: number,
+  expiresAtIso: string,
+  upgradeUrl: string
+): { subject: string; html: string; text: string } {
+  const first = (name || '').split(' ')[0] || 'there';
+  const expires = new Date(expiresAtIso).toLocaleDateString('en-ZA', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Johannesburg',
+  });
+  const urgency = daysLeft <= 1;
+  const subject = urgency
+    ? 'Last day of your PropReel trial — subscribe to keep your account'
+    : `${daysLeft} days left on your PropReel trial`;
+  return {
+    subject,
+    html: layout(
+      urgency ? 'Your trial ends today' : `${daysLeft} days left on your trial`,
+      `<p>Hi ${first} — your PropReel temporary account has <b>${daysLeft} day${daysLeft === 1 ? '' : 's'}</b> remaining (expires <b>${expires}</b>).</p>
+       <p>Your ${SIGNUP_BONUS_CREDITS} test credits are still in your balance. Subscribe to a plan before the deadline and everything carries over — projects, branding and credits. After expiry the account is removed.</p>`,
+      { url: upgradeUrl, label: 'Choose a plan' }
+    ),
+    text: `Hi ${first} — your PropReel trial has ${daysLeft} day${daysLeft === 1 ? '' : 's'} left (expires ${expires}). Subscribe to keep your account: ${upgradeUrl}`,
+  };
+}
+
+/**
+ * One-shot email when the nightly sweep soft-deletes an unconverted trial
+ * (day 7). Tells them the account is locked, data is kept for 30 days, and
+ * how to reactivate by subscribing.
+ */
+export function trialEndedTemplate(
+  name: string,
+  loginUrl: string
+): { subject: string; html: string; text: string } {
+  const first = (name || '').split(' ')[0] || 'there';
+  return {
+    subject: 'Your PropReel trial has ended',
+    html: layout(
+      'Your trial has ended',
+      `<p>Hi ${first} — your 7-day PropReel trial has ended, so your temporary account is now locked.</p>
+       <p>Good news: your projects, branding and credits are kept for 30 days. Sign in, choose a plan and everything is restored exactly as you left it. After 30 days the account and its data are permanently deleted.</p>`,
+      { url: loginUrl, label: 'Sign in & subscribe' }
+    ),
+    text: `Hi ${first} — your PropReel trial has ended. Your account is locked but kept for 30 days. Sign in and choose a plan to restore it: ${loginUrl}`,
+  };
+}
+
+const SIGNUP_BONUS_CREDITS = 5;
+
+/**
  * Monthly Profit & Loss report — emailed by the 1st-of-month cron after the
  * books close. Carries the headline P&L numbers, every analyst insight and a
  * CTA to the pinned statement PDF (also attached by the caller).

@@ -480,12 +480,22 @@ function LoginPage() {
   // so signing in doesn't become a dead end when the email never arrived.
   const [unconfirmed, setUnconfirmed] = useState(false);
   const [resendingConfirm, setResendingConfirm] = useState(false);
+  // Trial (temporary account) expired: show the "keep browsing / subscribe"
+  // notice instead of a raw 403, and let a re-login reactivate the account.
+  const [trialExpired, setTrialExpired] = useState(false);
+  const [trialReactivate, setTrialReactivate] = useState(false);
   const { login, loginWithTwoFactor, user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // Where the user was headed before being asked to sign in (?next=/studio)
   const nextPath = searchParams.get('next');
+
+  // Google OAuth sends locked trial accounts here with ?trial=expired —
+  // explain before they type anything.
+  useEffect(() => {
+    if (searchParams.get('trial') === 'expired') setTrialExpired(true);
+  }, [searchParams]);
 
   // Single navigation path for email + Google sign-in: when the auth state
   // settles on a session, complete the stored post-auth redirect (defaults
@@ -503,11 +513,11 @@ function LoginPage() {
     });
   }, [user, navigate, nextPath]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performLogin = async (reactivate: boolean) => {
     setLoading(true);
     setError('');
     setUnconfirmed(false);
+    setTrialExpired(false);
     try {
       // Store the destination BEFORE login() fires the auth listener — the
       // user-effect below can otherwise consume a stale/default redirect and
@@ -515,10 +525,11 @@ function LoginPage() {
       // (e.g. the payment page).
       const { setPostAuthRedirect } = await import('./lib/postAuth');
       setPostAuthRedirect(nextPath && nextPath.startsWith('/') ? nextPath : '/dashboard');
-      const result = await login(email, password);
+      const result = await login(email, password, reactivate ? { reactivate: true } : undefined);
       if (result.requires2fa) {
         // Password accepted — ask for the authenticator code next.
         setTwoFactorToken(result.token || '');
+        setTrialReactivate(reactivate);
         setLoading(false);
         return;
       }
@@ -526,12 +537,24 @@ function LoginPage() {
         // Signed up with the two-step checkbox — finish setup before the dashboard.
         setPostAuthRedirect('/2fa-setup');
       }
-      toast.success('Welcome back!');
+      toast.success(reactivate ? 'Welcome back — your trial account is active again.' : 'Welcome back!');
     } catch (err: any) {
-      setError(err.message || 'Invalid credentials');
+      if (err.code === 'TRIAL_EXPIRED') {
+        // Temporary account hit day 7 without a subscription — the notice
+        // below offers "keep browsing" (reactivate) or a plan upgrade.
+        setTrialExpired(true);
+        setTrialReactivate(false);
+      } else {
+        setError(err.message || 'Invalid credentials');
+      }
       setUnconfirmed(err.code === 'EMAIL_NOT_CONFIRMED');
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await performLogin(false);
   };
 
   // Re-request the confirmation email for the address typed into the form.
@@ -560,10 +583,17 @@ function LoginPage() {
     setTwoFactorBusy(true);
     setError('');
     try {
-      await loginWithTwoFactor(email, twoFactorToken, twoFactorCode);
-      toast.success('Welcome back!');
+      await loginWithTwoFactor(email, twoFactorToken, twoFactorCode, trialReactivate ? { reactivate: true } : undefined);
+      toast.success(trialReactivate ? 'Welcome back — your trial account is active again.' : 'Welcome back!');
     } catch (err: any) {
-      setError(err.message || 'Invalid code');
+      if (err.code === 'TRIAL_EXPIRED') {
+        setTrialExpired(true);
+        setTrialReactivate(false);
+        setTwoFactorToken(null);
+        setTwoFactorCode('');
+      } else {
+        setError(err.message || 'Invalid code');
+      }
       setTwoFactorBusy(false);
     }
   };
@@ -585,6 +615,23 @@ function LoginPage() {
             {twoFactorToken ? 'Enter the 6-digit code from your authenticator app' : 'Sign in to your account'}
           </p>
           {error && <div className="mb-4 p-3 rounded-lg bg-red-950/50 border border-red-500/30 text-red-300 text-sm">{error}</div>}
+          {trialExpired && (
+            <div className="mb-4 p-4 rounded-lg bg-amber-950/40 border border-amber-500/30 space-y-3">
+              <p className="text-sm text-amber-300">
+                Your 7-day trial has ended. Subscribe to restore full access — or sign in again to keep browsing your account and upgrade whenever you're ready.
+              </p>
+              <button
+                type="button"
+                disabled={loading || !email || !password}
+                onClick={() => performLogin(true)}
+                className="btn btn-secondary w-full text-sm"
+              >
+                {loading ? 'Signing in…' : 'Keep browsing — sign in again'}
+              </button>
+              <Link to="/pricing" className="btn btn-primary w-full text-sm">View plans to upgrade</Link>
+              <p className="text-[11px] text-ink-500 text-center">Rendering stays locked until you subscribe.</p>
+            </div>
+          )}
           {unconfirmed && (
             <div className="mb-4 p-3 rounded-lg bg-ink-800/70 border border-white/10 text-center">
               <p className="text-xs text-ink-400 mb-2">Haven’t received the confirmation email? Check your spam folder, or resend it:</p>
@@ -752,6 +799,23 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     const ack = user?.lastLowCreditWarnedAt ? new Date(user.lastLowCreditWarnedAt).getTime() : 0;
     return ack < Date.now() - 12 * 60 * 60 * 1000; // re-surface 12h after ack
   })();
+
+  // Temporary ("trial") account: days left while the 7-day clock ticks.
+  // Subscribed users never see it (the server wipes trial fields on upgrade);
+  // an expired trial in the dashboard means the user reactivated — show a
+  // "subscribe to render" notice instead (locked-out users never get here).
+  const trialDaysLeft = (() => {
+    if (!user?.trialExpiresAt || user.subscription?.status === 'ACTIVE' || user.role === 'ADMIN') return 0;
+    const ms = Date.parse(user.trialExpiresAt) - Date.now();
+    if (Number.isNaN(ms) || ms <= 0) return 0;
+    return Math.max(1, Math.ceil(ms / 86_400_000));
+  })();
+  const trialEndedNotice = !!(
+    user?.trialExpiresAt &&
+    user.subscription?.status !== 'ACTIVE' &&
+    user.role !== 'ADMIN' &&
+    trialDaysLeft === 0
+  );
 
   const navItems = [
     { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Overview' },
@@ -942,6 +1006,32 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <button onClick={acknowledgeLowCredit} className="btn btn-ghost text-xs py-2 px-2" aria-label="Dismiss low credit warning"><X className="w-4 h-4" /></button>
               </div>              </div>
             )}
+          {(trialDaysLeft > 0 || trialEndedNotice) && (
+            <div className={`mb-4 rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in ${
+              trialEndedNotice ? 'bg-amber-950/60 border-amber-500/40' : 'bg-purple-950/60 border-purple-500/40'
+            }`}>
+              <div className="flex items-center gap-3">
+                <Clock className={`w-5 h-5 shrink-0 ${trialEndedNotice ? 'text-amber-300' : 'text-purple-300'}`} />
+                <div>
+                  <p className={`text-sm font-semibold ${trialEndedNotice ? 'text-amber-300' : 'text-purple-300'}`}>
+                    {trialEndedNotice
+                      ? 'Your free trial has ended — subscribe to unlock rendering'
+                      : trialDaysLeft === 1
+                        ? '⏳ Last day of your free trial!'
+                        : `⏳ ${trialDaysLeft} days left on your free trial`}
+                  </p>
+                  <p className="text-xs text-ink-400">
+                    {trialEndedNotice
+                      ? 'Your projects and branding are kept — upgrade any time to pick up where you left off.'
+                      : 'Your projects, branding and remaining credits carry over when you upgrade.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => navigate('/dashboard/billing')} className="btn btn-primary text-xs py-2 px-3">{trialEndedNotice ? 'Subscribe now' : 'Upgrade anytime'}</button>
+              </div>
+            </div>
+          )}
           <Suspense fallback={<DashboardSkeleton />}>{children}</Suspense>
         </main>
       </div>

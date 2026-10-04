@@ -109,6 +109,16 @@ Required variables:
   address. Verify the domain for real traffic.
 - Sessions are HttpOnly cookies (`propreel_session`) backed by the
   `propreel-sessions` table; reset links live at `/forgot-password`.
+- **Temporary (trial) accounts** (`lib/trial.ts`): the signup form offers an
+  opt-in 7-day trial — the row gets `trialExpiresAt`, riding on the standard
+  5-credit signup bonus. While it runs, a dashboard banner shows days left and
+  the 9am cron emails a daily reminder. Day 7 without a subscription → the
+  nightly sweep soft-deletes (`trialEndedAt`, sessions revoked, sign-in locked
+  with `403 TRIAL_EXPIRED`); signing in again with the correct password
+  reactivates browse-only access, but rendering stays blocked
+  (`deductCredits` gate) until they subscribe. Any subscription wipes all
+  trial fields (`createSubscription`), and rows still unsubscribed 30 days
+  after expiry are purged (projects + sessions + user row).
 
 ## Local Development
 
@@ -145,8 +155,8 @@ npm run typecheck
 
 ### Cron Jobs (Vercel Cron)
 - `POST /api/cron/allocate-monthly-credits` - Allocate monthly credits (1st of month)
-- `POST /api/cron/process-expired-credits` - Process expired credits (daily)
-- `POST /api/cron/send-expiry-notifications` - Send expiry notifications (daily 9am)
+- `POST /api/cron/process-expired-credits` - Process expired credits + trial sweep: soft-delete day-7 trials, purge after 30-day retention (daily)
+- `POST /api/cron/send-expiry-notifications` - Daily trial "days left" reminder emails (daily 9am)
 
 ## Deployment to Vercel
 
@@ -196,6 +206,8 @@ Attributes:
   - agencyName: String or null
   - passwordHash: String (scrypt, server-side only — never sent to clients)
   - emailVerified: Boolean
+  - trialExpiresAt: String (ISO date, opt-in 7-day trial — see lib/trial.ts)
+  - trialEndedAt / trialReactivatedAt / trialLastReminderDate: String (trial lifecycle)
   - createdAt: String (ISO date)
 ```
 
