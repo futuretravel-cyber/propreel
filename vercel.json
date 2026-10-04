@@ -50,8 +50,8 @@
           "value": "camera=(), microphone=(), geolocation=(), payment=(self)"
         },
         {
-          "key": "Content-Security-Policy-Report-Only",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://plausible.io https://www.googletagmanager.com https://js.paystack.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.vercel.app https://api.paystack.co https://plausible.io https://api.resend.com https://www.propreel.co.za; frame-src https://js.paystack.co; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.paystack.com; upgrade-insecure-requests"
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://plausible.io https://js.paystack.co https://client.crisp.chat https://widget.intercom.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://client.crisp.chat; font-src 'self' data: https://fonts.gstatic.com https://client.crisp.chat; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.vercel.app https://api.paystack.co https://plausible.io https://www.propreel.co.za https://propreel-raw-assets.s3.af-south-1.amazonaws.com https://propreel-video-outputs-sa.s3.af-south-1.amazonaws.com https://client.crisp.chat wss://client.crisp.chat https://api-iam.intercom.io wss://*.intercom.io; frame-src https://js.paystack.co https://maps.google.com https://www.google.com https://client.crisp.chat https://widget.intercom.io; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.paystack.com; frame-ancestors 'none'; upgrade-insecure-requests"
         }
       ]
     }

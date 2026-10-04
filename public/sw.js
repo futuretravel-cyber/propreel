@@ -30,6 +30,12 @@ self.addEventListener('fetch', (event) => {
   // Skip API calls — always go to network
   if (event.request.url.includes('/api/')) return;
 
+  // Cross-origin (fonts, S3 media, analytics) — never intercept. The worker
+  // scope carries our own CSP, whose connect-src would otherwise block these
+  // passthrough fetch()es and fail the request outright when enforcing.
+  const reqUrl = new URL(event.request.url);
+  if (reqUrl.origin !== self.location.origin) return;
+
   const url = new URL(event.request.url);
 
   if (url.pathname.startsWith('/assets/')) {
