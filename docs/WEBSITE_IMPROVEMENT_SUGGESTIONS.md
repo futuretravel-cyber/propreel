@@ -22,6 +22,7 @@
 npx tsc --noEmit
 npx tsc --noEmit -p api/tsconfig.json
 npm run build        # the 500 kB chunk warning on index is expected
+node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8'))"  # Vercel refuses to deploy invalid JSON (e.g. an unterminated header string) and the site silently keeps serving the old bundle
 ```
 
 ---
