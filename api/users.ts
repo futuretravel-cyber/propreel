@@ -10,6 +10,7 @@ import {
 } from '../lib/auth';
 import { sendEmail, confirmEmailTemplate, resetPasswordTemplate } from '../lib/email';
 import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/totp';
+import { workerTokenHeaders } from '../lib/workerToken';
 
 const isAdminEmail = (email: string | undefined | null) =>
   !!email && ADMIN_EMAILS.includes(String(email).toLowerCase());
@@ -595,6 +596,52 @@ async function adminLedger(req: VercelRequest, res: VercelResponse) {
       createdAt: t.createdAt,
     })),
   });
+}
+
+/**
+ * Nested route: GET /api/users?action=image_presets — the full AI prompt
+ * library (prompt + negative-prompt text) for the admin Prompts viewer.
+ * Admin session required. The text itself never ships in the public JS
+ * bundle and the browser never calls the worker for it: this handler
+ * proxies the worker's /get_image_presets server-side with the shared HMAC
+ * token, so the only public surface is a same-origin, session-gated read.
+ */
+let promptsCache: { at: number; presets: unknown } | null = null;
+
+async function imagePresets(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const user = await getSessionUser(getTokenFromRequest(req));
+  if (!user) return res.status(401).json({ error: 'Sign in required' });
+  if (!(user.role === 'ADMIN' || isAdminEmail(user.email))) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  // The library only changes when the worker is redeployed — cache per instance.
+  if (promptsCache && Date.now() - promptsCache.at < 10 * 60_000) {
+    return res.status(200).json({ success: true, presets: promptsCache.presets });
+  }
+
+  const workerUrl = process.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const upstream = await fetch(`${workerUrl}/get_image_presets`, {
+      headers: workerTokenHeaders(),
+      signal: ctrl.signal,
+    });
+    if (!upstream.ok) {
+      console.error(`image_presets upstream failed: ${upstream.status}`);
+      return res.status(502).json({ error: 'Prompt library unavailable' });
+    }
+    const presets = await upstream.json();
+    promptsCache = { at: Date.now(), presets };
+    return res.status(200).json({ success: true, presets });
+  } catch (e) {
+    console.error('image_presets proxy error:', e);
+    return res.status(502).json({ error: 'Prompt library unavailable' });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -1229,6 +1276,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.method === 'GET' && req.query.action === 'admin_ledger') {
     return adminLedger(req, res);
+  }
+  if (req.method === 'GET' && req.query.action === 'image_presets') {
+    return imagePresets(req, res);
   }
   if (String(req.query.action || '').startsWith('pln_')) {
     return pnlRoutes(req, res, String(req.query.action));

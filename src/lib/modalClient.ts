@@ -161,17 +161,19 @@ export const ModalAPI = {
   },
 
   /**
-   * Get all image editing presets
+   * Get all image editing presets (full prompt text — admin session required;
+   * served via the Vercel API, which proxies the worker server-side).
    */
   async getImagePresets(): Promise<any[]> {
     try {
-      const response = await fetch(`${MODAL_ENDPOINT}/get_image_presets`, { headers: await workerHeaders() });
+      const response = await fetch('/api/users?action=image_presets', { credentials: 'same-origin' });
 
       if (!response.ok) {
         throw new Error('Failed to get image presets');
       }
 
-      return await response.json();
+      const data = await response.json();
+      return Array.isArray(data?.presets) ? data.presets : [];
     } catch (error) {
       console.error('ModalAPI.getImagePresets error:', error);
       throw error;

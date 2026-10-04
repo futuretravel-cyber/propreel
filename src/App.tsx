@@ -3335,20 +3335,18 @@ function AdminSettings() {
 function AdminPrompts() {
   const [expanded, setExpanded] = useState<string | null>(null);
   // Prompt text lives ONLY in the Modal worker (modal/image_prompts.py) — the
-  // bundle keeps UI metadata (id/label/emoji/strength). Fetch text on demand.
+  // bundle keeps UI metadata (id/label/emoji/strength). Full text is read
+  // through a session-gated Vercel route that proxies the worker server-side.
   const [full, setFull] = useState<Array<{ id: string; prompt?: string; negative_prompt?: string }> | null>(null);
   const [fullFailed, setFullFailed] = useState(false);
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch(
-          `${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/get_image_presets`,
-          { headers: await workerHeaders() }
-        );
+        const res = await fetch('/api/users?action=image_presets');
         if (!res.ok) throw new Error(String(res.status));
         const data = await res.json();
-        if (alive) setFull(Array.isArray(data) ? data : []);
+        if (alive) setFull(Array.isArray(data?.presets) ? data.presets : []);
       } catch {
         if (alive) setFullFailed(true);
       }
@@ -3357,12 +3355,12 @@ function AdminPrompts() {
   }, []);
   const promptFor = (id: string, field: 'prompt' | 'negative_prompt') =>
     full?.find(f => f.id === id)?.[field]
-    || (fullFailed ? 'Prompt text unavailable — check the worker connection.' : 'Loading prompt text…');
+    || (fullFailed ? 'Prompt text unavailable — reload the page or sign in again.' : 'Loading prompt text…');
   return (
     <div className="space-y-4">
       <p className="text-sm text-ink-400">
-        The live prompt library ({IMAGE_PRESETS.length} presets). Prompt text is served by the Modal
-        worker only — edit <code className="text-purple-300">modal/image_prompts.py</code> and redeploy.
+        The live prompt library ({IMAGE_PRESETS.length} presets). Prompt text is served through the
+        admin API, sourced from <code className="text-purple-300">modal/image_prompts.py</code> — edit it there and redeploy the worker.
       </p>
       <div className="space-y-2">
         {IMAGE_PRESETS.map(p => (

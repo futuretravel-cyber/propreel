@@ -3,7 +3,8 @@
 //
 // SECURITY: prompt + negativePrompt text lives ONLY in the Modal worker
 // (modal/image_prompts.py) — the worker resolves preset_id → prompt at edit
-// time and serves full text to the admin viewer via GET /get_image_presets.
+// time, and full text reaches the admin viewer via GET /api/users?action=image_presets
+// (session-gated Vercel route that proxies the worker server-side).
 // Never add prompt bodies back here: they would ship in the public bundle.
 
 export interface ImagePreset {
