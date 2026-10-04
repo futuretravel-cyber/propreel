@@ -5,13 +5,18 @@ to **all** recipients, replacing the onboarding-sender limitation.
 
 ## Where things stand today
 
+**✅ DONE (4 Oct 2026)** — domain shows **Verified** at resend.com/domains;
+E2E-tested: confirmation + reset emails Delivered FROM
+`PropReel <no-reply@propreel.co.za>` (fallback never fires). Details below kept
+for reference / re-verification.
+
 | Fact | Detail |
 |---|---|
 | API key | `RESEND_API_KEY` — **send-only restricted** (it cannot read `/domains`; domain work happens in the Resend dashboard) |
 | Sender used | `PropReel <no-reply@propreel.co.za>` (default in [lib/email.ts](../lib/email.ts); override with `EMAIL_FROM` env) |
-| Current behaviour | API rejects the branded sender with a "domain is not verified" error → code **auto-falls back** to `PropReel <onboarding@resend.dev>`, which only delivers to the Resend account address (`futuretravel@gmail.com`) |
-| DNS today | NS `ns17/ns18.zadns.co.za` · **no TXT records exist** (clean slate) · apex MX points at the domain itself (default, harmless) |
-| After verification | Fallback stops firing automatically — no deploy, no code change |
+| Verified | **Yes — 4 Oct 2026**. Records published on zone `ns1/ns2.vercel-dns.com` (NS moved from zadns): MX `send` → `feedback-smtp.eu-west-1.amazonses.com` (10), TXT `send` → `v=spf1 include:amazonses.com ~all`, TXT `resend._domainkey` → `p=MIGf…` |
+| Note on SPF | Resend puts SPF on the **`send`** subdomain (their Route53 guide), not the root — a root TXT SPF is *not* required for verification |
+| After verification | Fallback stops firing automatically — no deploy, no code change (confirmed) |
 
 ---
 
@@ -49,16 +54,20 @@ Rules that cause most failures:
 - The existing apex MX (`propreel.co.za`) does **not** conflict — Resend's MX lives
   on the `send` subdomain.
 
-## Step 3 — Add them at the registrar (ZAdns)
+## Step 3 — Add them at the DNS host
 
-Your NS is `ns17/ns18.zadns.co.za`, so records are edited in the **ZAdns / registrar DNS panel**
-for `propreel.co.za` (the same panel where the Vercel `A @ → 76.76.21.21` and
-`CNAME www → cname.vercel-dns.com` records live):
+**⚠️ Updated 4 Oct 2026:** the zone now delegates to **`ns1/ns2.vercel-dns.com`**
+(NOT zadns anymore), so records are edited in the **Vercel DNS panel**:
+`vercel.com → team → Domains → propreel.co.za → DNS Records`
+(the page linked from the project's Domains → *View DNS Records & More*).
+The registrar only holds the NS delegation itself.
 
-1. Log in to the registrar → manage `propreel.co.za` → **DNS records / zone editor**.
-2. For each record from Step 2: **Add** → type (MX/TXT) → host → value → TTL **Auto**.
+1. Open the Vercel DNS panel for `propreel.co.za`.
+2. For each record from Step 2: **Add** → type (MX/TXT) → Name (relative:
+   `send`, `resend._domainkey`) → value → TTL 3600.
 3. Save. Do **not** touch the existing `A @` or `CNAME www` records.
-4. Wait ~5–15 minutes for the zone to propagate (worst case 72 h).
+4. Propagation from Vercel's own nameservers is near-instant (observed <1 min
+   on Google + Cloudflare DoH; worst case 72 h anywhere else).
 
 ## Step 4 — Verify
 
@@ -75,18 +84,21 @@ for `propreel.co.za` (the same panel where the Vercel `A @ → 76.76.21.21` and
    Or use https://dns.email to inspect what Resend sees.
 3. Dashboard status must read **Verified** (green).
 
-## Step 5 — DMARC (after the domain is verified)
+## Step 5 — DMARC ✅ DONE (4 Oct 2026)
 
-Add one more TXT at the root, starting permissive and tightening later:
+Added in the Vercel DNS panel and confirmed live on Google **and** Cloudflare DoH
+minutes later:
 
 ```
 Host:  _dmarc
 Type:  TXT
-Value: v=DMARC1; p=none; rua=mailto:dmarc@propreel.co.za
+Value: v=DMARC1; p=none; rua=mailto:dmarc@propreel.co.za   (TTL 60)
 ```
 
-`p=none` monitors without rejecting; once delivery is stable, consider `p=quarantine`.
-(No DMARC record exists today — `nslookup` confirms zero TXT records.)
+`p=none` monitors without rejecting — reports land at `dmarc@propreel.co.za`
+(create that mailbox or point `rua` elsewhere if you want to read them).
+Once delivery is stable, consider tightening to `p=quarantine`.
+Verify any time with: `nslookup -type=TXT _dmarc.propreel.co.za`
 
 ## Step 6 — Prove branded sending works end-to-end
 
@@ -113,3 +125,5 @@ Value: v=DMARC1; p=none; rua=mailto:dmarc@propreel.co.za
 | Fallback behaviour | automatic in `lib/email.ts` — no code/env change needed after verification |
 | `EMAIL_FROM` override | only needed if you verify a **subdomain** instead of the root |
 | Free tier | 3,000 emails/month, 100/day — enough for transactional volume at launch |
+| DNS panel (current) | Vercel: `vercel.com/…/~/domains/propreel.co.za` — zone NS `ns1/ns2.vercel-dns.com` |
+| DMARC | `_dmarc` TXT `v=DMARC1; p=none; rua=mailto:dmarc@propreel.co.za` — live 4 Oct 2026 |

@@ -76,14 +76,22 @@ Current state: **test mode everywhere** (`sk_test_` in Vercel production,
 
 > Step-by-step guide: [`docs/RESEND_DNS_SETUP.md`](RESEND_DNS_SETUP.md)
 
-- [ ] Add & verify domain `propreel.co.za` at resend.com/domains
-      (DKIM + SPF TXT records at registrar zadns: ns17/ns18.zadns.co.za)
-- [ ] Verify `no-reply@propreel.co.za` shows **Verified** → branded sender active
-      (code auto-falls back to `onboarding@resend.dev` → account address only until then)
-- [ ] E2E: register with a **non-account** address → confirmation email arrives
-- [ ] E2E: `/forgot-password` → reset email arrives, link sets new password, kills old sessions
-- [ ] Confirm link works when clicked **later** (tokens valid until expiry — Gmail
-      scanners don't burn them)
+- [x] Add & verify domain `propreel.co.za` at resend.com/domains — **Verified
+      4 Oct 2026** (NS is `ns1/ns2.vercel-dns.com`; records: MX + SPF TXT on
+      `send`, DKIM TXT on `resend._domainkey`)
+- [x] `no-reply@propreel.co.za` shows **Verified** → branded sender active
+      (confirmed in Resend logs: FROM = `PropReel <no-reply@propreel.co.za>`,
+      fallback no longer fires)
+- [x] E2E: register → confirmation email **Delivered** to a non-owner alias
+      (4 Oct 2026); confirm link consumed → account verified
+- [x] E2E: `/forgot-password` → reset email **Delivered**; link sets new
+      password, old sessions killed, new password logs in
+- [x] Confirm link re-click within TTL stays valid (idempotent — scanner-safe);
+      reset link also reusable until its 1h expiry (deliberate, see
+      `lib/auth.ts` `consumePasswordResetToken`)
+- [x] DMARC live: `_dmarc` TXT `v=DMARC1; p=none; rua=mailto:dmarc@propreel.co.za`
+      (added 4 Oct 2026 in the Vercel DNS panel; propagated on Google +
+      Cloudflare DoH). Later: tighten to `p=quarantine`, wire up a `dmarc@` mailbox
 
 ---
 

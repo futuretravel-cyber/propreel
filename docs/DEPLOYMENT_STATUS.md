@@ -48,9 +48,9 @@ Recreate anytime with `npm run create-tables` (idempotent).
 
 ## Remaining manual steps (dashboard-only)
 
-- [ ] **Resend** → add & verify domain `propreel.co.za` (DKIM/SPF TXT records
-      at the registrar, zadns) — until then only `onboarding@resend.dev` →
-      the account address can receive mail.
+- [x] **Resend** → domain `propreel.co.za` **Verified 4 Oct 2026** — branded
+      sender live, E2E-tested (register + reset both Delivered FROM
+      `no-reply@propreel.co.za`; fallback retired).
       **Step-by-step: [`docs/RESEND_DNS_SETUP.md`](RESEND_DNS_SETUP.md)**
 - [ ] **Paystack** → Settings → Webhooks: `https://www.propreel.co.za/api/paystack/webhook`
       (**`www` required** — apex 308-redirects to www; endpoint verified live:

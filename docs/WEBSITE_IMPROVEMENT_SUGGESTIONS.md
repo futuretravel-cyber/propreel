@@ -81,9 +81,12 @@ node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8'))"  # Vercel
 ## Open items
 
 ### Blocked on external dashboards (owner action, no code needed)
-1. **Resend is in TEST MODE** — confirmation/reset emails 502 for every
-   non-owner address. Verify the domain at resend.com/domains (see
-   `docs/RESEND_DNS_SETUP.md`). This is the #1 launch blocker.
+1. ~~**Resend is in TEST MODE**~~ — **RESOLVED 4 Oct 2026**: DNS records live
+   (NS moved to `ns1/ns2.vercel-dns.com`), domain shows **Verified** at
+   resend.com/domains. E2E-tested: register → confirmation, forgot → reset,
+   all sent **FROM `PropReel <no-reply@propreel.co.za>`** and **Delivered**,
+   no onboarding fallback; confirm + reset links both work end-to-end.
+   DMARC (`_dmarc`, `p=none`) also live in the Vercel DNS panel.
 2. **Paystack live keys** — see `docs/GO_LIVE_CHECKLIST.md`.
 
 ### Nice-to-have (not started)
