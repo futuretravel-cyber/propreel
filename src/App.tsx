@@ -3517,6 +3517,7 @@ function AppRoutes() {
         </div>
       </div>
     )}>
+    <RouteSEO />
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/pricing" element={<PricingPage />} />
