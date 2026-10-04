@@ -15,7 +15,9 @@ type EventName =
   | 'render_completed'
   | 'share_clicked'
   | 'pricing_toggle'
-  | 'cta_clicked';
+  | 'cta_clicked'
+  | 'trial_upgrade_clicked'
+  | 'trial_converted';
 
 declare global {
   interface Window {

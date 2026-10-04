@@ -5,10 +5,11 @@ import { useToast } from '../context/ToastContext';
 import { formatZar, formatDate } from '../lib/utils';
 import { PLANS, TIERS } from '../lib/constants';
 import { PropReelAPI, CreditReportData, ReferralStats } from '../lib/api';
+import { BackendAPI } from '../lib/backendAPI';
 import { track } from '../lib/analytics';
 import {
   CreditCard, Zap, Download, Search,
-  Gift, Package, TrendingUp,
+  Gift, Package, TrendingUp, Clock,
   Check, Star, Info, Sparkles, History, BarChart3, XCircle, Lightbulb, Copy,
   MessageCircle, Facebook, Twitter, Linkedin, Mail, Users, UserCheck,
 } from 'lucide-react';
@@ -191,6 +192,49 @@ export default function EnhancedBilling() {
 
   const plan = user?.subscription?.planId ? PLANS.find(p => p.id === user.subscription!.planId) : null;
 
+  // ── Trial countdown card (temporary accounts — lib/trial.ts) ─────────
+  // Shown while the 7-day clock ticks (and after expiry for reactivated
+  // browse-only users); disappears the moment a subscription exists because
+  // createSubscription wipes every trial field server-side.
+  const [upgrading, setUpgrading] = useState(false);
+  const trialExpiryIso = user?.subscription?.status === 'ACTIVE' ? null : user?.trialExpiresAt || null;
+  const trialMsLeft = trialExpiryIso ? Date.parse(trialExpiryIso) - Date.now() : 0;
+  const trialRunning = !!trialExpiryIso && !Number.isNaN(trialMsLeft) && trialMsLeft > 0;
+  const trialEndedNotice = !!trialExpiryIso && !Number.isNaN(trialMsLeft) && trialMsLeft <= 0;
+  const trialDaysLeft = trialRunning ? Math.max(1, Math.ceil(trialMsLeft / 86_400_000)) : 0;
+  // The plan they picked at signup — the one-click upgrade activates it.
+  const trialPlanId = user?.planId && user.planId !== 'FREE' ? user.planId : 'STARTER';
+  const trialPlan = PLANS.find(p => p.id === trialPlanId) || PLANS.find(p => p.id === 'STARTER')!;
+  const formatExact = (iso: string) => {
+    try {
+      return `${new Intl.DateTimeFormat('en-ZA', {
+        weekday: 'short', day: 'numeric', month: 'long', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg', hour12: false,
+      }).format(new Date(iso))} SAST`;
+    } catch {
+      return formatDate(iso);
+    }
+  };
+  const trialUpgrade = async () => {
+    if (!user || upgrading) return;
+    setUpgrading(true);
+    try {
+      track('trial_upgrade_clicked', { plan: trialPlanId });
+      const res = await BackendAPI.createSubscription(user.id, trialPlanId, 'MONTHLY');
+      if (res.authorization_url) { window.location.href = res.authorization_url; return; }
+      if (!res.success) throw new Error(res.message || 'Subscription could not be created');
+      track('trial_converted', { plan: trialPlanId });
+      await refresh();
+      toast.success(
+        `${trialPlan.name} activated — ${res.credits_allocated} credits loaded. Your trial account is now a full account.`,
+        'Welcome to PropReel!'
+      );
+    } catch (e: any) {
+      toast.error(e.message || 'Upgrade failed — please try again');
+      setUpgrading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -222,6 +266,46 @@ export default function EnhancedBilling() {
       {/* ─── Overview Tab ──────────────────────────────────────────────── */}
       {tab === 'overview' && (
         <div className="space-y-6">
+          {/* Trial countdown — exact expiry + one-click upgrade */}
+          {(trialRunning || trialEndedNotice) && (
+            <div className={`card-dark p-6 border ${trialEndedNotice ? 'border-amber-500/40 bg-amber-950/20' : 'border-purple-500/30 bg-purple-950/20'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <Clock className={`w-5 h-5 shrink-0 mt-0.5 ${trialEndedNotice ? 'text-amber-300' : 'text-purple-300'}`} />
+                  <div>
+                    <h3 className="font-semibold text-white">
+                      {trialEndedNotice ? 'Your free trial has ended' : 'Free trial — temporary account'}
+                    </h3>
+                    {trialRunning ? (
+                      <p className="text-xs text-ink-400 mt-1">
+                        Expires <span className="text-white font-semibold">{formatExact(trialExpiryIso!)}</span>
+                        {' '}— <span className="text-purple-300 font-semibold">{trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'} left</span>.
+                        {' '}Upgrade before then and your projects, branding and {user?.credits ?? 0} credits carry over.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-ink-400 mt-1">
+                        Your projects, branding and credits are kept for 30 days — subscribe to unlock rendering and pick up exactly where you left off.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 shrink-0 sm:flex-col sm:items-end">
+                  {trialRunning && (
+                    <div className="text-center sm:text-right">
+                      <p className="text-3xl font-black text-white leading-none">{trialDaysLeft}</p>
+                      <p className="text-[11px] text-ink-500">day{trialDaysLeft === 1 ? '' : 's'} left</p>
+                    </div>
+                  )}
+                  <button onClick={trialUpgrade} disabled={upgrading} className="btn btn-primary text-sm py-2 px-4 whitespace-nowrap">
+                    {upgrading ? 'Activating…'
+                      : trialEndedNotice ? `Subscribe — ${trialPlan.name} ${formatZar(trialPlan.monthlyZar)}/mo`
+                      : `Upgrade to ${trialPlan.name} · ${formatZar(trialPlan.monthlyZar)}/mo`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="card-dark p-6">
               <p className="text-sm text-ink-400">Personal Credits</p>

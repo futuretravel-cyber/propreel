@@ -109,6 +109,8 @@ export interface User {
   /** Two-step verification (authenticator app) */
   twoFactorEnabled?: boolean;
   twoFactorOptIn?: boolean;
+  /** Plan picked at signup (pre-subscription) — the trial card upgrades to it */
+  planId?: string | null;
   /** Temporary ("trial") account — 7 days from signup, see lib/trial.ts */
   trialExpiresAt?: string;
   /** Day-7 soft delete (sessions revoked, sign-in locked) */
