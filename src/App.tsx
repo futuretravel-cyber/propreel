@@ -30,7 +30,6 @@ import {
 } from 'lucide-react';
 
 import { lazy, Suspense, type ComponentProps } from 'react';
-import { buildPromptRotation } from './lib/videoPrompts';
 import { ThemeProvider } from './lib/theme';
 import HomePage from './components/HomePage';
 import { PublicLayout } from './components/PublicLayout';
@@ -2039,7 +2038,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
   const targetWords = calculateTargetWords(selectedConfig.duration);
 
   // Photo upload: presigned browser → S3, keeps the public URLs the render
-  // worker expects (and that buildPromptRotation rotates through).
+  // worker rotates its A/B/C prompts against (fully server-side).
   const handlePhotos = async (list: FileList | null) => {
     if (!list || !list.length) return;
     const room = selectedConfig.images - uploadedImages.length;
@@ -2164,8 +2163,6 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
           config_index: configIndex,
           orientation,
           images: uploadedImages,
-          // Hailuo-02 prompt rotation: image 1→A, 2→B, 3→C, 4→A, 5→B, …
-          image_prompts: buildPromptRotation(uploadedImages),
           voiceover_text: script,
           voice_id: voice,
           include_agent_branding: branding,
@@ -3337,11 +3334,35 @@ function AdminSettings() {
 
 function AdminPrompts() {
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Prompt text lives ONLY in the Modal worker (modal/image_prompts.py) — the
+  // bundle keeps UI metadata (id/label/emoji/strength). Fetch text on demand.
+  const [full, setFull] = useState<Array<{ id: string; prompt?: string; negative_prompt?: string }> | null>(null);
+  const [fullFailed, setFullFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/get_image_presets`,
+          { headers: await workerHeaders() }
+        );
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json();
+        if (alive) setFull(Array.isArray(data) ? data : []);
+      } catch {
+        if (alive) setFullFailed(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const promptFor = (id: string, field: 'prompt' | 'negative_prompt') =>
+    full?.find(f => f.id === id)?.[field]
+    || (fullFailed ? 'Prompt text unavailable — check the worker connection.' : 'Loading prompt text…');
   return (
     <div className="space-y-4">
       <p className="text-sm text-ink-400">
-        The live prompt library ({IMAGE_PRESETS.length} presets, mirrored to the Modal worker at deploy time).
-        Edit in <code className="text-purple-300">src/lib/imagePrompts.ts</code> + <code className="text-purple-300">modal/image_prompts.py</code> and redeploy.
+        The live prompt library ({IMAGE_PRESETS.length} presets). Prompt text is served by the Modal
+        worker only — edit <code className="text-purple-300">modal/image_prompts.py</code> and redeploy.
       </p>
       <div className="space-y-2">
         {IMAGE_PRESETS.map(p => (
@@ -3361,8 +3382,8 @@ function AdminPrompts() {
             </div>
             {expanded === p.id && (
               <div className="mt-3 space-y-2">
-                <p className="text-xs text-ink-300 whitespace-pre-wrap">{p.prompt}</p>
-                <p className="text-[10px] text-ink-500 whitespace-pre-wrap"><strong>Negative:</strong> {p.negativePrompt}</p>
+                <p className="text-xs text-ink-300 whitespace-pre-wrap">{promptFor(p.id, 'prompt')}</p>
+                <p className="text-[10px] text-ink-500 whitespace-pre-wrap"><strong>Negative:</strong> {promptFor(p.id, 'negative_prompt')}</p>
               </div>
             )}
           </div>
