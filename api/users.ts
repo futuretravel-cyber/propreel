@@ -1,6 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
+import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { getUser, updateUser, getUserByEmail, deleteUser, getOrCreateUserByEmail } from '../lib/userService';
-import { TABLES, queryItems, putItem, getItem } from '../lib/db';
+import { TABLES, queryItems, putItem, getItem, docClient } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
 import {
   hashPassword, verifyPassword, createSession, getSessionUser, deleteSession,
@@ -849,6 +850,76 @@ function siteOrigin(req: VercelRequest): string {
   return process.env.VITE_APP_URL || 'https://propreel-xi.vercel.app';
 }
 
+// ── worker_token mint rate limit ──────────────────────────────────────────
+// Fixed hourly window per key, tracked in DynamoDB (serverless instances are
+// stateless, so in-process counters can't hold). Ceilings are deliberately
+// generous: a browser tab re-mints ~once per 9 minutes (token cached in
+// workerAuth.ts), so even a busy office NAT — ~10 agents × a couple of tabs
+// ≈ 30–60 mints/hour — sits comfortably under 150, while scripted bulk
+// minting from one host/account gets cut off.
+const MINT_WINDOW_MS = 60 * 60 * 1000;
+const MINT_LIMIT_PER_IP = 150;
+const MINT_LIMIT_PER_USER = 40;
+
+/**
+ * Consume one unit from an hourly quota counter and report whether it is
+ * still within `limit`. Fails OPEN: a DynamoDB error must never break token
+ * minting (and therefore rendering) — it only logs.
+ *
+ * Fast path is an atomic ADD guarded by the window value, so parallel
+ * scripted requests can't race a read-modify-write past the limit; the
+ * conditional-reset branch runs at most once per window per key.
+ */
+export async function consumeMintQuota(
+  scope: 'ip' | 'uid',
+  value: string,
+  limit: number
+): Promise<{ ok: boolean; retryAfterSec: number }> {
+  const windowStart = Math.floor(Date.now() / MINT_WINDOW_MS) * MINT_WINDOW_MS;
+  const id = `rlw_${scope}_${value}`;
+  const nowIso = new Date().toISOString();
+  const expiresAt = Math.floor((windowStart + MINT_WINDOW_MS) / 1000) + 7200;
+  let count: number;
+  try {
+    try {
+      const out = await docClient.send(new UpdateCommand({
+        TableName: TABLES.SETTINGS,
+        Key: { id },
+        UpdateExpression: 'ADD #c :one SET #w = :w, updatedAt = :now, expiresAt = :exp',
+        ConditionExpression: 'attribute_not_exists(#w) OR #w = :w',
+        ExpressionAttributeNames: { '#c': 'count', '#w': 'windowStart' },
+        ExpressionAttributeValues: { ':one': 1, ':w': windowStart, ':now': nowIso, ':exp': expiresAt },
+        ReturnValues: 'ALL_NEW',
+      }));
+      count = Number(out.Attributes?.count ?? 1);
+    } catch (e: any) {
+      if (e?.name !== 'ConditionalCheckFailedException') throw e;
+      // Window rolled since the row was written — start the new window at 1.
+      const out = await docClient.send(new UpdateCommand({
+        TableName: TABLES.SETTINGS,
+        Key: { id },
+        UpdateExpression: 'SET #c = :one, #w = :w, updatedAt = :now, expiresAt = :exp',
+        ExpressionAttributeNames: { '#c': 'count', '#w': 'windowStart' },
+        ExpressionAttributeValues: { ':one': 1, ':w': windowStart, ':now': nowIso, ':exp': expiresAt },
+        ReturnValues: 'ALL_NEW',
+      }));
+      count = Number(out.Attributes?.count ?? 1);
+    }
+  } catch (e) {
+    console.error('mint rate-limit check failed (failing open):', e);
+    return { ok: true, retryAfterSec: 0 };
+  }
+  const retryAfterSec = Math.max(1, Math.ceil((windowStart + MINT_WINDOW_MS - Date.now()) / 1000));
+  return { ok: count <= limit, retryAfterSec };
+}
+
+function mintTooMany(res: VercelResponse, retryAfterSec: number) {
+  res.setHeader('Retry-After', String(retryAfterSec));
+  return res.status(429).json({
+    error: `Too many token requests — try again in ${Math.max(1, Math.ceil(retryAfterSec / 60))} minute(s)`,
+  });
+}
+
 /**
  *   POST auth_register  {email, password, fullName, phone?, planId?, cycle?, redirect?}
  *                        → provisions the row, emails a Resend confirmation link
@@ -874,9 +945,23 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
       const secret = process.env.RENDER_API_TOKEN;
       if (!secret) return res.status(500).json({ error: 'RENDER_API_TOKEN is not configured' });
+
+      // Rate limit before paying for session lookups. Per-IP first (bounds
+      // anonymous harvesters), then per-user for signed-in callers.
+      const ip =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.socket?.remoteAddress ||
+        'unknown';
+      const ipQuota = await consumeMintQuota('ip', ip, MINT_LIMIT_PER_IP);
+      if (!ipQuota.ok) return mintTooMany(res, ipQuota.retryAfterSec);
+
       const { createHmac } = await import('crypto');
       const sessionUser = await getSessionUser(getTokenFromRequest(req));
       const uid = sessionUser?.id || 'anon';
+      if (sessionUser) {
+        const uidQuota = await consumeMintQuota('uid', uid, MINT_LIMIT_PER_USER);
+        if (!uidQuota.ok) return mintTooMany(res, uidQuota.retryAfterSec);
+      }
       const exp = Math.floor(Date.now() / 1000) + 600; // 10 minutes
       const msg = `v1.${exp}.${uid}`;
       const sig = createHmac('sha256', secret).update(msg).digest('base64url');

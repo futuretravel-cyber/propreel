@@ -45,6 +45,9 @@ export async function workerHeaders(): Promise<Record<string, string>> {
     return await inflight;
   } catch (e) {
     console.error('worker token mint failed:', e);
+    // Rate limited (429) or transient failure: a token already in hand stays
+    // valid until its own expiry — keep using it rather than breaking the flow.
+    if (cached && Date.now() < cached.expiresAt) return { [HEADER]: cached.token };
     return {};
   }
 }
