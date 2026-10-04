@@ -17,7 +17,9 @@ type EventName =
   | 'pricing_toggle'
   | 'cta_clicked'
   | 'trial_upgrade_clicked'
-  | 'trial_converted';
+  | 'trial_converted'
+  | 'trial_studio_modal_shown'
+  | 'trial_studio_upgrade_clicked';
 
 declare global {
   interface Window {

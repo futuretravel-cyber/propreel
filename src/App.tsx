@@ -1179,6 +1179,97 @@ function DashboardSettings() {
 // STUDIO (7 TABS)
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Blocking trial-deadline gate for the Studio (day 6–7 of a temporary
+ * account, and for reactivated users whose trial already expired — their
+ * renders are server-side blocked anyway). The backdrop does NOT dismiss;
+ * the user must explicitly continue, and the upgrade CTA is the primary
+ * action. Refilled on every Studio mount — re-entering re-triggers it.
+ */
+function TrialDeadlineModal() {
+  const { user } = useCredit();
+  const navigate = useNavigate();
+  const [dismissed, setDismissed] = useState(false);
+
+  const expiresAt = user?.subscription?.status === 'ACTIVE' ? null : user?.trialExpiresAt || null;
+  const msLeft = expiresAt ? Date.parse(expiresAt) - Date.now() : NaN;
+  const valid = !!expiresAt && !Number.isNaN(msLeft);
+  const running = valid && msLeft > 0;
+  const daysLeft = running ? Math.max(1, Math.ceil(msLeft / 86_400_000)) : 0;
+  const visible = valid && (!running || daysLeft <= 2) && !dismissed;
+
+  useEffect(() => {
+    if (visible) track('trial_studio_modal_shown', { daysLeft, ended: !running });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const formatExact = (iso: string) => {
+    try {
+      return `${new Intl.DateTimeFormat('en-ZA', {
+        weekday: 'short', day: 'numeric', month: 'long', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg', hour12: false,
+      }).format(new Date(iso))} SAST`;
+    } catch {
+      return formatDate(expiresAt!);
+    }
+  };
+
+  const goUpgrade = () => {
+    track('trial_studio_upgrade_clicked', { daysLeft, ended: !running });
+    navigate('/dashboard/billing');
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={running ? 'Trial deadline' : 'Trial ended'}
+    >
+      <div className="card-dark w-full max-w-lg p-8 text-center border border-purple-500/40 bg-gradient-to-b from-purple-950/40 to-ink-900 shadow-2xl animate-scale-in">
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${running ? 'bg-purple-500/20' : 'bg-amber-500/15'}`}>
+          <Clock className={`w-8 h-8 ${running ? 'text-purple-300' : 'text-amber-400'}`} />
+        </div>
+
+        {running ? (
+          <>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              {daysLeft === 1 ? '⏳ Last day of your free trial' : `⏳ ${daysLeft} days left on your free trial`}
+            </h2>
+            <p className="text-sm text-ink-300 mb-1">
+              Your trial expires <span className="text-white font-semibold">{formatExact(expiresAt!)}</span>.
+            </p>
+            <p className="text-sm text-ink-400 mb-6">
+              After that your temporary account is locked and its data is permanently deleted 30 days later.
+              Upgrade now and your <span className="text-purple-300 font-semibold">projects, branding and {user?.credits ?? 0} credits</span> carry over — nothing is lost.
+            </p>
+          </>
+        ) : (
+          <>
+            <h2 className="text-2xl font-bold text-white mb-2">Your trial has ended</h2>
+            <p className="text-sm text-ink-400 mb-6">
+              Rendering is locked until you subscribe. Your projects, branding and credits are kept for 30 days —
+              upgrade to pick up exactly where you left off.
+            </p>
+          </>
+        )}
+
+        <button onClick={goUpgrade} className="btn btn-primary w-full text-base py-3 mb-3">
+          {running ? 'Upgrade now — keep everything' : 'Subscribe now — unlock rendering'}
+        </button>
+        <button onClick={() => setDismissed(true)} className="btn btn-ghost w-full text-sm">
+          {running ? 'Continue my trial' : 'Keep browsing for now'}
+        </button>
+        <p className="text-xs text-ink-500 mt-4">
+          One click on Billing activates your plan instantly — no form to fill in.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function StudioPage() {
   const loading = useSimulatedLoading(400);
   if (loading) return <StudioSkeleton />;
@@ -1223,6 +1314,7 @@ function StudioPageInner() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <TrialDeadlineModal />
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Studio</h1>
