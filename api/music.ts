@@ -8,6 +8,7 @@ import { DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import sharp from 'sharp';
 import { docClient, getItem, putItem, TABLES } from '../lib/db';
 import { getUser } from '../lib/userService';
+import { getSessionUser, getTokenFromRequest } from '../lib/auth';
 import { sniffMedia, audioMime } from '../lib/mediaSniff';
 import { consumeRateLimit } from '../lib/rateLimit';
 
@@ -21,6 +22,8 @@ import { consumeRateLimit } from '../lib/rateLimit';
  *
  * Audio bytes upload browser→S3 directly (propreel-raw-assets/music/…);
  * metadata lives in the propreel-settings table under type:"music_track".
+ * Admin actions authenticate via the SESSION COOKIE — a client-sent user_id
+ * is only cross-checked against the session, never trusted on its own.
  */
 
 const S3_BUCKET = process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets';
@@ -43,15 +46,21 @@ function publicUrl(key: string) {
   return `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
 }
 
-async function requireAdmin(req: VercelRequest): Promise<{ ok: boolean; error?: string }> {
-  const userId = (req.query.user_id as string) || req.body?.user_id;
-  if (!userId) return { ok: false, error: 'user_id required' };
-  const user = await getUser(userId);
-  if (!user) return { ok: false, error: 'User not found' };
-  const email = (user.email || '').toLowerCase();
-  const isAdmin = user.role === 'ADMIN' || email === 'futuretravel@gmail.com' || email === 'ulric@propreel.co.za';
+/**
+ * Admin gate: identity comes from the SESSION COOKIE, never from a
+ * client-supplied user_id — anyone who guessed an admin's id could
+ * otherwise mint presigned audio URLs or delete tracks. A claimed
+ * user_id, when present, must match the signed-in session.
+ */
+async function requireAdmin(req: VercelRequest): Promise<{ ok: boolean; error?: string; userId?: string }> {
+  const sessionUser = await getSessionUser(getTokenFromRequest(req));
+  if (!sessionUser) return { ok: false, error: 'Sign in required' };
+  const claimed = (req.query.user_id as string) || req.body?.user_id;
+  if (claimed && claimed !== sessionUser.id) return { ok: false, error: 'Sign in required' };
+  const email = (sessionUser.email || '').toLowerCase();
+  const isAdmin = sessionUser.role === 'ADMIN' || email === 'futuretravel@gmail.com' || email === 'ulric@propreel.co.za';
   if (!isAdmin) return { ok: false, error: 'Admin access required' };
-  return { ok: true };
+  return { ok: true, userId: sessionUser.id };
 }
 
 const ALLOWED_IMAGES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -248,9 +257,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST' && req.query.action === 'upload') {
       const admin = await requireAdmin(req);
       if (!admin.ok) return res.status(403).json({ error: admin.error });
-      // Same per-user presign budget as the image path (shared scope).
-      const presignUserId = String((req.query.user_id as string) || req.body?.user_id || '');
-      const rlAudio = await consumeRateLimit('presign', presignUserId, PRESIGN_LIMIT, RATE_WINDOW_SEC);
+      // Same per-user presign budget as the image path (shared scope),
+      // keyed by the SESSION identity — not the claimed user_id.
+      const rlAudio = await consumeRateLimit('presign', String(admin.userId), PRESIGN_LIMIT, RATE_WINDOW_SEC);
       if (!rlAudio.allowed) return tooManyUploads(res, rlAudio.retryAfterSec);
 
       const { name, genre, contentType, size } = req.body || {};
@@ -303,7 +312,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         s3Key,
         url: publicUrl(s3Key),
         durationSeconds: Number(durationSeconds) || null,
-        uploadedBy: (req.body?.user_id as string) || null,
+        uploadedBy: admin.userId || null,
         createdAt: new Date().toISOString(),
       };
       await putItem(TABLES.SETTINGS, track);
