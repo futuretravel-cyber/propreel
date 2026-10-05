@@ -1095,7 +1095,13 @@ function DashboardAnalytics() {
 function DashboardBilling() {
   const loading = useSimulatedLoading(450);
   if (loading) return <BillingSkeleton />;
-  return <Suspense fallback={<BillingSkeleton />}><EnhancedBilling /></Suspense>;
+  // A crash inside billing (bad invoice row, malformed Paystack payload) must
+  // not blank the whole dashboard route — retry lands on this card only.
+  return (
+    <ErrorBoundary label="Billing">
+      <Suspense fallback={<BillingSkeleton />}><EnhancedBilling /></Suspense>
+    </ErrorBoundary>
+  );
 }
 
 function DashboardAgency() {
@@ -1357,14 +1363,17 @@ function StudioPageInner() {
           another tab. The user removes an image, or the render completes —
           only then does it leave the panel. */}
       <div className="card-dark p-6">
-        <div className={tab === 'description' ? undefined : 'hidden'}><DescriptionTab /></div>
-        <div className={tab === 'photo' ? undefined : 'hidden'}><PhotoEditorTab /></div>
-        <div className={tab === 'staging' ? undefined : 'hidden'}><StagingTab /></div>
-        <div className={tab === 'removal' ? undefined : 'hidden'}><RemovalTab /></div>
-        <div className={tab === 'twilight' ? undefined : 'hidden'}><TwilightTab /></div>
-        <div className={tab === 'social' ? undefined : 'hidden'}><SocialTab /></div>
-        <div className={tab === 'video' ? undefined : 'hidden'}><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} /></div>
-        <div className={tab === 'flashhead' ? undefined : 'hidden'}><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} /></div>
+        {/* Each panel gets its own boundary so one tool's render error shows a
+            labelled retry card inside its (possibly hidden) wrapper instead of
+            unmounting the whole Studio — the other seven tabs keep working. */}
+        <div className={tab === 'description' ? undefined : 'hidden'}><ErrorBoundary label="Description"><DescriptionTab /></ErrorBoundary></div>
+        <div className={tab === 'photo' ? undefined : 'hidden'}><ErrorBoundary label="Photo Editor"><PhotoEditorTab /></ErrorBoundary></div>
+        <div className={tab === 'staging' ? undefined : 'hidden'}><ErrorBoundary label="Virtual Staging"><StagingTab /></ErrorBoundary></div>
+        <div className={tab === 'removal' ? undefined : 'hidden'}><ErrorBoundary label="Furniture Removal"><RemovalTab /></ErrorBoundary></div>
+        <div className={tab === 'twilight' ? undefined : 'hidden'}><ErrorBoundary label="Twilight"><TwilightTab /></ErrorBoundary></div>
+        <div className={tab === 'social' ? undefined : 'hidden'}><ErrorBoundary label="Social Media"><SocialTab /></ErrorBoundary></div>
+        <div className={tab === 'video' ? undefined : 'hidden'}><ErrorBoundary label="Video Generator"><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} /></ErrorBoundary></div>
+        <div className={tab === 'flashhead' ? undefined : 'hidden'}><ErrorBoundary label="Talking Head"><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} /></ErrorBoundary></div>
       </div>
     </div>
   );
