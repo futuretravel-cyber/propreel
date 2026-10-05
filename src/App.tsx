@@ -14,6 +14,7 @@ import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI } from './lib/api';
 import FeatureChips from './components/FeatureChips';
 import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
+import { useStudioDraft, studioDraftKey } from './lib/studioDrafts';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
 import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
@@ -1292,8 +1293,9 @@ function StudioPageInner() {
   // Shared voiceover script: the Video tab generates it, FlashHead speaks it
   const [sharedScript, setSharedScript] = useState('');
   // Shared avatar photo: chosen in the Video tab's AI Avatar Video add-on,
-  // carried over to the Talking Head tab automatically
-  const [sharedProfileImage, setSharedProfileImage] = useState<string | null>(null);
+  // carried over to the Talking Head tab automatically. Persisted so a full
+  // page reload doesn't orphan the photo the agent already picked.
+  const [sharedProfileImage, setSharedProfileImage, sharedProfileImageReady] = useStudioDraft<string | null>(studioDraftKey(user?.id, 'studio:profile-image'), null);
   // Photos + script handed over from a listing card, a project card or the
   // Property Description tab (queued via src/lib/videoPrefill.ts).
   const [prefillImages, setPrefillImages] = useState<string[]>([]);
@@ -1355,7 +1357,7 @@ function StudioPageInner() {
         <div className={tab === 'twilight' ? undefined : 'hidden'}><TwilightTab /></div>
         <div className={tab === 'social' ? undefined : 'hidden'}><SocialTab /></div>
         <div className={tab === 'video' ? undefined : 'hidden'}><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} /></div>
-        <div className={tab === 'flashhead' ? undefined : 'hidden'}><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} /></div>
+        <div className={tab === 'flashhead' ? undefined : 'hidden'}><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} /></div>
       </div>
     </div>
   );
@@ -1399,8 +1401,9 @@ function DescriptionTab() {
   const [amenities, setAmenities] = useState<string[]>([]);
   const [amenityBusy, setAmenityBusy] = useState(false);
 
-  // Grok vision: optional photos that get described in the copy
-  const [images, setImages] = useState<string[]>([]);
+  // Grok vision: optional photos that get described in the copy (persisted
+  // across reloads — they're already uploaded to S3, so only URLs are stored)
+  const [images, setImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'description:images'), []);
   const [uploading, setUploading] = useState(false);
   const imagesInputRef = useRef<HTMLInputElement>(null);
 
@@ -1689,6 +1692,7 @@ function PhotoEditorTab() {
       {/* Upload first — the drop zone sits at the top of the workflow */}
       <ImageWorkbench
         presetId={selectedPreset || photoPresets[0]?.id || ''}
+        draftSlot="photo"
         strength={strength}
         guidanceScale={guidance}
         customPrompt={customPrompt.trim() ? customPrompt : undefined}
@@ -1782,6 +1786,7 @@ function StagingTab() {
       {/* Upload first — the drop zone sits at the top of the workflow */}
       <ImageWorkbench
         presetId={style}
+        draftSlot="staging"
         strength={selectedPreset?.strength.default}
         guidanceScale={selectedPreset?.guidanceScale.default}
         ctaLabel="Stage Room (2 credits)"
@@ -1836,6 +1841,7 @@ function RemovalTab() {
       {/* Upload first — the drop zone sits at the top of the workflow */}
       <ImageWorkbench
         presetId={mode}
+        draftSlot="removal"
         strength={selectedPreset?.strength.default}
         guidanceScale={selectedPreset?.guidanceScale.default}
         ctaLabel="Remove (2 credits)"
@@ -1877,6 +1883,7 @@ function TwilightTab() {
       {/* Upload first — the drop zone sits at the top of the workflow */}
       <ImageWorkbench
         presetId={style}
+        draftSlot="twilight"
         strength={selectedPreset?.strength.default}
         guidanceScale={selectedPreset?.guidanceScale.default}
         ctaLabel="Convert to Twilight (2 credits)"
@@ -1923,8 +1930,9 @@ function SocialTab() {
   const toggleFeature = (f: string) =>
     setSelectedFeatures(prev => (prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]));
 
-  // Photos included in the final post render (and described by Grok)
-  const [images, setImages] = useState<string[]>([]);
+  // Photos included in the final post render (and described by Grok) —
+  // persisted so a reload doesn't drop the agent's photo selection
+  const [images, setImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'social:images'), []);
   const [uploading, setUploading] = useState(false);
   const imagesInputRef = useRef<HTMLInputElement>(null);
 
@@ -2283,7 +2291,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
   const [musicTracks, setMusicTracks] = useState<Array<{ id: string; name: string; genre: string; url: string }>>([]);
   const [generating, setGenerating] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
-  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploadedImages, setUploadedImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'video:images'), []);
   // Prefilled photos (listing / project / description hand-off). Runs after
   // mount too, because the Studio consumes the queue in its own effect.
   useEffect(() => {

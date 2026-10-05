@@ -3,6 +3,7 @@ import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, Check, AlertCir
 import { useFlashHead } from '../lib/useFlashHead';
 import { useCredit } from '../context/AuthContext';
 import { useRenderProgress, typicalFlashheadSeconds } from '../lib/useRenderProgress';
+import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
 import RenderProgressBar from './RenderProgressBar';
 
 const VOICES = [
@@ -25,6 +26,8 @@ interface FlashHeadVideoProps {
   /** Avatar photo chosen in the Video tab's AI Avatar Video add-on —
    * applied here automatically, no button click needed */
   profileImage?: string | null;
+  /** True once the Video tab's photo has been rehydrated from storage */
+  profileImageReady?: boolean;
   /** Removing the carried photo here also removes it in the Video tab */
   onProfileImageChange?: (img: string | null) => void;
 }
@@ -33,15 +36,14 @@ interface FlashHeadVideoProps {
  * FlashHead Studio tab: lip-synced talking-head video from the agent's
  * profile picture + the AI-generated voiceover script. 8 credits.
  */
-export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, onProfileImageChange }: FlashHeadVideoProps) {
+export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, profileImageReady = true, onProfileImageChange }: FlashHeadVideoProps) {
   const { user } = useCredit() as any;
   const { generate, busy, stage, error, setError, jobStatus, cost } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  // Set when the render uses the already-hosted branding photo instead of a
-  // fresh upload (no file travels through the browser — the worker fetches
-  // the URL directly)
-  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  // The picked headshot and its branding/hosted source survive full page
+  // reloads; `file` is rebuilt from the restored data URL when rendering.
+  const [preview, setPreview, previewReady] = useStudioDraft<string | null>(studioDraftKey(user?.id, 'flashhead:preview'), null);
+  const [sourceUrl, setSourceUrl] = useStudioDraft<string | null>(studioDraftKey(user?.id, 'flashhead:source'), null);
   // Current profile image from Agent Branding (default profile first), with
   // the account avatar as fallback
   const profiles: any[] = user?.agentProfiles || [];
@@ -53,6 +55,8 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
   const [dragging, setDragging] = useState(false);
   const [script, setScript] = useState(initialScript);
   const [voice, setVoice] = useState('Aria');
+  // The finished render URL stays session-only: it points at S3 and the
+  // project record already keeps it for the library.
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Elapsed-vs-typical progress: typical scales with the script length
@@ -93,7 +97,30 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
   // Data URLs (an upload) are converted to a File so they travel through the
   // presigned upload like any other pick; hosted URLs skip the upload.
   const appliedImageRef = useRef<string | null>(null);
+  // Did THIS tab restore its own photo from storage on load? That pick must
+  // win over the Video tab's restored copy (it was the last thing the user
+  // chose here) — but only until the user picks a new Video-tab avatar.
+  const restoredOwnRef = useRef(false);
+  // Only the first restored-vs-restored collision is arbitrated; afterwards
+  // an explicit new avatar choice in the Video tab carries over as usual.
+  const settledOwnUsedRef = useRef(false);
   useEffect(() => {
+    if (previewReady && preview) restoredOwnRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewReady]);
+  // Both drafts must settle before carry-over logic runs, otherwise a slow
+  // read clobbers whichever photo landed first.
+  const settledRef = useRef(false);
+  const initialProfileRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!previewReady || !profileImageReady) {
+      settledRef.current = false; // key changed (sign-in) — re-settle
+      return;
+    }
+    if (!settledRef.current) {
+      settledRef.current = true;
+      initialProfileRef.current = profileImage;
+    }
     // Video tab photo deleted → clear the carried copy too, but only if this
     // tab still shows that exact photo (never a locally uploaded one)
     if (!profileImage) {
@@ -104,6 +131,17 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
       return;
     }
     if (profileImage === appliedImageRef.current) return;
+    // Restored-from-storage scenario: this tab's own photo came back and the
+    // Video tab's avatar is still the one that was there at load — keep the
+    // local pick, but remember the avatar so a later change there still
+    // carries over (and so deleting it here doesn't resurrect this photo).
+    if (restoredOwnRef.current && !settledOwnUsedRef.current
+      && preview && preview !== profileImage
+      && profileImage === initialProfileRef.current) {
+      settledOwnUsedRef.current = true;
+      appliedImageRef.current = profileImage;
+      return;
+    }
     appliedImageRef.current = profileImage;
     setResultUrl(null);
     setError(null);
@@ -123,13 +161,22 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
       setPreview(profileImage);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileImage, preview]);
+  }, [profileImage, preview, previewReady, profileImageReady]);
 
   const run = async () => {
-    if ((!file && !sourceUrl) || !script.trim()) return;
+    if ((!file && !sourceUrl && !preview) || !script.trim()) return;
+    // After a reload only the data URL survived — rebuild the File for the
+    // presigned upload (hosted URLs skip this and go straight to the worker).
+    let f = file;
+    if (!f && !sourceUrl && preview?.startsWith('data:')) {
+      try {
+        f = await dataUrlToFile(preview);
+        setFile(f);
+      } catch { setError('Could not restore your uploaded photo — please upload it again'); return; }
+    }
     progress.start();
     try {
-      const res = await generate({ file: file ?? undefined, imageUrl: sourceUrl ?? undefined, voiceoverText: script, voice });
+      const res = await generate({ file: f ?? undefined, imageUrl: sourceUrl ?? undefined, voiceoverText: script, voice });
       if (res) {
         setResultUrl(res.videoUrl);
         onVideoGenerated?.(res.videoUrl);
@@ -144,7 +191,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     : stage === 'rendering' ? 'AI is generating your lip-sync video…'
     : '';
 
-  const canRun = (!!file || !!sourceUrl) && !!script.trim() && !busy && (user?.credits ?? 0) >= cost;
+  const canRun = (!!file || !!sourceUrl || !!preview) && !!script.trim() && !busy && (user?.credits ?? 0) >= cost;
 
   return (
     <div className="space-y-6">

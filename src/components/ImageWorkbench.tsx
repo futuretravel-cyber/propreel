@@ -3,9 +3,14 @@ import { Camera, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { useImageEdit } from '../lib/useImageEdit';
 import { useRenderProgress, TYPICAL_IMAGE_EDIT_SECONDS } from '../lib/useRenderProgress';
 import RenderProgressBar from './RenderProgressBar';
+import { useCredit } from '../context/AuthContext';
+import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
 
 interface ImageWorkbenchProps {
   presetId: string;
+  /** Stable per-panel slot so the upload survives reloads (presetId alone
+   * changes when the user switches presets, which would drop the draft) */
+  draftSlot: string;
   strength?: number;
   guidanceScale?: number;
   customPrompt?: string;
@@ -18,10 +23,14 @@ interface ImageWorkbenchProps {
  * Upload → render → before/after workbench shared by all four image tools.
  * Renders via Modal (fal-ai/flux/dev/image-to-image) and deducts 2 credits.
  */
-export default function ImageWorkbench({ presetId, strength, guidanceScale, customPrompt, ctaLabel, emptyHint, accept = 'image/*' }: ImageWorkbenchProps) {
+export default function ImageWorkbench({ presetId, draftSlot, strength, guidanceScale, customPrompt, ctaLabel, emptyHint, accept = 'image/*' }: ImageWorkbenchProps) {
+  const { user } = useCredit() as any;
+  // The picked image and its render result persist across full page reloads —
+  // `file` is rebuilt from the restored data URL on demand (it's not
+  // structured-serialisable in a way we can rely on across sessions).
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [preview, setPreview] = useStudioDraft<string | null>(studioDraftKey(user?.id, `workbench:${draftSlot}:preview`), null);
+  const [resultUrl, setResultUrl] = useStudioDraft<string | null>(studioDraftKey(user?.id, `workbench:${draftSlot}:result`), null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { edit, busy, stage, error, setError } = useImageEdit();
@@ -43,10 +52,18 @@ export default function ImageWorkbench({ presetId, strength, guidanceScale, cust
   };
 
   const run = async () => {
-    if (!file) return;
+    // After a reload only the data URL survived — rebuild the File for upload
+    let f = file;
+    if (!f && preview) {
+      try {
+        f = await dataUrlToFile(preview);
+        setFile(f);
+      } catch { return; }
+    }
+    if (!f) return;
     editProgress.start();
     try {
-      const res = await edit({ file, presetId, strength, guidanceScale, customPrompt });
+      const res = await edit({ file: f, presetId, strength, guidanceScale, customPrompt });
       if (res) setResultUrl(res.imageUrl);
     } finally {
       editProgress.stop();
