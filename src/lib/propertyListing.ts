@@ -36,31 +36,69 @@ export async function uploadImagesForAI(files: FileList | null, userId: string |
  *
  * Primary path is our own `/api/projects?action=geocode` proxy: the browser
  * only talks to its own origin, so extensions / CORS / corporate filters can
- * no longer break map lookup (that was the "Map lookup failed" bug). If the
- * proxy itself is unreachable we fall back to calling Nominatim directly.
+ * no longer break map lookup (that was the "Map lookup failed" bug). The
+ * proxy is retried once — a transient 504 from the function used to drop us
+ * straight into a direct lookup that blocked environments kill. Only then do
+ * we fall back to calling the upstreams directly (Nominatim, then Photon).
  *
- * Returns null for a genuine "address not found", throws on lookup failure.
+ * Returns null for a genuine "address not found", throws when every path
+ * failed so callers can show the retry toast honestly.
  */
 export async function geocodeAddress(address: string): Promise<{ lat: number; lon: number; display: string } | null> {
-  try {
-    const res = await fetch(`/api/projects?action=geocode&q=${encodeURIComponent(address)}`);
-    if (res.ok) {
-      const data = await res.json().catch(() => null);
-      if (data?.found && Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lon))) {
-        return { lat: Number(data.lat), lon: Number(data.lon), display: String(data.display || address) };
-      }
-      if (data && data.found === false) return null; // upstream answered: no match
-      // 502/unknown shape → fall through to a direct lookup
-    }
-  } catch { /* proxy unreachable — fall back below */ }
+  const proxied = `/api/projects?action=geocode&q=${encodeURIComponent(address)}`;
 
-  const res = await fetch(
-    `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`
-  );
-  if (!res.ok) return null;
-  const rows = await res.json();
-  if (!Array.isArray(rows) || !rows.length) return null;
-  return { lat: Number(rows[0].lat), lon: Number(rows[0].lon), display: rows[0].display_name || address };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(proxied);
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.found && Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lon))) {
+          return { lat: Number(data.lat), lon: Number(data.lon), display: String(data.display || address) };
+        }
+        if (data && data.found === false) return null; // upstream answered: no match
+        // 502/unknown shape → retry once, then fall through to direct
+      }
+    } catch { /* network — retry */ }
+    if (attempt === 0) await new Promise(r => setTimeout(r, 400));
+  }
+
+  // Last resort: talk to the upstreams ourselves. Nominatim first, Photon
+  // second (different dataset) — one blocked origin must not fail the lookup
+  // on its own.
+  const query = /south africa/i.test(address) ? address : `${address}, South Africa`;
+  const attempts: Array<{ url: string; kind: 'nominatim' | 'photon' }> = [
+    { url: `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=za&q=${encodeURIComponent(query)}`, kind: 'nominatim' },
+    { url: `https://photon.komoot.io/api/?limit=1&q=${encodeURIComponent(query)}`, kind: 'photon' },
+  ];
+  let anyUpstreamAnswered = false;
+  for (const { url, kind } of attempts) {
+    try {
+      // 6s cap each — a hanging upstream in a blocked environment must not
+      // leave the Verify button spinning indefinitely.
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) continue;
+      anyUpstreamAnswered = true;
+      const body = await res.json();
+      if (kind === 'nominatim') {
+        const rows = body;
+        if (Array.isArray(rows) && rows.length) {
+          return { lat: Number(rows[0].lat), lon: Number(rows[0].lon), display: rows[0].display_name || address };
+        }
+      } else {
+        const first = Array.isArray(body?.features) ? body.features[0] : null;
+        const [lon, lat] = first?.geometry?.coordinates || [];
+        if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lon))) {
+          const p = first.properties || {};
+          const display = [p.name, p.street, p.housenumber, p.city, p.state, p.country].filter(Boolean).join(', ') || address;
+          return { lat: Number(lat), lon: Number(lon), display };
+        }
+      }
+    } catch { /* blocked or offline — try the next one */ }
+  }
+  // Everything failed (blockers, offline) → throw so the caller shows
+  // "Map lookup failed"; an answered-but-empty response is a true not-found.
+  if (!anyUpstreamAnswered) throw new Error('Map lookup failed');
+  return null;
 }
 
 export function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {

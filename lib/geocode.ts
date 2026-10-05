@@ -8,8 +8,9 @@
  * origin, and the server sends a proper identifying User-Agent (required by
  * Nominatim's usage policy).
  *
- * Every step degrades instead of failing hard: Nominatim → Photon for
- * geocoding, three Overpass mirrors for amenities.
+ * Every step degrades instead of failing hard: Nominatim and Photon race in
+ * parallel for geocoding (first real answer wins), three Overpass mirrors
+ * for amenities.
  */
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
@@ -22,11 +23,13 @@ export interface GeoPoint {
   display: string;
 }
 
-// 8s hard cap per upstream — a hung request must never stall a function
-const upstreamFetch = (url: string) =>
+// 8s hard cap per upstream — a hung request must never stall a function.
+// Geocoding runs its two upstreams in parallel so the wall clock stays
+// inside this budget instead of adding it up (see geocodeAddress).
+const upstreamFetch = (url: string, timeoutMs = 8000) =>
   fetch(url, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
 /**
@@ -42,29 +45,36 @@ export async function geocodeAddress(address: string): Promise<GeoPoint | null> 
   // Marlo Road in Prince Edward Island, Canada.
   const query = /south africa/i.test(clean) ? clean : `${clean}, South Africa`;
 
-  let reachedUpstream = false;
+  // Nominatim and Photon run IN PARALLEL with early resolution: as soon as
+  // either answers with a point we return, instead of the old sequential
+  // chain (whose timeouts ADDED UP past Vercel Hobby's 10s limit — the
+  // function died with a 504, the browser fell back to a direct lookup that
+  // blocked environments kill, and the user just saw "Map lookup failed").
+  // Worst case is now max(Nominatim, Photon) ≈ 8.3s, not their sum.
+  type Outcome = { point: GeoPoint | null; ok: boolean };
 
-  // 1) Nominatim (best South African address coverage)
-  try {
-    const res = await upstreamFetch(`${NOMINATIM}/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
-    if (res.ok) {
-      reachedUpstream = true;
+  // 1) Nominatim (best South African address coverage) — hard-filtered to ZA
+  const tryNominatim = async (): Promise<Outcome> => {
+    try {
+      const res = await upstreamFetch(`${NOMINATIM}/search?format=json&limit=1&countrycodes=za&q=${encodeURIComponent(query)}`);
+      if (!res.ok) return { point: null, ok: false };
       const rows = await res.json();
       if (Array.isArray(rows) && rows.length) {
         const lat = Number(rows[0].lat);
         const lon = Number(rows[0].lon);
         if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          return { lat, lon, display: rows[0].display_name || clean };
+          return { point: { lat, lon, display: rows[0].display_name || clean }, ok: true };
         }
       }
-    }
-  } catch { /* try the fallback below */ }
+      return { point: null, ok: true }; // answered, no match
+    } catch { return { point: null, ok: false }; }
+  };
 
   // 2) Photon — different dataset, catches what Nominatim misses
-  try {
-    const res = await upstreamFetch(`${PHOTON}/api/?limit=1&q=${encodeURIComponent(query)}`);
-    if (res.ok) {
-      reachedUpstream = true;
+  const tryPhoton = async (): Promise<Outcome> => {
+    try {
+      const res = await upstreamFetch(`${PHOTON}/api/?limit=1&q=${encodeURIComponent(query)}`);
+      if (!res.ok) return { point: null, ok: false };
       const body = await res.json();
       const first = Array.isArray(body?.features) ? body.features[0] : null;
       const [lon, lat] = first?.geometry?.coordinates || [];
@@ -72,13 +82,35 @@ export async function geocodeAddress(address: string): Promise<GeoPoint | null> 
         const p = first.properties || {};
         const display = [p.name, p.street, p.housenumber, p.city, p.state, p.country]
           .filter(Boolean).join(', ') || clean;
-        return { lat: Number(lat), lon: Number(lon), display };
+        return { point: { lat: Number(lat), lon: Number(lon), display }, ok: true };
       }
-    }
-  } catch { /* fall through */ }
+      return { point: null, ok: true };
+    } catch { return { point: null, ok: false }; }
+  };
 
-  if (!reachedUpstream) throw new Error('Geocoding upstreams unreachable');
-  return null;
+  return new Promise<GeoPoint | null>((resolve, reject) => {
+    let pending = 2;
+    let answered = false;
+    let settled = false;
+    // First upstream to produce a point wins — both are OSM-derived, and
+    // waiting for a slow one after the other already answered is exactly
+    // what used to blow the function's time budget.
+    const finish = (o: Outcome) => {
+      if (settled) return;
+      if (o.ok) answered = true;
+      if (o.point) { settled = true; resolve(o.point); return; }
+      pending -= 1;
+      if (pending === 0) {
+        settled = true;
+        // At least one upstream answered with nothing → genuine not-found;
+        // every upstream failed → caller shows "Map lookup failed".
+        if (answered) resolve(null);
+        else reject(new Error('Geocoding upstreams unreachable'));
+      }
+    };
+    tryNominatim().then(finish);
+    tryPhoton().then(finish);
+  });
 }
 
 /**
@@ -99,11 +131,16 @@ export async function nearbyAmenities(lat: number, lon: number): Promise<string[
     'https://overpass.kumi.systems/api/interpreter',
     'https://overpass.private.coffee/api/interpreter',
   ];
+  // Total budget across mirrors: three 8s attempts in a row overflowed the
+  // function's ~10s limit and the whole lookup died with a 504.
+  const deadline = Date.now() + 8500;
   let data: any = null;
   let lastErr: unknown = null;
   for (const host of hosts) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) { lastErr = new Error('amenities time budget exhausted'); break; }
     try {
-      const res = await upstreamFetch(`${host}?data=${encodeURIComponent(q)}`);
+      const res = await upstreamFetch(`${host}?data=${encodeURIComponent(q)}`, Math.min(8000, remaining));
       if (!res.ok) { lastErr = new Error(`${host} → HTTP ${res.status}`); continue; }
       const body = await res.json();
       if (!body || !Array.isArray(body.elements)) { lastErr = new Error(`${host} → unexpected payload`); continue; }

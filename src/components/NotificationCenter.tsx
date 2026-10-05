@@ -28,7 +28,7 @@ const PREFERENCE_LABELS: Record<string, string> = {
 export default function NotificationCenter() {
   const { user } = useAuth();
   // Real activity feed: built from the credit ledger + project records — nothing hardcoded
-  const { notifications: activity, unreadCount: liveUnread, markRead: markActivityRead, markAllRead: markAllActivityRead } = useActivity(user?.id);
+  const { notifications: activity, unreadCount: liveUnread, loading: activityLoading, markRead: markActivityRead, markAllRead: markAllActivityRead } = useActivity(user?.id);
   // Deleted notifications, persisted per user so they stay gone after a reload
   const dismissedKey = user?.id ? `propreel:dismissedActivity:${user.id}` : 'propreel:dismissedActivity';
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -46,6 +46,15 @@ export default function NotificationCenter() {
       id: a.id, type: a.type, title: a.title, message: a.message,
       timestamp: a.timestamp, read: a.read, category: a.category, actionUrl: a.actionUrl,
     }));
+
+  // Opening this page IS "reading": once the real feed has loaded, clear the
+  // read set so the header bell stops showing red for notifications the agent
+  // has just looked at. Any activity arriving while the page stays open gets
+  // marked read too (the page is open — they're seeing it).
+  useEffect(() => {
+    if (!activityLoading && liveUnread > 0) markAllActivityRead();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityLoading, liveUnread]);
 
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
