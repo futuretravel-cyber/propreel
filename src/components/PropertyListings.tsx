@@ -180,12 +180,26 @@ function ListingCard({
           <Spec icon={<Square className="w-3.5 h-3.5" />} value={project.erfSize ? `${project.erfSize}m²` : ''} label="Erf size" />
         </div>
         <div className="flex items-center gap-2 pt-1">
-          <button onClick={onReel} className="btn btn-primary text-xs flex-1 justify-center">
-            <Video className="w-3.5 h-3.5" /> {project.videoUrl ? 'View reel' : 'Create Reel'}
-          </button>
-          <button onClick={onEdit} className="btn btn-secondary text-xs" aria-label={`Edit ${project.title}`} title="Quick edit this listing">
-            <Pencil className="w-3.5 h-3.5" /> Edit
-          </button>
+          {status === 'DRAFT' ? (
+            // Drafts lead with Resume — the point of saving one is picking it up later
+            <button onClick={onEdit} className="btn btn-primary text-xs flex-1 justify-center" aria-label={`Resume ${project.title}`} title="Continue this draft where you left off">
+              <Pencil className="w-3.5 h-3.5" /> Resume
+            </button>
+          ) : (
+            <button onClick={onReel} className="btn btn-primary text-xs flex-1 justify-center">
+              <Video className="w-3.5 h-3.5" /> {project.videoUrl ? 'View reel' : 'Create Reel'}
+            </button>
+          )}
+          {status === 'DRAFT' && (
+            <button onClick={onReel} className="btn btn-secondary text-xs" aria-label={`Create reel for ${project.title}`}>
+              <Video className="w-3.5 h-3.5" /> {project.videoUrl ? 'View reel' : 'Create Reel'}
+            </button>
+          )}
+          {status !== 'DRAFT' && (
+            <button onClick={onEdit} className="btn btn-secondary text-xs" aria-label={`Edit ${project.title}`} title="Quick edit this listing">
+              <Pencil className="w-3.5 h-3.5" /> Edit
+            </button>
+          )}
           {project.videoUrl && (
             <button onClick={onPlay} className="btn btn-ghost text-xs" aria-label="Play video">
               <Play className="w-3.5 h-3.5" /> Play
@@ -256,6 +270,10 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
   const [saving, setSaving] = useState(false);
 
   const fullAddress = [d.street, d.suburb, d.city].filter(Boolean).join(', ');
+
+  // A resumed draft keeps Save Draft available at every stage so progress can
+  // be saved mid-wizard, exactly like in the new-listing flow.
+  const isDraftEdit = !!initial && marketState(initial) === 'DRAFT';
 
   const verifyAddress = async () => {
     if (!d.street.trim() || !d.suburb.trim()) {
@@ -491,8 +509,9 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
         ...(Number(d.erf) ? { erfSize: Number(d.erf) } : {}),
         ...(Number(d.floor) ? { floorSize: Number(d.floor) } : {}),
       } as any;
-      if (draftId) {
-        await PropReelAPI.updateProject(user.id, draftId, payload);
+      const rowId = initial?.id ?? draftId;
+      if (rowId) {
+        await PropReelAPI.updateProject(user.id, rowId, payload);
       } else {
         const created = await PropReelAPI.createProject({ userId: user.id, videoTier: 'ESSENTIAL', ...payload } as any);
         setDraftId(created.id);
@@ -768,7 +787,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
           <ChevronLeft className="w-4 h-4" /> {step === 0 ? 'Cancel' : 'Back'}
         </button>
         <div className="flex items-center gap-2">
-          {!initial && (
+          {(!initial || isDraftEdit) && (
             <button onClick={saveDraft} disabled={saving} className="btn btn-quiet text-sm">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Draft
             </button>
@@ -883,6 +902,7 @@ export default function PropertyListings() {
   const [filter, setFilter] = useState<'ALL' | MarketStatus>('ALL');
   const [sort, setSort] = useState<'new' | 'old' | 'price'>('new');
   const [player, setPlayer] = useState<Project | null>(null);
+  const [resumePrompt, setResumePrompt] = useState<Project | null>(null);
 
   const load = () => {
     if (!user?.id) return;
@@ -949,6 +969,17 @@ export default function PropertyListings() {
 
   const FILTERS: Array<'ALL' | MarketStatus> = ['ALL', 'ACTIVE', 'DRAFT', 'SOLD', 'EXPIRED'];
 
+  // Unfinished drafts (newest first — `load` sorts createdAt desc). Rather
+  // than dropping the agent into a blank wizard, offer to resume one.
+  const drafts = useMemo(() => (projects || []).filter(p => marketState(p) === 'DRAFT'), [projects]);
+  const startNew = () => {
+    if (drafts.length) {
+      setResumePrompt(drafts[0]);
+      return;
+    }
+    navigate('/dashboard/listings/new');
+  };
+
   if (projects === null) {
     return (
       <div className="space-y-4 animate-fade-in">
@@ -968,7 +999,7 @@ export default function PropertyListings() {
           <p className="text-sm text-ink-400">Manage your portfolio and trigger video creation.</p>
           <p className="text-xs text-ink-500 mt-1">{RETENTION_NOTICE}</p>
         </div>
-        <button onClick={() => navigate('/dashboard/listings/new')} className="btn btn-primary text-sm">
+        <button onClick={startNew} className="btn btn-primary text-sm">
           <Plus className="w-4 h-4" /> New Listing
         </button>
       </div>
@@ -1021,7 +1052,7 @@ export default function PropertyListings() {
               <p className="text-ink-400 text-sm mt-1 mb-4">
                 Add your first property — the wizard takes under a minute.
               </p>
-              <button onClick={() => navigate('/dashboard/listings/new')} className="btn btn-primary text-sm">
+              <button onClick={startNew} className="btn btn-primary text-sm">
                 <Plus className="w-4 h-4" /> New Listing
               </button>
             </div>
@@ -1050,6 +1081,41 @@ export default function PropertyListings() {
       </>
 
       {player && <VideoLightbox project={player} onClose={() => setPlayer(null)} />}
+
+      {/* Resume-or-start-fresh prompt — shown when unfinished drafts exist */}
+      {resumePrompt && (
+        <div className="fixed inset-0 z-[90] bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Unfinished draft">
+          <div className="card-dark p-6 max-w-md w-full space-y-4">
+            <div>
+              <h3 className="text-lg font-bold text-white">You have an unfinished draft</h3>
+              <p className="text-sm text-ink-300 mt-1">
+                {resumePrompt.title}
+                {resumePrompt.createdAt ? ` — saved ${new Date(resumePrompt.createdAt).toLocaleDateString()}` : ''}
+              </p>
+              {drafts.length > 1 && (
+                <p className="text-xs text-ink-500 mt-1">{drafts.length} drafts in total — find them under the Draft filter.</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => { const id = resumePrompt.id; setResumePrompt(null); navigate(`/dashboard/listings/${id}/edit`); }}
+                className="btn btn-primary justify-center text-sm"
+              >
+                <Pencil className="w-4 h-4" /> Resume draft
+              </button>
+              <button
+                onClick={() => { setResumePrompt(null); navigate('/dashboard/listings/new'); }}
+                className="btn btn-secondary justify-center text-sm"
+              >
+                <Plus className="w-4 h-4" /> Start a new listing
+              </button>
+              <button onClick={() => setResumePrompt(null)} className="btn btn-ghost justify-center text-sm">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
