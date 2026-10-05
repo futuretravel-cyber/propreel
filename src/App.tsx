@@ -5,6 +5,7 @@ import NotFoundPage from './pages/NotFoundPage';
 import OfflineBanner from './components/OfflineBanner';
 import { useState, useEffect, useRef } from 'react';
 import MobileNav from './components/MobileNav';
+import UploadQueueNotifier from './components/UploadQueueNotifier';
 import { DashboardSkeleton, BillingSkeleton, ProjectsSkeleton, StudioSkeleton, useSimulatedLoading } from './components/Skeleton';
 import { useAuth, useCredit, AuthProvider, CreditProvider } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
@@ -12,9 +13,10 @@ import { SearchButton } from './components/GlobalSearch';
 import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, PROVINCES, PROPERTY_TYPES } from './lib/constants';
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI, useUploadWait } from './lib/api';
+import { drainBacklog, enqueueImagesForAI, uploadStatusText, useUploadQueue } from './lib/uploadQueue';
 import FeatureChips from './components/FeatureChips';
 import CurrencyInput from './components/CurrencyInput';
-import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
+import { geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
 import { useStudioDraft, studioDraftKey } from './lib/studioDrafts';
 import { useReorderable } from './lib/reorder';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
@@ -1045,6 +1047,10 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
+      {/* Background upload queue's completion toasts live here so they
+          outlive whichever tab queued the photos. */}
+      <UploadQueueNotifier />
+
       {/* Keyboard Shortcuts Modal */}
       <KeyboardShortcutsModal 
         isOpen={showShortcuts} 
@@ -1401,6 +1407,7 @@ function DescriptionTab() {
   const toast = useToast();
   const navigate = useNavigate();
   const uploadWait = useUploadWait();
+  const uploadQueue = useUploadQueue('description');
   const { user, deductCredits, addCredits } = useCredit();
   const [tone, setTone] = useState('Professional');
   const [description, setDescription] = useState('');
@@ -1455,20 +1462,27 @@ function DescriptionTab() {
     }
   };
 
-  const handleImages = async (list: FileList | null) => {
+  // Photos the queue finished land here on every queue tick — a backlog
+  // drain, so navigating away mid-upload can't orphan them in S3.
+  useEffect(() => {
+    const urls = drainBacklog('description');
+    if (urls.length) setImages(prev => [...prev, ...urls]);
+  }, [uploadQueue, setImages]);
+
+  const handleImages = (list: FileList | null) => {
     if (!list || !list.length) return;
-    if (images.length >= 4) { toast.error('Up to 4 photos per description', 'Photo limit'); return; }
+    const room = 4 - images.length - uploadQueue.pending;
+    if (room <= 0) { toast.error('Up to 4 photos per description', 'Photo limit'); return; }
+    // Hand the batch to the background queue: it parks itself on a 429 window
+    // and streams each photo in, so this returns immediately — the completion
+    // toast comes from <UploadQueueNotifier/> wherever this tab is by then.
     setUploading(true);
-    try {
-      const urls = await uploadImagesForAI(list, user?.id, 4 - images.length);
-      setImages(prev => [...prev, ...urls]);
-      toast.success(`${urls.length} photo${urls.length > 1 ? 's' : ''} uploaded — AI will describe them`, 'Photos ready');
-    } catch (e: any) {
-      toast.error(e.message || 'Photo upload failed');
-    } finally {
+    enqueueImagesForAI(list, user?.id, room, {
+      scope: 'description',
+    }).finally(() => {
       setUploading(false);
       if (imagesInputRef.current) imagesInputRef.current.value = '';
-    }
+    });
   };
 
   // Grok AI generation — 1 credit per render, refunded on failure
@@ -1629,7 +1643,7 @@ function DescriptionTab() {
           aria-label="Upload photos for the description"
         >
           <Image className="w-7 h-7 text-ink-400 mx-auto mb-2" />
-          <p className="text-ink-400 text-sm">{uploading ? (uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading…') : 'Drop photos here or click to upload'}</p>
+          <p className="text-ink-400 text-sm">{uploading || uploadQueue.pending > 0 ? uploadStatusText(uploadQueue, uploadWait) : 'Drop photos here or click to upload'}</p>
           <p className="text-ink-500 text-xs mt-1">AI describes what it sees — up to 4 images</p>
         </div>
         {images.length > 0 && (
@@ -1932,6 +1946,7 @@ function TwilightTab() {
 function SocialTab() {
   const toast = useToast();
   const uploadWait = useUploadWait();
+  const uploadQueue = useUploadQueue('social');
   const { user, deductCredits, addCredits } = useCredit();
   const [platform, setPlatform] = useState('instagram');
   const [caption, setCaption] = useState('');
@@ -1956,20 +1971,25 @@ function SocialTab() {
   const [uploading, setUploading] = useState(false);
   const imagesInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImages = async (list: FileList | null) => {
+  // Backlog drain — see DescriptionTab; survives a route change mid-batch.
+  useEffect(() => {
+    const urls = drainBacklog('social');
+    if (urls.length) setImages(prev => [...prev, ...urls]);
+  }, [uploadQueue, setImages]);
+
+  const handleImages = (list: FileList | null) => {
     if (!list || !list.length) return;
-    if (images.length >= 6) { toast.error('Up to 6 photos per post', 'Photo limit'); return; }
+    const room = 6 - images.length - uploadQueue.pending;
+    if (room <= 0) { toast.error('Up to 6 photos per post', 'Photo limit'); return; }
+    // Background queue — see DescriptionTab.handleImages. Each photo lands in
+    // the grid as S3 accepts it instead of after the whole batch.
     setUploading(true);
-    try {
-      const urls = await uploadImagesForAI(list, user?.id, 6 - images.length);
-      setImages(prev => [...prev, ...urls]);
-      toast.success(`${urls.length} photo${urls.length > 1 ? 's' : ''} uploaded — they'll appear in the post`, 'Photos ready');
-    } catch (e: any) {
-      toast.error(e.message || 'Photo upload failed');
-    } finally {
+    enqueueImagesForAI(list, user?.id, room, {
+      scope: 'social',
+    }).finally(() => {
       setUploading(false);
       if (imagesInputRef.current) imagesInputRef.current.value = '';
-    }
+    });
   };
 
   // Grok AI generation — 2 credits per post render, refunded on failure
@@ -2132,7 +2152,7 @@ function SocialTab() {
             aria-label="Upload photos for the post"
           >
             <Image className="w-7 h-7 text-ink-400 mx-auto mb-2" />
-          <p className="text-ink-400 text-sm">{uploading ? (uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading…') : 'Drop photos here or click to upload'}</p>
+          <p className="text-ink-400 text-sm">{uploading || uploadQueue.pending > 0 ? uploadStatusText(uploadQueue, uploadWait) : 'Drop photos here or click to upload'}</p>
           <p className="text-ink-500 text-xs mt-1">Photos are shown in the final post and described by AI</p>
           </div>
           {images.length > 0 && (
@@ -2291,6 +2311,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
   const { user, deductCredits, addCredits } = useCredit();
   const toast = useToast();
   const uploadWait = useUploadWait();
+  const uploadQueue = useUploadQueue('video');
   const [tier, setTier] = useState('SOCIAL');
   const [configIndex, setConfigIndex] = useState(0);
   const [orientation, setOrientation] = useState('LANDSCAPE');
@@ -2342,36 +2363,30 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
 
   // Photo upload: presigned browser → S3, keeps the public URLs the render
   // worker rotates its A/B/C prompts against (fully server-side).
-  const handlePhotos = async (list: FileList | null) => {
+  // Backlog drain — see DescriptionTab. Photos uploaded while this panel
+  // (or the whole route) was unmounted are collected here on return.
+  useEffect(() => {
+    const urls = drainBacklog('video');
+    if (urls.length) setUploadedImages(prev => [...prev, ...urls].slice(0, selectedConfig.images));
+  }, [uploadQueue, setUploadedImages, selectedConfig.images]);
+
+  const handlePhotos = (list: FileList | null) => {
     if (!list || !list.length) return;
-    const room = selectedConfig.images - uploadedImages.length;
+    const room = selectedConfig.images - uploadedImages.length - uploadQueue.pending;
     if (room <= 0) {
       toast.error(`This configuration takes ${selectedConfig.images} images — remove one first`, 'Photo limit reached');
       return;
     }
-    const files = Array.from(list).slice(0, room);
+    // Type/size validation and the presign → PUT → verify round-trip move
+    // into the background queue: a 429 parks the queue instead of this
+    // handler, and each photo streams into the grid the moment S3 has it.
     setUploadingPhotos(true);
-    try {
-      const urls: string[] = [];
-      for (const file of files) {
-        const okType = file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|avif)$/i.test(file.name);
-        if (!okType) { toast.error(`${file.name} is not an image file`); continue; }
-        if (file.size > 25 * 1024 * 1024) { toast.error(`${file.name} is over 25MB`); continue; }
-        // Presign (pinned size + type allowlist) → PUT → server-side
-        // verification (sharp magic bytes) — anything that isn't really a
-        // JPEG/PNG/WebP is rejected and deleted by the API.
-        urls.push(await PropReelAPI.uploadImageFile(user?.id, file));
-      }
-      if (urls.length) {
-        setUploadedImages(prev => [...prev, ...urls].slice(0, selectedConfig.images));
-        toast.success(`${urls.length} photo${urls.length > 1 ? 's' : ''} uploaded`, 'Photos ready');
-      }
-    } catch (e: any) {
-      toast.error(e.message || 'Photo upload failed');
-    } finally {
+    enqueueImagesForAI(list, user?.id, room, {
+      scope: 'video',
+    }).finally(() => {
       setUploadingPhotos(false);
       if (photosInputRef.current) photosInputRef.current.value = '';
-    }
+    });
   };
 
   // Reset config index when tier changes
@@ -2618,7 +2633,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         >
           <Image className="w-8 h-8 text-ink-400 mx-auto mb-2" />
           <p className="text-ink-400 text-sm">
-            {uploadingPhotos ? (uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading…') : uploadedImages.length ? 'Add more photos' : 'Drop photos here or click to upload'}
+            {uploadingPhotos || uploadQueue.pending > 0 ? uploadStatusText(uploadQueue, uploadWait) : uploadedImages.length ? 'Add more photos' : 'Drop photos here or click to upload'}
           </p>
           <p className="text-ink-500 text-xs mt-1">Up to {selectedConfig.images} images for {selectedConfig.duration}s video — JPEG/PNG/WEBP up to 25MB</p>
         </div>

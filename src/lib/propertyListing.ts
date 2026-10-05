@@ -10,6 +10,10 @@ import { PropReelAPI } from './api';
  * PropReelAPI.uploadImageFile — presign (pinned size + type allowlist), PUT,
  * then server-side binary verification — so validation never depends on the
  * browser's own checks.
+ *
+ * This is the synchronous, single-file path (AgentBranding). Batch photo
+ * drops use `enqueueImagesForAI` from ./uploadQueue instead, which runs in
+ * the background and parks itself when the API rate-limits us.
  */
 export async function uploadImagesForAI(files: FileList | null, userId: string | undefined, max: number): Promise<string[]> {
   if (!files || !files.length) return [];

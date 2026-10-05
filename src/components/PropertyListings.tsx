@@ -27,7 +27,8 @@ import { TONES, RETENTION_NOTICE, PROVINCES, PROPERTY_TYPES } from '../lib/const
 import FeatureChips from './FeatureChips';
 import CurrencyInput from './CurrencyInput';
 import ErrorBoundary from './ErrorBoundary';
-import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from '../lib/propertyListing';
+import { geocodeAddress, findNearbyAmenities } from '../lib/propertyListing';
+import { drainBacklog, enqueueImagesForAI, uploadStatusText, useUploadQueue } from '../lib/uploadQueue';
 import { useReorderable } from '../lib/reorder';
 
 const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (AI) — parity with the Studio
@@ -257,6 +258,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
   const [photos, setPhotos] = useState<string[]>(initial?.photos || []);
   const [uploading, setUploading] = useState(false);
   const uploadWait = useUploadWait();
+  const uploadQueue = useUploadQueue('wizard');
   const photosInputRef = useRef<HTMLInputElement>(null);
   const photoOrder = useReorderable(setPhotos);
 
@@ -305,19 +307,28 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
     }
   };
 
-  const handlePhotos = async (list: FileList | null) => {
+  // Photos the queue finished while this wizard was closed (route change,
+  // step change, reload of the flow) are drained here on every queue tick.
+  useEffect(() => {
+    const urls = drainBacklog('wizard');
+    if (urls.length) setPhotos(prev => [...prev, ...urls]);
+  }, [uploadQueue, setPhotos]);
+
+  const handlePhotos = (list: FileList | null) => {
     if (!list || !list.length) return;
+    // Room counts photos already in the grid AND photos still in the
+    // background queue, so a second drop mid-upload can't push past 20.
+    const room = Math.max(0, 20 - photos.length - uploadQueue.pending);
+    if (!room) { toast.error('Up to 20 photos per listing', 'Photo limit'); return; }
+    // The queue validates, uploads sequentially and parks itself on a 429
+    // window — this returns at once and thumbnails stream into the grid.
     setUploading(true);
-    try {
-      const urls = await uploadImagesForAI(list, user?.id, Math.max(0, 20 - photos.length));
-      setPhotos(prev => [...prev, ...urls]);
-      toast.success(`${urls.length} photo${urls.length > 1 ? 's' : ''} uploaded`, 'Photos ready');
-    } catch (e: any) {
-      toast.error(e.message || 'Photo upload failed');
-    } finally {
+    enqueueImagesForAI(list, user?.id, room, {
+      scope: 'wizard',
+    }).finally(() => {
       setUploading(false);
       if (photosInputRef.current) photosInputRef.current.value = '';
-    }
+    });
   };
 
   const generateDescription = async () => {
@@ -621,7 +632,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
               accept="image/*"
               className="hidden"
               onChange={e => handlePhotos(e.target.files)}
-              disabled={uploading || photos.length >= 20}
+              disabled={uploading || uploadQueue.pending > 0 || photos.length >= 20}
             />
           </label>
 
@@ -647,7 +658,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
               ))}
             </div>
           )}
-          {uploading && <p className="text-xs text-purple-600 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading…'}</p>}
+          {(uploading || uploadQueue.pending > 0) && <p className="text-xs text-purple-600 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {uploadStatusText(uploadQueue, uploadWait)}</p>}
         </div>
       )}
 
