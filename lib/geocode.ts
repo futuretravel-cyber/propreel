@@ -37,12 +37,16 @@ const upstreamFetch = (url: string) =>
 export async function geocodeAddress(address: string): Promise<GeoPoint | null> {
   const clean = String(address || '').trim().slice(0, 300);
   if (!clean) return null;
+  // Bias every lookup to South Africa: this is an SA-only product, and an
+  // unbiasased query like "18 Marlo Road, Constantia" happily resolves to a
+  // Marlo Road in Prince Edward Island, Canada.
+  const query = /south africa/i.test(clean) ? clean : `${clean}, South Africa`;
 
   let reachedUpstream = false;
 
   // 1) Nominatim (best South African address coverage)
   try {
-    const res = await upstreamFetch(`${NOMINATIM}/search?format=json&limit=1&q=${encodeURIComponent(clean)}`);
+    const res = await upstreamFetch(`${NOMINATIM}/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
     if (res.ok) {
       reachedUpstream = true;
       const rows = await res.json();
@@ -58,7 +62,7 @@ export async function geocodeAddress(address: string): Promise<GeoPoint | null> 
 
   // 2) Photon — different dataset, catches what Nominatim misses
   try {
-    const res = await upstreamFetch(`${PHOTON}/api/?limit=1&q=${encodeURIComponent(clean)}`);
+    const res = await upstreamFetch(`${PHOTON}/api/?limit=1&q=${encodeURIComponent(query)}`);
     if (res.ok) {
       reachedUpstream = true;
       const body = await res.json();
