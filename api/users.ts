@@ -13,9 +13,19 @@ import {
 import { sendEmail, confirmEmailTemplate, resetPasswordTemplate } from '../lib/email';
 import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/totp';
 import { workerTokenHeaders } from '../lib/workerToken';
+import { consumeRateLimit } from '../lib/rateLimit';
 
 const isAdminEmail = (email: string | undefined | null) =>
   !!email && ADMIN_EMAILS.includes(String(email).toLowerCase());
+
+/**
+ * Per-IP signup cap. Offices and carrier NATs legitimately share one
+ * address, so this stays generous — what it stops is one host minting
+ * throwaway accounts by the hundred, each farming the 5-credit signup
+ * bonus and a fresh per-user upload budget.
+ */
+const REGISTER_RATE_LIMIT = 10;
+const REGISTER_RATE_WINDOW_SEC = 3600;
 
 /**
  * Agency nested routes (function consolidation — Hobby 12-function cap).
@@ -1187,6 +1197,22 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
     // ── POST auth_register ───────────────────────────────────────────
     if (action === 'auth_register') {
       if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+      // Per-IP cap — every attempt counts (validated or not) so a single
+      // host can't grind out accounts. The IP is base64url-encoded because
+      // the limiter's row ids strip dots/colons, which would otherwise
+      // collide distinct addresses (1.2.3.4 vs 1.23.4).
+      const ip = String(
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.socket?.remoteAddress || 'unknown'
+      ).toLowerCase();
+      const rl = await consumeRateLimit('register', Buffer.from(ip).toString('base64url'), REGISTER_RATE_LIMIT, REGISTER_RATE_WINDOW_SEC);
+      if (!rl.allowed) {
+        const waitSec = Math.max(1, rl.retryAfterSec);
+        res.setHeader('Retry-After', String(waitSec));
+        return res.status(429).json({ error: `Too many signups from this network — try again in ${waitSec}s` });
+      }
+
       const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect, enableTwoFactor = false, referralCode, startTrial = false } = body;
       if (!email || !fullName) return res.status(400).json({ error: 'Missing email or fullName' });
       if (!EMAIL_RE.test(String(email))) return res.status(400).json({ error: 'Enter a valid email address' });
