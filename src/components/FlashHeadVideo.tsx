@@ -5,6 +5,7 @@ import { useCredit } from '../context/AuthContext';
 import { useRenderProgress, typicalFlashheadSeconds } from '../lib/useRenderProgress';
 import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
 import RenderProgressBar from './RenderProgressBar';
+import { useUploadWait } from '../lib/api';
 
 const VOICES = [
   { id: 'Aria', label: 'Aria (female, warm)' },
@@ -186,7 +187,8 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     }
   };
 
-  const stageLabel = stage === 'uploading' ? 'Uploading profile picture…'
+  const uploadWait = useUploadWait();
+  const stageLabel = stage === 'uploading' ? (uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading profile picture…')
     : stage === 'deducting' ? 'Reserving credits…'
     : stage === 'rendering' ? 'AI is generating your lip-sync video…'
     : '';

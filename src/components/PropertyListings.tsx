@@ -21,7 +21,7 @@ import {
 import { useCredit } from '../context/AuthContext';
 import { queueVideoRender } from '../lib/videoPrefill';
 import { useToast } from '../context/ToastContext';
-import { PropReelAPI, type Project } from '../lib/api';
+import { PropReelAPI, useUploadWait, type Project } from '../lib/api';
 import { formatZar, downloadText } from '../lib/utils';
 import { TONES, RETENTION_NOTICE, PROVINCES, PROPERTY_TYPES } from '../lib/constants';
 import FeatureChips from './FeatureChips';
@@ -256,6 +256,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
   // Step 2 — photos
   const [photos, setPhotos] = useState<string[]>(initial?.photos || []);
   const [uploading, setUploading] = useState(false);
+  const uploadWait = useUploadWait();
   const photosInputRef = useRef<HTMLInputElement>(null);
   const photoOrder = useReorderable(setPhotos);
 
@@ -646,7 +647,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
               ))}
             </div>
           )}
-          {uploading && <p className="text-xs text-purple-600 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</p>}
+          {uploading && <p className="text-xs text-purple-600 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading…'}</p>}
         </div>
       )}
 

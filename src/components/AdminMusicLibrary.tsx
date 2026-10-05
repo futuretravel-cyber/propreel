@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Music, Upload, Play, Pause, Trash2, Loader2, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { toApiError, useUploadWait, withRateLimitRetry } from '../lib/api';
 
 interface MusicTrack {
   id: string;
@@ -21,6 +22,7 @@ export default function AdminMusicLibrary() {
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const uploadWait = useUploadWait();
   const [uploadStage, setUploadStage] = useState<'idle' | 'presign' | 's3' | 'verify' | 'register'>('idle');
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -51,18 +53,23 @@ export default function AdminMusicLibrary() {
       toast.error('Audio must be 15MB or smaller', 'File too large');
       return;
     }
+    // Captured for the retry closures below — TS narrowing doesn't cross callbacks.
+    const picked = form.file;
     setUploading(true);
     try {
       // 1) Presigned PUT URL — size is declared here and pinned into the
       //    signature, so S3 itself refuses anything over 15MB.
       setUploadStage('presign');
-      const pre = await fetch('/api/music?action=upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, genre: form.genre, contentType: form.file.type, size: form.file.size, user_id: user?.id }),
+      const preData = await withRateLimitRetry(async () => {
+        const res = await fetch('/api/music?action=upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: form.name, genre: form.genre, contentType: picked.type, size: picked.size, user_id: user?.id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw toApiError(res, data);
+        return data;
       });
-      const preData = await pre.json();
-      if (!pre.ok) throw new Error(preData.error || 'Presign failed');
 
       // 2) Browser → S3 direct upload
       setUploadStage('s3');
@@ -77,13 +84,16 @@ export default function AdminMusicLibrary() {
       //    rejects anything that isn't really audio (HTML, images, video
       //    renamed to .mp3) — the object is discarded on failure.
       setUploadStage('verify');
-      const ver = await fetch('/api/music?action=verify_upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user?.id, key: preData.s3Key }),
+      await withRateLimitRetry(async () => {
+        const res = await fetch('/api/music?action=verify_upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user?.id, key: preData.s3Key }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw toApiError(res, data);
+        return data;
       });
-      const verData = await ver.json();
-      if (!ver.ok) throw new Error(verData.error || 'Upload verification failed');
 
       // 4) Register metadata
       setUploadStage('register');
@@ -212,10 +222,14 @@ export default function AdminMusicLibrary() {
                 {uploading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    {uploadStage === 'presign' && 'Authorising…'}
-                    {uploadStage === 's3' && 'Uploading to S3…'}
-                    {uploadStage === 'verify' && 'Verifying file…'}
-                    {uploadStage === 'register' && 'Registering…'}
+                    {uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : (
+                      <>
+                        {uploadStage === 'presign' && 'Authorising…'}
+                        {uploadStage === 's3' && 'Uploading to S3…'}
+                        {uploadStage === 'verify' && 'Verifying file…'}
+                        {uploadStage === 'register' && 'Registering…'}
+                      </>
+                    )}
                   </>
                 ) : (
                   <><Upload className="w-4 h-4" /> Upload track</>

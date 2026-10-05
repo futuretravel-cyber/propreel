@@ -5,6 +5,7 @@ import { useRenderProgress, TYPICAL_IMAGE_EDIT_SECONDS } from '../lib/useRenderP
 import RenderProgressBar from './RenderProgressBar';
 import { useCredit } from '../context/AuthContext';
 import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
+import { useUploadWait } from '../lib/api';
 
 interface ImageWorkbenchProps {
   presetId: string;
@@ -34,6 +35,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { edit, busy, stage, error, setError } = useImageEdit();
+  const uploadWait = useUploadWait();
   // Elapsed-vs-typical progress for the ~30s FLUX edit
   const editProgress = useRenderProgress(TYPICAL_IMAGE_EDIT_SECONDS);
 
@@ -70,7 +72,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
     }
   };
 
-  const stageLabel = stage === 'uploading' ? 'Uploading image…'
+  const stageLabel = stage === 'uploading' ? (uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading image…')
     : stage === 'deducting' ? 'Reserving credits…'
     : stage === 'rendering' ? 'AI is working…'
     : '';

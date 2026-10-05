@@ -2,6 +2,7 @@
  * Real-data client for PropReel serverless APIs (DynamoDB-backed).
  * Every call maps 1:1 to a Vercel function in /api.
  */
+import { useSyncExternalStore } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
@@ -88,9 +89,93 @@ export interface ReferralStats {
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({} as any));
+    if (res.status === 429) throw new RateLimitedError(parseRetryAfter(res, err), err.error);
     throw new Error(err.error || `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
+}
+
+/** Map a failed API response to the right Error (429 → RateLimitedError). */
+export function toApiError(res: Response, body: any): Error {
+  if (res.status === 429) return new RateLimitedError(parseRetryAfter(res, body), body?.error);
+  return new Error(body?.error || `Request failed (${res.status})`);
+}
+
+// ── Rate-limit awareness (429 from the upload actions) ─────────────────
+// The API enforces per-user upload windows and answers 429 with a
+// Retry-After header. Rather than failing the upload with a toast, the
+// pipeline below waits out the window — broadcasting a live countdown
+// through useUploadWait, which every "Uploading…" label subscribes to —
+// then retries once. The user's photo simply lands a little later.
+
+export class RateLimitedError extends Error {
+  /** seconds until the per-user window resets */
+  readonly retryAfterSec: number;
+  constructor(retryAfterSec: number, message?: string) {
+    super(message || `Upload limit reached — try again in ${retryAfterSec}s`);
+    this.name = 'RateLimitedError';
+    this.retryAfterSec = retryAfterSec;
+  }
+}
+
+function parseRetryAfter(res: Response, body: any): number {
+  const header = Number(res.headers.get('retry-after'));
+  if (Number.isFinite(header) && header > 0) return Math.min(300, Math.ceil(header));
+  const match = /in (\d+)s/.exec(String(body?.error || ''));
+  return match ? Math.min(300, Number(match[1])) : 60;
+}
+
+type UploadWaitListener = (secondsRemaining: number | null) => void;
+let uploadWaitSeconds: number | null = null;
+const uploadWaitListeners = new Set<UploadWaitListener>();
+
+function setUploadWait(seconds: number | null) {
+  uploadWaitSeconds = seconds;
+  uploadWaitListeners.forEach(listener => listener(seconds));
+}
+
+/** Subscribe to the live countdown while an upload waits out a 429 window. */
+export function subscribeUploadWait(listener: UploadWaitListener): () => void {
+  uploadWaitListeners.add(listener);
+  return () => { uploadWaitListeners.delete(listener); };
+}
+
+export function getUploadWait(): number | null {
+  return uploadWaitSeconds;
+}
+
+/** React view of the countdown — drives the "retrying in Ns" upload labels. */
+export function useUploadWait(): number | null {
+  return useSyncExternalStore(subscribeUploadWait, getUploadWait);
+}
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/**
+ * Run one upload step; if it comes back rate-limited, wait out the server's
+ * Retry-After window (countdown broadcast to every useUploadWait subscriber)
+ * and retry that step once. A second 429 propagates so the caller can show
+ * the fresh wait — waiting twice would be a multi-minute hang.
+ */
+export async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!(err instanceof RateLimitedError)) throw err;
+    // Retry-After counts down to the boundary; +1s lands safely past it.
+    const waitSec = Math.min(300, Math.max(1, err.retryAfterSec)) + 1;
+    try {
+      for (let remaining = waitSec; remaining > 0; remaining--) {
+        setUploadWait(remaining);
+        await sleep(1000);
+      }
+      setUploadWait(null);
+      return await fn(); // second 429 (if any) propagates to the caller
+    } catch (err2) {
+      setUploadWait(null);
+      throw err2;
+    }
+  }
 }
 
 export const PropReelAPI = {
@@ -104,12 +189,16 @@ export const PropReelAPI = {
   // format. Throws the server's message when validation fails.
   async uploadImageFile(userId: string | undefined, file: File): Promise<string> {
     const contentType = file.type || 'image/jpeg';
-    const pre = await j<{ uploadUrl: string; publicUrl: string; key: string }>(
-      await fetch(`${API_BASE}/api/music?action=presign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, contentType, size: file.size }),
-      })
+    // Presign and verify are the rate-limited steps (S3's PUT never 429s) —
+    // each waits out a limited window and retries once; see withRateLimitRetry.
+    const pre = await withRateLimitRetry(async () =>
+      j<{ uploadUrl: string; publicUrl: string; key: string }>(
+        await fetch(`${API_BASE}/api/music?action=presign`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, contentType, size: file.size }),
+        })
+      )
     );
     const put = await fetch(pre.uploadUrl, {
       method: 'PUT',
@@ -117,12 +206,13 @@ export const PropReelAPI = {
       body: file,
     });
     if (!put.ok) throw new Error(`Upload failed (${put.status})`);
-    await j(
-      await fetch(`${API_BASE}/api/music?action=verify_upload`, {
+
+    await withRateLimitRetry(async () =>
+      j(await fetch(`${API_BASE}/api/music?action=verify_upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, key: pre.key }),
-      })
+      }))
     );
     return pre.publicUrl;
   },

@@ -11,7 +11,7 @@ import { ToastProvider, useToast } from './context/ToastContext';
 import { SearchButton } from './components/GlobalSearch';
 import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, PROVINCES, PROPERTY_TYPES } from './lib/constants';
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
-import { PropReelAPI } from './lib/api';
+import { PropReelAPI, useUploadWait } from './lib/api';
 import FeatureChips from './components/FeatureChips';
 import CurrencyInput from './components/CurrencyInput';
 import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
@@ -1400,6 +1400,7 @@ const SOCIAL_POST_COST = 2; // ⚡ per social media post render (Grok AI)
 function DescriptionTab() {
   const toast = useToast();
   const navigate = useNavigate();
+  const uploadWait = useUploadWait();
   const { user, deductCredits, addCredits } = useCredit();
   const [tone, setTone] = useState('Professional');
   const [description, setDescription] = useState('');
@@ -1628,7 +1629,7 @@ function DescriptionTab() {
           aria-label="Upload photos for the description"
         >
           <Image className="w-7 h-7 text-ink-400 mx-auto mb-2" />
-          <p className="text-ink-400 text-sm">{uploading ? 'Uploading…' : 'Drop photos here or click to upload'}</p>
+          <p className="text-ink-400 text-sm">{uploading ? (uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading…') : 'Drop photos here or click to upload'}</p>
           <p className="text-ink-500 text-xs mt-1">AI describes what it sees — up to 4 images</p>
         </div>
         {images.length > 0 && (
@@ -1930,6 +1931,7 @@ function TwilightTab() {
 
 function SocialTab() {
   const toast = useToast();
+  const uploadWait = useUploadWait();
   const { user, deductCredits, addCredits } = useCredit();
   const [platform, setPlatform] = useState('instagram');
   const [caption, setCaption] = useState('');
@@ -2130,8 +2132,8 @@ function SocialTab() {
             aria-label="Upload photos for the post"
           >
             <Image className="w-7 h-7 text-ink-400 mx-auto mb-2" />
-            <p className="text-ink-400 text-sm">{uploading ? 'Uploading…' : 'Drop photos here or click to upload'}</p>
-            <p className="text-ink-500 text-xs mt-1">Photos are shown in the final post and described by AI</p>
+          <p className="text-ink-400 text-sm">{uploading ? (uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading…') : 'Drop photos here or click to upload'}</p>
+          <p className="text-ink-500 text-xs mt-1">Photos are shown in the final post and described by AI</p>
           </div>
           {images.length > 0 && (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mt-3">
@@ -2288,6 +2290,7 @@ const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretr
 function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages = [], profileImage, onProfileImageChange }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void; initialImages?: string[]; profileImage: string | null; onProfileImageChange: (img: string | null) => void }) {
   const { user, deductCredits, addCredits } = useCredit();
   const toast = useToast();
+  const uploadWait = useUploadWait();
   const [tier, setTier] = useState('SOCIAL');
   const [configIndex, setConfigIndex] = useState(0);
   const [orientation, setOrientation] = useState('LANDSCAPE');
@@ -2615,7 +2618,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         >
           <Image className="w-8 h-8 text-ink-400 mx-auto mb-2" />
           <p className="text-ink-400 text-sm">
-            {uploadingPhotos ? 'Uploading…' : uploadedImages.length ? 'Add more photos' : 'Drop photos here or click to upload'}
+            {uploadingPhotos ? (uploadWait != null ? `Upload limit reached — retrying in ${uploadWait}s…` : 'Uploading…') : uploadedImages.length ? 'Add more photos' : 'Drop photos here or click to upload'}
           </p>
           <p className="text-ink-500 text-xs mt-1">Up to {selectedConfig.images} images for {selectedConfig.duration}s video — JPEG/PNG/WEBP up to 25MB</p>
         </div>
