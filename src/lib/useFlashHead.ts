@@ -62,24 +62,9 @@ export function useFlashHead() {
       publicUrl = opts.imageUrl;
     } else {
       try {
-        const contentType = opts.file!.type || 'image/jpeg';
-        const preRes = await fetch('/api/music?action=presign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: user.id, contentType }),
-        });
-        if (!preRes.ok) {
-          const d = await preRes.json().catch(() => ({}));
-          throw new Error(d.error || 'Upload authorisation failed');
-        }
-        const pre = await preRes.json();
-        const put = await fetch(pre.uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': contentType },
-          body: opts.file,
-        });
-        if (!put.ok) throw new Error('Profile image upload failed');
-        publicUrl = pre.publicUrl;
+        // Presign (pinned size + type allowlist) → PUT → server-side binary
+        // verification (sharp) — validation never trusts the browser alone.
+        publicUrl = await PropReelAPI.uploadImageFile(user.id, opts.file!);
       } catch (e: any) {
         setError(e.message || 'Upload failed');
         setStage('idle');

@@ -4,6 +4,8 @@ interface ErrorBoundaryProps {
   children: ReactNode;
   /** Optional custom fallback renderer */
   fallback?: (error: Error, reset: () => void) => ReactNode;
+  /** Optional widget name used in the fallback heading, e.g. "Video player". */
+  label?: string;
 }
 
 interface ErrorBoundaryState {
@@ -37,7 +39,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       if (this.props.fallback) {
         return this.props.fallback(this.state.error, this.reset);
       }
-      return <ErrorState error={this.state.error} onRetry={this.reset} />;
+      return (
+        <ErrorState
+          error={this.state.error}
+          onRetry={this.reset}
+          title={this.props.label ? `${this.props.label} ran into a problem` : undefined}
+        />
+      );
     }
     return this.props.children;
   }

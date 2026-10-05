@@ -94,6 +94,39 @@ async function j<T>(res: Response): Promise<T> {
 }
 
 export const PropReelAPI = {
+  // ── Image uploads: presign → PUT → server-side verification ──────────
+  // The bytes go browser→S3 directly, so a plain presigned URL trusts the
+  // client completely. This closes the loop: presign validates the declared
+  // type and pins Content-Length into the signature (hard 25MB cap), and
+  // verify_upload makes the server parse the real header with sharp — SVGs
+  // with embedded scripts, HTML or truncated garbage are rejected and
+  // deleted, and the stored content-type is normalised to the sniffed
+  // format. Throws the server's message when validation fails.
+  async uploadImageFile(userId: string | undefined, file: File): Promise<string> {
+    const contentType = file.type || 'image/jpeg';
+    const pre = await j<{ uploadUrl: string; publicUrl: string; key: string }>(
+      await fetch(`${API_BASE}/api/music?action=presign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, contentType, size: file.size }),
+      })
+    );
+    const put = await fetch(pre.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: file,
+    });
+    if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+    await j(
+      await fetch(`${API_BASE}/api/music?action=verify_upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, key: pre.key }),
+      })
+    );
+    return pre.publicUrl;
+  },
+
   // ── Projects (propreel-projects table; per-user HASH key) ──────────────
   async listProjects(userId: string): Promise<Project[]> {
     const data = await j<{ projects: Project[] }>(

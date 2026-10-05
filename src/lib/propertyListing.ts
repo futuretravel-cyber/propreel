@@ -3,8 +3,14 @@
  * free OpenStreetMap geocoding / nearby-amenities lookups used by the
  * Description tab and the Property Listings wizard.
  */
+import { PropReelAPI } from './api';
 
-/** Upload images to S3 via the presign endpoint; returns public URLs. */
+/**
+ * Upload images to S3; returns public URLs. Each file goes through
+ * PropReelAPI.uploadImageFile — presign (pinned size + type allowlist), PUT,
+ * then server-side binary verification — so validation never depends on the
+ * browser's own checks.
+ */
 export async function uploadImagesForAI(files: FileList | null, userId: string | undefined, max: number): Promise<string[]> {
   if (!files || !files.length) return [];
   const urls: string[] = [];
@@ -13,20 +19,11 @@ export async function uploadImagesForAI(files: FileList | null, userId: string |
     const okType = file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|avif)$/i.test(file.name);
     if (!okType) throw new Error(`${file.name} is not an image file`);
     if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} is over 25MB`);
-    const contentType = file.type || 'image/jpeg';
-    const preRes = await fetch('/api/music?action=presign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, contentType }),
-    });
-    if (!preRes.ok) {
-      const d = await preRes.json().catch(() => ({}));
-      throw new Error(d.error || 'Upload authorisation failed');
+    try {
+      urls.push(await PropReelAPI.uploadImageFile(userId, file));
+    } catch (e: any) {
+      throw new Error(e?.message ? `${file.name}: ${e.message}` : `Upload failed for ${file.name}`);
     }
-    const pre = await preRes.json();
-    const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
-    if (!put.ok) throw new Error(`Upload failed for ${file.name}`);
-    urls.push(pre.publicUrl);
   }
   return urls;
 }

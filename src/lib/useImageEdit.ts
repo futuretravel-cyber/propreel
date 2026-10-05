@@ -37,29 +37,13 @@ export function useImageEdit() {
       return null;
     }
 
-    // 1) Presigned upload: browser → S3 (propreel-raw-assets/uploads/…)
+    // 1) Presigned upload: browser → S3 (propreel-raw-assets/uploads/…),
+    //    then server-side verification (magic bytes + size) before we spend
+    //    any credits on the edit itself.
     setStage('uploading');
     let publicUrl: string;
     try {
-      const contentType = opts.file.type || 'image/jpeg';
-      const preRes = await fetch('/api/music?action=presign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, contentType }),
-      });
-      if (!preRes.ok) {
-        const d = await preRes.json().catch(() => ({}));
-        throw new Error(d.error || 'Upload authorisation failed');
-      }
-      const pre = await preRes.json();
-
-      const put = await fetch(pre.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': contentType },
-        body: opts.file,
-      });
-      if (!put.ok) throw new Error('Image upload failed');
-      publicUrl = pre.publicUrl;
+      publicUrl = await PropReelAPI.uploadImageFile(user.id, opts.file);
     } catch (e: any) {
       setError(e.message || 'Upload failed');
       setStage('idle');

@@ -26,6 +26,7 @@ import { formatZar, downloadText } from '../lib/utils';
 import { TONES, RETENTION_NOTICE, PROVINCES, PROPERTY_TYPES } from '../lib/constants';
 import FeatureChips from './FeatureChips';
 import CurrencyInput from './CurrencyInput';
+import ErrorBoundary from './ErrorBoundary';
 import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from '../lib/propertyListing';
 import { useReorderable } from '../lib/reorder';
 
@@ -1080,7 +1081,7 @@ export default function PropertyListings() {
           )}
       </>
 
-      {player && <VideoLightbox project={player} onClose={() => setPlayer(null)} />}
+      {player && <ErrorBoundary label="Video player"><VideoLightbox project={player} onClose={() => setPlayer(null)} /></ErrorBoundary>}
 
       {/* Resume-or-start-fresh prompt — shown when unfinished drafts exist */}
       {resumePrompt && (

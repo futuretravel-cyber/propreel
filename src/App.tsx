@@ -1036,7 +1036,12 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           )}
-          <Suspense fallback={<DashboardSkeleton />}>{children}</Suspense>
+          {/* One boundary around every dashboard page: a runtime error in a
+              widget (AI response parsing, uploads, players) shows a retry card
+              instead of blanking the whole route. */}
+          <ErrorBoundary>
+            <Suspense fallback={<DashboardSkeleton />}>{children}</Suspense>
+          </ErrorBoundary>
         </main>
       </div>
 
@@ -2340,20 +2345,10 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         const okType = file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|avif)$/i.test(file.name);
         if (!okType) { toast.error(`${file.name} is not an image file`); continue; }
         if (file.size > 25 * 1024 * 1024) { toast.error(`${file.name} is over 25MB`); continue; }
-        const contentType = file.type || 'image/jpeg';
-        const preRes = await fetch('/api/music?action=presign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: user?.id, contentType }),
-        });
-        if (!preRes.ok) {
-          const d = await preRes.json().catch(() => ({}));
-          throw new Error(d.error || 'Upload authorisation failed');
-        }
-        const pre = await preRes.json();
-        const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
-        if (!put.ok) throw new Error(`Upload failed for ${file.name}`);
-        urls.push(pre.publicUrl);
+        // Presign (pinned size + type allowlist) → PUT → server-side
+        // verification (sharp magic bytes) — anything that isn't really a
+        // JPEG/PNG/WebP is rejected and deleted by the API.
+        urls.push(await PropReelAPI.uploadImageFile(user?.id, file));
       }
       if (urls.length) {
         setUploadedImages(prev => [...prev, ...urls].slice(0, selectedConfig.images));

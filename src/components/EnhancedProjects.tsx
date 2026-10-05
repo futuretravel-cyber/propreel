@@ -9,6 +9,7 @@ import {
   Plus, Star, Share2, FileText, X, FolderInput, RefreshCw, Loader2, Mic, Video, Download, Copy,
 } from 'lucide-react';
 import { RETENTION_NOTICE } from '../lib/constants';
+import ErrorBoundary from './ErrorBoundary';
 import { VideoLightbox } from './PropertyListings';
 import { queueVideoRender } from '../lib/videoPrefill';
 
@@ -591,7 +592,7 @@ export default function EnhancedProjects() {
           )}
         </div>
       </div>
-      {player && <VideoLightbox project={player} onClose={() => setPlayer(null)} />}
+      {player && <ErrorBoundary label="Video player"><VideoLightbox project={player} onClose={() => setPlayer(null)} /></ErrorBoundary>}
     </div>
   );
 }
