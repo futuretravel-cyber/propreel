@@ -24,6 +24,11 @@ import { updateUser, User } from '../lib/userService';
 const APPLY = process.argv.includes('--apply');
 const DAY_MS = 86400000;
 const YEAR_MS = 365 * DAY_MS;
+// A row this script wrote minutes ago is already at "grant + 365 days", so a
+// naive `target < now + 365d` comparison would re-trigger on every run (by
+// the run's own elapsed seconds). Only rows expiring a day or more early are
+// rewritten — that keeps the migration idempotent.
+const TOLERANCE_MS = DAY_MS;
 
 async function main() {
   const users = await scanItems<User>(TABLES.USERS, { limit: 3000 });
@@ -41,7 +46,7 @@ async function main() {
       const target = e.expiresAt ? new Date(e.expiresAt).getTime() : 0;
       if (target <= now) return e; // already expired — nightly cron handles it
       if (e.source !== 'subscription' && e.source !== 'bonus') return e; // purchases already 365d
-      if (target >= now + YEAR_MS) return e; // already valid for a year+
+      if (target >= now + YEAR_MS - TOLERANCE_MS) return e; // already valid for ~a year
       touched = true;
       rowsChanged++;
       return { ...e, expiresAt: new Date(now + YEAR_MS).toISOString() };
