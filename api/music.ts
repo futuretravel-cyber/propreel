@@ -9,6 +9,7 @@ import sharp from 'sharp';
 import { docClient, getItem, putItem, TABLES } from '../lib/db';
 import { getUser } from '../lib/userService';
 import { sniffMedia, audioMime } from '../lib/mediaSniff';
+import { consumeRateLimit } from '../lib/rateLimit';
 
 /**
  * Admin-managed music library.
@@ -58,6 +59,16 @@ const ALLOWED_IMAGES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 /** Formats sharp's header parse is allowed to confirm (SVG parses as 'svg' → rejected). */
 const ALLOWED_IMAGE_FORMATS = ['jpeg', 'png', 'webp'];
+/** Per-user fixed-window caps for the S3-minting actions (lib/rateLimit). */
+const RATE_WINDOW_SEC = 300; // 5 minutes
+const PRESIGN_LIMIT = 60;    // signed URLs per window — wizard batches are ≤20
+const VERIFY_LIMIT = 80;     // S3 HEAD/GET/COPY verifications per window
+
+/** 429 with Retry-After — shared by every rate-limited action below. */
+function tooManyUploads(res: VercelResponse, retryAfterSec: number) {
+  res.setHeader('Retry-After', String(Math.max(1, retryAfterSec)));
+  return res.status(429).json({ error: `Upload limit reached — try again in ${Math.max(1, retryAfterSec)}s` });
+}
 
 type AudioCheck =
   | { ok: true; contentType: string; bytes: number; storedType: string }
@@ -125,6 +136,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!userId) return res.status(401).json({ error: 'Sign in to upload images' });
       const requester = await getUser(userId);
       if (!requester) return res.status(401).json({ error: 'Sign in to upload images' });
+      // Per-user cap: presign mints signed S3 URLs — cheap individually, but
+      // unlimited in bulk. Shared with the audio presign (same 'presign' scope).
+      const rl = await consumeRateLimit('presign', String(userId), PRESIGN_LIMIT, RATE_WINDOW_SEC);
+      if (!rl.allowed) return tooManyUploads(res, rl.retryAfterSec);
 
       const { contentType, size } = req.body || {};
       if (!ALLOWED_IMAGES.includes(contentType)) {
@@ -161,6 +176,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!userId) return res.status(401).json({ error: 'Sign in to verify uploads' });
       const requester = await getUser(userId);
       if (!requester) return res.status(401).json({ error: 'Sign in to verify uploads' });
+      // Per-user cap: each verify is a real S3 HEAD + ranged GET (+ COPY on
+      // success) — the expensive side of the pipeline, counted separately.
+      const rl = await consumeRateLimit('verify', String(userId), VERIFY_LIMIT, RATE_WINDOW_SEC);
+      if (!rl.allowed) return tooManyUploads(res, rl.retryAfterSec);
       const key = req.body?.key;
       // Two key spaces: images under uploads/<userId>/ (ownership enforced by
       // the prefix — never touch another user's objects) and admin audio
@@ -229,6 +248,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST' && req.query.action === 'upload') {
       const admin = await requireAdmin(req);
       if (!admin.ok) return res.status(403).json({ error: admin.error });
+      // Same per-user presign budget as the image path (shared scope).
+      const presignUserId = String((req.query.user_id as string) || req.body?.user_id || '');
+      const rlAudio = await consumeRateLimit('presign', presignUserId, PRESIGN_LIMIT, RATE_WINDOW_SEC);
+      if (!rlAudio.allowed) return tooManyUploads(res, rlAudio.retryAfterSec);
 
       const { name, genre, contentType, size } = req.body || {};
       if (!name || !genre) return res.status(400).json({ error: 'name and genre are required' });
