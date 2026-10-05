@@ -13,10 +13,21 @@ export interface ActivityItem {
 }
 
 /**
+ * Fired on `window` whenever any hook instance writes the read set, so every
+ * mounted instance reloads it. Without this the header badge and the
+ * NotificationCenter each kept their own stale copy of the same localStorage
+ * value — you could mark everything read and the badge never cleared.
+ */
+const READ_STATE_EVENT = 'propreel:activity-read-state';
+
+/**
  * Real activity feed: builds notifications from the user's actual credit
  * transactions (renders, edits, refunds, top-ups) and project records.
- * Items are marked read in localStorage per user (client-side state only —
- * the ledger itself is append-only).
+ * Nothing here is hardcoded — an empty account simply sees an empty feed.
+ *
+ * Items are marked read in localStorage per user; the read set is shared
+ * across every mounted hook instance via READ_STATE_EVENT (and the native
+ * `storage` event covers other tabs).
  */
 export function useActivity(userId: string | undefined) {
   const [items, setItems] = useState<ActivityItem[]>([]);
@@ -40,10 +51,14 @@ export function useActivity(userId: string | undefined) {
         // Render / edit / refund events from the real ledger (newest first)
         for (const t of report?.transactions || []) {
           const when = t.createdAt;
-          const reason = String(t.reason || '').toLowerCase();
+          // Ledger rows carry a stable id — use it so "read" survives
+          // refetches (timestamp+amount composites collided and re-surfaced
+          // as unread).
+          const id = t.id ? `txn-${t.id}` : `txn-${when}-${t.amount}`;
+          const reason = String(t.reason || t.description || '').toLowerCase();
           if (t.amount < 0 && (reason.includes('video') || reason.includes('render'))) {
             feed.push({
-              id: `txn-${when}-${t.amount}`,
+              id,
               type: 'info', category: 'render',
               title: 'Video Render Started',
               message: `${Math.abs(t.amount)} credits reserved for a video render.`,
@@ -52,25 +67,35 @@ export function useActivity(userId: string | undefined) {
             });
           } else if (t.amount < 0 && reason.includes('image')) {
             feed.push({
-              id: `txn-${when}-${t.amount}`,
+              id,
               type: 'info', category: 'render',
               title: 'AI Photo Edit',
               message: `${Math.abs(t.amount)} credits used for an AI photo edit.`,
               timestamp: when, read: false,
               actionUrl: '/studio?tab=photo',
             });
-          } else if (t.amount < 0 && reason.includes('flashhead')) {
+          } else if (t.amount < 0 && (reason.includes('flashhead') || reason.includes('talking head') || reason.includes('lip-sync'))) {
             feed.push({
-              id: `txn-${when}-${t.amount}`,
+              id,
               type: 'info', category: 'render',
               title: 'Talking-Head Video',
               message: `${Math.abs(t.amount)} credits used for a FlashHead lip-sync render.`,
               timestamp: when, read: false,
               actionUrl: '/studio?tab=flashhead',
             });
-          } else if (t.amount > 0 && (reason.includes('refund') || reason.includes('Refund'))) {
+          } else if (t.amount < 0 && reason.includes('refund')) {
+            // A negative row whose description says refund is unusual — show it honestly
             feed.push({
-              id: `txn-${when}-${t.amount}`,
+              id,
+              type: 'warning', category: 'credits',
+              title: 'Credits Adjusted',
+              message: t.description || `${Math.abs(t.amount)} credits were deducted.`,
+              timestamp: when, read: false,
+              actionUrl: '/dashboard/credits',
+            });
+          } else if (t.amount > 0 && reason.includes('refund')) {
+            feed.push({
+              id,
               type: 'success', category: 'credits',
               title: 'Credits Refunded',
               message: `${t.amount} credits were refunded to your balance after a failed render.`,
@@ -79,21 +104,32 @@ export function useActivity(userId: string | undefined) {
             });
           } else if (t.amount > 0) {
             feed.push({
-              id: `txn-${when}-${t.amount}`,
+              id,
               type: 'success', category: 'billing',
               title: 'Credits Added',
-              message: `${t.amount} credits were added to your balance.`,
+              message: t.description || `${t.amount} credits were added to your balance.`,
+              timestamp: when, read: false,
+              actionUrl: '/dashboard/credits',
+            });
+          } else {
+            // Any other real deduction (edits, social packs, transfers…)
+            feed.push({
+              id,
+              type: 'info', category: 'credits',
+              title: 'Credits Used',
+              message: t.description || `${Math.abs(t.amount)} credits were used.`,
               timestamp: when, read: false,
               actionUrl: '/dashboard/credits',
             });
           }
         }
 
-        // Low-credit warning from the real balance
+        // Low-credit warning from the real balance. Stable id so marking it
+        // read keeps it read while the balance ticks down.
         const bal = report?.currentBalance ?? 0;
         if (bal > 0 && bal < 20) {
           feed.push({
-            id: `low-credits-${bal}`,
+            id: 'low-credits',
             type: 'warning', category: 'credits',
             title: 'Low Credit Warning',
             message: `You have ${bal} credits remaining. Recharge from R50 to keep rendering.`,
@@ -155,29 +191,48 @@ export function useActivity(userId: string | undefined) {
     return () => { cancelled = true; };
   }, [userId]);
 
-  // Read-state persisted per user in localStorage
+  // Read-state persisted per user in localStorage and shared across every
+  // mounted instance of this hook (header badge + NotificationCenter).
   const readKey = userId ? `propreel:readActivity:${userId}` : 'propreel:readActivity';
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(readKey);
-      if (raw) setReadIds(new Set(JSON.parse(raw)));
-    } catch { /* fresh state */ }
+    const load = () => {
+      try {
+        const raw = localStorage.getItem(readKey);
+        setReadIds(raw ? new Set(JSON.parse(raw)) : new Set());
+      } catch { setReadIds(new Set()); }
+    };
+    load();
+    const onStorage = (e: StorageEvent) => { if (!e.key || e.key === readKey) load(); };
+    const onLocalRead = () => load();
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(READ_STATE_EVENT, onLocalRead);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(READ_STATE_EVENT, onLocalRead);
+    };
   }, [readKey]);
 
+  const persist = (next: Set<string>) => {
+    setReadIds(next);
+    try { localStorage.setItem(readKey, JSON.stringify([...next])); } catch { /* ignore */ }
+    // Tell every other instance (same tab) to reload the shared set
+    window.dispatchEvent(new Event(READ_STATE_EVENT));
+  };
+
   const markRead = (id: string) => {
+    // Functional update so rapid consecutive marks can't lose one another
     setReadIds(prev => {
       const next = new Set(prev).add(id);
       try { localStorage.setItem(readKey, JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
+    window.dispatchEvent(new Event(READ_STATE_EVENT));
   };
 
   const markAllRead = () => {
-    const all = new Set(items.map(i => i.id));
-    setReadIds(all);
-    try { localStorage.setItem(readKey, JSON.stringify([...all])); } catch { /* ignore */ }
+    persist(new Set(items.map(i => i.id)));
   };
 
   const notifications: ActivityItem[] = items.map(i => ({ ...i, read: readIds.has(i.id) }));

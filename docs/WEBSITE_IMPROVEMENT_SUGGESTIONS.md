@@ -29,6 +29,47 @@ node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8'))"  # Vercel
 
 ## Shipped ✅
 
+### Data honesty & UX fixes (5 Oct 2026)
+- **Profile menu moved to the top-right** of the dashboard header (avatar,
+  name, chevron now sit after search/notifications/credits; the dropdown
+  anchors right). Sidebar profile card unchanged.
+- **Notification badge now actually clears.** `useActivity` read-state is
+  shared across every mounted instance (header bell + NotificationCenter)
+  through a window event and the native `storage` event — previously each
+  copy of the hook kept its own stale `readIds`, so marking everything read
+  left the badge stuck. Ledger notifications also key on the real
+  `creditTransactions.id` (the old timestamp+amount key collided and
+  re-surfaced as unread), the low-credit warning has a stable id, and
+  deduction rows finally render (they read `t.reason`, which the API never
+  sent — now `t.description`). Deleting a notification persists the
+  dismissal and marks it read.
+- **No fake notifications anywhere** — the seeded `legacyItems` demo list
+  ("Luxury Villa in Constantia", "Monthly Report Ready", …) is gone;
+  `/dashboard/notifications` is fed only by the credit ledger + project rows.
+- **Credits expire in 365 days, not one month** — one rule, one place:
+  `creditTtlIso()` in `lib/userService.ts`. Applied to signup bonus,
+  referral friend/payout bonuses, auto top-ups, plan-upgrade carry-overs and
+  subscription allocations (monthly grants no longer die at month end).
+  `addCredits` now records `bonus` expiries too (it silently dropped them).
+  Existing rows: `scripts/extend-credit-expiry.ts` (dry-run, `--apply`).
+- **Active Sessions is real** — `GET /api/users?action=sessions` reads the
+  sessions table (IP + user-agent captured at sign-in via `clientMeta`),
+  shows device/signed-in/expires, and `POST ?action=sessions_revoke`
+  revokes one session or all others for real.
+- **Audit Log is real** — `GET /api/users?action=audit_log` merges sign-in
+  rows, credit-ledger entries and the new `passwordChangedAt` /
+  `twoFactorChangedAt` timestamps. The dead "Export Log" button now
+  downloads that data as CSV. No invented events: the log is just shorter
+  when nothing happened.
+- **Google Maps lookup fixed for Listings + Property Description** —
+  geocoding and nearby-amenities now proxy through
+  `/api/projects?action=geocode|amenities` (server-side Nominatim → Photon,
+  three Overpass mirrors, 8s upstream cap) so browser extensions / CORS /
+  corporate filters can't break the call; the client falls back to a direct
+  lookup only if the proxy itself is unreachable. Verified server-side:
+  Constantia address → coordinates, no-match → "address not found",
+  10 nearby amenities.
+
 ### Performance
 - **Route-level code splitting** — dashboard-only components (`PropertyListings`,
   `EnhancedProjects`, `SecuritySettings`, …) and all public/auth pages are

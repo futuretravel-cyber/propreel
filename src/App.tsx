@@ -928,48 +928,6 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden text-ink-400 hover:text-white" aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'} aria-expanded={sidebarOpen}>
             <Menu className="w-6 h-6" />
           </button>
-          {/* Profile picture — top-left account menu */}
-          <div className="relative" onMouseLeave={() => setProfileMenu(false)}>
-            <button
-              onClick={() => setProfileMenu(m => !m)}
-              className="flex items-center gap-2 p-1 pr-2 rounded-full hover:bg-white/5 transition"
-              aria-haspopup="menu"
-              aria-expanded={profileMenu}
-              aria-label="Account menu"
-            >
-              {user?.avatarUrl ? (
-                <img src={user.avatarUrl} alt={user.fullName || 'Profile'} className="w-9 h-9 rounded-full object-cover border border-white/10 shrink-0" />
-              ) : (
-                <span className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
-                  {user?.fullName?.[0] || 'U'}
-                </span>
-              )}
-              <span className="hidden sm:block text-sm text-ink-300 max-w-[140px] truncate">{user?.fullName}</span>
-              <ChevronDown className={`w-4 h-4 text-ink-400 transition ${profileMenu ? 'rotate-180' : ''}`} />
-            </button>
-            {profileMenu && (
-              <div role="menu" className="absolute left-0 mt-2 w-56 bg-ink-900 border border-white/10 rounded-xl shadow-xl py-1 z-50">
-                <div className="px-3 py-2 border-b border-white/5">
-                  <p className="text-sm text-white font-medium truncate">{user?.fullName}</p>
-                  <p className="text-xs text-ink-500 truncate">{user?.email}</p>
-                </div>
-                <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/settings?tab=profile'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
-                  <User className="w-4 h-4" /> Go to profile
-                </button>
-                <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/settings?tab=security'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
-                  <Settings className="w-4 h-4" /> Go to Settings
-                </button>
-                <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/billing'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
-                  <CreditCard className="w-4 h-4" /> Go to Billing
-                </button>
-                <div className="border-t border-white/5 mt-1 pt-1">
-                  <button role="menuitem" onClick={() => { setProfileMenu(false); logout(); navigate('/'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-950/40 text-left">
-                    <LogOut className="w-4 h-4" /> Sign out
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
           </div>
           <div className="flex items-center gap-4 ml-auto">
             <SearchButton />
@@ -981,6 +939,48 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             </Link>
             <div className="badge badge-brand">
               <Zap className="w-3 h-3" /> {balance.total} credits
+            </div>
+            {/* Profile picture — top-right account menu */}
+            <div className="relative" onMouseLeave={() => setProfileMenu(false)}>
+              <button
+                onClick={() => setProfileMenu(m => !m)}
+                className="flex items-center gap-2 p-1 pr-2 rounded-full hover:bg-white/5 transition"
+                aria-haspopup="menu"
+                aria-expanded={profileMenu}
+                aria-label="Account menu"
+              >
+                {user?.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.fullName || 'Profile'} className="w-9 h-9 rounded-full object-cover border border-white/10 shrink-0" />
+                ) : (
+                  <span className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                    {user?.fullName?.[0] || 'U'}
+                  </span>
+                )}
+                <span className="hidden sm:block text-sm text-ink-300 max-w-[140px] truncate">{user?.fullName}</span>
+                <ChevronDown className={`w-4 h-4 text-ink-400 transition ${profileMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {profileMenu && (
+                <div role="menu" className="absolute right-0 mt-2 w-56 bg-ink-900 border border-white/10 rounded-xl shadow-xl py-1 z-50">
+                  <div className="px-3 py-2 border-b border-white/5">
+                    <p className="text-sm text-white font-medium truncate">{user?.fullName}</p>
+                    <p className="text-xs text-ink-500 truncate">{user?.email}</p>
+                  </div>
+                  <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/settings?tab=profile'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
+                    <User className="w-4 h-4" /> Go to profile
+                  </button>
+                  <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/settings?tab=security'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
+                    <Settings className="w-4 h-4" /> Go to Settings
+                  </button>
+                  <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/billing'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
+                    <CreditCard className="w-4 h-4" /> Go to Billing
+                  </button>
+                  <div className="border-t border-white/5 mt-1 pt-1">
+                    <button role="menuitem" onClick={() => { setProfileMenu(false); logout(); navigate('/'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-950/40 text-left">
+                      <LogOut className="w-4 h-4" /> Sign out
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>

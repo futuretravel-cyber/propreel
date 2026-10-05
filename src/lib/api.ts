@@ -56,8 +56,12 @@ export interface CreditReportData {
   totalUsed: number;
   totalPurchased: number;
   transactions: Array<{
+    /** Stable ledger id — used as the notification key so "read" sticks */
+    id?: string;
     createdAt: string;
     amount: number;
+    type?: string;
+    description?: string;
     reason?: string;
     kind?: string;
   }>;

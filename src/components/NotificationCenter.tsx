@@ -29,73 +29,23 @@ export default function NotificationCenter() {
   const { user } = useAuth();
   // Real activity feed: built from the credit ledger + project records — nothing hardcoded
   const { notifications: activity, unreadCount: liveUnread, markRead: markActivityRead, markAllRead: markAllActivityRead } = useActivity(user?.id);
+  // Deleted notifications, persisted per user so they stay gone after a reload
+  const dismissedKey = user?.id ? `propreel:dismissedActivity:${user.id}` : 'propreel:dismissedActivity';
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(dismissedKey);
+      setDismissed(raw ? new Set(JSON.parse(raw)) : new Set());
+    } catch { setDismissed(new Set()); }
+  }, [dismissedKey]);
+  // Everything above comes from the live ledger + project records — there is
+  // no seeded/demo notification list anywhere in this component.
   const notifications: Notification[] = activity
     .filter(a => !dismissed.has(a.id))
     .map(a => ({
       id: a.id, type: a.type, title: a.title, message: a.message,
       timestamp: a.timestamp, read: a.read, category: a.category, actionUrl: a.actionUrl,
     }));
-  const legacyItems = ([
-    {
-      id: '1',
-      type: 'success',
-      title: 'Video Render Complete',
-      message: 'Your cinematic reel for "Luxury Villa in Constantia" is ready to view',
-      timestamp: '2 minutes ago',
-      read: false,
-      category: 'render',
-      actionUrl: '/dashboard/listings'
-    },
-    {
-      id: '2',
-      type: 'warning',
-      title: 'Low Credit Warning',
-      message: 'You have 45 credits remaining. Consider topping up to continue creating videos.',
-      timestamp: '1 hour ago',
-      read: false,
-      category: 'credits',
-      actionUrl: '/dashboard/credits'
-    },
-    {
-      id: '3',
-      type: 'info',
-      title: 'New Feature Available',
-      message: 'Try our new AI Twilight Photography feature to enhance your property photos',
-      timestamp: '3 hours ago',
-      read: false,
-      category: 'system'
-    },
-    {
-      id: '4',
-      type: 'success',
-      title: 'Social Caption Generated',
-      message: 'Instagram caption ready for "Modern Apartment in Sandton"',
-      timestamp: '5 hours ago',
-      read: true,
-      category: 'social'
-    },
-    {
-      id: '5',
-      type: 'info',
-      title: 'Monthly Report Ready',
-      message: 'Your February 2025 report is available for download',
-      timestamp: '1 day ago',
-      read: true,
-      category: 'billing',
-      actionUrl: '/dashboard/billing'
-    },
-    {
-      id: '6',
-      type: 'error',
-      title: 'Render Failed',
-      message: 'Video render failed for "Beachfront Property". Credits have been refunded.',
-      timestamp: '2 days ago',
-      read: true,
-      category: 'render'
-    }
-  ]);
-  void legacyItems; // schema reference only — replaced by the live activity feed
 
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -162,7 +112,14 @@ export default function NotificationCenter() {
   const unreadCount = liveUnread;
   const markAsRead = markActivityRead;
   const markAllAsRead = markAllActivityRead;
-  const deleteNotification = (id: string) => setDismissed(prev => new Set(prev).add(id));
+  const deleteNotification = (id: string) => {
+    markAsRead(id); // removing it must also clear it from the unread badge
+    setDismissed(prev => {
+      const next = new Set(prev).add(id);
+      try { localStorage.setItem(dismissedKey, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   const getIcon = (type: string) => {
     switch (type) {

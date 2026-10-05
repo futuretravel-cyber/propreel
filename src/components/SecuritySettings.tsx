@@ -1,30 +1,35 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatDate, formatRelative } from '../lib/utils';
 import {
-  Shield, Smartphone, Key, Monitor, Globe, Clock, Download,
-  CheckCircle2, XCircle, AlertTriangle, Lock, Unlock, Eye, EyeOff,
-  RefreshCw, Trash2, Plus, Fingerprint, Mail, QrCode
+  Shield, Smartphone, Monitor, Clock, Download,
+  CheckCircle2, XCircle, AlertTriangle, Lock, Eye,
+  RefreshCw, Trash2, Plus, Fingerprint, Mail
 } from 'lucide-react';
 
-const sessions = [
-  { id: 1, device: 'Chrome on MacOS', ip: '41.76.xxx.xxx', location: 'Cape Town, SA', lastActive: 'Now', current: true },
-  { id: 2, device: 'Safari on iPhone', ip: '41.76.xxx.xxx', location: 'Cape Town, SA', lastActive: '2 hours ago', current: false },
-  { id: 3, device: 'Firefox on Windows', ip: '197.98.xxx.xxx', location: 'Johannesburg, SA', lastActive: '3 days ago', current: false },
-];
+/** Row from GET /api/users?action=sessions — real rows in the sessions table. */
+interface SessionRow {
+  id: string; // token fingerprint (first 12 chars) — the full token never leaves the server
+  current: boolean;
+  createdAt: string | null;
+  expiresAt: string | null;
+  device: string;
+  userAgent: string | null;
+  ip: string | null;
+}
 
-const auditLogs = [
-  { id: 1, action: 'LOGIN', description: 'Successful login from Chrome on MacOS', ip: '41.76.xxx.xxx', timestamp: '2025-03-14T10:30:00Z', severity: 'info' },
-  { id: 2, action: 'CREDITS_PURCHASED', description: 'Purchased 100 credits via Paystack', ip: '41.76.xxx.xxx', timestamp: '2025-03-14T10:32:00Z', severity: 'info' },
-  { id: 3, action: 'RENDER_STARTED', description: 'Started Cinematic render for "Luxury Villa"', ip: '41.76.xxx.xxx', timestamp: '2025-03-14T11:00:00Z', severity: 'info' },
-  { id: 4, action: 'SETTINGS_CHANGED', description: 'Updated API key for Fal.ai', ip: '41.76.xxx.xxx', timestamp: '2025-03-13T15:00:00Z', severity: 'warning' },
-  { id: 5, action: 'FAILED_LOGIN', description: 'Failed login attempt — incorrect password', ip: '102.89.xxx.xxx', timestamp: '2025-03-12T08:00:00Z', severity: 'danger' },
-  { id: 6, action: 'PASSWORD_CHANGED', description: 'Password updated successfully', ip: '41.76.xxx.xxx', timestamp: '2025-03-10T14:00:00Z', severity: 'warning' },
-  { id: 7, action: 'MEMBER_INVITED', description: 'Invited priya@demorealty.co.za to agency', ip: '41.76.xxx.xxx', timestamp: '2025-03-09T09:00:00Z', severity: 'info' },
-  { id: 8, action: 'DATA_EXPORT', description: 'Exported account data (GDPR request)', ip: '41.76.xxx.xxx', timestamp: '2025-03-08T16:00:00Z', severity: 'info' },
-];
+/** Event from GET /api/users?action=audit_log — ledger rows, sign-ins and security changes. */
+interface AuditEvent {
+  id: string;
+  action: string;
+  category: string;
+  severity: 'info' | 'warning' | 'danger';
+  description: string;
+  ip: string | null;
+  timestamp: string | null;
+}
 
 export default function SecuritySettings() {
   const { user, refresh } = useAuth();
@@ -38,6 +43,111 @@ export default function SecuritySettings() {
   const [busy, setBusy] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const navigate = useNavigate();
+
+  // ── Real Active Sessions + Audit Log (session-authed API actions) ───────
+  // Both tabs used to render hardcoded demo arrays. They now read the
+  // sessions table and the credit ledger / security timestamps — if the
+  // system has no event, the list is simply shorter. Nothing is invented.
+  const apiBase = import.meta.env.VITE_API_URL || '';
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
+
+  const loadSessions = async () => {
+    setSessionsLoading(true);
+    setSecurityError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/users?action=sessions`, { credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load sessions');
+      setSessions(data.sessions || []);
+    } catch (e: any) {
+      setSecurityError(e.message || 'Could not load sessions');
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const loadAudit = async () => {
+    setAuditLoading(true);
+    setSecurityError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/users?action=audit_log`, { credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load the audit log');
+      setAuditEvents(data.events || []);
+    } catch (e: any) {
+      setSecurityError(e.message || 'Could not load the audit log');
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'sessions') loadSessions();
+    if (tab === 'audit') loadAudit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  const revokeSession = async (fingerprint: string) => {
+    setRevoking(fingerprint);
+    try {
+      const res = await fetch(`${apiBase}/api/users?action=sessions_revoke`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: fingerprint }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Revoke failed');
+      toast.success('Session signed out', 'Security');
+      await loadSessions();
+    } catch (e: any) {
+      toast.error(e.message || 'Could not revoke that session');
+    } finally {
+      setRevoking(null);
+    }
+  };
+
+  const revokeAllOthers = async () => {
+    setRevoking('others');
+    try {
+      const res = await fetch(`${apiBase}/api/users?action=sessions_revoke`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'others' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Revoke failed');
+      toast.success(data.revoked ? `${data.revoked} other session${data.revoked === 1 ? '' : 's'} signed out` : 'No other sessions to sign out', 'Security');
+      await loadSessions();
+    } catch (e: any) {
+      toast.error(e.message || 'Could not revoke sessions');
+    } finally {
+      setRevoking(null);
+    }
+  };
+
+  const exportAuditLog = () => {
+    if (!auditEvents.length) { toast.error('There is nothing to export yet'); return; }
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [
+      ['timestamp', 'action', 'category', 'severity', 'description', 'ip'].map(esc).join(','),
+      ...auditEvents.map(e => [e.timestamp, e.action, e.category, e.severity, e.description, e.ip || ''].map(esc).join(',')),
+    ].join('\n');
+    const stamp = new Date().toISOString().slice(0, 10);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `propreel-audit-log-${stamp}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast.success('Audit log downloaded as CSV', 'Export ready');
+  };
 
   // ── POPIA data export (POST ?action=data_export, session-authed) ────────
   // One server endpoint feeds all three buttons: full JSON, projects-only
@@ -305,32 +415,41 @@ export default function SecuritySettings() {
       {/* ─── Sessions Tab ──────────────────────────────────────────────────── */}
       {tab === 'sessions' && (
         <div className="card-dark p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-1">
             <h3 className="font-semibold text-white">Active Sessions</h3>
-            <button onClick={() => toast.success('All other sessions terminated', 'Security')} className="btn btn-danger text-xs">
+            <button onClick={revokeAllOthers} disabled={revoking !== null || sessions.length < 2} className="btn btn-danger text-xs">
               <Trash2 className="w-3 h-3" /> Revoke All Others
             </button>
           </div>
+          <p className="text-xs text-ink-500 mb-4">One entry per sign-in, read straight from the sessions table — IP and browser captured when you signed in.</p>
+          {securityError && (
+            <div className="p-3 rounded-lg bg-red-950/40 border border-red-500/30 text-sm text-red-300 mb-4">{securityError}</div>
+          )}
           <div className="space-y-3">
-            {sessions.map(s => (
-              <div key={s.id} className={`flex items-center justify-between p-4 rounded-xl ${s.current ? 'bg-purple-950/20 border border-purple-500/20' : 'bg-ink-800/50'}`}>
-                <div className="flex items-center gap-4">
+            {sessionsLoading ? (
+              <div className="p-8 text-center text-ink-400 text-sm">Loading your sessions…</div>
+            ) : !securityError && sessions.length === 0 ? (
+              <div className="p-8 text-center text-ink-400 text-sm">No active sessions found — sign in again to refresh this list.</div>
+            ) : sessions.map(s => (
+              <div key={s.id} className={`flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl ${s.current ? 'bg-purple-950/20 border border-purple-500/20' : 'bg-ink-800/50'}`}>
+                <div className="flex items-center gap-4 min-w-0">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${s.current ? 'bg-purple-700/30 text-purple-300' : 'bg-ink-700 text-ink-400'}`}>
                     <Monitor className="w-5 h-5" />
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-white flex items-center gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white flex items-center gap-2 flex-wrap">
                       {s.device}
                       {s.current && <span className="badge badge-success text-[10px]">Current</span>}
                     </p>
-                    <p className="text-xs text-ink-400">{s.location} • {s.ip}</p>
+                    <p className="text-xs text-ink-400">
+                      {s.ip ? `IP ${s.ip}` : 'IP not recorded'} • signed in {s.createdAt ? formatRelative(s.createdAt) : 'at an unknown time'}{s.expiresAt ? ` • expires ${formatDate(s.expiresAt)}` : ''}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-ink-500">{s.lastActive}</span>
                   {!s.current && (
-                    <button onClick={() => toast.success('Session revoked')} className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1">
-                      <XCircle className="w-3 h-3" /> Revoke
+                    <button onClick={() => revokeSession(s.id)} disabled={revoking !== null} className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1 disabled:opacity-60">
+                      <XCircle className="w-3 h-3" /> {revoking === s.id ? 'Revoking…' : 'Revoke'}
                     </button>
                   )}
                 </div>
@@ -343,29 +462,40 @@ export default function SecuritySettings() {
       {/* ─── Audit Log Tab ─────────────────────────────────────────────────── */}
       {tab === 'audit' && (
         <div className="card-dark p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-1">
             <h3 className="font-semibold text-white">Audit Log</h3>
-            <button className="btn btn-secondary text-xs"><Download className="w-3 h-3" /> Export Log</button>
+            <button onClick={exportAuditLog} disabled={auditLoading || !auditEvents.length} className="btn btn-secondary text-xs">
+              <Download className="w-3 h-3" /> Export Log
+            </button>
           </div>
+          <p className="text-xs text-ink-500 mb-4">Built only from records the system actually keeps: sign-ins, password / two-step changes and every credit-ledger entry.</p>
+          {securityError && (
+            <div className="p-3 rounded-lg bg-red-950/40 border border-red-500/30 text-sm text-red-300 mb-4">{securityError}</div>
+          )}
           <div className="space-y-2">
-            {auditLogs.map(log => (
+            {auditLoading ? (
+              <div className="p-8 text-center text-ink-400 text-sm">Loading your audit log…</div>
+            ) : !securityError && auditEvents.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-ink-400">No security events recorded yet.</p>
+                <p className="text-ink-500 text-sm mt-1">Sign-ins, password changes and credit activity will appear here as they happen.</p>
+              </div>
+            ) : auditEvents.map(log => (
               <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-white/[0.02]">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                   log.severity === 'danger' ? 'bg-red-950/50 text-red-400' :
                   log.severity === 'warning' ? 'bg-yellow-950/50 text-yellow-400' :
                   'bg-blue-950/50 text-blue-400'
                 }`}>
-                  {log.severity === 'danger' ? <AlertTriangle className="w-4 h-4" /> :
-                   log.severity === 'warning' ? <AlertTriangle className="w-4 h-4" /> :
-                   <CheckCircle2 className="w-4 h-4" />}
+                  {log.severity !== 'info' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="badge badge-muted text-[10px]">{log.action}</span>
-                    <span className="text-xs text-ink-500">{formatRelative(log.timestamp)}</span>
+                    <span className="text-xs text-ink-500">{log.timestamp ? formatRelative(log.timestamp) : ''}</span>
                   </div>
                   <p className="text-sm text-ink-200 mt-1">{log.description}</p>
-                  <p className="text-xs text-ink-500 mt-0.5">IP: {log.ip}</p>
+                  {log.ip && <p className="text-xs text-ink-500 mt-0.5">IP: {log.ip}</p>}
                 </div>
               </div>
             ))}

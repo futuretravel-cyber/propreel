@@ -12,7 +12,7 @@
  * the user-row flags (referralRedeemed / referralPaid) short-circuit later
  * attempts without a write.
  */
-import { getUser, getUserByEmail, updateUser, addCredits } from './userService';
+import { getUser, getUserByEmail, updateUser, addCredits, creditTtlIso } from './userService';
 
 export const REFERRAL_FRIEND_CREDITS = 5;
 export const REFERRAL_PAYOUT_CREDITS = 5;
@@ -50,7 +50,7 @@ export async function attributeReferral(
       'bonus',
       `Referral bonus — you signed up via ${referrer.email}'s invite`,
       { kind: 'referral_friend', referrerId: referrer.id },
-      new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days, like the signup bonus
+      creditTtlIso(), // 365 days, same rule as every other credit grant
       `ref_f_${newUserId}` // exactly-once even under concurrent double-registration
     );
   } catch (err) {
@@ -77,7 +77,7 @@ export async function grantReferralPayout(userId: string): Promise<void> {
       'bonus',
       `Referral payout — ${user.email} made their first purchase`,
       { kind: 'referral_payout', referredUserId: userId },
-      undefined, // no expiry, matching the previous referral reward
+      creditTtlIso(), // 365 days, same rule as every other credit grant
       `ref_p_${userId}` // one payout per referred user, race-proof
     );
 

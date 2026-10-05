@@ -31,8 +31,29 @@ export async function uploadImagesForAI(files: FileList | null, userId: string |
   return urls;
 }
 
-/** Free geocode (OpenStreetMap Nominatim) — no API key required */
+/**
+ * Address → coordinates (OpenStreetMap, no API key).
+ *
+ * Primary path is our own `/api/projects?action=geocode` proxy: the browser
+ * only talks to its own origin, so extensions / CORS / corporate filters can
+ * no longer break map lookup (that was the "Map lookup failed" bug). If the
+ * proxy itself is unreachable we fall back to calling Nominatim directly.
+ *
+ * Returns null for a genuine "address not found", throws on lookup failure.
+ */
 export async function geocodeAddress(address: string): Promise<{ lat: number; lon: number; display: string } | null> {
+  try {
+    const res = await fetch(`/api/projects?action=geocode&q=${encodeURIComponent(address)}`);
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (data?.found && Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lon))) {
+        return { lat: Number(data.lat), lon: Number(data.lon), display: String(data.display || address) };
+      }
+      if (data && data.found === false) return null; // upstream answered: no match
+      // 502/unknown shape → fall through to a direct lookup
+    }
+  } catch { /* proxy unreachable — fall back below */ }
+
   const res = await fetch(
     `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`
   );
@@ -50,8 +71,17 @@ export function haversineKm(aLat: number, aLon: number, bLat: number, bLon: numb
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-/** Named amenities near a confirmed point (OpenStreetMap Overpass — free) */
+/** Named amenities near a confirmed point (OpenStreetMap Overpass — free).
+ *  Proxied through our API first; direct Overpass mirrors as fallback. */
 export async function findNearbyAmenities(lat: number, lon: number): Promise<string[]> {
+  try {
+    const res = await fetch(`/api/projects?action=amenities&lat=${lat}&lon=${lon}`);
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (Array.isArray(data?.amenities)) return data.amenities;
+    }
+  } catch { /* proxy unreachable — fall back below */ }
+
   const around = (r: number) => `(around:${r},${lat},${lon})`;
   const q = `[out:json][timeout:25];(
     node${around(2000)}["amenity"~"^(school|kindergarten|hospital|clinic|pharmacy|restaurant|cafe|bar|fuel|gym|library|supermarket)$"];

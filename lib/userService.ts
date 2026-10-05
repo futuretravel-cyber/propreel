@@ -23,6 +23,16 @@ export interface Subscription {
   pendingDowngrade?: string;
 }
 
+/**
+ * One expiry rule for every credit grant: credits expire 365 days after they
+ * land — signup bonus, referral bonuses, purchases, auto top-ups and
+ * subscription allocations alike. Single source of truth; the nightly
+ * process-expired-credits cron consumes the resulting creditExpiries rows.
+ */
+export const CREDIT_TTL_DAYS = 365;
+export const creditTtlIso = (from: number = Date.now()): string =>
+  new Date(from + CREDIT_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
 export interface User {
   id: string;
   email: string;
@@ -57,6 +67,9 @@ export interface User {
   /** Short-lived sign-in challenge (auth_login → auth_2fa_verify) */
   twoFactorPendingToken?: string | null;
   twoFactorPendingExpires?: string | null;
+  /** Security-change timestamps — real Audit Log feed (written at change time) */
+  passwordChangedAt?: string | null;
+  twoFactorChangedAt?: string | null;
   notificationPreferences?: Record<string, boolean>;
   projectFolders?: Array<{ id: string; name: string; icon: string; createdAt: string }>;
   planId?: string | null;
@@ -447,7 +460,7 @@ export async function addCredits(
     });
 
     // Add to credit expiries if applicable
-    if (expiresAt && (source === 'subscription' || source === 'purchase')) {
+    if (expiresAt && (source === 'subscription' || source === 'purchase' || source === 'bonus')) {
       const userAfter = await getUser(userId);
       if (userAfter) {
         const updatedExpiries = [...(userAfter.creditExpiries || []), {
@@ -569,9 +582,8 @@ export async function createSubscription(
   };
 
   const credits = plan.monthlyCredits;
-  const expiryDate = cycle === 'MONTHLY'
-    ? new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()
-    : new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString();
+  // One expiry rule for every grant: 365 days from the moment it lands.
+  const expiryDate = creditTtlIso();
 
   // Update user with subscription and credits. A subscription converts a
   // temporary (trial) account into a normal one — every trial field is
@@ -645,9 +657,7 @@ export async function allocateMonthlyCredits(userId: string): Promise<{ allocate
 
   // Add credits (credits roll over)
   const newCredits = user.credits + plan.monthlyCredits;
-  const expiryDate = user.subscription.cycle === 'MONTHLY'
-    ? new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()
-    : new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString();
+  const expiryDate = creditTtlIso();
 
   await updateUser(userId, {
     credits: newCredits,
@@ -839,9 +849,7 @@ export async function applyPendingUpgrade(
   const periodEndDate = new Date();
   periodEndDate.setDate(periodEndDate.getDate() + (cycle === 'MONTHLY' ? 30 : 365));
 
-  const expiryDate = cycle === 'MONTHLY'
-    ? new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1).toISOString()
-    : new Date(nowDate.getFullYear() + 1, nowDate.getMonth(), nowDate.getDate()).toISOString();
+  const expiryDate = creditTtlIso(now);
 
   const newCredits = (user.credits ?? 0) + unusedOldCredits + newPlan.monthlyCredits;
 
@@ -857,7 +865,7 @@ export async function applyPendingUpgrade(
     credits: newCredits,
     creditExpiries: [
       ...(user.creditExpiries || []),
-      ...(unusedOldCredits > 0 ? [{ amount: unusedOldCredits, expiresAt: new Date(now + 30 * 86400000).toISOString(), source: 'bonus' as const }] : []),
+      ...(unusedOldCredits > 0 ? [{ amount: unusedOldCredits, expiresAt: creditTtlIso(now), source: 'bonus' as const }] : []),
       { amount: newPlan.monthlyCredits, expiresAt: expiryDate, source: 'subscription' as const },
     ],
     pendingPlanUpgrade: undefined,

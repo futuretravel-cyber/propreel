@@ -62,17 +62,37 @@ interface SessionRow {
   userId: string;
   createdAt: string;
   expiresAt: number;   // epoch seconds
+  /** Sign-in origin — powers the real "Active Sessions" list (never guessed). */
+  ip?: string;
+  userAgent?: string;
 }
 
-export async function createSession(userId: string): Promise<string> {
+export interface SessionMeta {
+  ip?: string;
+  userAgent?: string;
+}
+
+export async function createSession(userId: string, meta?: SessionMeta): Promise<string> {
   const token = newToken();
   await putItem(TABLES.SESSIONS, {
     id: token,
     userId,
     createdAt: new Date().toISOString(),
     expiresAt: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+    ...(meta?.ip ? { ip: meta.ip } : {}),
+    ...(meta?.userAgent ? { userAgent: meta.userAgent } : {}),
   } as SessionRow);
   return token;
+}
+
+/** Client origin of a request (first forwarded IP + browser UA). */
+export function clientMeta(req: any): SessionMeta {
+  const fwd = req?.headers?.['x-forwarded-for'];
+  const raw = Array.isArray(fwd) ? fwd[0] : fwd;
+  const ip = String(raw || req?.socket?.remoteAddress || '')
+    .split(',')[0].trim().slice(0, 64) || 'unknown';
+  const userAgent = String(req?.headers?.['user-agent'] || '').slice(0, 250);
+  return { ip, userAgent: userAgent || undefined };
 }
 
 /** Resolve a session token to its user row; null when missing/expired. */

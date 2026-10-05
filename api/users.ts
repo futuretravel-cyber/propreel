@@ -1,11 +1,12 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { getUser, updateUser, getUserByEmail, deleteUser, getOrCreateUserByEmail } from '../lib/userService';
-import { TABLES, queryItems, putItem, getItem, docClient } from '../lib/db';
+import { TABLES, queryItems, putItem, getItem, scanItems, docClient } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
 import {
   hashPassword, verifyPassword, createSession, getSessionUser, deleteSession,
   deleteSessionsForUser, sessionCookie, clearSessionCookie, getTokenFromRequest,
+  clientMeta,
   issueEmailConfirmToken, consumeEmailConfirmToken, issuePasswordResetToken,
   consumePasswordResetToken,
 } from '../lib/auth';
@@ -384,6 +385,190 @@ async function dataExport(req: VercelRequest, res: VercelResponse) {
   } catch (e) {
     console.error('data_export failed:', e);
     return res.status(500).json({ error: 'Data export failed — try again' });
+  }
+}
+
+/** Human-readable device label for a stored user-agent string (never guessed). */
+function describeUA(ua?: string | null): string {
+  if (!ua) return 'Unknown device';
+  const browser = /Edg\//.test(ua) ? 'Edge'
+    : /OPR\//.test(ua) ? 'Opera'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Safari\//.test(ua) ? 'Safari'
+    : /curl|node|python|okhttp|axios/i.test(ua) ? 'API client'
+    : 'Browser';
+  const os = /Windows/.test(ua) ? 'Windows'
+    : /Android/.test(ua) ? 'Android'
+    : /iPhone|iPad|iPod/.test(ua) ? 'iOS'
+    : /Mac OS X|Macintosh/.test(ua) ? 'macOS'
+    : /Linux/.test(ua) ? 'Linux' : null;
+  return os ? `${browser} on ${os}` : browser;
+}
+
+/** Load the signed-in user's own session rows (never anyone else's). */
+async function ownSessionRows(req: VercelRequest) {
+  const token = getTokenFromRequest(req);
+  const user = await getSessionUser(token);
+  if (!user) return null;
+  const rows = await scanItems<any>(TABLES.SESSIONS, {
+    filter: { expression: 'userId = :u', values: { ':u': user.id } },
+    limit: 200,
+  });
+  return { user, token, rows };
+}
+
+/**
+ * Nested route: GET /api/users?action=sessions — the real Active Sessions
+ * list behind Settings → Security → Sessions. One row per issued session
+ * cookie with the IP / user-agent captured at sign-in time; expired rows are
+ * dropped and only a token fingerprint leaves the server.
+ */
+async function listSessions(req: VercelRequest, res: VercelResponse) {
+  try {
+    const ctx = await ownSessionRows(req);
+    if (!ctx) return res.status(401).json({ error: 'Sign in to view your active sessions' });
+    const nowSec = Math.floor(Date.now() / 1000);
+    const sessions = ctx.rows
+      .filter((r: any) => typeof r.expiresAt !== 'number' || r.expiresAt > nowSec)
+      .sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .map((r: any) => ({
+        id: String(r.id).slice(0, 12), // fingerprint only — the full token stays server-side
+        current: r.id === ctx.token,
+        createdAt: r.createdAt || null,
+        expiresAt: typeof r.expiresAt === 'number' ? new Date(r.expiresAt * 1000).toISOString() : null,
+        device: describeUA(r.userAgent),
+        userAgent: r.userAgent || null,
+        ip: r.ip || null,
+      }));
+    return res.status(200).json({ sessions });
+  } catch (e) {
+    console.error('sessions list failed:', e);
+    return res.status(500).json({ error: 'Could not load sessions — try again' });
+  }
+}
+
+/**
+ * Nested route: POST /api/users?action=sessions_revoke — revoke one session
+ * by fingerprint, or every other session with { scope: 'others' }. The
+ * caller's own cookie is never revoked here.
+ */
+async function revokeSessions(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const { id, scope } = req.body || {};
+  if (scope !== 'others' && (typeof id !== 'string' || !id)) {
+    return res.status(400).json({ error: 'Provide a session id or scope: "others"' });
+  }
+  try {
+    const ctx = await ownSessionRows(req);
+    if (!ctx) return res.status(401).json({ error: 'Sign in to manage your sessions' });
+    let revoked = 0;
+    for (const r of ctx.rows) {
+      if (r.id === ctx.token) continue; // never kill the session making this request
+      if (scope === 'others' || String(r.id).startsWith(String(id))) {
+        await deleteItem(TABLES.SESSIONS, { id: r.id }).catch(() => {});
+        revoked++;
+      }
+    }
+    return res.status(200).json({ success: true, revoked });
+  } catch (e) {
+    console.error('sessions revoke failed:', e);
+    return res.status(500).json({ error: 'Could not revoke sessions — try again' });
+  }
+}
+
+/** Map a real credit-ledger row to an audit action label. */
+function ledgerAction(t: { type?: string }): string {
+  switch (t.type) {
+    case 'purchase': return 'CREDITS_PURCHASED';
+    case 'subscription': return 'SUBSCRIPTION_CREDITS';
+    case 'bonus': return 'CREDITS_GRANTED';
+    case 'gift': return 'CREDITS_RECEIVED';
+    case 'refund': return 'CREDITS_REFUNDED';
+    case 'transfer': return 'CREDITS_TRANSFERRED';
+    case 'expiration': return 'CREDITS_EXPIRED';
+    case 'deduction': return 'CREDITS_USED';
+    default: return 'CREDITS_ADJUSTED';
+  }
+}
+
+/**
+ * Nested route: GET /api/users?action=audit_log — the real Audit Log behind
+ * Settings → Security → Audit. Built only from data the system actually
+ * recorded: sign-in session rows, credit-ledger entries and the
+ * password / two-factor change timestamps. Nothing is invented — when there
+ * is no event, the log is simply shorter.
+ */
+async function auditLog(req: VercelRequest, res: VercelResponse) {
+  try {
+    const ctx = await ownSessionRows(req);
+    if (!ctx) return res.status(401).json({ error: 'Sign in to view your audit log' });
+    const { user } = ctx;
+
+    const txns = await queryItems<any>(TABLES.CREDIT_TRANSACTIONS, {
+      expression: 'userId = :u', values: { ':u': user.id },
+    }, { limit: 150, scanIndexForward: false });
+
+    const events: any[] = [];
+
+    // Sign-in history — one entry per real session row (newest first later)
+    for (const s of ctx.rows) {
+      if (!s.createdAt) continue;
+      events.push({
+        id: `login_${s.createdAt}`,
+        action: 'LOGIN',
+        category: 'auth',
+        severity: 'info',
+        description: `Signed in — ${describeUA(s.userAgent)}`,
+        ip: s.ip || null,
+        timestamp: s.createdAt,
+      });
+    }
+
+    // Security changes, timestamped at the moment they happened
+    if (user.passwordChangedAt) {
+      events.push({
+        id: `pwd_${user.passwordChangedAt}`,
+        action: 'PASSWORD_CHANGED',
+        category: 'auth',
+        severity: 'warning',
+        description: 'Password updated successfully',
+        ip: null,
+        timestamp: user.passwordChangedAt,
+      });
+    }
+    if (user.twoFactorChangedAt) {
+      events.push({
+        id: `2fa_${user.twoFactorChangedAt}`,
+        action: user.twoFactorEnabled ? 'TWO_FACTOR_ENABLED' : 'TWO_FACTOR_DISABLED',
+        category: 'auth',
+        severity: 'warning',
+        description: user.twoFactorEnabled
+          ? 'Two-step verification enabled'
+          : 'Two-step verification disabled',
+        ip: null,
+        timestamp: user.twoFactorChangedAt,
+      });
+    }
+
+    // Credit ledger — every real balance change
+    for (const t of txns) {
+      events.push({
+        id: t.id || `txn_${t.createdAt}_${t.amount}`,
+        action: ledgerAction(t),
+        category: 'credits',
+        severity: t.amount < 0 ? 'warning' : 'info',
+        description: t.description || `${t.amount > 0 ? '+' : ''}${t.amount} credits`,
+        ip: null,
+        timestamp: t.createdAt,
+      });
+    }
+
+    events.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+    return res.status(200).json({ events: events.slice(0, 150), generatedAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('audit_log failed:', e);
+    return res.status(500).json({ error: 'Could not load the audit log — try again' });
   }
 }
 
@@ -810,8 +995,8 @@ async function provisionUser(input: ProvisionInput): Promise<{ user: any; create
 
   // Grant 5-credit signup bonus (best effort)
   try {
-    const { addCredits } = await import('../lib/userService');
-    const bonusExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { addCredits, creditTtlIso } = await import('../lib/userService');
+    const bonusExpiry = creditTtlIso(); // credits expire 365 days after grant
     await addCredits(
       provisioned.id,
       5,
@@ -1071,7 +1256,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (!user.emailVerified) {
         await updateUser(user.id, { emailVerified: true, emailConfirmToken: null } as any);
       }
-      const sessionToken = await createSession(user.id);
+      const sessionToken = await createSession(user.id, clientMeta(req));
       res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
       const updated = await getUser(user.id);
       return res.status(200).json({ success: true, redirect: row.redirect || null, user: safeUser(updated) });
@@ -1145,7 +1330,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         return res.status(200).json({ requires2fa: true, token: pending });
       }
 
-      const sessionToken = await createSession(user.id);
+      const sessionToken = await createSession(user.id, clientMeta(req));
       res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
       // Signed up with the two-step checkbox but not configured yet → land on setup.
       if (user.twoFactorOptIn && !user.twoFactorEnabled) {
@@ -1280,7 +1465,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         }
 
         // 4) First-party session + land on the requested destination
-        const token = await createSession(user.id);
+        const token = await createSession(user.id, clientMeta(req));
         res.setHeader('Set-Cookie', [sessionCookie(token, req), clearOauthCookie]);
         return res.redirect(302, dest);
       } catch (oauthErr: any) {
@@ -1322,7 +1507,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
       const row = await consumePasswordResetToken(token);
       if (!row) return res.status(410).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
-      await updateUser(row.userId, { passwordHash: hashPassword(password), passwordResetToken: null, twoFactorEnabled: false, twoFactorSecret: null, twoFactorOptIn: false, twoFactorPendingToken: null } as any);
+      await updateUser(row.userId, { passwordHash: hashPassword(password), passwordResetToken: null, twoFactorEnabled: false, twoFactorSecret: null, twoFactorOptIn: false, twoFactorPendingToken: null, passwordChangedAt: new Date().toISOString() } as any);
       await deleteSessionsForUser(row.userId);
       return res.status(200).json({ success: true });
     }
@@ -1346,7 +1531,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (!verifyTotp(sessionUser.twoFactorSecret, body.code)) {
         return res.status(400).json({ error: 'Invalid code — check your authenticator app and try again' });
       }
-      const updated = await updateUser(sessionUser.id, { twoFactorEnabled: true, twoFactorOptIn: false } as any);
+      const updated = await updateUser(sessionUser.id, { twoFactorEnabled: true, twoFactorOptIn: false, twoFactorChangedAt: new Date().toISOString() } as any);
       return res.status(200).json({ success: true, user: safeUser(updated) });
     }
 
@@ -1359,7 +1544,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (!verifyTotp(sessionUser.twoFactorSecret || '', body.code)) {
         return res.status(400).json({ error: 'Invalid code — enter the current code from your authenticator app' });
       }
-      const updated = await updateUser(sessionUser.id, { twoFactorEnabled: false, twoFactorSecret: null, twoFactorOptIn: false } as any);
+      const updated = await updateUser(sessionUser.id, { twoFactorEnabled: false, twoFactorSecret: null, twoFactorOptIn: false, twoFactorChangedAt: new Date().toISOString() } as any);
       return res.status(200).json({ success: true, user: safeUser(updated) });
     }
 
@@ -1399,7 +1584,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         }
       }
       await updateUser(pendingUser.id, { twoFactorPendingToken: null, twoFactorPendingExpires: null } as any);
-      const sessionToken = await createSession(pendingUser.id);
+      const sessionToken = await createSession(pendingUser.id, clientMeta(req));
       res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
       return res.status(200).json({ success: true, user: safeUser(pendingUser) });
     }
@@ -1432,6 +1617,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.query.action === 'data_export' && req.method === 'POST') {
     return dataExport(req, res);
+  }
+  if (req.query.action === 'sessions' && req.method === 'GET') {
+    return listSessions(req, res);
+  }
+  if (req.query.action === 'sessions_revoke' && req.method === 'POST') {
+    return revokeSessions(req, res);
+  }
+  if (req.query.action === 'audit_log' && req.method === 'GET') {
+    return auditLog(req, res);
   }
   if (String(req.query.action || '').startsWith('auth_') || req.query.action === 'worker_token') {
     return authRoutes(req, res, String(req.query.action));

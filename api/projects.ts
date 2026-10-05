@@ -61,6 +61,8 @@ export interface ProjectRecord {
  *   DELETE /api/projects?user_id=…&id=…                 → { success }
  *   GET    /api/projects?action=folders&user_id=…       → { folders }
  *   PUT    /api/projects?action=folders { user_id, folders } → { folders }
+ *   GET    /api/projects?action=geocode&q=…             → { found, lat, lon, display }
+ *   GET    /api/projects?action=amenities&lat=…&lon=…   → { amenities }
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = (req.query.action as string) || '';
@@ -96,6 +98,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // ── Nested: OpenStreetMap lookups, proxied server-side ──────────────
+  // The browser can't be trusted to reach nominatim/overpass directly
+  // (extensions, CORS and corporate filters all break the call), so both
+  // the Description tab and the Listings wizard talk to our own origin.
+  //   GET ?action=geocode&q=…         → { found, lat?, lon?, display? }
+  //   GET ?action=amenities&lat=…&lon=… → { amenities }
+  if (action === 'geocode' && req.method === 'GET') {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.status(400).json({ error: 'Missing q' });
+    if (q.length > 300) return res.status(400).json({ error: 'Address too long' });
+    try {
+      const { geocodeAddress } = await import('../lib/geocode');
+      const point = await geocodeAddress(q);
+      if (!point) return res.status(200).json({ found: false });
+      return res.status(200).json({ found: true, ...point });
+    } catch (e) {
+      console.error('geocode proxy failed:', e);
+      // 502 tells the client to fall back to a direct lookup
+      return res.status(502).json({ error: 'Geocoding service unreachable' });
+    }
+  }
+
+  if (action === 'amenities' && req.method === 'GET') {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.status(400).json({ error: 'Missing lat/lon' });
+    }
+    try {
+      const { nearbyAmenities } = await import('../lib/geocode');
+      return res.status(200).json({ amenities: await nearbyAmenities(lat, lon) });
+    } catch (e) {
+      console.error('amenities proxy failed:', e);
+      return res.status(502).json({ error: 'Amenities service unreachable' });
+    }
   }
 
   try {

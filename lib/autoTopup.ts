@@ -1,5 +1,5 @@
 import { scanItems, TABLES } from './db';
-import { getUser, addCredits } from './userService';
+import { getUser, addCredits, creditTtlIso } from './userService';
 import { chargeAuthorization } from './paystack';
 
 export interface AutoTopupOutcome {
@@ -61,7 +61,7 @@ export async function runAutoTopupSweep(): Promise<AutoTopupOutcome[]> {
         await putItem(T.SETTINGS, { id: `pay_${charge.reference}`, userId: u.id, type: 'payment_processed', createdAt: new Date().toISOString() });
         // eventId makes the ledger row idempotent — if Paystack's webhook re-delivers the same charge (same data.id), the ledger ignores it.
         const eventId = charge.paystackId != null ? `ps_${charge.paystackId}` : undefined;
-        await addCredits(u.id, cfg.amount, 'purchase', `Auto-recharge: ${cfg.amount} credits`, { paystackReference: charge.reference, auto: true }, undefined, eventId);
+        await addCredits(u.id, cfg.amount, 'purchase', `Auto-recharge: ${cfg.amount} credits`, { paystackReference: charge.reference, auto: true }, creditTtlIso(), eventId);
         outcomes.push({ userId: u.id, email: u.email, action: 'charged', reference: charge.reference, detail: `R${cfg.amount}` });
       } else {
         outcomes.push({ userId: u.id, email: u.email, action: 'failed', detail: `charge status ${charge.status}` });
