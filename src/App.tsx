@@ -2120,6 +2120,49 @@ function SocialTab() {
               ))}
             </div>
           )}
+
+          {/* Per-platform previews — agents see how the post will look on
+              every channel right here in the Photos step, before generating.
+              The caption fills in live as soon as it exists (or after edits). */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <p className="label mb-0">Post preview — every platform</p>
+              <span className="text-xs text-ink-500">{caption ? 'Showing your generated caption' : 'Caption fills in on step 4'}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {SOCIAL_PLATFORMS.map(p => {
+                const over = caption.length > p.charLimit;
+                const ratio = p.id === 'instagram' ? 'aspect-square' : 'aspect-[4/3]';
+                return (
+                  <div key={p.id} className="rounded-xl border border-white/10 overflow-hidden bg-ink-900">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/5 text-xs">
+                      <span className="text-ink-300">{p.icon} {p.label}</span>
+                      <span className={over ? 'text-red-400 font-semibold' : 'text-ink-500'}>{caption.length} / {p.charLimit}</span>
+                    </div>
+                    <div className="relative">
+                      {images[0] ? (
+                        <img src={images[0]} alt={`${p.label} post preview`} className={`w-full object-cover ${ratio}`} />
+                      ) : (
+                        <div className={`w-full bg-ink-800/60 border-b border-white/5 flex flex-col items-center justify-center gap-1 text-ink-500 text-xs ${ratio}`}>
+                          <Image className="w-6 h-6" />
+                          Add a photo to preview the post
+                        </div>
+                      )}
+                      {images.length > 1 && (
+                        <span className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">1 / {images.length}</span>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <p className={`text-xs whitespace-pre-wrap break-words line-clamp-6 ${caption ? 'text-white' : 'text-ink-500'}`}>
+                        {caption || `Your ${p.label} caption (up to ${p.charLimit} chars) will appear here once you generate on step 4 — ${p.rules}`}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-ink-500 mt-2">Previews update as you add or remove photos — the generated caption drops into every card at the same time.</p>
+          </div>
         </div>
       )}
 
