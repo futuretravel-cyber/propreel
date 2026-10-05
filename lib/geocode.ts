@@ -43,37 +43,36 @@ export async function geocodeAddress(address: string): Promise<GeoPoint | null> 
   // Bias every lookup to South Africa: this is an SA-only product, and an
   // unbiasased query like "18 Marlo Road, Constantia" happily resolves to a
   // Marlo Road in Prince Edward Island, Canada.
-  const query = /south africa/i.test(clean) ? clean : `${clean}, South Africa`;
+  const saQuery = (q: string) => (/south africa/i.test(q) ? q : `${q}, South Africa`);
+  const query = saQuery(clean);
 
-  // Nominatim and Photon run IN PARALLEL with early resolution: as soon as
-  // either answers with a point we return, instead of the old sequential
-  // chain (whose timeouts ADDED UP past Vercel Hobby's 10s limit — the
-  // function died with a 504, the browser fell back to a direct lookup that
-  // blocked environments kill, and the user just saw "Map lookup failed").
-  // Worst case is now max(Nominatim, Photon) ≈ 8.3s, not their sum.
+  // Both upstreams race with early resolution: as soon as either answers
+  // with a point we return. The old sequential chain let one hanging
+  // upstream consume the function's whole time budget (Photon, in
+  // particular, hangs on Vercel's network) — the function died with a 504,
+  // the browser fell back to a direct lookup that blocked environments kill,
+  // and the user just saw "Map lookup failed".
   type Outcome = { point: GeoPoint | null; ok: boolean };
 
-  // 1) Nominatim (best South African address coverage) — hard-filtered to ZA
-  const tryNominatim = async (): Promise<Outcome> => {
+  const tryNominatim = async (q: string, timeoutMs: number): Promise<Outcome> => {
     try {
-      const res = await upstreamFetch(`${NOMINATIM}/search?format=json&limit=1&countrycodes=za&q=${encodeURIComponent(query)}`);
+      const res = await upstreamFetch(`${NOMINATIM}/search?format=json&limit=1&countrycodes=za&q=${encodeURIComponent(q)}`, timeoutMs);
       if (!res.ok) return { point: null, ok: false };
       const rows = await res.json();
       if (Array.isArray(rows) && rows.length) {
         const lat = Number(rows[0].lat);
         const lon = Number(rows[0].lon);
         if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          return { point: { lat, lon, display: rows[0].display_name || clean }, ok: true };
+          return { point: { lat, lon, display: rows[0].display_name || q }, ok: true };
         }
       }
       return { point: null, ok: true }; // answered, no match
     } catch { return { point: null, ok: false }; }
   };
 
-  // 2) Photon — different dataset, catches what Nominatim misses
-  const tryPhoton = async (): Promise<Outcome> => {
+  const tryPhoton = async (q: string, timeoutMs: number): Promise<Outcome> => {
     try {
-      const res = await upstreamFetch(`${PHOTON}/api/?limit=1&q=${encodeURIComponent(query)}`);
+      const res = await upstreamFetch(`${PHOTON}/api/?limit=1&q=${encodeURIComponent(q)}`, timeoutMs);
       if (!res.ok) return { point: null, ok: false };
       const body = await res.json();
       const first = Array.isArray(body?.features) ? body.features[0] : null;
@@ -81,36 +80,73 @@ export async function geocodeAddress(address: string): Promise<GeoPoint | null> 
       if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lon))) {
         const p = first.properties || {};
         const display = [p.name, p.street, p.housenumber, p.city, p.state, p.country]
-          .filter(Boolean).join(', ') || clean;
+          .filter(Boolean).join(', ') || q;
         return { point: { lat: Number(lat), lon: Number(lon), display }, ok: true };
       }
       return { point: null, ok: true };
     } catch { return { point: null, ok: false }; }
   };
 
-  return new Promise<GeoPoint | null>((resolve, reject) => {
-    let pending = 2;
-    let answered = false;
-    let settled = false;
-    // First upstream to produce a point wins — both are OSM-derived, and
-    // waiting for a slow one after the other already answered is exactly
-    // what used to blow the function's time budget.
-    const finish = (o: Outcome) => {
-      if (settled) return;
-      if (o.ok) answered = true;
-      if (o.point) { settled = true; resolve(o.point); return; }
-      pending -= 1;
-      if (pending === 0) {
-        settled = true;
-        // At least one upstream answered with nothing → genuine not-found;
-        // every upstream failed → caller shows "Map lookup failed".
-        if (answered) resolve(null);
-        else reject(new Error('Geocoding upstreams unreachable'));
-      }
-    };
-    tryNominatim().then(finish);
-    tryPhoton().then(finish);
-  });
+  /** Race both upstreams; resolve early on the first point, or once both settle. */
+  const race = (q: string, photonMs: number, nominatimMs: number) =>
+    new Promise<{ point: GeoPoint | null; answered: boolean }>((resolve) => {
+      let pending = photonMs > 0 ? 2 : 1;
+      let answered = false;
+      let settled = false;
+      const finish = (o: Outcome) => {
+        if (settled) return;
+        if (o.ok) answered = true;
+        if (o.point) { settled = true; resolve({ point: o.point, answered: true }); return; }
+        pending -= 1;
+        if (pending === 0) { settled = true; resolve({ point: null, answered }); }
+      };
+      // Nominatim answers in ~0.6–1.7s from Vercel; 2.8s covers the bursts.
+      tryNominatim(q, nominatimMs).then(finish);
+      // Photon's cap stays small — when it hangs (Vercel → komoot routes)
+      // it must not eat the whole budget; when it answers it's usually <1s.
+      if (photonMs > 0) tryPhoton(q, photonMs).then(finish);
+    });
+
+  // Three progressively looser rounds, each capped, total worst case ≈ 8.7s
+  // (under Vercel Hobby's 10s limit):
+  //   1. the full query — landmarks, suburbs and well-mapped streets hit here
+  //   2. house numbers dropped — SA's OSM data rarely carries them
+  //   3. locality only — pin lands in the right suburb for the agent to confirm
+  // The old single sequential chain let one hanging upstream (Photon, on
+  // Vercel's network) consume the whole budget — the function died with a
+  // 504, the browser fell back to a direct lookup that blocked environments
+  // kill, and the user just saw "Map lookup failed".
+  const NOMINATIM_MS = 2800;
+
+  // Round 1 — the full query.
+  const first = await race(query, 1800, NOMINATIM_MS);
+  if (first.point) return first.point;
+  let answered = first.answered;
+
+  // Round 2 — strip a leading house number ("17 Main Road, Camps Bay, Cape
+  // Town" → "Main Road, Camps Bay, Cape Town") so the pin lands on the street.
+  const trimmed = clean.replace(/^\d+\s+/, '');
+  if (trimmed !== clean && trimmed.length >= 3) {
+    const second = await race(saQuery(trimmed), 0, NOMINATIM_MS);
+    if (second.point) return second.point;
+    answered = answered || second.answered;
+  }
+
+  // Round 3 — street-level coverage is thin, so fall back to the last two
+  // segments ("…, Camps Bay, Cape Town"): the display string shows the agent
+  // exactly which locality they're confirming.
+  const parts = clean.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length >= 3) {
+    const locality = parts.slice(-2).join(', ');
+    if (locality && locality.toLowerCase() !== clean.toLowerCase()) {
+      const third = await race(saQuery(locality), 0, NOMINATIM_MS);
+      if (third.point) return third.point;
+      answered = answered || third.answered;
+    }
+  }
+
+  if (answered) return null; // upstreams answered: genuine "address not found"
+  throw new Error('Geocoding upstreams unreachable');
 }
 
 /**
