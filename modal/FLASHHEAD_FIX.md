@@ -149,9 +149,9 @@ modal run app_propreel_minimax.py::generate_flashhead_video \
 ### Test 2: Via Frontend
 
 1. Go to **Studio → Video Generator**
-2. Upload a profile picture in the "AI Talking Profile" section
+2. Upload a profile picture in the "AI Avatar Video" section
 3. Generate a voiceover script using "AI Write"
-4. Enable the "AI Talking Profile" toggle
+4. Enable the "AI Avatar Video" toggle
 5. Click "Generate Lip-Sync Video"
 6. Wait ~30-60 seconds for processing
 7. Preview the generated video
@@ -218,7 +218,7 @@ The frontend already has the FlashHead component ready:
 **How it works:**
 1. User uploads profile picture
 2. User generates voiceover script with Grok AI
-3. User enables "AI Talking Profile" toggle
+3. User enables "AI Avatar Video" toggle
 4. Frontend calls Modal's `generate_flashhead_video()` function
 5. Modal processes video using fal-ai/flashhead
 6. Video is uploaded to AWS S3

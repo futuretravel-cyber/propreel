@@ -3,7 +3,7 @@ import { motion, useInView } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
   Play, Sparkles, ArrowRight, Check, Star, Camera, Sofa, Trash2, MoonIcon,
-  Share2, FileText, Video, Loader2, Sun, Moon, Mic, Wand2, Layers, X,
+  Share2, FileText, Video, Loader2, Sun, Moon, Mic, Wand2, X,
 } from 'lucide-react';
 import { PublicLayout } from './PublicLayout';
 import { useTheme } from '../lib/theme';
@@ -356,8 +356,8 @@ function EditorDemo() {
   const badges = [
     { icon: <Mic className="w-4 h-4" />, label: 'AI Voiceovers', sub: '7 voices incl. SA English' },
     { icon: <Sofa className="w-4 h-4" />, label: 'Virtual Staging', sub: '100% geometry lock' },
-    { icon: <Wand2 className="w-4 h-4" />, label: 'AI Motion', sub: 'Hailuo-02 engine' },
-    { icon: <Layers className="w-4 h-4" />, label: 'Auto Upscale', sub: '720p → 1080p' },
+    { icon: <Wand2 className="w-4 h-4" />, label: 'AI Motion', sub: 'Generate AI Video from Images' },
+    { icon: <Mic className="w-4 h-4" />, label: 'AI Avatar Video', sub: 'Generate an AI-powered avatar video' },
   ];
 
   return (

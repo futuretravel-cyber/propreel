@@ -22,6 +22,15 @@ export default function AITalkingProfile({
   const { user } = useCredit();
   const [uploading, setUploading] = useState(false);
 
+  // Current profile image from Agent Branding (default profile first),
+  // falling back to the account avatar
+  const profiles: any[] = (user as any)?.agentProfiles || [];
+  const brandingPhoto: string | null =
+    profiles.find(p => p?.isDefault)?.photoUrl ||
+    profiles.find(p => p?.photoUrl)?.photoUrl ||
+    (user as any)?.avatarUrl ||
+    null;
+
   const CREDIT_COST = 8;
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,9 +76,9 @@ export default function AITalkingProfile({
     onToggle(newEnabled);
     
     if (newEnabled) {
-      toast.success(`AI Talking Profile enabled (${CREDIT_COST} credits)`);
+      toast.success(`AI Avatar Video enabled (${CREDIT_COST} credits)`);
     } else {
-      toast.info('AI Talking Profile disabled');
+      toast.info('AI Avatar Video disabled');
     }
   };
 
@@ -78,7 +87,7 @@ export default function AITalkingProfile({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <User className="w-5 h-5 text-purple-400" />
-          <label className="label mb-0">AI Talking Profile</label>
+          <label className="label mb-0">AI Avatar Video</label>
           <span className="badge badge-brand text-xs">
             <Zap className="w-3 h-3" /> {CREDIT_COST} credits
           </span>
@@ -141,6 +150,16 @@ export default function AITalkingProfile({
                   </>
                 )}
               </label>
+              {brandingPhoto && (
+                <button
+                  type="button"
+                  onClick={() => { onProfileImageChange(brandingPhoto); toast.success('Branding profile image applied'); }}
+                  disabled={uploading}
+                  className="btn btn-secondary w-full mt-2"
+                >
+                  <User className="w-4 h-4" /> Use my branding profile image
+                </button>
+              )}
               <p className="text-xs text-ink-500 mt-2">
                 Upload a clear, front-facing photo (max 5MB)
               </p>

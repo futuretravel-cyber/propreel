@@ -97,7 +97,19 @@ export default function ImageWorkbench({ presetId, strength, guidanceScale, cust
         <div className="grid grid-cols-2 gap-3">
           <div>
             <p className="text-xs text-ink-400 mb-1.5 font-medium">Before</p>
-            <img src={preview} alt="Original" className="w-full aspect-square object-cover rounded-xl border border-white/10" />
+            <div className="relative">
+              <img src={preview} alt="Original" className="w-full aspect-square object-cover rounded-xl border border-white/10" />
+              {/* The image stays exactly where it is (survives tab switches)
+                  until the user removes it or the render finishes */}
+              <button
+                onClick={() => { setFile(null); setPreview(null); setResultUrl(null); setError(null); }}
+                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-red-600 transition"
+                aria-label="Remove image"
+                disabled={busy}
+              >
+                ✕
+              </button>
+            </div>
           </div>
           <div>
             <p className="text-xs text-ink-400 mb-1.5 font-medium">After</p>

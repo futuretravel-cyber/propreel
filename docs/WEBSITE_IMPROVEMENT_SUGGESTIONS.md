@@ -29,6 +29,30 @@ node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8'))"  # Vercel
 
 ## Shipped ✅
 
+### Studio UX pass (5 Oct 2026)
+- **Homepage badges swapped**: "AI Motion — Hailuo-02 engine" → "AI Motion —
+  Generate AI Video from Images"; "Auto Upscale — 720p → 1080p" → "AI Avatar
+  Video — Generate an AI-powered avatar video".
+- **"AI Talking Profile" renamed to "AI Avatar Video"** everywhere users can
+  see it (Studio add-on label, toasts, modal docs).
+- **Talking Head can use your branding photo**: both the Video-tab avatar
+  add-on and the Talking Head tab offer "Use my branding profile image"
+  (default Agent Branding profile photo, falling back to the account avatar).
+  `useFlashHead` accepts an already-hosted `imageUrl` and skips the presigned
+  upload — the worker fetches the URL directly.
+- **Uploads survive tab switches**: all eight Studio panels stay mounted
+  (inactive ones `display:none`), so an image, draft or in-flight render
+  remains until the user deletes it (new ✕ on the workbench preview) or the
+  render completes.
+- **Upload zone moved to the top** of Photo Editor, Virtual Staging, Furniture
+  Removal and Twilight — the drop zone is now the first thing after the
+  heading, before the option grids.
+- **Social generator is a 4-step wizard** like New Listing: ① Property
+  Details → ② Key Features → ③ Photos → ④ Platform, with numbered circles,
+  connectors, Back/Next (step 1 needs a suburb/city) and the Generate button
+  only on the final step — the post can't be generated before the form is
+  completed.
+
 ### Data honesty & UX fixes (5 Oct 2026)
 - **Profile menu moved to the top-right** of the dashboard header (avatar,
   name, chevron now sit after search/notifications/credits; the dropdown

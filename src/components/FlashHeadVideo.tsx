@@ -33,6 +33,18 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
   const { generate, busy, stage, error, setError, jobStatus, cost } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  // Set when the render uses the already-hosted branding photo instead of a
+  // fresh upload (no file travels through the browser — the worker fetches
+  // the URL directly)
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  // Current profile image from Agent Branding (default profile first), with
+  // the account avatar as fallback
+  const profiles: any[] = user?.agentProfiles || [];
+  const brandingPhoto: string | null =
+    profiles.find(p => p?.isDefault)?.photoUrl ||
+    profiles.find(p => p?.photoUrl)?.photoUrl ||
+    user?.avatarUrl ||
+    null;
   const [dragging, setDragging] = useState(false);
   const [script, setScript] = useState(initialScript);
   const [voice, setVoice] = useState('Aria');
@@ -54,6 +66,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     if (!looksImage) { setError('Please upload an image file'); return; }
     if (f.size > 25 * 1024 * 1024) { setError('Image must be under 25MB'); return; }
     setFile(f);
+    setSourceUrl(null);
     setResultUrl(null);
     setError(null);
     const reader = new FileReader();
@@ -61,11 +74,21 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     reader.readAsDataURL(f);
   };
 
+  // Use the agent's current branding profile image instead of uploading one
+  const useBrandingPhoto = () => {
+    if (!brandingPhoto) return;
+    setFile(null);
+    setSourceUrl(brandingPhoto);
+    setPreview(brandingPhoto);
+    setResultUrl(null);
+    setError(null);
+  };
+
   const run = async () => {
-    if (!file || !script.trim()) return;
+    if ((!file && !sourceUrl) || !script.trim()) return;
     progress.start();
     try {
-      const res = await generate({ file, voiceoverText: script, voice });
+      const res = await generate({ file: file ?? undefined, imageUrl: sourceUrl ?? undefined, voiceoverText: script, voice });
       if (res) {
         setResultUrl(res.videoUrl);
         onVideoGenerated?.(res.videoUrl);
@@ -80,7 +103,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     : stage === 'rendering' ? 'AI is generating your lip-sync video…'
     : '';
 
-  const canRun = !!file && !!script.trim() && !busy && (user?.credits ?? 0) >= cost;
+  const canRun = (!!file || !!sourceUrl) && !!script.trim() && !busy && (user?.credits ?? 0) >= cost;
 
   return (
     <div className="space-y-6">
@@ -126,12 +149,27 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
                 <p className="text-ink-400 text-sm">Drop a headshot here or click to upload</p>
                 <p className="text-ink-500 text-xs mt-1">Front-facing portrait, good lighting — JPEG/PNG up to 25MB</p>
               </div>
+              {brandingPhoto && (
+                <button
+                  type="button"
+                  onClick={useBrandingPhoto}
+                  className="btn btn-secondary w-full mt-3 text-sm"
+                  title={brandingPhoto}
+                >
+                  <User className="w-4 h-4" /> Use my branding profile image
+                </button>
+              )}
             </>
           ) : (
-            <div className="relative">
-              <img src={preview} alt="Profile" className="w-full max-w-[280px] aspect-square object-cover rounded-xl border border-white/10" />
-              <button onClick={() => { setFile(null); setPreview(null); setResultUrl(null); }} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80" aria-label="Remove image">✕</button>
-            </div>
+            <>
+              <div className="relative">
+                <img src={preview} alt="Profile" className="w-full max-w-[280px] aspect-square object-cover rounded-xl border border-white/10" />
+                <button onClick={() => { setFile(null); setSourceUrl(null); setPreview(null); setResultUrl(null); }} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80" aria-label="Remove image">✕</button>
+              </div>
+              {sourceUrl && (
+                <p className="text-xs text-ink-500 mt-1">Using your branding profile image — remove it to upload a different photo.</p>
+              )}
+            </>
           )}
         </div>
 
@@ -174,7 +212,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
         />
         {!busy && !canRun && (
           <p className="text-xs text-ink-500 text-center">
-            {!file && 'Upload your profile picture • '}
+            {!file && !sourceUrl && 'Upload your profile picture • '}
             {!script.trim() && 'Add a voiceover script • '}
             {(user?.credits ?? 0) < cost && `Need ${cost} credits (you have ${user?.credits ?? 0})`}
           </p>

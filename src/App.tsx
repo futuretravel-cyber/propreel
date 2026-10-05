@@ -25,7 +25,7 @@ import {
   LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield,
   Users, Star, ChevronRight, Check, X, Menu, LogOut, Zap, Crown, Sparkles,
   TrendingUp, Eye, Clock, AlertCircle, AlertTriangle, Download, Copy, RefreshCw, Plus,
-  Search, Filter, ArrowRight, Globe, Phone, Mail, MapPin, ChevronDown,
+  Search, Filter, ArrowRight, Globe, Phone, Mail, MapPin, ChevronDown, ChevronLeft,
   Monitor, Smartphone, Mic, Camera, Palette, Sun, Cloud, Moon as MoonIcon, Bell,
   FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle, FolderOpen
 } from 'lucide-react';
@@ -1339,16 +1339,20 @@ function StudioPageInner() {
           </button>
         ))}
       </div>
-      {/* Tab Content */}
+      {/* Tab Content — every panel stays mounted (inactive ones are
+          display:none) so uploads, drafts and in-flight renders survive tab
+          switches: an image must not vanish because the user peeked at
+          another tab. The user removes an image, or the render completes —
+          only then does it leave the panel. */}
       <div className="card-dark p-6">
-        {tab === 'description' && <DescriptionTab />}
-        {tab === 'photo' && <PhotoEditorTab />}
-        {tab === 'staging' && <StagingTab />}
-        {tab === 'removal' && <RemovalTab />}
-        {tab === 'twilight' && <TwilightTab />}
-        {tab === 'social' && <SocialTab />}
-        {tab === 'video' && <VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} />}
-        {tab === 'flashhead' && <FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} />}
+        <div className={tab === 'description' ? undefined : 'hidden'}><DescriptionTab /></div>
+        <div className={tab === 'photo' ? undefined : 'hidden'}><PhotoEditorTab /></div>
+        <div className={tab === 'staging' ? undefined : 'hidden'}><StagingTab /></div>
+        <div className={tab === 'removal' ? undefined : 'hidden'}><RemovalTab /></div>
+        <div className={tab === 'twilight' ? undefined : 'hidden'}><TwilightTab /></div>
+        <div className={tab === 'social' ? undefined : 'hidden'}><SocialTab /></div>
+        <div className={tab === 'video' ? undefined : 'hidden'}><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} /></div>
+        <div className={tab === 'flashhead' ? undefined : 'hidden'}><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} /></div>
       </div>
     </div>
   );
@@ -1679,6 +1683,15 @@ function PhotoEditorTab() {
           Each image render costs 2 credits — failed renders are refunded automatically
         </p>
       </div>
+      {/* Upload first — the drop zone sits at the top of the workflow */}
+      <ImageWorkbench
+        presetId={selectedPreset || photoPresets[0]?.id || ''}
+        strength={strength}
+        guidanceScale={guidance}
+        customPrompt={customPrompt.trim() ? customPrompt : undefined}
+        ctaLabel={`Enhance (2 credits)`}
+        emptyHint="JPEG, PNG, WEBP up to 25MB"
+      />
       <div>
         <label className="label">Enhancement Preset</label>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -1736,14 +1749,6 @@ function PhotoEditorTab() {
               placeholder="Describe a custom enhancement…"
             />
           </div>
-          <ImageWorkbench
-            presetId={selectedPreset}
-            strength={strength}
-            guidanceScale={guidance}
-            customPrompt={customPrompt.trim() ? customPrompt : undefined}
-            ctaLabel={`Enhance (2 credits)`}
-            emptyHint="JPEG, PNG, WEBP up to 25MB"
-          />
         </>
       )}
       {!selectedPreset && (
@@ -1771,6 +1776,14 @@ function StagingTab() {
           Each image render costs 2 credits — failed renders are refunded automatically
         </p>
       </div>
+      {/* Upload first — the drop zone sits at the top of the workflow */}
+      <ImageWorkbench
+        presetId={style}
+        strength={selectedPreset?.strength.default}
+        guidanceScale={selectedPreset?.guidanceScale.default}
+        ctaLabel="Stage Room (2 credits)"
+        emptyHint="Upload an empty room photo — JPEG/PNG/WEBP up to 25MB"
+      />
       <div>
         <label className="label">Room Type</label>
         <div className="flex flex-wrap gap-2">
@@ -1799,13 +1812,6 @@ function StagingTab() {
           </p>
         </div>
       )}
-      <ImageWorkbench
-        presetId={style}
-        strength={selectedPreset?.strength.default}
-        guidanceScale={selectedPreset?.guidanceScale.default}
-        ctaLabel="Stage Room (2 credits)"
-        emptyHint="Upload an empty room photo — JPEG/PNG/WEBP up to 25MB"
-      />
     </div>
   );
 }
@@ -1824,6 +1830,14 @@ function RemovalTab() {
           Each image render costs 2 credits — failed renders are refunded automatically
         </p>
       </div>
+      {/* Upload first — the drop zone sits at the top of the workflow */}
+      <ImageWorkbench
+        presetId={mode}
+        strength={selectedPreset?.strength.default}
+        guidanceScale={selectedPreset?.guidanceScale.default}
+        ctaLabel="Remove (2 credits)"
+        emptyHint="Upload a photo with furniture or clutter to remove"
+      />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {removalPresets.map(m => (
           <button key={m.id} onClick={() => setMode(m.id)} className={`p-6 rounded-xl text-center transition ${mode === m.id ? 'bg-purple-700/20 border border-purple-500/30 text-purple-300' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
@@ -1839,13 +1853,6 @@ function RemovalTab() {
           </p>
         </div>
       )}
-      <ImageWorkbench
-        presetId={mode}
-        strength={selectedPreset?.strength.default}
-        guidanceScale={selectedPreset?.guidanceScale.default}
-        ctaLabel="Remove (2 credits)"
-        emptyHint="Upload a photo with furniture or clutter to remove"
-      />
     </div>
   );
 }
@@ -1864,6 +1871,14 @@ function TwilightTab() {
           Each image render costs 2 credits — failed renders are refunded automatically
         </p>
       </div>
+      {/* Upload first — the drop zone sits at the top of the workflow */}
+      <ImageWorkbench
+        presetId={style}
+        strength={selectedPreset?.strength.default}
+        guidanceScale={selectedPreset?.guidanceScale.default}
+        ctaLabel="Convert to Twilight (2 credits)"
+        emptyHint="Upload a daytime exterior photo — best results on clear shots of the full property"
+      />
       <div>
         <label className="label">Twilight Style</label>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -1882,13 +1897,6 @@ function TwilightTab() {
           </p>
         </div>
       )}
-      <ImageWorkbench
-        presetId={style}
-        strength={selectedPreset?.strength.default}
-        guidanceScale={selectedPreset?.guidanceScale.default}
-        ctaLabel="Convert to Twilight (2 credits)"
-        emptyHint="Upload a daytime exterior photo — best results on clear shots of the full property"
-      />
     </div>
   );
 }
@@ -1936,6 +1944,7 @@ function SocialTab() {
   // Grok AI generation — 2 credits per post render, refunded on failure
   const generate = async () => {
     if (!user) { toast.error('Sign in to generate a post'); return; }
+    if (!formComplete) { toast.error('Complete all four steps before generating a post'); return; }
     const cost = SOCIAL_POST_COST;
     if ((user.credits ?? 0) < cost) {
       toast.error(`Not enough credits — a post costs ${cost} credits. Top up in Billing.`, 'Insufficient credits');
@@ -2002,10 +2011,20 @@ function SocialTab() {
 
   const sectionTabs: Array<{ id: typeof section; label: string }> = [
     { id: 'details', label: 'Property Details' },
-    { id: 'features', label: `Key Features (${selectedFeatures.length})` },
-    { id: 'photos', label: `Photos (${images.length}/6)` },
+    { id: 'features', label: 'Key Features' },
+    { id: 'photos', label: 'Photos' },
     { id: 'platform', label: 'Platform' },
   ];
+  // New-Listing-style wizard: four numbered steps walked in order. A post can
+  // only be generated once the whole form has been completed (step 1 needs a
+  // location; features and photos are optional; the platform has a default).
+  const stepIndex = sectionTabs.findIndex(s => s.id === section);
+  const stepValid = [!!socialFields.suburb.trim(), true, true, !!platform];
+  const canNext = stepValid[stepIndex];
+  const formComplete = stepValid.every(Boolean);
+  const goToStep = (i: number) => { if (i >= 0 && i < sectionTabs.length) setSection(sectionTabs[i].id); };
+  const nextStep = () => { if (stepIndex < sectionTabs.length - 1 && canNext) goToStep(stepIndex + 1); };
+  const prevStep = () => goToStep(stepIndex - 1);
 
   return (
     <div className="space-y-6">
@@ -2014,16 +2033,20 @@ function SocialTab() {
         <span className="badge badge-brand" title="Charged only when a render succeeds"><Zap className="w-3 h-3" /> ⚡{SOCIAL_POST_COST} credits per post · AI</span>
       </div>
 
-      {/* Detail sections */}
-      <div className="flex flex-wrap gap-2 pb-1">
-        {sectionTabs.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setSection(s.id)}
-            className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition ${section === s.id ? 'bg-purple-700 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
-          >
-            {s.label}
-          </button>
+      {/* Wizard steps — same layout as the New Listing flow */}
+      <div className="flex items-center">
+        {sectionTabs.map((s, i) => (
+          <div key={s.id} className={`flex items-center ${i > 0 ? 'flex-1' : ''}`}>
+            {i > 0 && <div className={`h-0.5 flex-1 mx-2 ${i <= stepIndex ? 'bg-purple-600' : 'bg-white/10'}`} />}
+            <div className="flex flex-col items-center gap-1">
+              <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                i < stepIndex ? 'bg-purple-700 text-white' : i === stepIndex ? 'bg-purple-700/30 border border-purple-500 text-white' : 'bg-white/10 text-ink-400'
+              }`}>
+                {i < stepIndex ? <Check className="w-4 h-4" /> : i + 1}
+              </span>
+              <span className={`text-[11px] hidden sm:block ${i === stepIndex ? 'text-white' : 'text-ink-500'}`}>{s.label}</span>
+            </div>
+          </div>
         ))}
       </div>
 
@@ -2120,9 +2143,29 @@ function SocialTab() {
         </div>
       )}
 
-      <button onClick={generate} disabled={loading} className="btn btn-primary">
-        {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with AI…</> : <><Sparkles className="w-4 h-4" /> Generate Post · ⚡{SOCIAL_POST_COST}</>}
-      </button>
+      {/* Step navigation — the form is completed in order; generation only
+          unlocks on the last step */}
+      <div className="flex items-center justify-between gap-3">
+        <button onClick={prevStep} disabled={stepIndex === 0} className="btn btn-quiet text-sm disabled:opacity-40">
+          <ChevronLeft className="w-4 h-4" /> Back
+        </button>
+        {stepIndex < sectionTabs.length - 1 && (
+          <button onClick={nextStep} disabled={!canNext} className="btn btn-primary text-sm">
+            Next <ChevronRight className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {stepIndex === sectionTabs.length - 1 && (
+        <div className="space-y-2">
+          <button onClick={generate} disabled={loading || !formComplete} className="btn btn-primary">
+            {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with AI…</> : <><Sparkles className="w-4 h-4" /> Generate Post · ⚡{SOCIAL_POST_COST}</>}
+          </button>
+          {!formComplete && (
+            <p className="text-xs text-ink-500">Add a suburb / city in Property Details to enable generation.</p>
+          )}
+        </div>
+      )}
       {caption && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -2588,7 +2631,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         </div>
       </div>
 
-      {/* 6. AI Talking Profile add-on → dedicated Talking Head tab */}
+      {/* 6. AI Avatar Video add-on → dedicated Talking Head tab */}
       <AITalkingProfile
         enabled={aiTalkingProfile}
         onToggle={setAiTalkingProfile}

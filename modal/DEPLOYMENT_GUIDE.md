@@ -99,7 +99,7 @@ modal run app_propreel_minimax.py::generate_flashhead_video \
 1. Go to Video Generator tab
 2. Upload a profile picture
 3. Generate a voiceover script
-4. Enable "AI Talking Profile"
+4. Enable "AI Avatar Video"
 5. Click "Generate Lip-Sync Video"
 6. Wait for processing (~30-60 seconds)
 7. Preview the generated video

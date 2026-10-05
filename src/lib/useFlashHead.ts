@@ -27,7 +27,10 @@ export function useFlashHead() {
   const [jobStatus, setJobStatus] = useState<string>('');
 
   const generate = useCallback(async (opts: {
-    file: File;
+    /** Locally picked file — presigned to S3 before the render */
+    file?: File;
+    /** Already-hosted image (the agent's branding photo) — skips the upload */
+    imageUrl?: string;
     voiceoverText: string;
     voice?: string;
     stability?: number;
@@ -36,6 +39,10 @@ export function useFlashHead() {
 
     if (!user) {
       setError('You must be signed in');
+      return null;
+    }
+    if (!opts.file && !opts.imageUrl) {
+      setError('Add a profile picture first — upload one or use your branding photo');
       return null;
     }
     if (!opts.voiceoverText.trim()) {
@@ -47,32 +54,37 @@ export function useFlashHead() {
       return null;
     }
 
-    // 1) Presigned upload: profile picture → S3 (fal must be able to fetch it)
+    // 1) Source image → public URL the worker (and fal) can fetch.
+    //    A branding photo is already hosted, so it skips the presigned upload.
     setStage('uploading');
     let publicUrl: string;
-    try {
-      const contentType = opts.file.type || 'image/jpeg';
-      const preRes = await fetch('/api/music?action=presign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, contentType }),
-      });
-      if (!preRes.ok) {
-        const d = await preRes.json().catch(() => ({}));
-        throw new Error(d.error || 'Upload authorisation failed');
+    if (opts.imageUrl) {
+      publicUrl = opts.imageUrl;
+    } else {
+      try {
+        const contentType = opts.file!.type || 'image/jpeg';
+        const preRes = await fetch('/api/music?action=presign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.id, contentType }),
+        });
+        if (!preRes.ok) {
+          const d = await preRes.json().catch(() => ({}));
+          throw new Error(d.error || 'Upload authorisation failed');
+        }
+        const pre = await preRes.json();
+        const put = await fetch(pre.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': contentType },
+          body: opts.file,
+        });
+        if (!put.ok) throw new Error('Profile image upload failed');
+        publicUrl = pre.publicUrl;
+      } catch (e: any) {
+        setError(e.message || 'Upload failed');
+        setStage('idle');
+        return null;
       }
-      const pre = await preRes.json();
-      const put = await fetch(pre.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': contentType },
-        body: opts.file,
-      });
-      if (!put.ok) throw new Error('Profile image upload failed');
-      publicUrl = pre.publicUrl;
-    } catch (e: any) {
-      setError(e.message || 'Upload failed');
-      setStage('idle');
-      return null;
     }
 
     // 2) Deduct 8 credits atomically
