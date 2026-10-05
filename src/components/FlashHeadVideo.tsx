@@ -6,6 +6,7 @@ import { useRenderProgress, typicalFlashheadSeconds } from '../lib/useRenderProg
 import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
 import RenderProgressBar from './RenderProgressBar';
 import { useUploadWait } from '../lib/api';
+import { guardAIRender } from '../lib/aiDisclaimer';
 
 const VOICES = [
   { id: 'Aria', label: 'Aria (female, warm)' },
@@ -197,11 +198,11 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-bold text-white flex items-center gap-2"><Video className="w-5 h-5 text-purple-400" /> AI Talking Head (FlashHead)</h2>
+      <h2 className="text-lg font-bold text-white flex items-center gap-2"><Video className="w-5 h-5 text-purple-400" /> AI Avatar Video</h2>
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each talking-head render costs {cost} credits — failed renders are refunded automatically
+          Each AI Avatar Video render costs {cost} credits
         </p>
       </div>
 
@@ -290,19 +291,19 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
 
       {/* Generate */}
       <div className="space-y-3">
-        <button onClick={run} disabled={!canRun} className="btn btn-primary w-full text-lg py-4">
+        <button onClick={() => guardAIRender(run)} disabled={!canRun} className="btn btn-primary w-full text-lg py-4">
           {busy ? (
             <><Loader2 className="w-5 h-5 animate-spin" /> {stageLabel || 'Working…'}</>
           ) : resultUrl ? (
             <><RefreshCw className="w-5 h-5" /> Regenerate ({cost} credits)</>
           ) : (
-            <><Sparkles className="w-5 h-5" /> Generate Talking-Head Video ({cost} credits)</>
+            <><Sparkles className="w-5 h-5" /> Generate AI Avatar Video ({cost} credits)</>
           )}
         </button>
         <RenderProgressBar
           progress={progress}
           stage={stage === 'rendering' ? (jobStatus === 'processing' ? 'processing' : 'queued') : ''}
-          label="Generating your talking-head video"
+          label="Generating your AI Avatar Video"
         />
         {!busy && !canRun && (
           <p className="text-xs text-ink-500 text-center">
@@ -322,12 +323,12 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
       {/* Result */}
       {resultUrl && (
         <div className="card-dark p-4">
-          <p className="text-sm text-green-400 flex items-center gap-2 mb-3"><Check className="w-4 h-4" /> Talking-head video ready — stored in your AWS library</p>
+          <p className="text-sm text-green-400 flex items-center gap-2 mb-3"><Check className="w-4 h-4" /> AI Avatar Video ready — stored in your AWS library</p>
           <div className="max-w-md mx-auto rounded-xl overflow-hidden bg-black">
             <video src={resultUrl} controls playsInline className="w-full aspect-square" />
           </div>
           <div className="flex gap-3 mt-3 justify-center">
-            <a href={resultUrl} download="propreel-talking-head.mp4" className="btn btn-secondary text-sm"><Download className="w-4 h-4" /> Download</a>
+            <a href={resultUrl} download="propreel-ai-avatar-video.mp4" className="btn btn-secondary text-sm"><Download className="w-4 h-4" /> Download</a>
           </div>
         </div>
       )}

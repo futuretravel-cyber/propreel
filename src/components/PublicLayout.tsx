@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Menu, X, ArrowRight, Sun, Moon } from 'lucide-react';
+import { Play, Menu, X, ArrowRight, Sun, Moon, AlertTriangle } from 'lucide-react';
 import { SIGNUP_BONUS } from '../lib/constants';
+import { AI_DISCLAIMER_TEXT } from '../lib/aiDisclaimer';
 import { useTheme } from '../lib/theme';
 import SupportWidgets from './SupportWidgets';
 
@@ -115,7 +116,11 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </div>
-          <div className="border-t border-white/5 mt-12 pt-8 text-sm text-center text-ink-400">
+          <div className="mt-12 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-left" role="note">
+            <p className="text-xs font-semibold text-amber-300 mb-1.5 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> AI-generated content notice</p>
+            <p className="text-xs text-ink-400 leading-relaxed">{AI_DISCLAIMER_TEXT}</p>
+          </div>
+          <div className="border-t border-white/5 mt-8 pt-8 text-sm text-center text-ink-400">
             <p>© 2026 PropReel. All rights reserved. All prices include VAT.</p>
           </div>
         </div>

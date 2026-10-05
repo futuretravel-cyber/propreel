@@ -6,6 +6,7 @@ import OfflineBanner from './components/OfflineBanner';
 import { useState, useEffect, useRef } from 'react';
 import MobileNav from './components/MobileNav';
 import UploadQueueNotifier from './components/UploadQueueNotifier';
+import AIDisclaimerGate from './components/AIDisclaimerGate';
 import { DashboardSkeleton, BillingSkeleton, ProjectsSkeleton, StudioSkeleton, useSimulatedLoading } from './components/Skeleton';
 import { useAuth, useCredit, AuthProvider, CreditProvider } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
@@ -14,6 +15,7 @@ import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, ST
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI, useUploadWait } from './lib/api';
 import { drainBacklog, enqueueImagesForAI, uploadStatusText, useUploadQueue } from './lib/uploadQueue';
+import { AI_DISCLAIMER_TEXT, guardAIRender, openAIDisclaimer } from './lib/aiDisclaimer';
 import FeatureChips from './components/FeatureChips';
 import CurrencyInput from './components/CurrencyInput';
 import { geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
@@ -324,7 +326,7 @@ function PricingPage() {
                   <CreditCard className="w-5 h-5 text-blue-600" />
                   <h4 className="font-semibold text-gray-900 text-sm">Purchased Credits</h4>
                 </div>
-                <p className="text-xs text-gray-600">Valid for 365 days after purchase. Non-refundable once spent — but failed renders are auto-refunded within ~60 seconds.</p>
+                <p className="text-xs text-gray-600">Valid for 365 days after purchase. Non-refundable once spent.</p>
               </div>
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -767,7 +769,7 @@ function RegisterPage() {
             <div><label className="label">Password</label><input type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 8 characters" required minLength={8} /></div>
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-1 w-4 h-4 rounded border-ink-600 bg-ink-800 text-purple-600 focus:ring-purple-600" />
-              <span className="text-xs text-ink-400">I understand that PropReel uses AI technology, which may produce imperfect results, and I agree that spent credits are non-refundable.</span>
+              <span className="text-xs text-ink-400">{AI_DISCLAIMER_TEXT}</span>
             </label>
             <button type="submit" disabled={loading || !agreed} className="btn btn-primary w-full">{loading ? 'Creating account...' : `Sign Up — Get ${SIGNUP_BONUS} Free Credits`}</button>
           </form>
@@ -1334,7 +1336,7 @@ function StudioPageInner() {
     { id: 'twilight', label: 'Twilight', icon: <MoonIcon className="w-4 h-4" />, cost: 2 },
     { id: 'social', label: 'Social Media', icon: <Share2 className="w-4 h-4" />, cost: 2 },
     { id: 'video', label: 'Video Generator', icon: <Video className="w-4 h-4" />, cost: null },
-    { id: 'flashhead', label: 'Talking Head', icon: <Mic className="w-4 h-4" />, cost: 8 },
+    { id: 'flashhead', label: 'AI Avatar Video', icon: <Mic className="w-4 h-4" />, cost: 8 },
   ];
 
   return (
@@ -1345,6 +1347,7 @@ function StudioPageInner() {
           <h1 className="text-2xl font-bold text-white">Studio</h1>
           <p className="text-ink-400 mt-1">8 AI-powered tools to market your properties.</p>
           <p className="text-xs text-ink-500 mt-1 flex items-center gap-1"><Clock className="w-3 h-3 shrink-0" /> {RETENTION_NOTICE}</p>
+          <p className="text-xs text-amber-400/90 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3 shrink-0" /> Every tool here renders with AI — outputs can be wrong, and credits spent on unsatisfactory results are non-refundable. <button type="button" onClick={openAIDisclaimer} className="underline hover:text-amber-300 font-medium">Read the full AI notice</button></p>
         </div>
         <Link
           to="/dashboard/credits"
@@ -1379,7 +1382,7 @@ function StudioPageInner() {
         <div className={tab === 'twilight' ? undefined : 'hidden'}><ErrorBoundary label="Twilight"><TwilightTab /></ErrorBoundary></div>
         <div className={tab === 'social' ? undefined : 'hidden'}><ErrorBoundary label="Social Media"><SocialTab /></ErrorBoundary></div>
         <div className={tab === 'video' ? undefined : 'hidden'}><ErrorBoundary label="Video Generator"><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} /></ErrorBoundary></div>
-        <div className={tab === 'flashhead' ? undefined : 'hidden'}><ErrorBoundary label="Talking Head"><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} /></ErrorBoundary></div>
+        <div className={tab === 'flashhead' ? undefined : 'hidden'}><ErrorBoundary label="AI Avatar Video"><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} /></ErrorBoundary></div>
       </div>
     </div>
   );
@@ -1568,7 +1571,7 @@ function DescriptionTab() {
           />
           <div className="flex items-center justify-between gap-3 px-4 py-3 bg-ink-800/60">
             {confirmed ? (
-              <span className="text-xs text-green-400 flex items-center gap-1"><Check className="w-3 h-3" /> Location confirmed — {amenities.length} nearby amenities loaded</span>
+              <span className="text-xs text-green-400 flex items-center gap-1"><Check className="w-3 h-3" /> Location confirmed — {amenities.length} amenities found, auto-filled below</span>
             ) : (
               <span className="text-xs text-ink-400">Check the pin, then confirm so we can use nearby amenities in the copy.</span>
             )}
@@ -1578,10 +1581,11 @@ function DescriptionTab() {
           </div>
           {amenities.length > 0 && (
             <div className="px-4 py-3 bg-black/20">
-              <p className="text-xs text-ink-400 mb-2">Nearby amenities (OpenStreetMap):</p>
+              <p className="text-xs text-green-400 flex items-center gap-1 mb-2"><Check className="w-3 h-3 shrink-0" /> Auto-filled from your verified address — {amenities.length} amenities found</p>
               <div className="flex flex-wrap gap-1.5">
                 {amenities.map(a => <span key={a} className="text-[11px] bg-white/5 border border-white/10 rounded-full px-2 py-1 text-ink-300">{a}</span>)}
               </div>
+              <p className="text-[11px] text-ink-500 mt-2">Each entry carries its type and distance from your pin (e.g. school, 850m away) and is woven into the generated description.</p>
             </div>
           )}
         </div>
@@ -1675,7 +1679,7 @@ function DescriptionTab() {
         </div>
       </div>
 
-      <button onClick={generate} disabled={loading} className="btn btn-primary">
+      <button onClick={() => guardAIRender(generate)} disabled={loading} className="btn btn-primary">
         {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with AI…</> : <><Sparkles className="w-4 h-4" /> Generate Description · ⚡{DESCRIPTION_RENDER_COST}</>}
       </button>
 
@@ -1718,7 +1722,7 @@ function PhotoEditorTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits — failed renders are refunded automatically
+          Each image render costs 2 credits
         </p>
       </div>
       {/* Upload first — the drop zone sits at the top of the workflow */}
@@ -1812,7 +1816,7 @@ function StagingTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits — failed renders are refunded automatically
+          Each image render costs 2 credits
         </p>
       </div>
       {/* Upload first — the drop zone sits at the top of the workflow */}
@@ -1867,7 +1871,7 @@ function RemovalTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits — failed renders are refunded automatically
+          Each image render costs 2 credits
         </p>
       </div>
       {/* Upload first — the drop zone sits at the top of the workflow */}
@@ -1909,7 +1913,7 @@ function TwilightTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits — failed renders are refunded automatically
+          Each image render costs 2 credits
         </p>
       </div>
       {/* Upload first — the drop zone sits at the top of the workflow */}
@@ -2252,7 +2256,7 @@ function SocialTab() {
 
       {stepIndex === sectionTabs.length - 1 && (
         <div className="space-y-2">
-          <button onClick={generate} disabled={loading || !formComplete} className="btn btn-primary">
+          <button onClick={() => guardAIRender(generate)} disabled={loading || !formComplete} className="btn btn-primary">
             {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with AI…</> : <><Sparkles className="w-4 h-4" /> Generate Post · ⚡{SOCIAL_POST_COST}</>}
           </button>
           {!formComplete && (
@@ -2424,6 +2428,10 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
     reelProgress.start();
     const totalCredits = selectedConfig.credits;
     const recordId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    // Refund below only if THIS deduction actually landed — the old
+    // unconditional refund minted the full tier price for users who simply
+    // didn't have enough credits to render.
+    let charged = false;
 
     try {
       // 1) Create the project record first (real data in propreel-projects).
@@ -2460,6 +2468,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         duration: selectedConfig.duration,
         recordId,
       }, usePool ? 'agency' : 'personal');
+      charged = true;
 
       // 3) Start the async render job
       const response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
@@ -2526,7 +2535,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
       // over; FlashHead's own 8-credit charge happens there — no double billing)
       if (aiTalkingProfile) {
         toast.info(
-          'Talking Head add-on: finish on the Talking Head tab — your script is ready and waiting.',
+          'AI Avatar Video add-on: finish on the AI Avatar Video tab — your script is ready and waiting.',
           'One step left'
         );
       }
@@ -2546,10 +2555,13 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
       toast.success('Video rendered successfully!', 'Render Complete');
     } catch (error: any) {
       console.error('Error generating video:', error);
-      // Failed renders refund the credits (spec: refund on failure)
-      try {
-        await addCredits(totalCredits, 'refund', `Refund — failed video render (${tier})`);
-      } catch { /* best-effort */ }
+      // Refund only what was actually taken — a deduction that failed (not
+      // enough credits) must not add credits to the balance.
+      if (charged) {
+        try {
+          await addCredits(totalCredits, 'refund', `Refund — failed video render (${tier})`);
+        } catch { /* best-effort */ }
+      }
       setGenerating(false);
       reelProgress.stop();
       toast.error(error.message || 'Failed to generate video — credits refunded', 'Error');
@@ -2726,11 +2738,11 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-white flex items-center gap-2">
-                <Mic className="w-4 h-4 text-purple-400" /> Talking Head lip-sync add-on
+                <Mic className="w-4 h-4 text-purple-400" /> AI Avatar Video lip-sync add-on
               </p>
               <p className="text-xs text-ink-400 mt-1">
                 Your script ({script.trim() ? `${script.trim().split(/\s+/).length} words` : 'not generated yet'}) travels with you —
-                finish setup on the Talking Head tab: upload your headshot, pick a voice, render (+8 credits).
+                finish setup on the AI Avatar Video tab: upload your headshot, pick a voice, render (+8 credits).
               </p>
             </div>
             <button
@@ -2740,7 +2752,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
               }}
               className="btn btn-primary whitespace-nowrap text-sm"
             >
-              Continue to Talking Head <ArrowRight className="w-4 h-4" />
+              Continue to AI Avatar Video <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -2823,7 +2835,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
       {/* Generate Button */}
       <div className="space-y-3">
         <button 
-          onClick={generateReel} 
+          onClick={() => guardAIRender(generateReel)} 
           disabled={generating} 
           className="btn btn-primary w-full text-lg py-4"
         >
@@ -2842,7 +2854,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         )}
         {aiTalkingProfile && (
           <p className="text-xs text-ink-400 text-center">
-            Video: {selectedConfig.credits} credits here — the Talking Head lip-sync (+8 credits) renders on its own tab with your script.
+            Video: {selectedConfig.credits} credits here — the AI Avatar Video lip-sync (+8 credits) renders on its own tab with your script.
           </p>
         )}
         {!generating && lastRenderUrl && (
@@ -3060,12 +3072,12 @@ function AdminOverview() {
               <p className="text-[11px] text-ink-500">planned duration</p>
             </div>
             <div className="bg-ink-900/60 rounded-lg p-3">
-              <p className="text-[11px] text-ink-400">Talking Head renders</p>
+              <p className="text-[11px] text-ink-400">AI Avatar Video renders</p>
               <p className="text-xl font-bold text-white">{rm.flashhead.renders}</p>
               <p className="text-[11px] text-cyan-300">{rm.flashhead.credits} credits</p>
             </div>
             <div className="bg-ink-900/60 rounded-lg p-3">
-              <p className="text-[11px] text-ink-400">Talking Head runtime</p>
+              <p className="text-[11px] text-ink-400">AI Avatar Video runtime</p>
               <p className="text-xl font-bold text-white">{rm.flashhead.measuredSeconds ? fmtRuntime(rm.flashhead.measuredSeconds) : '—'}</p>
               <p className="text-[11px] text-ink-500">measured by worker</p>
             </div>
@@ -3075,7 +3087,7 @@ function AdminOverview() {
               <p className="text-[11px] text-pink-300">{rm.imageEdits?.credits ?? 0} credits</p>
             </div>
           </div>
-          <div className="h-[180px]" aria-label="Daily AI credits spent, video versus Talking Head">
+          <div className="h-[180px]" aria-label="Daily AI credits spent, video versus AI Avatar Video">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={rm.daily} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -3087,13 +3099,13 @@ function AdminOverview() {
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 />
                 <Bar dataKey="videoCredits" name="Video credits" stackId="ai" fill="#7c3aed" />
-                <Bar dataKey="flashheadCredits" name="Talking Head credits" stackId="ai" fill="#22d3ee" />
+                <Bar dataKey="flashheadCredits" name="AI Avatar Video credits" stackId="ai" fill="#22d3ee" />
                 <Bar dataKey="imageCredits" name="Image edit credits" stackId="ai" fill="#ec4899" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
           <p className="text-[11px] text-ink-500">
-            Video runtime is the planned tier duration; Talking Head runtime is measured from the finished file. Renders whose browser closed mid-job may be missing duration.
+            Video runtime is the planned tier duration; AI Avatar Video runtime is measured from the finished file. Renders whose browser closed mid-job may be missing duration.
           </p>
         </div>
       )}
@@ -3911,6 +3923,7 @@ export default function App() {
             <ShortcutsHelpListener />
             <OnboardingAndHelp />
             <OfflineBanner />
+            <AIDisclaimerGate />
             <CookieConsent />
           </CreditProvider>
         </ToastProvider>

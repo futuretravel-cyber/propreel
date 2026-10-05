@@ -6,6 +6,7 @@ import RenderProgressBar from './RenderProgressBar';
 import { useCredit } from '../context/AuthContext';
 import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
 import { useUploadWait } from '../lib/api';
+import { guardAIRender } from '../lib/aiDisclaimer';
 
 interface ImageWorkbenchProps {
   presetId: string;
@@ -151,8 +152,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
       )}
 
       {preview && (
-        <div className="flex gap-3">
-          <button onClick={run} disabled={busy} className="btn btn-primary flex-1 min-h-[48px]">
+        <div className="flex gap-3">            <button onClick={() => guardAIRender(run)} disabled={busy} className="btn btn-primary flex-1 min-h-[48px]">
             {busy ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
             ) : (

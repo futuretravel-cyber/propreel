@@ -47,7 +47,7 @@ export default function TutorialVideoPage() {
       description: 'Click "Generate Video" and watch as AI creates your cinematic property reel in minutes.',
       icon: <Play className="w-6 h-6" />,
       duration: '5 min',
-      detail: 'Credits are deducted when the render starts. You can watch live progress (queued → processing → complete). If a render fails, your credits are refunded automatically.',
+      detail: 'Credits are deducted when the render starts. You can watch live progress (queued → processing → complete).',
     },
     {
       id: 6,

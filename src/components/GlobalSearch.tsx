@@ -1,8 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, X, Video, Image, FileText, CreditCard, Settings, ArrowRight, Clock, Star, TrendingUp, Mic } from 'lucide-react';
 import { PropReelAPI, Project } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { formatZar, formatRelative } from '../lib/utils';
+
+/**
+ * The header button and ⌘K both ask the one mounted <GlobalSearch/> to open.
+ * The modal must stay mounted — the keyboard listener lives inside it, so
+ * rendering it only "when open" (behind a parent's own flag) left both the
+ * button and the ⌘K shortcut doing nothing at all.
+ */
+const openRequests = new Set<() => void>();
+function requestSearchOpen(): void {
+  openRequests.forEach(open => open());
+}
 
 interface SearchResult {
   id: string;
@@ -20,6 +32,7 @@ export default function GlobalSearch() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const { user } = useAuth();
 
@@ -28,6 +41,13 @@ export default function GlobalSearch() {
     if (!user?.id) return;
     PropReelAPI.listProjects(user.id).then(setProjects).catch(() => setProjects([]));
   }, [user?.id]);
+
+  // Stay mounted for ⌘K; the header button asks us to open (requestSearchOpen).
+  useEffect(() => {
+    const open = () => setIsOpen(true);
+    openRequests.add(open);
+    return () => { openRequests.delete(open); };
+  }, []);
 
   // Keyboard shortcut to open search
   useEffect(() => {
@@ -58,17 +78,19 @@ export default function GlobalSearch() {
     // Search the user's real projects (DynamoDB) — reels and Talking Head clips
     projects.forEach(project => {
       const isTalkingHead = project.kind === 'FLASHHEAD';
+      const matchesAvatarKind = isTalkingHead && ['avatar', 'avatar video', 'talking head', 'flashhead']
+        .some(term => term.includes(lowerQuery) || lowerQuery.includes(term));
       if (
         project.title.toLowerCase().includes(lowerQuery) ||
         (project.suburb || '').toLowerCase().includes(lowerQuery) ||
         (project.city || '').toLowerCase().includes(lowerQuery) ||
-        (isTalkingHead && 'talking head'.includes(lowerQuery))
+        matchesAvatarKind
       ) {
         searchResults.push({
           id: project.id,
           type: 'project',
           title: project.title,
-          subtitle: (isTalkingHead ? 'Talking Head • ' : '') + [project.suburb, project.city].filter(Boolean).join(', ') + (project.price ? ` • ${formatZar(project.price)}` : ''),
+          subtitle: (isTalkingHead ? 'AI Avatar Video • ' : '') + [project.suburb, project.city].filter(Boolean).join(', ') + (project.price ? ` • ${formatZar(project.price)}` : ''),
           icon: isTalkingHead ? Mic : Video,
           url: isTalkingHead ? '/studio?tab=flashhead' : '/dashboard/listings',
           category: 'Projects'
@@ -81,8 +103,15 @@ export default function GlobalSearch() {
       { id: 'new-project', title: 'Create New Project', icon: Video, url: '/studio', category: 'Actions' },
       { id: 'edit-photo', title: 'Edit Photo with AI', icon: Image, url: '/studio?tab=photo', category: 'Actions' },
       { id: 'generate-video', title: 'Generate Video', icon: Video, url: '/studio?tab=video', category: 'Actions' },
+      { id: 'avatar-video', title: 'AI Avatar Video', icon: Mic, url: '/studio?tab=flashhead', category: 'Actions' },
       { id: 'buy-credits', title: 'Buy Credits', icon: CreditCard, url: '/dashboard/credits', category: 'Actions' },
-      { id: 'settings', title: 'Account Settings', icon: Settings, url: '/dashboard/settings', category: 'Actions' }
+      { id: 'listings', title: 'Property Listings', icon: FileText, url: '/dashboard/listings', category: 'Pages' },
+      { id: 'projects', title: 'My Projects', icon: Video, url: '/dashboard/projects', category: 'Pages' },
+      { id: 'billing', title: 'Billing & Credits', icon: CreditCard, url: '/dashboard/billing', category: 'Pages' },
+      { id: 'analytics', title: 'Analytics', icon: TrendingUp, url: '/dashboard/analytics', category: 'Pages' },
+      { id: 'branding', title: 'Agent Branding', icon: Star, url: '/dashboard/branding', category: 'Pages' },
+      { id: 'notifications', title: 'Notifications', icon: Clock, url: '/dashboard/notifications', category: 'Pages' },
+      { id: 'settings', title: 'Account Settings', icon: Settings, url: '/dashboard/settings', category: 'Pages' }
     ];
 
     actions.forEach(action => {
@@ -96,13 +125,16 @@ export default function GlobalSearch() {
 
     // Quick links (static actions, not mock data)
 
-    if (query.length < 3) {
-      searchResults.push({ id: 'hint-1', title: 'Type to search your projects…', type: 'recent' as const, icon: Clock, category: 'Hint' });
+    if (query.length < 3 && searchResults.length === 0) {
+      searchResults.push({ id: 'hint-1', title: 'Type at least 3 characters to search…', type: 'recent' as const, icon: Clock, category: 'Hint' });
     }
 
     setResults(searchResults.slice(0, 10));
     setSelectedIndex(0);
-  }, [query]);
+    // projects must be in the deps: typing while the project list was still
+    // loading used to run this closure against an empty array and never
+    // re-run it, so searches returned nothing.
+  }, [query, projects]);
 
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -120,7 +152,7 @@ export default function GlobalSearch() {
 
   const navigateToResult = (result: SearchResult) => {
     if (result.url) {
-      window.location.href = result.url;
+      navigate(result.url); // SPA — a full reload would drop drafts and in-flight uploads
       setIsOpen(false);
       setQuery('');
     }
@@ -247,14 +279,14 @@ export default function GlobalSearch() {
   );
 }
 
-// Search button component for header
+// Search button component for header. It never owns the modal's open state —
+// it asks the always-mounted <GlobalSearch/> to open, so the button and the
+// ⌘K shortcut share one instance instead of two conflicting flags.
 export function SearchButton() {
-  const [isOpen, setIsOpen] = useState(false);
-
   return (
     <>
       <button
-        onClick={() => setIsOpen(true)}
+        onClick={() => requestSearchOpen()}
         className="btn btn-secondary text-sm gap-2"
         title="Search (⌘K)"
       >
@@ -264,7 +296,7 @@ export function SearchButton() {
           ⌘K
         </kbd>
       </button>
-      {isOpen && <GlobalSearch />}
+      <GlobalSearch />
     </>
   );
 }

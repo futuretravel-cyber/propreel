@@ -380,7 +380,7 @@ export default function EnhancedProjects() {
                 <Star className={`w-3 h-3 ${favoritesOnly ? 'fill-yellow-400' : ''}`} /> Favorites only
               </button>
               <div className="flex items-center gap-1 px-1" role="group" aria-label="Filter by project type">
-                {([['all', 'All'], ['REEL', 'Video'], ['FLASHHEAD', 'Talking Head'], ['IMAGE', 'Images'], ['SOCIAL', 'Social']] as const).map(([k, label]) => (
+                {([['all', 'All'], ['REEL', 'Video'], ['FLASHHEAD', 'AI Avatar Video'], ['IMAGE', 'Images'], ['SOCIAL', 'Social']] as const).map(([k, label]) => (
                   <button key={k} onClick={() => setKindFilter(k)} className={`px-3 py-1 rounded-full text-xs font-medium transition ${kindFilter === k ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-400 hover:text-white border border-transparent'}`}>
                     {label}
                   </button>
@@ -434,7 +434,7 @@ export default function EnhancedProjects() {
             <div className="card-dark p-12 text-center">
               <FolderOpen className="w-10 h-10 text-ink-500 mx-auto mb-3" />
               <p className="text-white font-medium">No projects yet</p>
-              <p className="text-ink-400 text-sm mt-1 mb-4">Photo edits, virtual staging, furniture removal, twilight renders, social posts, video reels and Talking Head clips all land here.</p>
+              <p className="text-ink-400 text-sm mt-1 mb-4">Photo edits, virtual staging, furniture removal, twilight renders, social posts, video reels and AI Avatar Video clips all land here.</p>
               <button onClick={() => navigate('/studio')} className="btn btn-primary text-sm"><Plus className="w-4 h-4" /> Create in Studio</button>
             </div>
           )}
@@ -458,7 +458,7 @@ export default function EnhancedProjects() {
                         {p.status}
                       </span>
                       {p.kind === 'FLASHHEAD' ? (
-                        <span className="badge badge-brand text-[10px] flex items-center gap-1"><Mic className="w-3 h-3" /> Talking Head</span>
+                        <span className="badge badge-brand text-[10px] flex items-center gap-1"><Mic className="w-3 h-3" /> AI Avatar Video</span>
                       ) : p.kind === 'IMAGE' ? (
                         <span className="badge badge-brand text-[10px]">Image Edit</span>
                       ) : p.kind === 'SOCIAL' ? (

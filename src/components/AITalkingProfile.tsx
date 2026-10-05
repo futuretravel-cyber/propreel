@@ -110,7 +110,7 @@ export default function AITalkingProfile({
         <div className="flex items-start gap-3">
           <Info className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
           <p className="text-xs text-ink-400">
-            Generate an AI-powered talking head video using your profile photo. The AI will animate your photo to speak the voiceover script naturally.
+            Generate an AI Avatar Video using your profile photo. The AI will animate your photo to speak the voiceover script naturally.
           </p>
         </div>
 
@@ -189,9 +189,9 @@ export default function AITalkingProfile({
           <div className="flex items-start gap-2">
             <Video className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" />
             <div className="text-xs text-purple-200">
-              <p className="font-semibold mb-1">AI Talking Head Video Active</p>
+              <p className="font-semibold mb-1">AI Avatar Video Active</p>
               <p className="text-purple-300 mb-2">
-                Your profile will be animated using FlashHead AI to create a professional lip-synced talking head video.
+                Your profile will be animated using FlashHead AI to create a professional lip-synced AI Avatar Video.
               </p>
               <div className="space-y-1 text-purple-300">
                 <p>• Text converted to speech with ElevenLabs</p>

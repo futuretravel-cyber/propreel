@@ -115,7 +115,7 @@ export function useFlashHead() {
       try {
         const project = await PropReelAPI.createProject({
           userId: user.id,
-          title: `Talking Head — ${opts.voiceoverText.trim().replace(/\s+/g, ' ').slice(0, 60)}`,
+          title: `AI Avatar Video — ${opts.voiceoverText.trim().replace(/\s+/g, ' ').slice(0, 60)}`,
           kind: 'FLASHHEAD',
           voice: opts.voice || 'Aria',
           status: 'PROCESSING',

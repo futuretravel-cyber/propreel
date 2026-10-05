@@ -29,6 +29,7 @@ import CurrencyInput from './CurrencyInput';
 import ErrorBoundary from './ErrorBoundary';
 import { geocodeAddress, findNearbyAmenities } from '../lib/propertyListing';
 import { drainBacklog, enqueueImagesForAI, uploadStatusText, useUploadQueue } from '../lib/uploadQueue';
+import { guardAIRender } from '../lib/aiDisclaimer';
 import { useReorderable } from '../lib/reorder';
 
 const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (AI) — parity with the Studio
@@ -590,6 +591,17 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
                 {amenities.length > 0 && <span className="text-ink-500">· {amenities.length} amenities found</span>}
               </p>
             )}
+            {amenities.length > 0 && (
+              <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3">
+                <p className="text-xs font-semibold text-green-700 flex items-center gap-1 mb-2">
+                  <Check className="w-3.5 h-3.5 shrink-0" /> Auto-filled from your verified address — {amenities.length} amenities found
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {amenities.map(a => <span key={a} className="text-[11px] bg-white border border-green-200 rounded-full px-2 py-1 text-ink-700">{a}</span>)}
+                </div>
+                <p className="text-[11px] text-ink-500 mt-2">Each entry carries its type and distance from your pin (e.g. school, 850m away) and feeds the AI description.</p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -701,7 +713,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
             />
           </div>
 
-          <button onClick={generateDescription} disabled={generating} className="btn btn-primary w-full">
+          <button onClick={() => guardAIRender(generateDescription)} disabled={generating} className="btn btn-primary w-full">
             {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating with AI…</> : <><Sparkles className="w-4 h-4" /> Generate Description · ⚡{DESCRIPTION_RENDER_COST}</>}
           </button>
 

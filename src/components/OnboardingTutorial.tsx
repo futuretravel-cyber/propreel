@@ -42,7 +42,7 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
     {
       id: 'credits',
       title: 'Your Credits Live Here',
-      description: 'Check your balance, top up, view every credit transaction, and set up auto-topup. Renders only cost credits when they succeed — failures are refunded automatically.',
+      description: 'Check your balance, top up, view every credit transaction, and set up auto-topup.',
       icon: Zap,
       action: '/dashboard/credits',
     },
@@ -56,7 +56,7 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
     {
       id: 'studio',
       title: 'The Studio — Where Content Is Made',
-      description: 'Every AI tool lives in the Studio: property descriptions, photo edits, videos, social posts and talking-head videos.',
+      description: 'Every AI tool lives in the Studio: property descriptions, photo edits, videos, social posts and AI Avatar Videos.',
       icon: LayoutGrid,
       action: '/studio',
     },

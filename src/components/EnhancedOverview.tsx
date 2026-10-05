@@ -177,14 +177,14 @@ export default function EnhancedOverview() {
       <div className="card-dark p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-white flex items-center gap-2"><Zap className="w-4 h-4 text-yellow-400" /> What things cost</h3>
-          <span className="text-xs text-ink-500">failed renders are refunded automatically</span>
+          <span className="text-xs text-amber-400/90">AI output can be inaccurate — credits are non-refundable once spent</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {[
             { label: 'AI Property Description', cost: '⚡1 / render' },
             { label: 'Social Media Post', cost: '⚡2 / post' },
             { label: 'Photo Edit / Staging', cost: '⚡2 / render' },
-            { label: 'Talking Head Video', cost: '⚡8 / render' },
+            { label: 'AI Avatar Video', cost: '⚡8 / render' },
             { label: 'Property Video', cost: '⚡ by tier' },
           ].map(c => (
             <div key={c.label} className="bg-ink-800/50 rounded-xl p-3">

@@ -78,8 +78,8 @@ export function useActivity(userId: string | undefined) {
             feed.push({
               id,
               type: 'info', category: 'render',
-              title: 'Talking-Head Video',
-              message: `${Math.abs(t.amount)} credits used for a FlashHead lip-sync render.`,
+              title: 'AI Avatar Video',
+              message: `${Math.abs(t.amount)} credits used for an AI Avatar Video render.`,
               timestamp: when, read: false,
               actionUrl: '/studio?tab=flashhead',
             });
@@ -145,9 +145,9 @@ export function useActivity(userId: string | undefined) {
             feed.push({
               id: `proj-${p.id}`,
               type: 'success', category: 'render',
-              title: isTalkingHead ? 'Talking Head Video Ready' : 'Video Ready',
+              title: isTalkingHead ? 'AI Avatar Video Ready' : 'Video Ready',
               message: isTalkingHead
-                ? `Your lip-synced talking-head video ("${p.title.replace(/^Talking Head — /, '')}") is ready to download or share.`
+                ? `Your AI Avatar Video ("${p.title.replace(/^(AI Avatar Video|Talking Head) — /, '')}") is ready to download or share.`
                 : `"${p.title}" finished rendering and is ready to download or share.`,
               timestamp: p.updatedAt || p.createdAt, read: false,
               actionUrl: isTalkingHead ? '/studio?tab=flashhead' : '/dashboard/listings',
@@ -156,8 +156,8 @@ export function useActivity(userId: string | undefined) {
             feed.push({
               id: `proj-${p.id}`,
               type: 'error', category: 'render',
-              title: isTalkingHead ? 'Talking Head Render Failed' : 'Render Failed',
-              message: `"${p.title}" failed to render. Reserved credits are refunded automatically.`,
+              title: isTalkingHead ? 'AI Avatar Video Render Failed' : 'Render Failed',
+              message: `"${p.title}" failed to render.`,
               timestamp: p.updatedAt || p.createdAt, read: false,
               actionUrl: isTalkingHead ? '/studio?tab=flashhead' : '/studio?tab=video',
             });

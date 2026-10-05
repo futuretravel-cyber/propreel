@@ -7,6 +7,7 @@ import { PLANS, TIERS } from '../lib/constants';
 import { PropReelAPI, CreditReportData, ReferralStats } from '../lib/api';
 import { BackendAPI } from '../lib/backendAPI';
 import { track } from '../lib/analytics';
+import { AI_DISCLAIMER_TEXT } from '../lib/aiDisclaimer';
 import {
   CreditCard, Zap, Download, Search,
   Gift, Package, TrendingUp, Clock,
@@ -537,7 +538,7 @@ export default function EnhancedBilling() {
             <div className="mt-4 p-3 bg-purple-950/30 border border-purple-500/20 rounded-lg">
               <p className="text-xs text-purple-300 flex items-center gap-2">
                 <Sparkles className="w-3 h-3" />
-                Each AI photo edit costs 2 credits. Failed renders are refunded automatically.
+                Each AI photo edit costs 2 credits.
               </p>
             </div>
           </div>
@@ -643,7 +644,11 @@ export default function EnhancedBilling() {
         <div className="space-y-6">
           <div className="card-dark p-6">
             <h3 className="font-semibold text-white mb-2">Credit Bundles</h3>
-            <p className="text-ink-400 text-sm mb-6">Buy credits via Paystack's secure checkout. Credits land in your account immediately after payment.</p>
+            <p className="text-ink-400 text-sm mb-4">Buy credits via Paystack's secure checkout. Credits land in your account immediately after payment.</p>
+            <div className="mb-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3" role="note">
+              <p className="text-xs font-semibold text-amber-300 mb-1">AI-generated content notice</p>
+              <p className="text-xs text-ink-400 leading-relaxed">{AI_DISCLAIMER_TEXT}</p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {bundles.map(b => (
                 <div key={b.credits} className={`relative rounded-xl p-6 text-center transition ${b.popular ? 'bg-gradient-to-b from-purple-950/80 to-ink-900 border-2 border-purple-500/50' : 'bg-ink-800/50 border border-white/5'}`}>

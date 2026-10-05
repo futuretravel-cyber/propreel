@@ -1024,7 +1024,7 @@ function AgencyRenderHistory({ userId }: { userId: string }) {
       <div className="card-dark p-10 text-center">
         <Film className="w-10 h-10 text-ink-500 mx-auto mb-3" />
         <p className="text-white font-medium">No renders yet</p>
-        <p className="text-ink-400 text-sm mt-1">Every reel and Talking Head video your agents create will appear here.</p>
+        <p className="text-ink-400 text-sm mt-1">Every reel and AI Avatar Video your agents create will appear here.</p>
       </div>
     );
   }
@@ -1059,7 +1059,7 @@ function AgencyRenderHistory({ userId }: { userId: string }) {
       <div className="flex flex-wrap items-center gap-2">
         <input className="input max-w-xs" placeholder="Search titles…" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search agency renders" />
         <div className="flex items-center gap-1 px-1" role="group" aria-label="Filter by type">
-          {([['all', 'All'], ['REEL', 'Reels'], ['FLASHHEAD', 'Talking Head']] as const).map(([k, label]) => (
+          {([['all', 'All'], ['REEL', 'Reels'], ['FLASHHEAD', 'AI Avatar Video']] as const).map(([k, label]) => (
             <button key={k} onClick={() => setKindFilter(k)} className={`px-3 py-1 rounded-full text-xs font-medium transition ${kindFilter === k ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-400 hover:text-white border border-transparent'}`}>
               {label}
             </button>
@@ -1092,7 +1092,7 @@ function AgencyRenderHistory({ userId }: { userId: string }) {
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-sm font-medium text-white truncate max-w-[280px]">{p.title}</p>
                 {p.kind === 'FLASHHEAD' ? (
-                  <span className="badge badge-brand text-[10px] flex items-center gap-1"><Mic className="w-3 h-3" /> Talking Head</span>
+                  <span className="badge badge-brand text-[10px] flex items-center gap-1"><Mic className="w-3 h-3" /> AI Avatar Video</span>
                 ) : (
                   <span className="badge badge-brand text-[10px]"><Film className="w-3 h-3 inline" /> Reel</span>
                 )}
