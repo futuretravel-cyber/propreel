@@ -13,8 +13,10 @@ import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, ST
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI } from './lib/api';
 import FeatureChips from './components/FeatureChips';
+import CurrencyInput from './components/CurrencyInput';
 import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
 import { useStudioDraft, studioDraftKey } from './lib/studioDrafts';
+import { useReorderable } from './lib/reorder';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
 import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
@@ -1404,6 +1406,7 @@ function DescriptionTab() {
   // Grok vision: optional photos that get described in the copy (persisted
   // across reloads — they're already uploaded to S3, so only URLs are stored)
   const [images, setImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'description:images'), []);
+  const imgOrder = useReorderable(setImages);
   const [uploading, setUploading] = useState(false);
   const imagesInputRef = useRef<HTMLInputElement>(null);
 
@@ -1556,7 +1559,7 @@ function DescriptionTab() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div><label className="label">Price (ZAR)</label><input className="input" value={fields.price} onChange={setField('price')} placeholder="R12 500 000,00" inputMode="decimal" /></div>
+        <div><label className="label">Price (ZAR)</label><CurrencyInput className="input" value={fields.price} onChange={v => setFields(f => ({ ...f, price: v }))} placeholder="12,500,000" aria-label="Price in rand" /></div>
         <div>
           <label className="label">Property Type</label>
           <select className="input" value={fields.propertyType} onChange={setField('propertyType')} aria-label="Property Type">
@@ -1617,8 +1620,8 @@ function DescriptionTab() {
         {images.length > 0 && (
           <div className="grid grid-cols-4 gap-3 mt-3">
             {images.map((src, i) => (
-              <div key={src} className="relative group">
-                <img src={src} alt={`Property ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10" />
+              <div key={src} className={imgOrder.dragClass(i, 'relative group')} {...imgOrder.dragProps(i)}>
+                <img src={src} alt={`Property ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
                 <button
                   onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}
                   className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition"
@@ -1933,6 +1936,7 @@ function SocialTab() {
   // Photos included in the final post render (and described by Grok) —
   // persisted so a reload doesn't drop the agent's photo selection
   const [images, setImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'social:images'), []);
+  const imgOrder = useReorderable(setImages);
   const [uploading, setUploading] = useState(false);
   const imagesInputRef = useRef<HTMLInputElement>(null);
 
@@ -2064,7 +2068,7 @@ function SocialTab() {
       {section === 'details' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div><label className="label">Suburb / City</label><input className="input" value={socialFields.suburb} onChange={setSf('suburb')} placeholder="Constantia, Cape Town" /></div>
-          <div><label className="label">Price (ZAR)</label><input className="input" value={socialFields.price} onChange={setSf('price')} placeholder="R12 500 000,00" inputMode="decimal" /></div>
+          <div><label className="label">Price (ZAR)</label><CurrencyInput className="input" value={socialFields.price} onChange={v => setSocialFields(f => ({ ...f, price: v }))} placeholder="12,500,000" aria-label="Price in rand" /></div>
           <div>
             <label className="label">Property Type</label>
             <select className="input" value={socialFields.propertyType} onChange={setSf('propertyType')}>
@@ -2118,8 +2122,8 @@ function SocialTab() {
           {images.length > 0 && (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mt-3">
               {images.map((src, i) => (
-                <div key={src} className="relative group">
-                  <img src={src} alt={`Post ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10" />
+                <div key={src} className={imgOrder.dragClass(i, 'relative group')} {...imgOrder.dragProps(i)}>
+                  <img src={src} alt={`Post ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
                   <button
                     onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}
                     className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition"
@@ -2292,6 +2296,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
   const [generating, setGenerating] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [uploadedImages, setUploadedImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'video:images'), []);
+  const videoOrder = useReorderable(setUploadedImages);
   // Prefilled photos (listing / project / description hand-off). Runs after
   // mount too, because the Studio consumes the queue in its own effect.
   useEffect(() => {
@@ -2613,8 +2618,8 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         {uploadedImages.length > 0 && (
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mt-3">
             {uploadedImages.map((src, i) => (
-              <div key={src} className="relative group">
-                <img src={src} alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10" />
+              <div key={src} className={videoOrder.dragClass(i, 'relative group')} {...videoOrder.dragProps(i)}>
+                <img src={src} alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
                 <span className="absolute top-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">{i + 1}</span>
                 <button
                   onClick={e => { e.stopPropagation(); setUploadedImages(prev => prev.filter((_, idx) => idx !== i)); }}
@@ -3258,7 +3263,7 @@ function AdminPnl() {
               <select className="input md:col-span-2" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} aria-label="Expense category">
                 {['fal.ai', 'Modal', 'AWS', 'Paystack', 'Marketing', 'Payroll', 'Software', 'Office', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              <input className="input md:col-span-2" type="number" min="0" step="0.01" placeholder="Amount (R)" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
+              <CurrencyInput className="input md:col-span-2" allowDecimals value={form.amount} onChange={v => setForm({ ...form, amount: v })} placeholder="Amount (R)" aria-label="Amount in rand" />
               <input className="input md:col-span-3" placeholder="Note (optional)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} />
               <button onClick={addExpense} disabled={saving} className="btn btn-primary justify-center"><Plus className="w-4 h-4" /> Add</button>
             </div>

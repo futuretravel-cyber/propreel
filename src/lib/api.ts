@@ -44,6 +44,9 @@ export interface Project {
   photos?: string[];
   description?: string;
   marketStatus?: 'ACTIVE' | 'DRAFT' | 'SOLD' | 'EXPIRED';
+  /** Server-set: has this listing's 2-credit fee ever been charged? `false`
+   * only on free wizard drafts — publishing those takes the fee once. */
+  listingFeeCharged?: boolean;
   soldAt?: string;
   erfSize?: number;
   floorSize?: number;

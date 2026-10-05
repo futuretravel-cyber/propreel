@@ -43,12 +43,23 @@ export interface ProjectRecord {
   photos?: string[];
   description?: string;
   marketStatus?: 'ACTIVE' | 'DRAFT' | 'SOLD' | 'EXPIRED';
+  /**
+   * Server-only: has this listing's 2-credit fee ever been charged? Drafts
+   * created from the wizard are free to save, so they start `false` and the
+   * fee is taken once when they're published (DRAFT → ACTIVE). Never in the
+   * client whitelist — rows written before this flag existed paid at create
+   * time, so `undefined` also means "already charged".
+   */
+  listingFeeCharged?: boolean;
   soldAt?: string;
   erfSize?: number;
   floorSize?: number;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Charged once per published listing — free to save as draft. */
+const NEW_LISTING_COST = 2;
 
 /**
  * Unified projects endpoint (replaces the folders-only function; same function
@@ -354,14 +365,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // A listing (created from the New Listing wizard — it always sends
       // marketStatus) costs 2 credits, charged server-side so the client
-      // can't bypass it. Render-job project rows stay free.
-      const NEW_LISTING_COST = 2;
+      // can't bypass it. Render-job project rows stay free, and drafts are
+      // free to save — the fee is taken once when the draft is published
+      // (PUT flips DRAFT → ACTIVE on a row with listingFeeCharged: false).
       const isListing = b.marketStatus !== undefined;
-      if (isListing) {
-        const charged = await deductCredits(owner, NEW_LISTING_COST, 'New listing', { kind: 'NEW_LISTING' });
-        if (!charged.success) {
+      const chargeNow = isListing && b.marketStatus !== 'DRAFT';
+      let charged = false;
+      if (chargeNow) {
+        const r = await deductCredits(owner, NEW_LISTING_COST, 'New listing', { kind: 'NEW_LISTING' });
+        if (!r.success) {
           return res.status(402).json({ error: `Not enough credits — a new listing costs ${NEW_LISTING_COST} credits` });
         }
+        charged = true;
       }
 
       const now = new Date().toISOString();
@@ -393,6 +408,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         photos: Array.isArray(b.photos) ? b.photos.map(String).slice(0, 30) : [],
         description: typeof b.description === 'string' ? b.description.slice(0, 20000) : undefined,
         marketStatus: (['ACTIVE', 'DRAFT', 'SOLD', 'EXPIRED'] as const).includes(b.marketStatus) ? b.marketStatus : undefined,
+        listingFeeCharged: isListing ? charged : undefined,
         soldAt: typeof b.soldAt === 'string' ? b.soldAt : undefined,
         erfSize: Number(b.erfSize) || undefined,
         floorSize: Number(b.floorSize) || undefined,
@@ -403,7 +419,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         await putItem(TABLES.PROJECTS, project);
       } catch (err) {
-        if (isListing) await addCredits(owner, NEW_LISTING_COST, 'refund', 'Refund — listing was not saved').catch(() => {});
+        if (charged) await addCredits(owner, NEW_LISTING_COST, 'refund', 'Refund — listing was not saved').catch(() => {});
         throw err;
       }
       return res.status(201).json({ success: true, project });
@@ -428,6 +444,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (key in (updates || {})) clean[key] = updates[key];
       }
       clean.updatedAt = new Date().toISOString();
+
+      // Publishing a free draft (DRAFT → ACTIVE) takes the 2-credit
+      // new-listing fee exactly once. `listingFeeCharged` is not client-
+      // settable, and legacy rows (no flag) already paid at create time.
+      if (clean.marketStatus === 'ACTIVE' && existing[0].marketStatus === 'DRAFT' && existing[0].listingFeeCharged === false) {
+        const r = await deductCredits(user_id, NEW_LISTING_COST, 'New listing', { kind: 'NEW_LISTING' });
+        if (!r.success) {
+          return res.status(402).json({ error: `Not enough credits — a new listing costs ${NEW_LISTING_COST} credits` });
+        }
+        clean.listingFeeCharged = true;
+      }
 
       await updateItem(TABLES.PROJECTS, { userId: user_id, id }, clean);
 

@@ -16,7 +16,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Home as HomeIcon, Plus, MapPin, BedDouble, Bath, Car, Square, Play, Download,
   Copy, X, Check, Sparkles, Upload, Trash2, MoreVertical, Video, ChevronLeft,
-  ChevronRight, Loader2, Wand2, FileText, Pencil,
+  ChevronRight, Loader2, FileText, Pencil, Save,
 } from 'lucide-react';
 import { useCredit } from '../context/AuthContext';
 import { queueVideoRender } from '../lib/videoPrefill';
@@ -25,7 +25,9 @@ import { PropReelAPI, type Project } from '../lib/api';
 import { formatZar, downloadText } from '../lib/utils';
 import { TONES, RETENTION_NOTICE, PROVINCES, PROPERTY_TYPES } from '../lib/constants';
 import FeatureChips from './FeatureChips';
+import CurrencyInput from './CurrencyInput';
 import { uploadImagesForAI, geocodeAddress, findNearbyAmenities } from '../lib/propertyListing';
+import { useReorderable } from '../lib/reorder';
 
 const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (AI) — parity with the Studio
 const NEW_LISTING_COST = 2; // ⚡ charged server-side when a listing is saved
@@ -52,9 +54,10 @@ const marketState = (p: Project): MarketStatus => {
 };
 
 const STATUS_BADGE: Record<MarketStatus, string> = {
+  // Sold reads as a solid red banner so it stands out from the amber/outline badges
   ACTIVE: 'badge badge-success',
   DRAFT: 'badge badge-muted',
-  SOLD: 'badge badge-warning',
+  SOLD: 'badge bg-red-600 text-white',
   EXPIRED: 'badge badge-danger',
 };
 
@@ -148,21 +151,12 @@ function ListingCard({
             <MoreVertical className="w-4 h-4" />
           </button>
           {menu && (
-            <div className="absolute right-0 mt-1 w-44 bg-ink-900 border border-white/10 rounded-xl shadow-xl py-1 z-20 text-sm">
-              {status !== 'ACTIVE' && (
-                <button className="w-full text-left px-3 py-2 hover:bg-white/5" onClick={() => { setMenu(false); onStatus('ACTIVE'); }}>Mark as Active</button>
-              )}
+            <div className="absolute right-0 mt-1 w-44 bg-ink-900 border border-white/10 rounded-xl shadow-xl py-1 z-20 text-sm text-ink-200">
               {status !== 'SOLD' && (
-                <button className="w-full text-left px-3 py-2 hover:bg-white/5" onClick={() => { setMenu(false); onStatus('SOLD'); }}>Mark as Sold</button>
-              )}
-              {status !== 'EXPIRED' && (
-                <button className="w-full text-left px-3 py-2 hover:bg-white/5" onClick={() => { setMenu(false); onStatus('EXPIRED'); }}>Mark as Expired</button>
-              )}
-              {status !== 'DRAFT' && (
-                <button className="w-full text-left px-3 py-2 hover:bg-white/5" onClick={() => { setMenu(false); onStatus('DRAFT'); }}>Move to Draft</button>
+                <button className="w-full text-left px-3 py-2 text-ink-200 hover:bg-white/5" onClick={() => { setMenu(false); onStatus('SOLD'); }}>Mark as Sold</button>
               )}
               <button className="w-full text-left px-3 py-2 hover:bg-red-950/60 text-red-400" onClick={() => { setMenu(false); onDelete(); }}>
-                <Trash2 className="w-3.5 h-3.5 inline mr-1 -mt-0.5" /> Delete (moves to Expired)
+                <Trash2 className="w-3.5 h-3.5 inline mr-1 -mt-0.5" /> Delete
               </button>
             </div>
           )}
@@ -221,7 +215,6 @@ const STEPS = ['Property Details', 'Photos', 'Description', 'Export'];
 export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => void; onSaved: () => void; initial?: Project }) {
   const { user, deductCredits, addCredits, refresh } = useCredit();
   const toast = useToast();
-  const navigate = useNavigate();
 
   const [step, setStep] = useState(0);
   const [d, setD] = useState<DraftDetails>(initial ? {
@@ -249,6 +242,10 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
   const [photos, setPhotos] = useState<string[]>(initial?.photos || []);
   const [uploading, setUploading] = useState(false);
   const photosInputRef = useRef<HTMLInputElement>(null);
+  const photoOrder = useReorderable(setPhotos);
+
+  // Save-as-draft row created mid-wizard (charged only when published)
+  const [draftId, setDraftId] = useState<string | null>(null);
 
   // Step 3 — AI description
   const [tone, setTone] = useState('Professional');
@@ -390,8 +387,10 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
     const complete = !!d.street.trim() && Number(d.price) > 0;
 
     // Quick-edit saves update in place — no new-listing charge, no 2-credit
-    // ledger entry. An incomplete listing always drops to Draft.
+    // ledger entry. An incomplete listing always drops to Draft; completing a
+    // draft publishes it (the server charges the fee only if it's still owed).
     if (initial) {
+      const publishDraft = complete && marketState(initial) === 'DRAFT';
       setSaving(true);
       try {
         await PropReelAPI.updateProject(user.id, initial.id, {
@@ -408,11 +407,12 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
           features: d.features,
           photos,
           description,
-          ...(complete ? {} : { marketStatus: 'DRAFT' as const }),
+          ...(complete ? (publishDraft ? { marketStatus: 'ACTIVE' as const } : {}) : { marketStatus: 'DRAFT' as const }),
           ...(Number(d.erf) ? { erfSize: Number(d.erf) } : {}),
           ...(Number(d.floor) ? { floorSize: Number(d.floor) } : {}),
         } as any);
-        toast.success('Listing updated');
+        if (publishDraft && initial.listingFeeCharged === false) await refresh(); // fee taken server-side
+        toast.success(publishDraft ? 'Draft published to your portfolio' : 'Listing updated');
         onSaved();
         onClose();
       } catch (e: any) {
@@ -423,14 +423,14 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
       return;
     }
 
+    // Publishing: free drafts were never charged, fresh creates charge now.
     if ((user.credits ?? 0) < NEW_LISTING_COST) {
       toast.error(`A new listing costs ${NEW_LISTING_COST} credits — top up in Billing.`, 'Insufficient credits');
       return;
     }
     setSaving(true);
     try {
-      await PropReelAPI.createProject({
-        userId: user.id,
+      const payload = {
         title: `${d.propertyType} · ${d.suburb || d.street}`.slice(0, 120),
         address: d.street,
         suburb: d.suburb,
@@ -442,19 +442,64 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
         garages: Number(d.garages) || 0,
         propertyType: d.propertyType,
         features: d.features,
-        videoTier: 'ESSENTIAL',
         photos,
         description,
-        marketStatus: 'ACTIVE',
-        erfSize: Number(d.erf) || undefined,
-        floorSize: Number(d.floor) || undefined,
-      } as any);
+        marketStatus: 'ACTIVE' as const,
+        ...(Number(d.erf) ? { erfSize: Number(d.erf) } : {}),
+        ...(Number(d.floor) ? { floorSize: Number(d.floor) } : {}),
+      } as any;
+      if (draftId) {
+        // The draft was saved free — the server takes the 2-credit fee on
+        // this DRAFT → ACTIVE transition.
+        await PropReelAPI.updateProject(user.id, draftId, payload);
+      } else {
+        await PropReelAPI.createProject({ userId: user.id, videoTier: 'ESSENTIAL', ...payload } as any);
+      }
       await refresh(); // the backend charged NEW_LISTING_COST credits for the listing
       toast.success('Listing saved to your portfolio', `-${NEW_LISTING_COST} credits`);
       onSaved();
       onClose();
     } catch (e: any) {
       toast.error(e.message || 'Could not save the listing');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save the wizard as-is as a Draft — free and repeatable; the listing lands
+  // in Listings → Draft. The 2-credit fee is only taken on publish.
+  const saveDraft = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const place = d.suburb || d.street || d.city;
+      const payload = {
+        title: place ? `${d.propertyType} · ${place}`.slice(0, 120) : 'Untitled draft',
+        address: d.street,
+        suburb: d.suburb,
+        city: d.city,
+        province: d.province,
+        price: Number(d.price) || 0,
+        bedrooms: Number(d.beds) || 0,
+        bathrooms: Number(d.baths) || 0,
+        garages: Number(d.garages) || 0,
+        propertyType: d.propertyType,
+        features: d.features,
+        photos,
+        description,
+        marketStatus: 'DRAFT' as const,
+        ...(Number(d.erf) ? { erfSize: Number(d.erf) } : {}),
+        ...(Number(d.floor) ? { floorSize: Number(d.floor) } : {}),
+      } as any;
+      if (draftId) {
+        await PropReelAPI.updateProject(user.id, draftId, payload);
+      } else {
+        const created = await PropReelAPI.createProject({ userId: user.id, videoTier: 'ESSENTIAL', ...payload } as any);
+        setDraftId(created.id);
+      }
+      toast.success('Saved to Draft — pick it up any time from Listings → Draft', 'Draft saved');
+    } catch (e: any) {
+      toast.error(e.message || 'Could not save the draft');
     } finally {
       setSaving(false);
     }
@@ -523,7 +568,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
               <div><label className="label-light">Garages</label><input type="number" min="0" className={inputCls} value={d.garages} onChange={set('garages')} /></div>
               <div><label className="label-light">Erf Size (m²)</label><input type="number" min="0" className={inputCls} value={d.erf} onChange={set('erf')} placeholder="600" /></div>
               <div><label className="label-light">Floor Size (m²)</label><input type="number" min="0" className={inputCls} value={d.floor} onChange={set('floor')} placeholder="280" /></div>
-              <div><label className="label-light">Asking Price (R) *</label><input type="number" min="0" className={inputCls} value={d.price} onChange={set('price')} placeholder="3500000" /></div>
+              <div><label className="label-light">Asking Price (R) *</label><CurrencyInput className={inputCls} value={d.price} onChange={v => setD(prev => ({ ...prev, price: v }))} placeholder="3,500,000" aria-label="Asking price in rand" /></div>
             </div>
           </div>
 
@@ -542,7 +587,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
         <div className="space-y-4">
           <div>
             <h3 className="text-lg font-bold text-ink-900">Listing Photos</h3>
-            <p className="text-sm text-ink-600">Upload all photos. You can bulk-edit them with AI before generating your listing.</p>
+            <p className="text-sm text-ink-600">Upload all photos, then drag them into the order you want.</p>
           </div>
           <label className="flex flex-col items-center justify-center gap-2 py-10 border-2 border-dashed border-purple-500/40 rounded-xl cursor-pointer hover:border-purple-600 transition bg-purple-50">
             <Upload className="w-7 h-7 text-purple-600" />
@@ -561,27 +606,14 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
 
           <div className="flex items-center justify-between flex-wrap gap-2">
             <p className="text-sm text-ink-900">{photos.length} photo{photos.length === 1 ? '' : 's'} uploaded</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { toast.info('Open the Studio photo tab for Bulk AI Edit — your listing photos carry over once saved.', 'AI editing'); navigate('/studio?tab=photo'); }}
-                className="btn btn-quiet text-sm"
-              >
-                <Wand2 className="w-4 h-4" /> Bulk AI Edit
-              </button>
-              <button
-                onClick={() => { toast.info('Virtual Staging lives in the Studio photo tab — stage any uploaded photo there.', 'Virtual staging'); navigate('/studio?tab=photo'); }}
-                className="btn text-sm border border-purple-500/50 text-purple-700 hover:bg-purple-50"
-              >
-                <Sparkles className="w-4 h-4" /> Virtual Staging
-              </button>
-            </div>
+            <p className="text-xs text-ink-500">Drag a photo to change its order</p>
           </div>
 
           {photos.length > 0 && (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
               {photos.map((url, i) => (
-                <div key={url + i} className="relative group aspect-square rounded-lg overflow-hidden bg-ink-100">
-                  <img src={url} alt={`Listing photo ${i + 1}`} className="w-full h-full object-cover" />
+                <div key={url + i} className={photoOrder.dragClass(i, 'relative group aspect-square rounded-lg overflow-hidden bg-ink-100')} {...photoOrder.dragProps(i)}>
+                  <img src={url} alt={`Listing photo ${i + 1}`} className="w-full h-full object-cover pointer-events-none" draggable={false} />
                   <span className="absolute bottom-1 left-1 text-[10px] bg-black/70 rounded px-1">{i + 1}</span>
                   <button
                     onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
@@ -685,7 +717,11 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
             </div>
           </div>
 
-          <p className="text-xs text-ink-500">Saving this listing costs {NEW_LISTING_COST} credits — charged when you press Save Listing.</p>
+          {!initial || initial.listingFeeCharged === false ? (
+            <p className="text-xs text-ink-500">Saving a draft is free. Publishing costs {NEW_LISTING_COST} credits — charged when you press Save Listing.</p>
+          ) : (
+            <p className="text-xs text-ink-500">Editing an existing listing is free — no extra credits.</p>
+          )}
 
           <div>
             <h4 className="font-semibold text-ink-900 mb-1">Export for Portal</h4>
@@ -725,20 +761,28 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
         </div>
       )}
 
-      {/* Wizard nav */}
-      <div className="flex items-center justify-between pt-4 border-t border-ink-200">
+      {/* Wizard nav — every stage can be saved as a draft; only the final
+          stage offers Save Listing (which takes the new-listing fee). */}
+      <div className="flex items-center justify-between gap-2 pt-4 border-t border-ink-200">
         <button onClick={() => (step === 0 ? onClose() : setStep(s => s - 1))} className="btn btn-quiet text-sm">
           <ChevronLeft className="w-4 h-4" /> {step === 0 ? 'Cancel' : 'Back'}
         </button>
-        {step < 3 ? (
-          <button onClick={next} className="btn btn-primary text-sm">
-            Next <ChevronRight className="w-4 h-4" />
-          </button>
-        ) : (
-          <button onClick={saveListing} disabled={saving} className="btn btn-primary text-sm">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save Listing
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {!initial && (
+            <button onClick={saveDraft} disabled={saving} className="btn btn-quiet text-sm">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Draft
+            </button>
+          )}
+          {step < 3 ? (
+            <button onClick={next} className="btn btn-primary text-sm">
+              Next <ChevronRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button onClick={saveListing} disabled={saving} className="btn btn-primary text-sm">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save Listing
+            </button>
+          )}
+        </div>
       </div>
       </div>
     </div>
@@ -813,7 +857,7 @@ export function ListingEditPage() {
       <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-white">Edit Listing</h1>
-          <p className="text-sm text-ink-400">Update the details, photos and description — no extra credits.</p>
+          <p className="text-sm text-ink-400">Update the details, photos and description — edits are free.</p>
         </div>
         <button onClick={goBack} className="btn btn-ghost text-sm">
           <ChevronLeft className="w-4 h-4" /> All listings
@@ -890,10 +934,10 @@ export default function PropertyListings() {
     }
   };
 
-  // Deleted listings are NOT destroyed — they move to Expired, where the
-  // card's status menu can restore them (spec: deleted → Expired).
+  // Deleted listings are NOT destroyed — they move to Expired, out of the
+  // active portfolio (spec: deleted → Expired).
   const remove = async (p: Project) => {
-    if (!window.confirm(`Move "${p.title}" to Expired? You can restore it any time from the card's status menu.`)) return;
+    if (!window.confirm(`Delete "${p.title}"? It will be moved to your Expired listings.`)) return;
     try {
       await PropReelAPI.updateProject(user!.id, p.id, { marketStatus: 'EXPIRED' } as any);
       toast.success('Listing moved to Expired');

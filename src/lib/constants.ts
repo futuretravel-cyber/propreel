@@ -259,6 +259,6 @@ export const STRENGTH_MAX = 0.35;
 // must use these shared strings so the promise and the cron never drift.
 export const RETENTION_DAYS = 30;
 export const RETENTION_NOTICE =
-  `Media storage: ${RETENTION_DAYS} days — uploaded photos, AI-edited images and rendered videos are kept for ${RETENTION_DAYS} days only, then permanently deleted from AWS.`;
+  `Media storage: ${RETENTION_DAYS} days — uploaded photos, AI-edited images and rendered videos are kept for ${RETENTION_DAYS} days only, then permanently deleted.`;
 export const RETENTION_NOTICE_LONG =
-  `Your media is stored for ${RETENTION_DAYS} days only. Photos you upload, images produced by the Photo Editor, Virtual Staging, Furniture Removal and Twilight tools, rendered videos and Talking Head clips are kept in secure AWS storage for ${RETENTION_DAYS} days and then permanently deleted — automatically, every night. Download anything you want to keep before it expires.`;
+  `Your media is stored for ${RETENTION_DAYS} days only. Photos you upload, images produced by the Photo Editor, Virtual Staging, Furniture Removal and Twilight tools, rendered videos and Talking Head clips are kept for ${RETENTION_DAYS} days and then permanently deleted — automatically, every night. Download anything you want to keep before it expires.`;
