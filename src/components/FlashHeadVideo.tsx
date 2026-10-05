@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, Check, AlertCircle, Sparkles } from 'lucide-react';
 import { useFlashHead } from '../lib/useFlashHead';
 import { useCredit } from '../context/AuthContext';
@@ -22,13 +22,18 @@ interface FlashHeadVideoProps {
   onScriptChange?: (script: string) => void;
   /** Notify parent (Video tab) when a talking-head video is ready */
   onVideoGenerated?: (videoUrl: string) => void;
+  /** Avatar photo chosen in the Video tab's AI Avatar Video add-on —
+   * applied here automatically, no button click needed */
+  profileImage?: string | null;
+  /** Removing the carried photo here also removes it in the Video tab */
+  onProfileImageChange?: (img: string | null) => void;
 }
 
 /**
  * FlashHead Studio tab: lip-synced talking-head video from the agent's
  * profile picture + the AI-generated voiceover script. 8 credits.
  */
-export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated }: FlashHeadVideoProps) {
+export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, onProfileImageChange }: FlashHeadVideoProps) {
   const { user } = useCredit() as any;
   const { generate, busy, stage, error, setError, jobStatus, cost } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
@@ -83,6 +88,42 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     setResultUrl(null);
     setError(null);
   };
+
+  // Carry the avatar photo chosen in the Video tab over automatically.
+  // Data URLs (an upload) are converted to a File so they travel through the
+  // presigned upload like any other pick; hosted URLs skip the upload.
+  const appliedImageRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Video tab photo deleted → clear the carried copy too, but only if this
+    // tab still shows that exact photo (never a locally uploaded one)
+    if (!profileImage) {
+      if (appliedImageRef.current && preview === appliedImageRef.current) {
+        setFile(null); setSourceUrl(null); setPreview(null); setResultUrl(null);
+      }
+      appliedImageRef.current = null;
+      return;
+    }
+    if (profileImage === appliedImageRef.current) return;
+    appliedImageRef.current = profileImage;
+    setResultUrl(null);
+    setError(null);
+    if (profileImage.startsWith('data:'))
+      fetch(profileImage)
+        .then(r => r.blob())
+        .then(blob => {
+          const f = new File([blob], 'avatar', { type: blob.type || 'image/png' });
+          setFile(f);
+          setSourceUrl(null);
+          setPreview(profileImage);
+        })
+        .catch(() => { setFile(null); setSourceUrl(profileImage); setPreview(profileImage); });
+    else {
+      setFile(null);
+      setSourceUrl(profileImage);
+      setPreview(profileImage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileImage, preview]);
 
   const run = async () => {
     if ((!file && !sourceUrl) || !script.trim()) return;
@@ -164,7 +205,11 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
             <>
               <div className="relative">
                 <img src={preview} alt="Profile" className="w-full max-w-[280px] aspect-square object-cover rounded-xl border border-white/10" />
-                <button onClick={() => { setFile(null); setSourceUrl(null); setPreview(null); setResultUrl(null); }} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80" aria-label="Remove image">✕</button>
+                <button onClick={() => {
+                  // Deleting the carried photo removes it in the Video tab too
+                  if (profileImage && preview === profileImage) onProfileImageChange?.(null);
+                  setFile(null); setSourceUrl(null); setPreview(null); setResultUrl(null);
+                }} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80" aria-label="Remove image">✕</button>
               </div>
               {sourceUrl && (
                 <p className="text-xs text-ink-500 mt-1">Using your branding profile image — remove it to upload a different photo.</p>

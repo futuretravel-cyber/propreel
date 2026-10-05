@@ -1291,6 +1291,9 @@ function StudioPageInner() {
   };
   // Shared voiceover script: the Video tab generates it, FlashHead speaks it
   const [sharedScript, setSharedScript] = useState('');
+  // Shared avatar photo: chosen in the Video tab's AI Avatar Video add-on,
+  // carried over to the Talking Head tab automatically
+  const [sharedProfileImage, setSharedProfileImage] = useState<string | null>(null);
   // Photos + script handed over from a listing card, a project card or the
   // Property Description tab (queued via src/lib/videoPrefill.ts).
   const [prefillImages, setPrefillImages] = useState<string[]>([]);
@@ -1351,8 +1354,8 @@ function StudioPageInner() {
         <div className={tab === 'removal' ? undefined : 'hidden'}><RemovalTab /></div>
         <div className={tab === 'twilight' ? undefined : 'hidden'}><TwilightTab /></div>
         <div className={tab === 'social' ? undefined : 'hidden'}><SocialTab /></div>
-        <div className={tab === 'video' ? undefined : 'hidden'}><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} /></div>
-        <div className={tab === 'flashhead' ? undefined : 'hidden'}><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} /></div>
+        <div className={tab === 'video' ? undefined : 'hidden'}><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} /></div>
+        <div className={tab === 'flashhead' ? undefined : 'hidden'}><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} /></div>
       </div>
     </div>
   );
@@ -2256,7 +2259,7 @@ function SocialTab() {
 
 const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
-function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages = [] }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void; initialImages?: string[] }) {
+function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages = [], profileImage, onProfileImageChange }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void; initialImages?: string[]; profileImage: string | null; onProfileImageChange: (img: string | null) => void }) {
   const { user, deductCredits, addCredits } = useCredit();
   const toast = useToast();
   const [tier, setTier] = useState('SOCIAL');
@@ -2274,7 +2277,8 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.agentProfiles]);
   const [aiTalkingProfile, setAiTalkingProfile] = useState(false);
-  const [profileImage, setProfileImage] = useState<string | null>(null);
+  // profileImage is Studio-level state so the Talking Head tab inherits it
+  const setProfileImage = onProfileImageChange;
   const [selectedMusic, setSelectedMusic] = useState<string | null>(null);
   const [musicTracks, setMusicTracks] = useState<Array<{ id: string; name: string; genre: string; url: string }>>([]);
   const [generating, setGenerating] = useState(false);
