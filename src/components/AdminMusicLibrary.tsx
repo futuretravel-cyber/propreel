@@ -21,7 +21,7 @@ export default function AdminMusicLibrary() {
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadStage, setUploadStage] = useState<'idle' | 'presign' | 's3' | 'register'>('idle');
+  const [uploadStage, setUploadStage] = useState<'idle' | 'presign' | 's3' | 'verify' | 'register'>('idle');
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [form, setForm] = useState({ name: '', genre: 'Cinematic', file: null as File | null });
@@ -47,14 +47,19 @@ export default function AdminMusicLibrary() {
       toast.error('Track name and an audio file are required', 'Missing info');
       return;
     }
+    if (form.file.size > 15 * 1024 * 1024) {
+      toast.error('Audio must be 15MB or smaller', 'File too large');
+      return;
+    }
     setUploading(true);
     try {
-      // 1) Presigned PUT URL
+      // 1) Presigned PUT URL — size is declared here and pinned into the
+      //    signature, so S3 itself refuses anything over 15MB.
       setUploadStage('presign');
       const pre = await fetch('/api/music?action=upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, genre: form.genre, contentType: form.file.type, user_id: user?.id }),
+        body: JSON.stringify({ name: form.name, genre: form.genre, contentType: form.file.type, size: form.file.size, user_id: user?.id }),
       });
       const preData = await pre.json();
       if (!pre.ok) throw new Error(preData.error || 'Presign failed');
@@ -68,7 +73,19 @@ export default function AdminMusicLibrary() {
       });
       if (!put.ok) throw new Error('S3 upload failed — check the bucket CORS configuration');
 
-      // 3) Register metadata
+      // 3) Server-side binary check: the API sniffs the stored bytes and
+      //    rejects anything that isn't really audio (HTML, images, video
+      //    renamed to .mp3) — the object is discarded on failure.
+      setUploadStage('verify');
+      const ver = await fetch('/api/music?action=verify_upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user?.id, key: preData.s3Key }),
+      });
+      const verData = await ver.json();
+      if (!ver.ok) throw new Error(verData.error || 'Upload verification failed');
+
+      // 4) Register metadata
       setUploadStage('register');
       const reg = await fetch('/api/music', {
         method: 'POST',
@@ -197,6 +214,7 @@ export default function AdminMusicLibrary() {
                     <Loader2 className="w-4 h-4 animate-spin" />
                     {uploadStage === 'presign' && 'Authorising…'}
                     {uploadStage === 's3' && 'Uploading to S3…'}
+                    {uploadStage === 'verify' && 'Verifying file…'}
                     {uploadStage === 'register' && 'Registering…'}
                   </>
                 ) : (
