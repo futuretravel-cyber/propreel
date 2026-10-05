@@ -153,6 +153,11 @@ class RenderVideoRequest(BaseModel):
     image_prompts: Optional[List[dict]] = None  # [{image_url, prompt_id, prompt}] rotation overrides
     audio: bool = False
 
+class CancelRenderRequest(BaseModel):
+    # render record_id or flashhead job_id — both live in the jobs/ store
+    record_id: str
+
+
 class FlashHeadRequest(BaseModel):
     profile_image_url: str
     voiceover_text: str
@@ -196,6 +201,16 @@ def _write_job_status(record_id: str, status: str, extra: dict | None = None):
     import boto3, json as _json
     try:
         s3 = boto3.client('s3', region_name=S3_REGION)
+        # 'cancelled' is terminal: later progress/failed/completed writes from
+        # the still-running job must not resurrect it for polling clients.
+        if status != "cancelled":
+            try:
+                existing = _json.loads(s3.get_object(Bucket=S3_BUCKET, Key=f"jobs/{record_id}.json")['Body'].read())
+                if existing.get("status") == "cancelled":
+                    print(f"Job {record_id}: keeping cancelled status (dropping '{status}' write)")
+                    return
+            except Exception:
+                pass
         body = _json.dumps({"record_id": record_id, "status": status, "updatedAt": __import__('datetime').datetime.utcnow().isoformat(), **(extra or {})})
         s3.put_object(Bucket=S3_BUCKET, Key=f"jobs/{record_id}.json", Body=body, ContentType='application/json')
     except Exception as e:
@@ -210,6 +225,18 @@ def _read_job_status(record_id: str):
         return _json.loads(obj['Body'].read())
     except Exception:
         return None
+
+class RenderCancelled(Exception):
+    """User cancelled this job — raised at cooperative checkpoints so the
+    worker stops before spending more fal.ai/ffmpeg work."""
+
+
+def _ensure_not_cancelled(job_id: str) -> None:
+    """Abort if /cancel_render marked this job cancelled in S3."""
+    current = _read_job_status(job_id)
+    if current and current.get("status") == "cancelled":
+        raise RenderCancelled(job_id)
+
 
 # Tier configurations
 TIER_CONFIGS = {
@@ -659,6 +686,7 @@ def render_video(
     if processing_type == "local":
         # ESSENTIAL tier: pure-FFmpeg Ken Burns render (no fal.ai) with the
         # same A/B/C motion-style rotation the AI tiers use for prompts
+        _ensure_not_cancelled(record_id)
         video_url = render_video_local.remote(
             record_id=record_id,
             images=images,
@@ -672,6 +700,7 @@ def render_video(
         video_clips = []
         
         for i, image_url in enumerate(images):
+            _ensure_not_cancelled(record_id)  # stop before spending fal.ai credits on the next clip
             print(f"Generating AI clip {i+1}/{len(images)}")
             
             # Per-image prompt: frontend rotation payload (A/B/C) if provided,
@@ -719,6 +748,8 @@ def render_video(
     # In production, you'd use moviepy to add audio tracks
     
     print(f"✅ Render complete: {video_url}")
+
+    _ensure_not_cancelled(record_id)  # cancelled during assembly — don't publish
 
     # Thumbnail for Listings cards: grab a frame from the finished video
     # (best-effort — never fails the render)
@@ -1253,6 +1284,32 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@web_app.post("/cancel_render")
+async def api_cancel_render(request: CancelRenderRequest):
+    """Cancel an in-flight render job (video record_id or avatar job_id).
+
+    Marks the S3 status file 'cancelled' (terminal) so polling clients stop
+    immediately and the running job aborts at its next checkpoint — the guard
+    in _write_job_status keeps later progress/completed writes from
+    resurrecting it. The client refunds the credits and marks its project
+    record FAILED, so the nightly reaper (PROCESSING rows only) never
+    double-refunds.
+    """
+    current = _read_job_status(request.record_id)
+    if current and current.get("status") == "completed":
+        # Too late to cancel — hand back the finished render instead
+        return {
+            "record_id": request.record_id,
+            "status": "completed",
+            "cancelled": False,
+            "video_url": current.get("video_url"),
+        }
+    _write_job_status(request.record_id, "cancelled", {
+        "previous": (current or {}).get("status", "unknown"),
+        "reason": "user_cancelled",
+    })
+    return {"record_id": request.record_id, "status": "cancelled", "cancelled": True}
+
 @web_app.get("/render_status")
 async def api_render_status(record_id: str):
     """Poll render job status (S3-backed so any container can answer)."""
@@ -1418,6 +1475,13 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
         while True:
             if time.time() - start > max_wait:
                 raise RuntimeError(f"FlashHead task did not complete within {max_wait}s")
+            current = _read_job_status(job_id)
+            if current and current.get("status") == "cancelled":
+                try:
+                    handler.cancel()  # stop fal.ai billing — best effort
+                except Exception:
+                    pass
+                raise RenderCancelled(job_id)
             status = handler.status()
             stype = type(status).__name__
             if stype == "Completed":

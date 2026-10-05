@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useCredit } from '../context/AuthContext';
 import { track } from './analytics';
 import { PropReelAPI } from './api';
@@ -25,6 +25,31 @@ export function useFlashHead() {
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string>('');
+  // Cooperative cancel — refs (not state) so the 5s poll loop sees the flag on
+  // its very next tick; `cancelling` is state purely for the button label.
+  const cancelRequestedRef = useRef(false);
+  const activeJobRef = useRef<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  // Fire the worker's cancel endpoint (same one the Studio video render uses).
+  const postCancel = useCallback(async (jobId: string) => {
+    try {
+      await fetch(`${MODAL_ENDPOINT}/cancel_render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+        body: JSON.stringify({ record_id: jobId }),
+      });
+    } catch { /* best-effort — polling stops regardless */ }
+  }, []);
+
+  /** Stop the in-flight avatar render: the poll loop exits on its next tick,
+   *  the worker aborts at its next fal poll, and generate()'s catch refunds. */
+  const cancel = useCallback(() => {
+    if (cancelRequestedRef.current) return;
+    cancelRequestedRef.current = true;
+    setCancelling(true);
+    if (activeJobRef.current) void postCancel(activeJobRef.current);
+  }, [postCancel]);
 
   const generate = useCallback(async (opts: {
     /** Locally picked file — presigned to S3 before the render */
@@ -36,6 +61,9 @@ export function useFlashHead() {
     stability?: number;
   }): Promise<{ videoUrl: string } | null> => {
     setError(null);
+    cancelRequestedRef.current = false; // the flag belongs to THIS render only
+    activeJobRef.current = null;
+    setCancelling(false);
 
     if (!user) {
       setError('You must be signed in');
@@ -89,6 +117,7 @@ export function useFlashHead() {
     setJobStatus('queued');
     // Project record id (hoisted so the failure path can mark it FAILED)
     let projectId: string | null = null;
+    let wasCancelled = false;
     try {
       const submitRes = await fetch(`${MODAL_ENDPOINT}/flashhead`, {
         method: 'POST',
@@ -108,6 +137,8 @@ export function useFlashHead() {
       const submitted = await submitRes.json();
       const jobId: string | undefined = submitted.job_id;
       if (!jobId) throw new Error('Render service did not return a job id');
+      activeJobRef.current = jobId;
+      if (cancelRequestedRef.current) void postCancel(jobId); // cancelled during startup
 
       // Track in propreel-projects so Listings, search and the activity feed
       // surface it automatically (created as PROCESSING, updated on terminal).
@@ -127,6 +158,7 @@ export function useFlashHead() {
 
       const deadline = Date.now() + MAX_WAIT_MS;
       while (Date.now() < deadline) {
+        if (cancelRequestedRef.current) { wasCancelled = true; throw new Error('Render cancelled'); }
         await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
         const statusRes = await fetch(`${MODAL_ENDPOINT}/flashhead_status?job_id=${encodeURIComponent(jobId)}`, { headers: await workerHeaders() });
         if (!statusRes.ok) continue; // transient — retry until deadline
@@ -145,6 +177,7 @@ export function useFlashHead() {
           setStage('done');
           return { videoUrl: job.video_url };
         }
+        if (job.status === 'cancelled') { wasCancelled = true; throw new Error('Render cancelled'); }
         if (job.status === 'failed') {
           throw new Error(job.error || 'FlashHead render failed');
         }
@@ -155,12 +188,12 @@ export function useFlashHead() {
       if (projectId) {
         PropReelAPI.updateProject(user.id, projectId, { status: 'FAILED' }).catch(() => {});
       }
-      await addCredits(FLASHHEAD_COST, 'refund', 'Refund — failed FlashHead render').catch(() => {});
-      setError(e.message || 'Render failed — your 8 credits were refunded');
+      await addCredits(FLASHHEAD_COST, 'refund', wasCancelled ? 'Refund — cancelled avatar render' : 'Refund — failed FlashHead render').catch(() => {});
+      setError(wasCancelled ? 'Render cancelled — your 8 credits were refunded.' : (e.message || 'Render failed — your 8 credits were refunded'));
       setStage('idle');
       return null;
     }
-  }, [user, deductCredits, addCredits]);
+  }, [user, deductCredits, addCredits, postCancel]);
 
   return {
     generate,
@@ -168,6 +201,8 @@ export function useFlashHead() {
     error,
     setError,
     jobStatus,
+    cancel,
+    cancelling,
     busy: stage === 'uploading' || stage === 'deducting' || stage === 'rendering',
     cost: FLASHHEAD_COST,
   };

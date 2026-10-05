@@ -40,7 +40,7 @@ interface FlashHeadVideoProps {
  */
 export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, profileImageReady = true, onProfileImageChange }: FlashHeadVideoProps) {
   const { user } = useCredit() as any;
-  const { generate, busy, stage, error, setError, jobStatus, cost } = useFlashHead();
+  const { generate, busy, stage, error, setError, jobStatus, cost, cancel, cancelling } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
   // The picked headshot and its branding/hosted source survive full page
   // reloads; `file` is rebuilt from the restored data URL when rendering.
@@ -305,6 +305,21 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
           stage={stage === 'rendering' ? (jobStatus === 'processing' ? 'processing' : 'queued') : ''}
           label="Generating your AI Avatar Video"
         />
+        {stage === 'rendering' && (
+          <button
+            type="button"
+            onClick={cancel}
+            disabled={cancelling}
+            className="btn btn-secondary w-full min-h-[44px]"
+            aria-label="Cancel the in-flight avatar render and refund credits"
+          >
+            {cancelling ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Cancelling — refunding credits…</>
+            ) : (
+              <><RefreshCw className="w-4 h-4" /> Cancel render — credits refunded</>
+            )}
+          </button>
+        )}
         {!busy && !canRun && (
           <p className="text-xs text-ink-500 text-center">
             {!file && !sourceUrl && 'Upload your profile picture • '}

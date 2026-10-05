@@ -2350,6 +2350,12 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
   const photosInputRef = useRef<HTMLInputElement>(null);
   const [lastRenderUrl, setLastRenderUrl] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState('');
+  // Cancel an in-flight render: a ref (not state) so the 5s poll loop sees the
+  // flag on its very next tick; the worker aborts at its next checkpoint and
+  // the catch path below refunds the credits.
+  const cancelRequestedRef = useRef(false);
+  const recordIdRef = useRef<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   // Elapsed-vs-typical progress for the reel render (typical scales with clip count)
   const reelProgress = useRenderProgress(typicalVideoSeconds(uploadedImages.length || 1));
@@ -2423,11 +2429,36 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
     }
   };
 
+  // Cancel the in-flight render: flag the poll loop to stop, tell the worker
+  // to abort the job (it checks before every clip / fal poll), then the catch
+  // path in generateReel refunds the credits and fails the project record.
+  const cancelRender = async () => {
+    if (cancelRequestedRef.current) return;
+    cancelRequestedRef.current = true;
+    setCancelling(true);
+    const id = recordIdRef.current;
+    if (!id) return;
+    try {
+      await fetch(`${RENDER_ENDPOINT}/cancel_render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+        body: JSON.stringify({ record_id: id }),
+      });
+    } catch { /* best-effort — polling stops either way */ }
+  };
+
   const generateReel = async () => {
     setGenerating(true);
     reelProgress.start();
     const totalCredits = selectedConfig.credits;
     const recordId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    recordIdRef.current = recordId;
+    cancelRequestedRef.current = false; // the flag belongs to THIS render only
+    setCancelling(false);
+    // Hoisted out of the try: the catch path fails the project record so the
+    // nightly reaper (PROCESSING rows only) can never refund it a second time.
+    let projectId: string | null = null;
+    let wasCancelled = false;
     // Refund below only if THIS deduction actually landed — the old
     // unconditional refund minted the full tier price for users who simply
     // didn't have enough credits to render.
@@ -2442,7 +2473,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
       const videoTitle = !scriptClean ? 'Property Video'
         : scriptClean.length > 60 ? `${scriptClean.slice(0, 57).replace(/\s+\S*$/, '')}…`
         : scriptClean;
-      let projectId: string | null = null;
+      // projectId is hoisted above the try — the catch path fails the record
       if (user) {
         try {
           const project = await PropReelAPI.createProject({
@@ -2471,6 +2502,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
       charged = true;
 
       // 3) Start the async render job
+      if (cancelRequestedRef.current) { wasCancelled = true; throw new Error('Render cancelled'); }
       const response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
@@ -2507,6 +2539,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         // to the success toast with no video URL.
         const deadline = Date.now() + 25 * 60 * 1000;
         while (Date.now() < deadline) {
+          if (cancelRequestedRef.current) { wasCancelled = true; break; }
           await new Promise(r => setTimeout(r, 5000));
           try {
             const s = await fetch(`${RENDER_ENDPOINT}/render_status?record_id=${encodeURIComponent(result.record_id)}`, { headers: await workerHeaders() }).then(r => r.json());
@@ -2517,6 +2550,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
               if (s.thumbnail_url) thumbUrl = String(s.thumbnail_url);
               break;
             }
+            if (s.status === 'cancelled') { wasCancelled = true; break; }
             if (s.status === 'failed') {
               throw new Error(s.error || 'Render failed');
             }
@@ -2525,6 +2559,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
           }
         }
       }
+      if (wasCancelled) throw new Error('Render cancelled');
       if (!finalUrl) {
         // Never report success without a video — refund instead.
         throw new Error('The render did not finish within 25 minutes — your credits were refunded. Please try again from the Studio.');
@@ -2552,19 +2587,30 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
 
       setGenerating(false);
       reelProgress.stop();
+      setCancelling(false);
       toast.success('Video rendered successfully!', 'Render Complete');
     } catch (error: any) {
       console.error('Error generating video:', error);
+      // Fail the record FIRST: the nightly reaper only refunds PROCESSING
+      // rows, so once this lands the refund below is the only one that runs.
+      if (user && projectId) {
+        PropReelAPI.updateProject(user.id, projectId, { status: 'FAILED' }).catch(() => {});
+      }
       // Refund only what was actually taken — a deduction that failed (not
       // enough credits) must not add credits to the balance.
       if (charged) {
         try {
-          await addCredits(totalCredits, 'refund', `Refund — failed video render (${tier})`);
+          await addCredits(totalCredits, 'refund', wasCancelled ? `Refund — cancelled video render (${tier})` : `Refund — failed video render (${tier})`);
         } catch { /* best-effort */ }
       }
       setGenerating(false);
       reelProgress.stop();
-      toast.error(error.message || 'Failed to generate video — credits refunded', 'Error');
+      setCancelling(false);
+      if (wasCancelled) {
+        toast.info('Render cancelled — your credits were refunded.', 'Render Cancelled');
+      } else {
+        toast.error(error.message || 'Failed to generate video — credits refunded', 'Error');
+      }
     }
   };
 
@@ -2845,6 +2891,21 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
             <><Play className="w-5 h-5" /> Generate Video ({totalCredits} credits)</>
           )}
         </button>
+        {generating && (
+          <button
+            type="button"
+            onClick={cancelRender}
+            disabled={cancelling}
+            className="btn btn-secondary w-full min-h-[44px]"
+            aria-label="Cancel the in-flight render and refund credits"
+          >
+            {cancelling ? (
+              <><RefreshCw className="w-4 h-4 animate-spin" /> Cancelling — refunding credits…</>
+            ) : (
+              <><XCircle className="w-4 h-4" /> Cancel render — credits refunded</>
+            )}
+          </button>
+        )}
         {generating && (
           <RenderProgressBar
             progress={reelProgress}
