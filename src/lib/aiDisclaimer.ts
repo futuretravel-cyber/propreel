@@ -24,7 +24,28 @@ export const AI_DISCLAIMER_SENTENCES: string[] = [
 
 export const AI_DISCLAIMER_TEXT = AI_DISCLAIMER_SENTENCES.join(' ');
 
-const STORAGE_KEY = 'propreel:ai-disclaimer:v1';
+/** FNV-1a content hash of the notice — the acknowledgement key embeds it,
+ *  so ANY edit to the sentences above yields a new key and every browser is
+ *  prompted again. The version bumps itself; there is nothing to update. */
+function fnv1a(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+/** Content-versioned key: propreel:ai-disclaimer:<hash of the notice>. */
+const ACK_HASH = fnv1a(AI_DISCLAIMER_TEXT);
+const STORAGE_KEY = `propreel:ai-disclaimer:${ACK_HASH}`;
+
+/** The pre-versioning fixed key. Its acknowledgement only still counts while
+ *  the live notice hashes to LEGACY_V1_TEXT_HASH — i.e. exactly the text it
+ *  was given under. The first wording edit re-prompts those holders too. */
+const LEGACY_STORAGE_KEY = 'propreel:ai-disclaimer:v1';
+/** Frozen: hash of the notice that shipped alongside the legacy key. */
+const LEGACY_V1_TEXT_HASH = '84db15f7';
 
 type OpenListener = (hasPendingRender: boolean) => void;
 const openListeners = new Set<OpenListener>();
@@ -35,14 +56,20 @@ let pendingRender: (() => void) | null = null;
 export function isAIDisclaimerAccepted(): boolean {
   try {
     if (typeof localStorage === 'undefined') return true; // no storage → no lock-out
-    return localStorage.getItem(STORAGE_KEY) === '1';
+    if (localStorage.getItem(STORAGE_KEY) === '1') return true;
+    // Legacy v1 acknowledgement — honoured only for the text it was given under
+    return ACK_HASH === LEGACY_V1_TEXT_HASH
+      && localStorage.getItem(LEGACY_STORAGE_KEY) === '1';
   } catch {
     return true; // storage blocked (private mode) — never trap the user
   }
 }
 
 export function acceptAIDisclaimer(): void {
-  try { localStorage.setItem(STORAGE_KEY, '1'); } catch { /* best effort */ }
+  try {
+    localStorage.setItem(STORAGE_KEY, '1');
+    localStorage.removeItem(LEGACY_STORAGE_KEY); // migrated to the versioned key
+  } catch { /* best effort */ }
 }
 
 /** Subscribe to "the notice should open now". `hasPendingRender` tells the
