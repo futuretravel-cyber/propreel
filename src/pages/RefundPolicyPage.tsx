@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Shield, Check, AlertTriangle, Clock, CreditCard, ArrowLeft } from 'lucide-react';
+import { AI_DISCLAIMER_TEXT } from '../lib/aiDisclaimer';
 
 export default function RefundPolicyPage() {
   return (
@@ -10,7 +11,14 @@ export default function RefundPolicyPage() {
         </Link>
 
         <h1 className="text-4xl font-black text-gray-900 mb-4">Credit & Cancellation Policy</h1>
-        <p className="text-lg text-gray-600 mb-12">Last updated: March 2025</p>
+        <p className="text-lg text-gray-600 mb-6">Last updated: October 2026</p>
+
+        {/* Quoted verbatim from lib/aiDisclaimer so the policy and the
+            in-app acknowledgement gate can never drift apart. */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-10" role="note">
+          <p className="text-amber-900 font-semibold mb-2 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> AI-generated content notice</p>
+          <p className="text-amber-800 text-sm leading-relaxed">{AI_DISCLAIMER_TEXT}</p>
+        </div>
 
         <div className="space-y-12">
           {/* Non-Refundable Credits */}
@@ -40,6 +48,10 @@ export default function RefundPolicyPage() {
                   <li className="flex items-start gap-2">
                     <span className="text-purple-600 mt-1">•</span>
                     <span>Credits used for any other AI features</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-600 mt-1">•</span>
+                    <span>Credits spent on AI-generated results you consider unsatisfactory — AI can make mistakes, and results you are unhappy with are not refundable</span>
                   </li>
                 </ul>
                 <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mt-4">

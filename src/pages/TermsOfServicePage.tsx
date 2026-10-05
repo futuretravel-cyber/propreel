@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Shield, FileText, Clock, Mail } from 'lucide-react';
+import { AI_DISCLAIMER_TEXT } from '../lib/aiDisclaimer';
 
 export default function TermsOfServicePage() {
   return (
@@ -15,7 +16,7 @@ export default function TermsOfServicePage() {
           </div>
           <div>
             <h1 className="text-4xl font-black text-gray-900">Terms of Service</h1>
-            <p className="text-sm text-gray-500 mt-1">Last updated: March 2025</p>
+            <p className="text-sm text-gray-500 mt-1">Last updated: October 2026</p>
           </div>
         </div>
 
@@ -115,7 +116,15 @@ export default function TermsOfServicePage() {
               <li>You are responsible for reviewing all AI-generated content before use</li>
               <li>PropReel does not guarantee specific results from AI features</li>
               <li>AI may produce variations each time, even with the same inputs</li>
+              <li><strong>Credits spent on unsatisfactory results are non-refundable</strong></li>
             </ul>
+
+            {/* Verbatim from lib/aiDisclaimer — the same notice every render
+                is gated behind in the app. */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-4" role="note">
+              <p className="text-amber-900 font-semibold mb-2">AI-generated content notice — acknowledged before your first render</p>
+              <p className="text-amber-800 text-sm leading-relaxed">{AI_DISCLAIMER_TEXT}</p>
+            </div>
             <p className="text-gray-700 leading-relaxed mb-4">
               <strong>Ownership:</strong> You retain ownership of the photos and property information you upload. 
               AI-generated content created through the Service is licensed to you for your business use.
@@ -260,7 +269,7 @@ export default function TermsOfServicePage() {
 
           <div className="border-t border-gray-200 pt-8 mt-12">
             <p className="text-sm text-gray-500 text-center">
-              © 2025 PropReel. All rights reserved. These Terms of Service are effective as of March 2025.
+              © 2026 PropReel. All rights reserved. These Terms of Service are effective as of October 2026.
             </p>
           </div>
         </div>
