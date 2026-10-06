@@ -72,6 +72,10 @@
     {
       "path": "/api/cron/send-expiry-notifications",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/users",
+      "schedule": "0 6 * * *"
     }
   ]
 }

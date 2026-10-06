@@ -16,6 +16,7 @@ import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/
 import { workerTokenHeaders } from '../lib/workerToken';
 import { jobCredits } from '../lib/renderPricing';
 import { consumeRateLimit } from '../lib/rateLimit';
+import { recordCronRun } from '../lib/cronRuns';
 
 const isAdminEmail = (email: string | undefined | null) =>
   !!email && ADMIN_EMAILS.includes(String(email).toLowerCase());
@@ -1141,6 +1142,14 @@ function readCookie(req: VercelRequest, name: string): string | undefined {
 }
 
 /** Canonical origin for links inside confirmation / reset emails. */
+/** Vercel Cron GETs carry this user agent + an x-vercel-cron-schedule header. */
+function isVercelCronRequest(req: VercelRequest): boolean {
+  return (
+    String(req.headers['user-agent'] || '').startsWith('vercel-cron/') ||
+    String(req.headers['x-vercel-cron-schedule'] || '') !== ''
+  );
+}
+
 function siteOrigin(req: VercelRequest): string {
   const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
   if (host && host !== 'localhost') {
@@ -2089,8 +2098,60 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       const headerEvaluated = headerChecks.filter(c => !c.skipped);
       const headersPass = headerEvaluated.length > 0 && headerEvaluated.every(c => c.ok === true);
       const pass = pairsPass && headersPass;
+      const summary = `${evaluated.length}/${checks.length} pairs, ${headerEvaluated.length}/${headerChecks.length} headers`;
+
+      // Everything that actually failed — a pair that stopped being byte-
+      // identical, the 409 oracle returning, or a header regression. An
+      // inconclusive run (everything rate-limited) counts as a failure too:
+      // a daily schedule that never evaluates anything is itself a problem.
+      const failures = !pass
+        ? [
+            ...checks
+              .filter(c => !c.skipped && !c.failed && (!c.identical || c.no409 === false))
+              .map(c => `pair ${c.name}: known=${c.knownStatus} unknown=${c.unknownStatus} identical=${c.identical}${c.no409 === false ? ' — 409 oracle is BACK' : ''}`),
+            ...headerChecks
+              .filter(c => !c.skipped && c.ok !== true)
+              .map(c => `header ${c.surface}: ${(c.problems || []).join('; ') || 'failed'}`),
+          ]
+        : [];
+      if (!pass && !failures.length) {
+        failures.push('inconclusive — every pair was rate limited or unreachable');
+      }
+
+      // Status-page freshness: recorded for manual runs too (last run wins).
+      try {
+        await recordCronRun(
+          'auth-selftest',
+          pass ? 'success' : 'error',
+          Date.now() - authStartedAt,
+          failures.length ? `${summary} — ${failures[0]}`.slice(0, 300) : summary
+        );
+      } catch (e) {
+        console.error('auth-selftest cron record failed:', e);
+      }
+
+      // One email when something stops holding — quiet on success, and an
+      // alert failure never fails the run itself.
+      if (!pass) {
+        try {
+          const to = process.env.SELFTEST_ALERT_EMAIL || 'futuretravel@gmail.com';
+          const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const sent = await sendEmail({
+            to,
+            subject: `PropReel auth selftest FAILED — ${failures.length} issue${failures.length === 1 ? '' : 's'}`,
+            html: `<!doctype html><body style="font-family:Arial,sans-serif;color:#e5e7eb;background:#0b0b14;padding:24px"><h2 style="color:#f87171">Auth selftest failed</h2><p>${esc(summary)} — ${failures.length} issue${failures.length === 1 ? '' : 's'}:</p><ul>${failures.map(f => `<li>${esc(f)}</li>`).join('')}</ul><p style="color:#9a9ab8">Ran ${new Date().toISOString()}. Re-run: POST /api/users?action=auth_selftest with Authorization: Bearer $CRON_SECRET</p></body>`,
+            text: `Auth selftest failed (${summary}):\n\n- ${failures.join('\n- ')}\n\nRan ${new Date().toISOString()}. Re-run: POST /api/users?action=auth_selftest (Bearer CRON_SECRET)`,
+          });
+          if (sent.ok) console.log(`auth_selftest alert emailed to ${to}`);
+          else console.error('auth_selftest alert email rejected:', sent.error);
+        } catch (e) {
+          console.error('auth_selftest alert email failed:', e);
+        }
+      }
+
       return res.status(200).json({
         pass,
+        summary,
         ...(evaluated.length === 0 ? { note: 'inconclusive — every pair was rate limited or unreachable' } : {}),
         checks,
         headers: { pass: headersPass, checks: headerChecks },
@@ -2179,6 +2240,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('invoice_pdf failed:', e);
       return res.status(500).json({ error: 'Could not load the invoice' });
     }
+  }
+  // The daily selftest cron GETs the bare path from vercel.json — no query
+  // string, so the schedule can't break on path encoding. Cron requests carry
+  // User-Agent vercel-cron/1.0 (or the schedule header), and the target action
+  // still enforces its own Bearer CRON_SECRET gate, so faking the UA gains
+  // nothing (it just reaches a 401).
+  if (!req.query.action && isVercelCronRequest(req)) {
+    (req.query as any).action = 'auth_selftest';
   }
   if (String(req.query.action || '').startsWith('auth_') || req.query.action === 'worker_token' || req.query.action === 'job_token') {
     return authRoutes(req, res, String(req.query.action));
