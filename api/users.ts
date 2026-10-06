@@ -11,7 +11,7 @@ import {
   consumePasswordResetToken,
   requireOwner, requireAdminSession, sessionUser, isAdminActor,
 } from '../lib/auth';
-import { sendEmail, confirmEmailTemplate, resetPasswordTemplate } from '../lib/email';
+import { sendEmail, confirmEmailTemplate, resetPasswordTemplate, accountExistsTemplate } from '../lib/email';
 import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/totp';
 import { workerTokenHeaders } from '../lib/workerToken';
 import { jobCredits } from '../lib/renderPricing';
@@ -1103,7 +1103,16 @@ async function provisionUser(input: ProvisionInput): Promise<{ user: any; create
 }
 
 /** Minimal styled error page for the Google OAuth routes (server-rendered). */
-function googleConfigError(title = 'Google sign-in is not configured', detail = ''): string {
+function googleConfigError(titleIn = 'Google sign-in is not configured', detailIn = ''): string {
+  // L-5/xss: title and detail are sometimes built from query params
+  // (?error_description=…) or provider errors — escape before they land in
+  // this HTML page (CSP allows inline script, so an unescaped reflection
+  // would execute).
+  const esc = (s: string) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const title = esc(titleIn);
+  const detail = esc(detailIn);
   return `<!doctype html><html><head><meta charset="utf-8"><title>PropReel — Google sign-in</title></head>
 <body style="margin:0;background:#0b0b14;color:#e5e7eb;font-family:Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center">
   <div style="max-width:420px;padding:32px;background:#151527;border:1px solid #262643;border-radius:16px;text-align:center">
@@ -1368,11 +1377,25 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       const normalized = String(email).toLowerCase();
       const existing = await getUserByEmail(normalized);
       if (existing?.emailVerified) {
-        return res.status(409).json({
-          error: existing.passwordHash
-            ? 'An account with this email already exists — sign in instead.'
-            : 'An account with this email already exists. Use "Forgot password" to set a password.',
-        });
+        // Anti-enumeration (L-2): the response is byte-identical to a fresh
+        // signup, so probing the register endpoint can never reveal which
+        // addresses are taken. The real signal — "you already have an
+        // account" with sign-in / reset links — goes to the mailbox itself,
+        // where only the owner can read it. A per-address cooldown stops
+        // signup being used to bomb an inbox; when it trips we simply skip
+        // the mail (silently, since saying so would re-open the oracle).
+        const noticeRl = await consumeRateLimit('register_notice', normalized, 3, 3600);
+        if (noticeRl.allowed) {
+          try {
+            const origin = siteOrigin(req);
+            const tpl = accountExistsTemplate(`${origin}/login`, `${origin}/forgot-password`);
+            const sent = await sendEmail({ to: existing.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+            if (!sent.ok) console.error('Existing-account signup notice failed:', sent.error);
+          } catch (noticeErr) {
+            console.error('Existing-account signup notice error:', noticeErr);
+          }
+        }
+        return res.status(201).json({ success: true, needsConfirmation: true, email: normalized });
       }
 
       // Provision (creates the row + signup bonus + admin grant) or reuse the
@@ -1419,7 +1442,9 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (!sent.ok) {
         console.error('Confirmation email failed:', sent.error);
         return res.status(502).json({
-          error: `Account created, but the confirmation email could not be sent (${sent.error}). Use "Resend email" to retry.`,
+          // L-5: provider error stays in the server log — the client gets a
+          // generic message it can act on (resend) without leaking internals.
+          error: 'Account created, but the confirmation email could not be sent. Use "Resend email" to retry.',
           needsConfirmation: true,
         });
       }
@@ -1463,7 +1488,10 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         const token = await issueEmailConfirmToken(user, body.redirect);
         const tpl = confirmEmailTemplate(user.fullName || '', `${siteOrigin(req)}/confirm-email?token=${token}`);
         const sent = await sendEmail({ to: user.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
-        if (!sent.ok) return res.status(502).json({ error: `Could not send the email: ${sent.error}` });
+        if (!sent.ok) {
+          console.error('Confirmation resend failed:', sent.error);
+          return res.status(502).json({ error: 'Could not send the email — try again in a moment' });
+        }
       }
       // Generic success — never reveals whether the address exists
       return res.status(200).json({ success: true, message: 'If that address needs confirmation, the email is on its way.' });
@@ -1670,7 +1698,8 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         return res.redirect(302, dest);
       } catch (oauthErr: any) {
         console.error('Google OAuth error:', oauthErr);
-        return res.status(500).send(googleConfigError('Google sign-in failed', String(oauthErr?.message || oauthErr)));
+        console.error('Google OAuth exchange failed:', oauthErr);
+        return res.status(500).send(googleConfigError('Google sign-in failed', 'This sign-in could not be completed — please try again, or use your email and password.'));
       }
     }
 

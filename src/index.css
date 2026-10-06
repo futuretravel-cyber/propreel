@@ -3,7 +3,9 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  /* 'Inter Variable' is the family name @fontsource-variable/inter registers
+     (self-hosted replacement for the Google Fonts CDN stylesheet — L-3). */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
   
   --color-brand-50: #faf5ff;
   --color-brand-100: #f3e8ff;

@@ -35,9 +35,8 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <!-- Inter is self-hosted via @fontsource-variable/inter (imported in
+         src/main.tsx) — no fonts.googleapis.com/gstatic dependency (L-3). -->
     <style>
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
       /* Status-bar safe area (replaces the deprecated

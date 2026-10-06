@@ -240,7 +240,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const main = await fetchVideo((await signS3Url(project.videoUrl)) || project.videoUrl);
         zip.file(`${slug}-${project.kind === 'FLASHHEAD' ? 'talking-head' : 'reel'}.mp4`, main);
       } catch (e: any) {
-        return res.status(502).json({ error: `Could not fetch the video: ${e.message}` });
+        // L-5: log the fetch failure server-side, never echo it — the error
+        // can carry origin/host details of the storage layer.
+        console.error('Social pack video fetch failed:', e);
+        return res.status(502).json({ error: 'Could not fetch the video — try again in a moment' });
       }
 
       // 2) The agent's latest ready Talking Head clip (for reel cards)

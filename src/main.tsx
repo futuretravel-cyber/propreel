@@ -2,6 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+// Self-hosted Inter (L-3): replaces the fonts.googleapis.com CDN stylesheet
+// so no third-party CSS/font host remains in the CSP.
+import '@fontsource-variable/inter';
 import { bootstrapPricing } from './lib/pricing';
 
 // Register service worker for PWA

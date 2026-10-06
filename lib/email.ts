@@ -155,6 +155,25 @@ export function resetPasswordTemplate(resetUrl: string): { subject: string; html
 }
 
 /**
+ * Sent when someone submits SIGN-UP for an address that already has a
+ * confirmed account. The API answers the caller with an indistinguishable
+ * "check your email" (anti-enumeration, L-2) — this mail is the only place
+ * the real outcome is revealed, and only to the mailbox owner.
+ */
+export function accountExistsTemplate(loginUrl: string, resetUrl: string): { subject: string; html: string; text: string } {
+  return {
+    subject: 'You already have a PropReel account',
+    html: layout(
+      'You already have an account',
+      `<p>Someone (hopefully you) tried to sign up for PropReel with this email address, but an account already exists.</p>
+       <p>If it was you, just sign in — or set a new password if you've forgotten it. If it wasn't you, no action is needed: nothing about your account has changed.</p>`,
+      { url: loginUrl, label: 'Sign in to PropReel' }
+    ),
+    text: `You already have a PropReel account. Sign in: ${loginUrl} — or set a new password: ${resetUrl}`,
+  };
+}
+
+/**
  * Daily trial reminder — sent by the 9am cron while a temporary account's
  * 7-day clock is still ticking. Copy nudges the one conversion action:
  * subscribe before the deadline or the account is deleted.
