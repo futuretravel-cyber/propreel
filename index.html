@@ -2,7 +2,7 @@
 <html lang="en-ZA">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#800080" />
     <title>PropReel — Create Stunning Property Videos Instantly with AI</title>
     <meta name="description" content="PropReel turns your property photos into cinematic, narrated listing reels in minutes. Built for South African estate agents. 5 Free Credits on Signup." />
@@ -15,12 +15,12 @@
     <meta property="og:title" content="PropReel — Create Stunning Property Videos Instantly with AI" />
     <meta property="og:description" content="Turn property photos into cinematic, narrated listing reels in minutes. Built for SA estate agents. 5 free credits on signup." />
     <meta property="og:url" content="https://www.propreel.co.za/" />
-    <meta property="og:image" content="https://www.propreel.co.za/images/hero-cape-town-1200.webp" />
+    <meta property="og:image" content="https://www.propreel.co.za/images/hero-cape-town-1200.webp?v=2" />
     <meta property="og:locale" content="en_ZA" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="PropReel — Property videos in minutes with AI" />
     <meta name="twitter:description" content="Cinematic, narrated listing reels for South African estate agents." />
-    <meta name="twitter:image" content="https://www.propreel.co.za/images/hero-cape-town-1200.webp" />
+    <meta name="twitter:image" content="https://www.propreel.co.za/images/hero-cape-town-1200.webp?v=2" />
 
     <!-- Structured data: SoftwareApplication + FAQ -->
     <script type="application/ld+json">
@@ -30,7 +30,6 @@
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="PropReel" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -41,6 +40,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
+      /* Status-bar safe area (replaces the deprecated
+         apple-mobile-web-app-status-bar-style=black-translucent meta, which
+         iOS 16+ ignores). border-box keeps the added padding from pushing
+         the page past 100% height when an inset applies. */
+      body { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); }
       #root { width: 100%; height: 100%; }
     </style>
   </head>

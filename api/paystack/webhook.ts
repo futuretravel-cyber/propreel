@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyPaystackSignature } from '../../lib/paystack';
 import { addCredits, createSubscription, getUser, allocateMonthlyCredits, updateUser } from '../../lib/userService';
@@ -8,16 +9,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Set when the idempotency claim below succeeds; released on a processing
+  // error (see catch) so Paystack's retry can re-run the handler.
+  let claimedEventKeyId: string | null = null;
+
   try {
     const payload = req.body;
     const signature = req.headers['x-paystack-signature'] as string;
 
-    // Verify webhook signature
-    if (!signature || !verifyPaystackSignature(payload, signature)) {
+    // Verify webhook signature. MUST be awaited: verifyPaystackSignature is
+    // async, and an un-awaited Promise is always truthy — without await this
+    // check never rejected anything, letting anyone forge a charge.success.
+    if (!signature || !(await verifyPaystackSignature(payload, signature))) {
+      console.warn(`Paystack webhook: signature verification failed (event=${payload?.event ?? 'unknown'})`);
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
     const event = payload.event;
+
+    // Acknowledge event types we don't act on without writing marker rows.
+    const HANDLED_EVENTS = [
+      'charge.success',
+      'subscription.create',
+      'subscription.renewal',
+      'charge.failed',
+      'invoice.payment_failed',
+      'subscription.disable',
+    ];
+    if (!event || !HANDLED_EVENTS.includes(event)) {
+      return res.status(200).json({ received: true });
+    }
+
+    // ── Top-level event idempotency (the Stripe event.id equivalent) ──────
+    // There is no Stripe in this stack — Paystack is the payment provider —
+    // but the risk auditors flag for Stripe applies verbatim: Paystack
+    // redelivers webhook events, and a duplicated subscription.renewal would
+    // allocate monthly credits twice, subscription.create would reset the
+    // account's credits, and charge.failed would double-count dunning.
+    //
+    // Paystack payloads carry no stable top-level event.id, so the claim key
+    // is the event name + a hash of the payload: a redelivery is
+    // byte-identical (same key → deduped, 200 immediately), while a
+    // legitimate future event of the same type always differs (new
+    // transaction ids, next_payment_date, updatedAt, … → new key → processed).
+    //
+    // Claim BEFORE processing via an atomic put-if-absent on the settings
+    // table. A full DynamoDB transaction cannot span the whole handler, so
+    // claim-then-process (with release-on-error below) is the emulation.
+    const eventKeyId = `psevt_${event}_${createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 32)}`;
+    const { putItemIfNotExists, TABLES: TB } = await import('../../lib/db');
+    const claimed = await putItemIfNotExists(TB.SETTINGS, {
+      id: eventKeyId,
+      type: 'webhook_event',
+      event,
+      createdAt: new Date().toISOString(),
+    });
+    if (!claimed) {
+      console.log(`Webhook: duplicate ${event} delivery (${eventKeyId}) — already processed, acking 200`);
+      return res.status(200).json({ received: true, duplicate: true, event });
+    }
+    claimedEventKeyId = eventKeyId;
 
     // Handle successful payment (credit purchase)
     if (event === 'charge.success') {
@@ -343,6 +394,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ received: true });
   } catch (error) {
     console.error('Paystack webhook error:', error);
+    // Release the idempotency claim so Paystack's retry can process this
+    // event again. Lower-layer guards (pay_<reference> marker, addCredits
+    // event locks) still protect charge.success from double-crediting on
+    // that retry even if the failure happened mid-processing.
+    if (claimedEventKeyId) {
+      try {
+        const { deleteItem, TABLES } = await import('../../lib/db');
+        await deleteItem(TABLES.SETTINGS, { id: claimedEventKeyId });
+      } catch { /* best effort */ }
+    }
     return res.status(500).json({ error: 'Webhook processing failed' });
   }
 }
