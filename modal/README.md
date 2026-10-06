@@ -15,10 +15,11 @@ The Modal backend handles:
 - `app_propreel_minimax.py` - **the live Modal application** (the render
   worker, FastAPI web endpoint, crons and selftests — this is what
   `modal deploy` targets)
-- `app_propreel_grok_tiers.py` - legacy stub, **do not deploy**: it declares
-  the same app name (`propreel-render`) but has no web endpoints, so deploying
-  it would replace and strip the live worker (see the warning in
-  `docs/MODAL_ENDPOINT_SETUP.md`)
+- *(removed)* `app_propreel_grok_tiers.py` — legacy stub, deleted so it can
+  never be deployed: it declared the same app name (`propreel-render`) but had
+  no web endpoints, so deploying it would have replaced and stripped the live
+  worker (see the warning in `docs/MODAL_ENDPOINT_SETUP.md`; recover from git
+  history if it is ever needed for reference)
 - `image_prompts.py` - prompt libraries bundled into the worker image
 
 ## Prerequisites

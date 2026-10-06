@@ -65,14 +65,16 @@ cd modal
 modal deploy app_propreel_minimax.py
 ```
 
-> ⚠️ **Always deploy `app_propreel_minimax.py` — never `app_propreel_grok_tiers.py`.**
-> Both files declare the same Modal app name (`propreel-render`), but
-> `app_propreel_grok_tiers.py` is a 211-line legacy stub with a different
-> `render_video` signature and **no web endpoints**. Deploying it replaces the
-> live app and strips `/render_video`, `/render_status`, `/cancel_render`,
-> `/health`, `/probe`, the fal-health cron and every other function — the site
-> would stop rendering immediately. The live worker is `app_propreel_minimax.py`
-> (see `modal/DEPLOYMENT_GUIDE.md`).
+> ⚠️ **Only `app_propreel_minimax.py` may be deployed — no other file.**
+> A legacy stub used to live next to it: `app_propreel_grok_tiers.py` (removed
+> from the repo; git history still has it). It declared the same Modal app name
+> (`propreel-render`) but defined a different `render_video` signature and
+> **no web endpoints**, so deploying it would have replaced the live app and
+> stripped `/render_video`, `/render_status`, `/cancel_render`, `/health`,
+> `/probe`, the fal-health cron and every other function — the site would stop
+> rendering immediately. The live worker is `app_propreel_minimax.py`
+> (see `modal/DEPLOYMENT_GUIDE.md`); treat any other file that declares
+> `modal.App("propreel-render")` as off-limits.
 
 **What happens:**
 - Modal builds the Docker image with dependencies (ffmpeg, boto3, fal.ai, …)
@@ -400,7 +402,7 @@ AWS_S3_OUTPUT_BUCKET=propreel-video-outputs-sa
 ## 🎯 Quick Commands
 
 ```bash
-# Deploy Modal app (live worker — never app_propreel_grok_tiers.py)
+# Deploy Modal app (the only file that may target propreel-render)
 cd modal
 modal deploy app_propreel_minimax.py
 
