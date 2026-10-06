@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail, transferCredits } from '../lib/userService';
+import { requireOwner } from '../lib/auth';
 
 /**
  * Unified credits endpoint (Hobby plan has a 12-function limit).
@@ -17,6 +18,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!userId) {
         return res.status(400).json({ error: 'user_id is required' });
       }
+      const gate = await requireOwner(req, userId);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const days = parseInt(period) || 30;
       const report = await getCreditReport(userId, days);
@@ -39,6 +42,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!user_id || !amount || amount <= 0) {
         return res.status(400).json({ error: 'Invalid request parameters' });
       }
+      const gate = await requireOwner(req, user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       if (!source || !['purchase', 'bonus', 'gift', 'refund', 'subscription'].includes(source)) {
         return res.status(400).json({ error: 'Invalid source type' });
@@ -68,6 +73,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!user_id || !amount || amount <= 0) {
         return res.status(400).json({ error: 'Invalid request parameters' });
       }
+      const gate = await requireOwner(req, user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       // pool='agency' spends the shared agency pool instead of the personal
       // balance (the client sends this for preset-tier render features).
@@ -98,6 +105,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!from_user_id || !to_user_id || !amount || amount <= 0) {
         return res.status(400).json({ error: 'Invalid request parameters' });
       }
+      const gate = await requireOwner(req, from_user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       if (from_user_id === to_user_id) {
         return res.status(400).json({ error: 'Cannot transfer to yourself' });
@@ -153,6 +162,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!from_user_id || !to_email || !amount || amount <= 0) {
         return res.status(400).json({ error: 'Invalid request parameters' });
       }
+      const gate = await requireOwner(req, from_user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const fromUser = await getUser(from_user_id);
       if (!fromUser) return res.status(404).json({ error: 'Sender not found' });

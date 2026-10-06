@@ -12,6 +12,7 @@ import {
   markUpgradePaid,
 } from '../lib/userService';
 import { createSubscription as createPaystackSub, cancelSubscription as cancelPaystackSub, chargeAuthorization } from '../lib/paystack';
+import { requireOwner } from '../lib/auth';
 
 /**
  * Unified subscriptions endpoint (Hobby plan has a 12-function limit).
@@ -56,6 +57,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!['MONTHLY', 'ANNUAL'].includes(cycle)) {
         return res.status(400).json({ error: 'Invalid cycle' });
       }
+      const gate = await requireOwner(req, user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const user = await getUser(user_id);
       if (!user) {
@@ -117,6 +120,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!user_id) {
         return res.status(400).json({ error: 'user_id is required' });
       }
+      const gate = await requireOwner(req, user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const hasActive = await hasActiveSubscription(user_id);
       if (!hasActive) {
@@ -159,6 +164,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!['MONTHLY', 'ANNUAL'].includes(cycle)) {
         return res.status(400).json({ error: 'Invalid cycle' });
       }
+      const gate = await requireOwner(req, user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const user = await getUser(user_id);
       if (!user) return res.status(404).json({ error: 'User not found' });

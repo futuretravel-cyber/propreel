@@ -16,17 +16,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Verify authorization
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    if (!req.headers['x-vercel-cron']) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+  // Verify authorization. Vercel Cron sends `Authorization: Bearer
+  // ${CRON_SECRET}` automatically when the env var is set. The old
+  // `x-vercel-cron` header fallback was client-spoofable and the check was
+  // skipped entirely when the secret was unset — fail closed now.
+  if (!cronSecret) {
+    return res.status(500).json({ error: 'CRON_SECRET is not configured' });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   console.log('Starting expired credits processing...');
   const started = Date.now();
 
+  // Run lock: one successful sweep per UTC day — a leaked or replicated
+  // CRON_SECRET (it once sat in .env.example) or a scheduler double-fire
+  // can never re-run the destructive sweeps twice. Released on failure below.
+  const runLockId = `cronlock_exp_${new Date().toISOString().slice(0, 10)}`;
+  let claimedRun = false;
+
   try {
+    const { putItemIfNotExists, TABLES } = await import('../../lib/db');
+    claimedRun = await putItemIfNotExists(TABLES.SETTINGS, {
+      id: runLockId,
+      type: 'cron_lock',
+      createdAt: new Date().toISOString(),
+    });
+    if (!claimedRun) {
+      return res.status(200).json({ success: true, skipped: true, reason: 'already ran today' });
+    }
+
     const result = await processExpiredCredits();
 
     // Same nightly slot: reconcile renders abandoned mid-flight (browser died
@@ -144,6 +164,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (error) {
     console.error('Expired credits processing error:', error);
+    // Release the run lock so the next attempt can retry a failed sweep.
+    if (claimedRun) {
+      try {
+        const { deleteItem, TABLES } = await import('../../lib/db');
+        await deleteItem(TABLES.SETTINGS, { id: runLockId });
+      } catch { /* best effort */ }
+    }
     await recordCronRun('process-expired-credits', 'error', Date.now() - started, String((error as any)?.message || error));
     return res.status(500).json({ error: 'Processing failed' });
   }

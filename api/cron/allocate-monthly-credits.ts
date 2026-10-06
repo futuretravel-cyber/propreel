@@ -75,18 +75,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Verify authorization
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    // Allow Vercel cron (no auth header)
-    if (!req.headers['x-vercel-cron']) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+  // Verify authorization. Vercel Cron sends `Authorization: Bearer
+  // ${CRON_SECRET}` automatically when the env var is set. The old
+  // `x-vercel-cron` header fallback was client-spoofable and the check was
+  // skipped entirely when the secret was unset — fail closed now.
+  if (!cronSecret) {
+    return res.status(500).json({ error: 'CRON_SECRET is not configured' });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   console.log('Starting monthly credit allocation...');
   const started = Date.now();
 
+  // Run lock: at most one successful run per calendar month — a leaked or
+  // replicated CRON_SECRET (it once sat in .env.example) or a scheduler
+  // double-fire can never allocate monthly credits twice. Released in the
+  // catch below so a failed run can still be retried.
+  const runLockId = `cronlock_alloc_${new Date().toISOString().slice(0, 7)}`;
+  let claimedRun = false;
+
   try {
+    const { putItemIfNotExists } = await import('../../lib/db');
+    claimedRun = await putItemIfNotExists(TABLES.SETTINGS, {
+      id: runLockId,
+      type: 'cron_lock',
+      createdAt: new Date().toISOString(),
+    });
+    if (!claimedRun) {
+      return res.status(200).json({ success: true, skipped: true, reason: 'already ran this month' });
+    }
+
     // Get all users with active subscriptions
     const users = await scanItems<any>(TABLES.USERS);
     let allocated = 0;
@@ -218,6 +238,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (error) {
     console.error('Monthly credit allocation error:', error);
+    // Release the run lock so the next attempt can retry a failed run.
+    if (claimedRun) {
+      try {
+        const { deleteItem } = await import('../../lib/db');
+        await deleteItem(TABLES.SETTINGS, { id: runLockId });
+      } catch { /* best effort */ }
+    }
     await recordCronRun('allocate-monthly-credits', 'error', Date.now() - started, String((error as any)?.message || error));
     return res.status(500).json({ error: 'Allocation failed' });
   }

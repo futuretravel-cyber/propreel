@@ -2,6 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser, updateUser, deductCredits, addCredits } from '../lib/userService';
 import { TABLES, queryItems, putItem, updateItem, scanItems } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
+import { requireOwner } from '../lib/auth';
 import JSZip from 'jszip';
 
 export interface ProjectFolder {
@@ -82,6 +83,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (action === 'folders') {
     const userId = req.method === 'GET' ? (req.query.user_id as string) : req.body?.user_id;
     if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+    const gate = await requireOwner(req, userId);
+    if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
     const user = await getUser(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -156,6 +159,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET' && action === 'agency_history') {
       const userId = req.query.user_id as string;
       if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+      const gate = await requireOwner(req, userId);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
       const user = await getUser(userId);
       if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -199,6 +204,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const userId = req.query.user_id as string;
       const id = req.query.id as string;
       if (!userId || !id) return res.status(400).json({ error: 'Missing user_id or id' });
+      const gate = await requireOwner(req, userId);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const [user, owned] = await Promise.all([
         getUser(userId),
@@ -342,6 +349,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       const userId = req.query.user_id as string;
       if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+      const gate = await requireOwner(req, userId);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const projects = await queryItems<ProjectRecord>(TABLES.PROJECTS, {
         expression: 'userId = :u',
@@ -359,6 +368,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // that callers swallowed, silently losing the render's project row.
       const owner = b.user_id || b.userId;
       if (!owner) return res.status(400).json({ error: 'Missing user_id' });
+      const gate = await requireOwner(req, owner);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const user = await getUser(owner);
       if (!user) return res.status(404).json({ error: 'User not found' });
@@ -429,6 +440,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'PUT') {
       const { user_id, id, updates } = req.body || {};
       if (!user_id || !id) return res.status(400).json({ error: 'Missing user_id or id' });
+      const gate = await requireOwner(req, user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const existing = await queryItems<ProjectRecord>(TABLES.PROJECTS, {
         expression: 'userId = :u AND id = :i',
@@ -471,6 +484,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const userId = req.query.user_id as string;
       const id = req.query.id as string;
       if (!userId || !id) return res.status(400).json({ error: 'Missing user_id or id' });
+      const gate = await requireOwner(req, userId);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const ok = await deleteItem(TABLES.PROJECTS, { userId, id });
       return res.status(ok ? 200 : 500).json({ success: ok });

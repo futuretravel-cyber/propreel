@@ -9,6 +9,7 @@ import {
   clientMeta,
   issueEmailConfirmToken, consumeEmailConfirmToken, issuePasswordResetToken,
   consumePasswordResetToken,
+  requireOwner, requireAdminSession, sessionUser, isAdminActor,
 } from '../lib/auth';
 import { sendEmail, confirmEmailTemplate, resetPasswordTemplate } from '../lib/email';
 import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/totp';
@@ -51,9 +52,19 @@ async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: str
   const {
     createAgency, getAgency, updateAgency, listMembers, addMemberToAgency,
     removeMember, setAgentMonthlyLimit, agencyUsageAnalytics, listAllAgencies,
-    MAX_AGENTS_PER_AGENCY,
-  } = await import('../lib/agency');
+    MAX_AGENTS_PER_AGENCY,    } = await import('../lib/agency');
   const body = req.body || {};
+
+  // Session gate: every agency action names its acting user via user_id /
+  // inviter_user_id — identity must come from the cookie, never the payload
+  // (otherwise anyone could impersonate an agency owner by passing their id).
+  // admin_agencies and feature_flags are handled below with their own
+  // admin-session checks; feature_flags GET stays public.
+  if (action !== 'feature_flags' && action !== 'admin_agencies') {
+    const claimed = String(body.user_id || body.inviter_user_id || req.query.user_id || '');
+    const gate = await requireOwner(req, claimed);
+    if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+  }
 
   try {
     // ── POST ?action=agency_create — agency signup ──────────────────
@@ -278,9 +289,8 @@ async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: str
 
     // ── GET ?action=admin_agencies&email=… — platform agency list ────
     if (action === 'admin_agencies') {
-      if (!isAdminEmail(String(req.query.email || ''))) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
+      const gate = await requireAdminSession(req);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
       const agencies = await listAllAgencies();
       return res.status(200).json({ success: true, agencies });
     }
@@ -297,10 +307,9 @@ async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: str
         const flags = await getItem<any>(TABLES.SETTINGS, { id: 'feature_flags' });
         return res.status(200).json({ success: true, flags: { ...DEFAULTS, ...(flags?.flags || {}) } });
       }
-      const { email, flags } = body;
-      if (!isAdminEmail(String(email || ''))) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
+      const { flags } = body;
+      const gate = await requireAdminSession(req);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
       const existing = await getItem<any>(TABLES.SETTINGS, { id: 'feature_flags' });
       const merged = { ...DEFAULTS, ...(existing?.flags || {}), ...(flags || {}) };
       // Never persist secrets here — provider IDs are public embed values
@@ -681,10 +690,8 @@ async function updateUserFields(req: VercelRequest, res: VercelResponse) {
  * Admin-only (server-side email check). Counts come from DynamoDB directly.
  */
 async function adminStats(req: VercelRequest, res: VercelResponse) {
-  const email = String(req.query.email || '').toLowerCase();
-  if (!ADMIN_EMAILS.includes(email)) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  const gate = await requireAdminSession(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
   const { scanItems } = await import('../lib/db');
   const users = await scanItems<any>(TABLES.USERS, { limit: 500 });
@@ -774,10 +781,8 @@ async function adminStats(req: VercelRequest, res: VercelResponse) {
  * Nested route: GET /api/users?action=list_users — real user list (admin-only).
  */
 async function listUsers(req: VercelRequest, res: VercelResponse) {
-  const email = String(req.query.email || '').toLowerCase();
-  if (!ADMIN_EMAILS.includes(email)) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  const gate = await requireAdminSession(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
   const { scanItems } = await import('../lib/db');
   const users = await scanItems<any>(TABLES.USERS, { limit: 200 });
   // Only return safe fields
@@ -807,6 +812,8 @@ async function notificationPreferences(req: VercelRequest, res: VercelResponse) 
   if (req.method === 'GET') {
     const userId = req.query.user_id as string;
     if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+    const gate = await requireOwner(req, userId);
+    if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
     const user = await getUser(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
     return res.status(200).json({ success: true, preferences: user.notificationPreferences || DEFAULT_NOTIFICATION_PREFERENCES });
@@ -816,6 +823,8 @@ async function notificationPreferences(req: VercelRequest, res: VercelResponse) 
     if (!user_id || typeof preferences !== 'object' || preferences === null) {
       return res.status(400).json({ error: 'Missing user_id or preferences' });
     }
+    const gate = await requireOwner(req, user_id);
+    if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
     const user = await getUser(user_id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     const cleaned: Record<string, boolean> = { ...(user.notificationPreferences || DEFAULT_NOTIFICATION_PREFERENCES) };
@@ -833,10 +842,8 @@ async function notificationPreferences(req: VercelRequest, res: VercelResponse) 
  * ledger (admin-only). Powers the audit-log view in the dashboard.
  */
 async function adminLedger(req: VercelRequest, res: VercelResponse) {
-  const email = String(req.query.email || '').toLowerCase();
-  if (!ADMIN_EMAILS.includes(email)) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  const gate = await requireAdminSession(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
   const { scanItems } = await import('../lib/db');
   const limit = Math.min(500, Math.max(10, parseInt(req.query.limit as string) || 150));
@@ -926,10 +933,8 @@ async function imagePresets(req: VercelRequest, res: VercelResponse) {
  */
 async function pnlRoutes(req: VercelRequest, res: VercelResponse, action: string) {
   const body = (req.body || {}) as any;
-  const email = String(req.query.email || body.email || '').toLowerCase();
-  if (!isAdminEmail(email)) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  const gate = await requireAdminSession(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
   const { isMonthKey, buildPnlReport, loadPnlSnapshot, addPnlExpense, deletePnlExpense, generatePnlPdf, EXPENSE_CATEGORIES } =
     await import('../lib/pnl');
@@ -1743,6 +1748,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Provide ?id= or ?email=' });
     }
 
+    // Session-or-admin only: the signed-in user may read their own row
+    // (by id or email); every other lookup requires a platform admin.
+    const actor = await sessionUser(req);
+    if (!actor) return res.status(401).json({ error: 'Sign in required' });
+    const selfMatch =
+      (id && actor.id === id) ||
+      (email && String(actor.email || '').toLowerCase() === String(email).toLowerCase());
+    if (!selfMatch && !isAdminActor(actor)) {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
+
     try {
       const user = id ? await getUser(id) : await getUserByEmail(String(email).toLowerCase());
       if (!user) {
@@ -1756,6 +1772,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'POST') {
+    // Provisioning is admin-only — unauthenticated POSTs could otherwise
+    // mint accounts with an arbitrary `role` (including ADMIN).
+    const provisionGate = await requireAdminSession(req);
+    if (!provisionGate.ok) return res.status(provisionGate.status).json({ error: provisionGate.error });
     const {
       email,
       fullName,

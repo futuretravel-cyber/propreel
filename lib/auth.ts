@@ -265,3 +265,53 @@ export async function issuePasswordResetToken(user: User): Promise<string> {
   await updateItem(TABLES.USERS, { id: user.id }, { passwordResetToken: token } as any);
   return token;
 }
+
+// ─── Session gates (IDOR protection) ─────────────────────────────────────────
+//
+// Identity for data routes comes from the session cookie — never from a
+// client-supplied user_id or email query param. Each helper returns a
+// ready-to-send failure the handler can send as
+// `return res.status(gate.status).json({ error: gate.error })`.
+
+const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
+
+export type SessionGate =
+  | { ok: true; user: User }
+  | { ok: false; status: 401 | 403; error: string };
+
+/** Signed-in user for this request, or null (never throws). */
+export async function sessionUser(req: any): Promise<User | null> {
+  try {
+    return await getSessionUser(getTokenFromRequest(req));
+  } catch {
+    return null;
+  }
+}
+
+/** Platform admin? Curated email list or the stamped ADMIN role. */
+export function isAdminActor(user: User | null | undefined): boolean {
+  if (!user) return false;
+  return (user.role as string) === 'ADMIN' ||
+    ADMIN_EMAILS.includes(String(user.email || '').toLowerCase());
+}
+
+/**
+ * Require a session that OWNS `claimedUserId` (platform admins may act on
+ * any id). With no claimed id, any valid session passes.
+ */
+export async function requireOwner(req: any, claimedUserId?: string | null): Promise<SessionGate> {
+  const user = await sessionUser(req);
+  if (!user) return { ok: false, status: 401, error: 'Sign in required' };
+  if (claimedUserId && user.id !== claimedUserId && !isAdminActor(user)) {
+    return { ok: false, status: 403, error: 'Not allowed' };
+  }
+  return { ok: true, user };
+}
+
+/** Require a platform-admin session (for admin dashboards and grants). */
+export async function requireAdminSession(req: any): Promise<SessionGate> {
+  const user = await sessionUser(req);
+  if (!user) return { ok: false, status: 401, error: 'Sign in required' };
+  if (!isAdminActor(user)) return { ok: false, status: 403, error: 'Admin access required' };
+  return { ok: true, user };
+}

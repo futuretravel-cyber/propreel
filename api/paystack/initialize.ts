@@ -1,6 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser } from '../../lib/userService';
 import { initializePayment } from '../../lib/paystack';
+import { requireOwner } from '../../lib/auth';
 
 /**
  * Initialize a Paystack credit purchase.
@@ -21,6 +22,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         error: 'Invalid request. Minimum purchase is 50 credits (R50).'
       });
     }
+    const gate = await requireOwner(req, user_id);
+    if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
     // Get user from DynamoDB (source of truth for accounts)
     const user = await getUser(user_id);
