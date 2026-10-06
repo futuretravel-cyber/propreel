@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
 import { falEditImage } from './falImage';
+import { jobHeaders } from './workerAuth';
 import { useCredit } from '../context/AuthContext';
 import { track } from './analytics';
 import { PropReelAPI } from './api';
 import { IMAGE_PRESETS } from './imagePrompts';
 
-const IMAGE_EDIT_COST = 2;
+import { IMAGE_EDIT_CREDITS as IMAGE_EDIT_COST } from '../../lib/renderPricing';
 
 type Stage = 'idle' | 'uploading' | 'deducting' | 'rendering' | 'done';
 
@@ -15,7 +16,7 @@ type Stage = 'idle' | 'uploading' | 'deducting' | 'rendering' | 'done';
  * result URL. Failed renders refund the 2 credits automatically.
  */
 export function useImageEdit() {
-  const { deductCredits, addCredits, user } = useCredit() as any;
+  const { addCredits, user, refresh } = useCredit() as any;
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -50,11 +51,19 @@ export function useImageEdit() {
       return null;
     }
 
-    // 2) Deduct 2 credits (atomic server-side conditional decrement)
+    // 2) Pay at mint: ?action=job_token charges the 2 credits server-side
+    //    (price lives in lib/renderPricing) and returns the single-use token
+    //    the worker demands before it starts an edit job.
     setStage('deducting');
-    const ok = await deductCredits(IMAGE_EDIT_COST, `Image edit — ${opts.presetId}`, { kind: 'IMAGE_EDIT', presetId: opts.presetId });
-    if (!ok) {
-      setError('Could not deduct credits — check your balance and try again');
+    let jobToken: Record<string, string>;
+    try {
+      jobToken = await jobHeaders('edit', {
+        presetId: opts.presetId,
+        metadata: { kind: 'IMAGE_EDIT', presetId: opts.presetId },
+      });
+      void refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Could not charge credits — check your balance and try again');
       setStage('idle');
       return null;
     }
@@ -68,7 +77,7 @@ export function useImageEdit() {
         strength: opts.strength,
         guidanceScale: opts.guidanceScale,
         customPrompt: opts.customPrompt,
-      });
+      }, jobToken);
       track('render_completed', { kind: 'IMAGE_EDIT', presetId: opts.presetId });
       // Store the output in My Projects (kind: IMAGE) so every Photo Editor /
       // Staging / Removal / Twilight render has a home. Best-effort: the edit
@@ -95,7 +104,7 @@ export function useImageEdit() {
       setStage('idle');
       return null;
     }
-  }, [user, deductCredits, addCredits]);
+  }, [user, addCredits, refresh]);
 
   return { edit, stage, error, setError, busy: stage === 'uploading' || stage === 'deducting' || stage === 'rendering' };
 }

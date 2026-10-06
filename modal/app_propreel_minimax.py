@@ -52,37 +52,66 @@ _token_allow_paths = {"/health", "/probe", "/docs", "/openapi.json", "/favicon.i
 _warned_no_secret = False
 
 
-def _token_error(value: Optional[str]) -> Optional[str]:
+def _parse_token(value: Optional[str]):
+    """Verify X-PropReel-Token. Returns ({version, uid, scope, exp}, None) on
+    success or (None, error) on failure.
+
+    v1.<exp>.<uid>.<sig>              — generic token: status polls, cancels,
+                                        cheap text generation. Free to mint.
+    v2.<exp>.<uid>.<scope>.<sig>      — PAID job token (scope: render|flashhead|edit),
+                                        minted by the API only after it charges
+                                        credits at the price in
+                                        lib/renderPricing. Required to START a job.
+    """
     global _warned_no_secret
     secret = os.environ.get("RENDER_API_TOKEN", "")
     if not secret:
         if not _warned_no_secret:
             print("[auth] RENDER_API_TOKEN not set — worker auth DISABLED (open access)")
             _warned_no_secret = True
-        return None
+        return {"version": 1, "uid": "anon", "scope": None, "exp": 0}, None
     if not value:
-        return "missing X-PropReel-Token"
+        return None, "missing X-PropReel-Token"
     parts = value.split(".")
-    if len(parts) != 4 or parts[0] != "v1":
-        return "malformed token"
-    _, exp_s, _uid, sig = parts
+    if len(parts) == 4 and parts[0] == "v1":
+        _, exp_s, uid, sig = parts
+        msg = f"v1.{exp_s}.{uid}"
+        version, scope = 1, None
+    elif len(parts) == 5 and parts[0] == "v2":
+        _, exp_s, uid, scope, sig = parts
+        if scope not in ("render", "flashhead", "edit"):
+            return None, "unknown job scope"
+        msg = f"v2.{exp_s}.{uid}.{scope}"
+        version = 2
+    else:
+        return None, "malformed token"
     try:
         exp = int(exp_s)
     except ValueError:
-        return "malformed token expiry"
+        return None, "malformed token expiry"
     now = int(time.time())
     if exp < now or exp > now + 900:  # minted with 600s TTL, 15 min acceptance window
-        return "token expired"
-    msg = f"v1.{exp_s}.{_uid}".encode()
-    expected = hmac.new(secret.encode(), msg, hashlib.sha256).digest()
+        return None, "token expired"
+    encoded = msg.encode()
+    expected = hmac.new(secret.encode(), encoded, hashlib.sha256).digest()
     pad = "=" * (-len(sig) % 4)
     try:
         got = base64.urlsafe_b64decode(sig + pad)
     except Exception:
-        return "bad token signature"
+        return None, "bad token signature"
     if not hmac.compare_digest(got, expected):
-        return "bad token signature"
-    return None
+        return None, "bad token signature"
+    return {"version": version, "uid": uid, "scope": scope, "exp": exp}, None
+
+
+# Endpoints that spend real money on fal.ai / MiniMax — each requires a PAID
+# v2 token whose scope matches, consumed exactly once (see _claim_job_token).
+JOB_ENDPOINT_SCOPE = {
+    "/render_video": "render",
+    "/edit_image": "edit",
+    "/flashhead": "flashhead",
+    "/generate_flashhead_video": "flashhead",
+}
 
 
 @web_app.middleware("http")
@@ -90,11 +119,56 @@ async def require_worker_token(request: Request, call_next):
     # OPTIONS is the CORS preflight (handled below by CORSMiddleware).
     if request.method == "OPTIONS" or request.url.path in _token_allow_paths:
         return await call_next(request)
-    err = _token_error(request.headers.get(_token_header))
+    info, err = _parse_token(request.headers.get(_token_header))
     if err:
         # This middleware wraps CORS, so mirror the CORS header ourselves.
         return JSONResponse(status_code=401, content={"error": err}, headers={"Access-Control-Allow-Origin": "*"})
+    need = JOB_ENDPOINT_SCOPE.get(request.url.path)
+    if need and (info["version"] != 2 or info["scope"] != need):
+        return JSONResponse(
+            status_code=403,
+            content={"error": f"paid job token required for this endpoint (scope={need})"},
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
     return await call_next(request)
+
+
+def _claim_job_token(request: Request) -> None:
+    """Burn a paid v2 token so it can start exactly ONE job.
+
+    The claim is a conditional PutObject (IfNoneMatch='*') on a digest of the
+    token — atomic across every worker container, so a replayed or parallel
+    use answers 409 instead of spending our AI credits twice. Claims are tiny
+    (~150 bytes) and only meaningful while the token itself is valid (10 min);
+    they accumulate under jobs/claims/ like the job status files.
+    """
+    import hashlib as _hashlib
+    token = request.headers.get(_token_header) or ""
+    info, err = _parse_token(token)
+    if err or not info:
+        raise HTTPException(status_code=401, detail=err or "invalid token")
+    digest = _hashlib.sha256(token.encode()).hexdigest()
+    body = json.dumps({
+        "scope": info["scope"],
+        "uid": info["uid"],
+        "token_exp": info["exp"],
+        "used_at": int(time.time()),
+    })
+    try:
+        _s3().put_object(
+            Bucket=S3_BUCKET,
+            Key=f"jobs/claims/{digest}.json",
+            Body=body,
+            ContentType="application/json",
+            IfNoneMatch="*",
+        )
+    except Exception as e:
+        status = getattr(e, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode")
+        code = str(getattr(e, "response", {}).get("Error", {}).get("Code", ""))
+        if status == 412 or "PreconditionFailed" in code:
+            raise HTTPException(status_code=409, detail="Job token already used — mint a fresh one")
+        # Fail CLOSED: never start a job we cannot prove was paid for.
+        raise HTTPException(status_code=503, detail="Could not verify job token — please retry")
 
 # Define the image with required dependencies
 image = modal.Image.debian_slim().apt_install(
@@ -1342,6 +1416,7 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
     Backward compatible: ?wait=true blocks like the old behaviour.
     """
     try:
+        _claim_job_token(raw_request)  # paid + single-use before any work starts
         if raw_request.query_params.get("wait") in ("true", "1"):
             result = await render_video.remote.aio(
                 record_id=request.record_id,
@@ -1418,9 +1493,10 @@ async def api_render_status(record_id: str):
     return presign_urls(status)
 
 @web_app.post("/generate_flashhead_video")
-async def api_generate_flashhead_video(request: FlashHeadRequest):
+async def api_generate_flashhead_video(request: FlashHeadRequest, raw_request: Request):
     """API endpoint to generate FlashHead lip-sync video"""
     try:
+        _claim_job_token(raw_request)  # paid + single-use before any work starts
         # Call the Modal function asynchronously
         result = await generate_flashhead_video.remote.aio(
             profile_image_url=request.profile_image_url,
@@ -1442,6 +1518,7 @@ async def api_edit_image(request: EditImageRequest, raw_request: Request):
     blocks until the render completes.
     """
     try:
+        _claim_job_token(raw_request)  # paid + single-use before any work starts
         if raw_request.query_params.get("wait") in ("true", "1"):
             result = await edit_image.remote.aio(
                 image_url=request.image_url,
@@ -1653,9 +1730,10 @@ class GenerateTextRequest(BaseModel):
     images: list[str] = []  # optional photo URLs for Grok vision
 
 @web_app.post("/flashhead")
-async def api_flashhead(request: FlashHeadJobRequest):
+async def api_flashhead(request: FlashHeadJobRequest, raw_request: Request):
     """Start an async FlashHead lip-sync job. Poll /flashhead_status."""
     try:
+        _claim_job_token(raw_request)  # paid + single-use before any work starts
         import time as _time, uuid as _uuid
         job_id = f"fh_{int(_time.time() * 1000)}_{_uuid.uuid4().hex[:6]}"
         _write_job_status(job_id, "queued", {"kind": "flashhead"})

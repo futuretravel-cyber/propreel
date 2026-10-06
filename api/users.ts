@@ -1,6 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { getUser, updateUser, getUserByEmail, deleteUser, getOrCreateUserByEmail } from '../lib/userService';
+import { getUser, updateUser, getUserByEmail, deleteUser, getOrCreateUserByEmail, deductCredits } from '../lib/userService';
 import { TABLES, queryItems, putItem, getItem, scanItems, docClient } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
 import {
@@ -14,6 +14,7 @@ import {
 import { sendEmail, confirmEmailTemplate, resetPasswordTemplate } from '../lib/email';
 import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/totp';
 import { workerTokenHeaders } from '../lib/workerToken';
+import { jobCredits } from '../lib/renderPricing';
 import { consumeRateLimit } from '../lib/rateLimit';
 
 const isAdminEmail = (email: string | undefined | null) =>
@@ -1260,6 +1261,74 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       return res.status(200).json({ token: `${msg}.${sig}`, expiresAt: exp * 1000 });
     }
 
+    // ── POST job_token — PAID, single-use token for exactly one worker job ─
+    // The worker refuses to start a render / image edit / avatar without one,
+    // and refuses a second use of the same token (S3 conditional put claim),
+    // so this mint is where the charge happens: the price comes from
+    // lib/renderPricing — the browser no longer decides what a job costs, and
+    // a modified client can neither render for free nor underpay. The generic
+    // v1 token above stays free (status polls and cancels need no charge).
+    if (action === 'job_token') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      const secret = process.env.RENDER_API_TOKEN;
+      if (!secret) return res.status(500).json({ error: 'RENDER_API_TOKEN is not configured' });
+
+      const ip =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.socket?.remoteAddress ||
+        'unknown';
+      const ipQuota = await consumeMintQuota('ip', ip, MINT_LIMIT_PER_IP);
+      if (!ipQuota.ok) return mintTooMany(res, ipQuota.retryAfterSec);
+
+      const payer = await getSessionUser(getTokenFromRequest(req));
+      if (!payer) return res.status(401).json({ error: 'Sign in to start a paid job' });
+      const uidQuota = await consumeMintQuota('uid', payer.id, MINT_LIMIT_PER_USER);
+      if (!uidQuota.ok) return mintTooMany(res, uidQuota.retryAfterSec);
+
+      const b = (req.body || {}) as any;
+      const scope = String(b.scope || '');
+      const credits = jobCredits(scope, { tier: b.tier, configIndex: b.config_index });
+      if (credits == null) {
+        return res.status(400).json({ error: 'Unknown job scope or tier' });
+      }
+
+      // Same reasons/metadata the client-side deduct used to write, so the
+      // ledger and the analytics that read it keep their shape.
+      const reason =
+        scope === 'render' ? 'Video generation'
+        : scope === 'flashhead' ? 'FlashHead lip-sync video'
+        : `Image edit — ${b.preset_id || b.metadata?.presetId || 'custom'}`;
+      const metadata = { ...(b.metadata || {}), scope, ...(b.tier ? { tier: b.tier } : {}) };
+
+      const result = await deductCredits(
+        payer.id,
+        credits,
+        reason,
+        metadata,
+        b.pool === 'agency' ? 'agency' : 'personal'
+      );
+      if (!result.success) {
+        const isLimit = (result.error || '').includes('Monthly credit limit reached');
+        return res.status(isLimit ? 402 : 400).json({
+          error: result.error || 'Failed to charge credits',
+          current_balance: result.newBalance,
+          ...(isLimit ? { limit_reached: true } : {}),
+        });
+      }
+
+      const { createHmac } = await import('crypto');
+      const exp = Math.floor(Date.now() / 1000) + 600; // 10 minutes
+      const msg = `v2.${exp}.${payer.id}.${scope}`;
+      const sig = createHmac('sha256', secret).update(msg).digest('base64url');
+      return res.status(200).json({
+        token: `${msg}.${sig}`,
+        expiresAt: exp * 1000,
+        scope,
+        credits,
+        new_balance: result.newBalance,
+      });
+    }
+
     // ── POST auth_register ───────────────────────────────────────────
     if (action === 'auth_register') {
       if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -1807,7 +1876,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Could not load the invoice' });
     }
   }
-  if (String(req.query.action || '').startsWith('auth_') || req.query.action === 'worker_token') {
+  if (String(req.query.action || '').startsWith('auth_') || req.query.action === 'worker_token' || req.query.action === 'job_token') {
     return authRoutes(req, res, String(req.query.action));
   }
   if (req.method === 'GET' && req.query.action === 'admin_stats') {

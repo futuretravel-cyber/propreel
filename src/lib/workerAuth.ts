@@ -51,3 +51,45 @@ export async function workerHeaders(): Promise<Record<string, string>> {
     return {};
   }
 }
+
+export type JobScope = 'render' | 'flashhead' | 'edit';
+
+export interface JobMintOptions {
+  tier?: string;
+  configIndex?: number;
+  presetId?: string;
+  metadata?: Record<string, unknown>;
+  pool?: 'personal' | 'agency';
+}
+
+/**
+ * Headers for ONE paid job start (POST ?action=job_token).
+ *
+ * This mint is the charge: the API prices the job from lib/renderPricing,
+ * deducts the credits server-side, and returns a single-use v2 token the
+ * worker refuses to start a job without — and refuses to accept twice. Never
+ * cached or shared across jobs (reuse = replay = 409).
+ *
+ * Throws on failure (not enough credits, rate limit, signed out) so every
+ * caller keeps its existing "job never started, nothing to refund" path.
+ */
+export async function jobHeaders(scope: JobScope, opts: JobMintOptions = {}): Promise<Record<string, string>> {
+  const res = await fetch(`${API_BASE}/api/users?action=job_token`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      scope,
+      tier: opts.tier,
+      config_index: opts.configIndex,
+      preset_id: opts.presetId,
+      metadata: opts.metadata,
+      pool: opts.pool,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.token) {
+    throw new Error(data?.error || `Could not start the job (${res.status})`);
+  }
+  return { [HEADER]: data.token as string };
+}

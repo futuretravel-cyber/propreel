@@ -31,11 +31,13 @@ import { workerHeaders } from './workerAuth';
 const POLL_INTERVAL_MS = 3000;
 const MAX_WAIT_MS = 8 * 60 * 1000; // 8 minutes — fal queues can be long; UI shows live status
 
-export async function falEditImage(params: FalEditParams): Promise<FalEditResult> {
-  // 1) Submit the async job
+export async function falEditImage(params: FalEditParams, jobToken?: Record<string, string>): Promise<FalEditResult> {
+  // 1) Submit the async job — with the PAID single-use token when the caller
+  //    minted one (?action=job_token). Polling below keeps using the free
+  //    generic token: status reads are not jobs and must not burn a payment.
   const submitRes = await fetch(`${MODAL_ENDPOINT}/edit_image`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+    headers: { 'Content-Type': 'application/json', ...(jobToken || (await workerHeaders())) },
     body: JSON.stringify({
       image_url: params.imageUrl,
       preset_id: params.presetId,

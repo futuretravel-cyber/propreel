@@ -3,9 +3,9 @@ import { useCredit } from '../context/AuthContext';
 import { track } from './analytics';
 import { PropReelAPI } from './api';
 
-const FLASHHEAD_COST = 8;
+import { FLASHHEAD_CREDITS as FLASHHEAD_COST } from '../../lib/renderPricing';
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
-import { workerHeaders } from './workerAuth';
+import { workerHeaders, jobHeaders } from './workerAuth';
 
 const POLL_INTERVAL_MS = 5000;
 const MAX_WAIT_MS = 10 * 60 * 1000; // fal FlashHead takes ~4–6 min for real scripts
@@ -21,7 +21,7 @@ type Stage = 'idle' | 'uploading' | 'deducting' | 'rendering' | 'done';
  *   5. Failed renders auto-refund the 8 credits
  */
 export function useFlashHead() {
-  const { deductCredits, addCredits, user } = useCredit() as any;
+  const { addCredits, user, refresh } = useCredit() as any;
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string>('');
@@ -100,14 +100,18 @@ export function useFlashHead() {
       }
     }
 
-    // 2) Deduct 8 credits atomically
+    // 2) Pay at mint: ?action=job_token charges the 8 credits server-side
+    //    (price lives in lib/renderPricing) and returns the single-use token
+    //    the worker demands before it starts an avatar job.
     setStage('deducting');
-    const ok = await deductCredits(FLASHHEAD_COST, 'FlashHead lip-sync video', {
-      kind: 'FLASHHEAD',
-      voice: opts.voice || 'Aria',
-    });
-    if (!ok) {
-      setError('Could not deduct credits — check your balance and try again');
+    let jobToken: Record<string, string>;
+    try {
+      jobToken = await jobHeaders('flashhead', {
+        metadata: { kind: 'FLASHHEAD', voice: opts.voice || 'Aria' },
+      });
+      void refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Could not charge credits — check your balance and try again');
       setStage('idle');
       return null;
     }
@@ -121,7 +125,7 @@ export function useFlashHead() {
     try {
       const submitRes = await fetch(`${MODAL_ENDPOINT}/flashhead`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+        headers: { 'Content-Type': 'application/json', ...jobToken },
         body: JSON.stringify({
           profile_image_url: publicUrl,
           voiceover_text: opts.voiceoverText,
@@ -193,7 +197,7 @@ export function useFlashHead() {
       setStage('idle');
       return null;
     }
-  }, [user, deductCredits, addCredits, postCancel]);
+  }, [user, addCredits, refresh, postCancel]);
 
   return {
     generate,

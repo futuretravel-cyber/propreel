@@ -44,7 +44,7 @@ import HomePage from './components/HomePage';
 import { PublicLayout } from './components/PublicLayout';
 import { track } from './lib/analytics';
 import { RouteSEO } from './lib/seo';
-import { workerHeaders } from './lib/workerAuth';
+import { workerHeaders, jobHeaders } from './lib/workerAuth';
 
 // Code-split the heavy dashboard sections (recharts, framer-motion, admin UI)
 // so the marketing site loads without them.
@@ -2313,7 +2313,7 @@ function SocialTab() {
 const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
 function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages = [], profileImage, onProfileImageChange }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void; initialImages?: string[]; profileImage: string | null; onProfileImageChange: (img: string | null) => void }) {
-  const { user, deductCredits, addCredits } = useCredit();
+  const { user, addCredits, refresh } = useCredit();
   const toast = useToast();
   const uploadWait = useUploadWait();
   const uploadQueue = useUploadQueue('video');
@@ -2491,22 +2491,27 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         } catch { /* non-fatal — render can still proceed */ }
       }
 
-      // 2) Deduct credits atomically server-side. Tier features are paid
-      // from the shared agency pool when one exists (AGENCY plan); extras
-      // come from personal credits.
+      // 2) Pay for the job at mint time: ?action=job_token charges the credits
+      //    server-side at the price in lib/renderPricing and returns a
+      //    single-use token the worker will not render without (and will not
+      //    accept twice). Same charge, same ledger reasons as the old
+      //    client-side deduct — but the browser no longer decides the price
+      //    or whether to pay at all.
       const usePool = (user?.agencyPoolCredits ?? 0) > 0;
-      await deductCredits(totalCredits, 'Video generation', {
+      const jobToken = await jobHeaders('render', {
         tier,
-        duration: selectedConfig.duration,
-        recordId,
-      }, usePool ? 'agency' : 'personal');
+        configIndex,
+        metadata: { tier, duration: selectedConfig.duration, recordId },
+        pool: usePool ? 'agency' : 'personal',
+      });
       charged = true;
+      void refresh(); // the balance display — the charge landed server-side
 
       // 3) Start the async render job
       if (cancelRequestedRef.current) { wasCancelled = true; throw new Error('Render cancelled'); }
       const response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+        headers: { 'Content-Type': 'application/json', ...jobToken },
         body: JSON.stringify({
           record_id: recordId,
           tier,

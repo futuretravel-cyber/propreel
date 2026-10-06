@@ -53,55 +53,11 @@ export const PHONE_COUNTRY_CODES = [
   { code: 'AR', dial: '+54', label: 'Argentina' },
 ];
 
-export const TIERS = [
-  { 
-    id: 'ESSENTIAL', 
-    label: 'Essential', 
-    description: 'Local FFmpeg zoom/pan render at 1080p',
-    processingType: 'local',
-    resolution: '1080p',
-    configurations: [
-      { duration: 30, images: 6, credits: 5 },
-      { duration: 60, images: 12, credits: 10 }
-    ]
-  },
-  { 
-    id: 'SOCIAL', 
-    label: 'Social', 
-    description: 'AI Motion at 512p',
-    processingType: 'ai',
-    resolution: '512p',
-    configurations: [
-      { duration: 30, images: 5, credits: 30 },
-      { duration: 50, images: 10, credits: 50 },
-      { duration: 90, images: 15, credits: 80 }
-    ]
-  },
-  { 
-    id: 'CINEMATIC', 
-    label: 'Cinematic', 
-    description: 'AI Motion at 720p',
-    processingType: 'ai',
-    resolution: '720p',
-    configurations: [
-      { duration: 30, images: 5, credits: 40 },
-      { duration: 60, images: 10, credits: 70 },
-      { duration: 90, images: 15, credits: 90 }
-    ]
-  },
-  { 
-    id: 'PREMIUM', 
-    label: 'Premium', 
-    description: 'AI Motion 720p → 1080p upscaled',
-    processingType: 'ai_upscaled',
-    resolution: '1080p',
-    configurations: [
-      { duration: 30, images: 5, credits: 60 },
-      { duration: 60, images: 10, credits: 100 },
-      { duration: 90, images: 15, credits: 150 }
-    ]
-  },
-];
+// TIERS lives in lib/renderPricing.ts — one price table shared with the
+// API, which prices render jobs itself when minting a paid job token
+// (worker-side credit enforcement). Re-exported here so every UI import
+// keeps working unchanged.
+export { TIERS } from '../../lib/renderPricing';
 
 export const ORIENTATIONS = [
   { id: 'LANDSCAPE', label: 'Landscape', ratio: '16:9', icon: '▭' },
