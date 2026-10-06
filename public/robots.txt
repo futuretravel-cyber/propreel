@@ -26,6 +26,8 @@ Disallow: /payment
 Disallow: /api
 Disallow: /confirm-email
 Disallow: /reset-password
+Disallow: /2fa-setup
+Disallow: /agency/signup
 
 # NOTE: do not disallow /*.js$ — Googlebot must fetch the JS bundle to render
 # this single-page app, otherwise every route indexes as an empty page.
