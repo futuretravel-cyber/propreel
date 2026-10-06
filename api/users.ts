@@ -1938,11 +1938,44 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
             signal: AbortSignal.timeout(20_000),
           });
           const text = await r.text();
-          return { status: r.status, text, ms: Date.now() - started };
+          return { status: r.status, text, ms: Date.now() - started, headers: r.headers };
         } catch (e: any) {
-          return { status: 0, text: `probe failed: ${e?.message || e}`, ms: Date.now() - started };
+          return { status: 0, text: `probe failed: ${e?.message || e}`, ms: Date.now() - started, headers: null };
         }
       }
+
+      // ── header invariants ──────────────────────────────────────────
+      // Two different contracts, both asserted below:
+      //   app surfaces (API + static): X-Frame-Options DENY + CSP
+      //   frame-ancestors 'none' + HSTS + nosniff. The app CSP is NOT
+      //   sandboxed — the SPA needs its scripts — so framing is stopped by
+      //   frame-ancestors instead.
+      //   media edge: the sandbox CSP lives HERE (hostile-by-default bytes)
+      //   plus frame-ancestors, HSTS, nosniff and no-referrer.
+      type HeaderCheck = { surface: string; ok?: boolean; problems?: string[]; skipped?: string };
+
+      const appHeaderProblems = (h: Headers): string[] => {
+        const problems: string[] = [];
+        const xfo = h.get('x-frame-options');
+        const csp = h.get('content-security-policy') || '';
+        const hsts = h.get('strict-transport-security') || '';
+        const nosniff = h.get('x-content-type-options');
+        if (xfo !== 'DENY') problems.push(`X-Frame-Options=${xfo ?? '(missing)'}`);
+        if (!csp.includes("frame-ancestors 'none'")) problems.push('CSP missing frame-ancestors \'none\'');
+        if (!/max-age=\d+/.test(hsts)) problems.push(`HSTS=${hsts || '(missing)'}`);
+        if (nosniff !== 'nosniff') problems.push(`X-Content-Type-Options=${nosniff ?? '(missing)'}`);
+        return problems;
+      };
+
+      const edgeHeaderProblems = (h: Headers): string[] => {
+        const problems = appHeaderProblems(h);
+        const csp = h.get('content-security-policy') || '';
+        if (!/\bsandbox\b/.test(csp)) problems.push('edge CSP missing sandbox');
+        if ((h.get('referrer-policy') || '') !== 'no-referrer') {
+          problems.push(`Referrer-Policy=${h.get('referrer-policy') ?? '(missing)'}`);
+        }
+        return problems;
+      };
 
       const pairs = [
         { name: 'login', actionName: 'auth_login', body: { password: WRONG_PASSWORD } },
@@ -1955,6 +1988,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       ];
 
       const checks: any[] = [];
+      const headerChecks: HeaderCheck[] = [];
       for (const p of pairs) {
         const knownRes = await probe(p.actionName, p.body, KNOWN_EMAIL);
         const unknownRes = await probe(p.actionName, p.body, UNKNOWN_EMAIL);
@@ -1979,6 +2013,18 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
             ? { no409: knownRes.status !== 409 && unknownRes.status !== 409 }
             : {}),
         });
+        // Every probe response carries the platform headers (vercel.json
+        // applies them even to 429s) — assert the invariants on each one.
+        for (const which of ['known', 'unknown'] as const) {
+          const r = which === 'known' ? knownRes : unknownRes;
+          const surface = `api:${p.name}/${which}`;
+          if (!r.headers) {
+            headerChecks.push({ surface, skipped: 'probe unreachable' });
+            continue;
+          }
+          const problems = appHeaderProblems(r.headers);
+          headerChecks.push({ surface, ...(problems.length ? { ok: false, problems } : { ok: true }) });
+        }
       }
 
       // The unknown-signup probe provisions a throwaway account — remove it
@@ -2005,12 +2051,49 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         console.error('auth_selftest cleanup failed:', e);
       }
 
+      // Canonical app origin — the page a clickjacking frame would target.
+      try {
+        const page = await fetch('https://www.propreel.co.za/', { signal: AbortSignal.timeout(15_000) });
+        await page.text();
+        const problems = appHeaderProblems(page.headers);
+        headerChecks.push({ surface: 'static:www', ...(problems.length ? { ok: false, problems } : { ok: true }) });
+      } catch (e: any) {
+        headerChecks.push({ surface: 'static:www', skipped: `unreachable: ${e?.message || e}` });
+      }
+
+      // Media edge: sandbox CSP must hold here, and an UNSIGNED GET must
+      // stay a 4xx — a 200 would mean the buckets are public again (M-5).
+      const edgeHosts: Array<[string, string | undefined]> = [
+        ['raw', process.env.EDGE_RAW_HOST],
+        ['cdn', process.env.EDGE_CDN_HOST],
+      ];
+      for (const [name, host] of edgeHosts) {
+        const h = String(host || '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+        if (!h) {
+          headerChecks.push({ surface: `edge:${name}`, skipped: 'EDGE host unset' });
+          continue;
+        }
+        try {
+          const r = await fetch(`https://${h}/__selftest__`, { signal: AbortSignal.timeout(15_000) });
+          await r.text();
+          const problems = edgeHeaderProblems(r.headers);
+          if (r.status < 400) problems.push(`unsigned edge GET returned ${r.status} — bucket may be public`);
+          headerChecks.push({ surface: `edge:${name}`, ...(problems.length ? { ok: false, problems } : { ok: true }) });
+        } catch (e: any) {
+          headerChecks.push({ surface: `edge:${name}`, skipped: `unreachable: ${e?.message || e}` });
+        }
+      }
+
       const evaluated = checks.filter(c => !c.skipped && !c.failed);
-      const pass = evaluated.length > 0 && evaluated.every(c => c.identical && c.no409 !== false);
+      const pairsPass = evaluated.length > 0 && evaluated.every(c => c.identical && c.no409 !== false);
+      const headerEvaluated = headerChecks.filter(c => !c.skipped);
+      const headersPass = headerEvaluated.length > 0 && headerEvaluated.every(c => c.ok === true);
+      const pass = pairsPass && headersPass;
       return res.status(200).json({
         pass,
         ...(evaluated.length === 0 ? { note: 'inconclusive — every pair was rate limited or unreachable' } : {}),
         checks,
+        headers: { pass: headersPass, checks: headerChecks },
         selftestAccount: KNOWN_EMAIL,
         unknownSignupRowRemoved: unknownRemoved,
         ranAt: new Date().toISOString(),
