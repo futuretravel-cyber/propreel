@@ -354,6 +354,12 @@ async function deleteAccount(req: VercelRequest, res: VercelResponse) {
   const { user_id } = req.body || {};
   if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
 
+  // Session-or-admin (IDOR fix): this used to run with NO authentication —
+  // anyone could POST {user_id} and wipe an arbitrary account (row,
+  // projects, sessions). Self or platform admin only.
+  const gate = await requireOwner(req, user_id);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+
   const user = await getUser(user_id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -641,6 +647,10 @@ async function updateUserFields(req: VercelRequest, res: VercelResponse) {
   if (!user_id || typeof updates !== 'object' || updates === null) {
     return res.status(400).json({ error: 'Missing user_id or updates' });
   }
+  // Session-or-admin (IDOR fix): the route used to trust the body's user_id,
+  // so an unauthenticated caller could rewrite any account's profile fields.
+  const gate = await requireOwner(req, user_id);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
   const user = await getUser(user_id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 

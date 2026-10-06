@@ -1415,8 +1415,10 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
     for the full multi-minute render. Clients poll /render_status instead.
     Backward compatible: ?wait=true blocks like the old behaviour.
     """
+    # Claim OUTSIDE the try: the blanket handler below would otherwise
+    # re-wrap the 401/409/503 from _claim_job_token as a 500.
+    _claim_job_token(raw_request)  # paid + single-use before any work starts
     try:
-        _claim_job_token(raw_request)  # paid + single-use before any work starts
         if raw_request.query_params.get("wait") in ("true", "1"):
             result = await render_video.remote.aio(
                 record_id=request.record_id,
@@ -1495,8 +1497,8 @@ async def api_render_status(record_id: str):
 @web_app.post("/generate_flashhead_video")
 async def api_generate_flashhead_video(request: FlashHeadRequest, raw_request: Request):
     """API endpoint to generate FlashHead lip-sync video"""
+    _claim_job_token(raw_request)  # paid + single-use before any work starts
     try:
-        _claim_job_token(raw_request)  # paid + single-use before any work starts
         # Call the Modal function asynchronously
         result = await generate_flashhead_video.remote.aio(
             profile_image_url=request.profile_image_url,
@@ -1517,8 +1519,8 @@ async def api_edit_image(request: EditImageRequest, raw_request: Request):
     edit_id; clients poll /edit_status. Backward compatible: ?wait=true
     blocks until the render completes.
     """
+    _claim_job_token(raw_request)  # paid + single-use before any work starts
     try:
-        _claim_job_token(raw_request)  # paid + single-use before any work starts
         if raw_request.query_params.get("wait") in ("true", "1"):
             result = await edit_image.remote.aio(
                 image_url=request.image_url,
@@ -1732,8 +1734,8 @@ class GenerateTextRequest(BaseModel):
 @web_app.post("/flashhead")
 async def api_flashhead(request: FlashHeadJobRequest, raw_request: Request):
     """Start an async FlashHead lip-sync job. Poll /flashhead_status."""
+    _claim_job_token(raw_request)  # paid + single-use before any work starts
     try:
-        _claim_job_token(raw_request)  # paid + single-use before any work starts
         import time as _time, uuid as _uuid
         job_id = f"fh_{int(_time.time() * 1000)}_{_uuid.uuid4().hex[:6]}"
         _write_job_status(job_id, "queued", {"kind": "flashhead"})
