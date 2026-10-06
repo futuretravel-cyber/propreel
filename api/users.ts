@@ -1207,6 +1207,18 @@ function mintTooMany(res: VercelResponse, retryAfterSec: number) {
  *   POST auth_forgot    {email} → password-reset email
  *   POST auth_reset     {token, password} → sets a new password, kills sessions
  */
+
+/** Client IP for rate-limit keys (first x-forwarded-for hop, else socket). */
+function clientIp(req: VercelRequest): string {
+  return String((req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown').toLowerCase();
+}
+
+/** Shared 429: Retry-After header + friendly message (no enumeration). */
+function tooMany(res: VercelResponse, rl: { retryAfterSec: number }, msg = 'Too many attempts — try again in a few minutes') {
+  res.setHeader('Retry-After', String(rl.retryAfterSec));
+  return res.status(429).json({ error: msg });
+}
+
 async function authRoutes(req: VercelRequest, res: VercelResponse, action: string) {
   try {
     const body = req.body || {};
@@ -1353,6 +1365,10 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
 
     // ── POST auth_resend {email, redirect?} ───────────────────────────
     if (action === 'auth_resend') {
+      // Per-IP ceiling on confirmation re-sends (per-user 30s cooldown below
+      // handles the single-mailbox case).
+      const ipRl = await consumeRateLimit('resend_ip', clientIp(req), 10, 3600);
+      if (!ipRl.allowed) return tooMany(res, ipRl);
       const email = String(body.email || '').toLowerCase();
       if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
       const user = await getUserByEmail(email);
@@ -1375,6 +1391,18 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
       const email = String(body.email || '').toLowerCase();
       const password = String(body.password || '');
+
+      // Credential-stuffing guard: a per-IP ceiling (office NATs stay well
+      // under it) plus a tighter per-account ceiling so one mailbox can't be
+      // ground down from many hosts. Fixed 15-min windows, counted before
+      // any user lookup so probes are bounded too.
+      const ipRl = await consumeRateLimit('login_ip', clientIp(req), 30, 900);
+      if (!ipRl.allowed) return tooMany(res, ipRl);
+      if (email) {
+        const acctRl = await consumeRateLimit('login_email', email, 10, 900);
+        if (!acctRl.allowed) return tooMany(res, acctRl, 'Too many sign-in attempts for this account — try again in a few minutes');
+      }
+
       const user = await getUserByEmail(email);
       if (!user || !user.passwordHash) {
         // Equalize timing so probing can't distinguish unknown emails
@@ -1577,7 +1605,15 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
 
     // ── POST auth_forgot {email} ──────────────────────────────────────
     if (action === 'auth_forgot') {
+      // Email-bombing / enumeration guard: few reset mails per IP per hour,
+      // a couple per address. Responses stay generic either way.
+      const ipRl = await consumeRateLimit('forgot_ip', clientIp(req), 5, 3600);
+      if (!ipRl.allowed) return tooMany(res, ipRl);
       const email = String(body.email || '').toLowerCase();
+      if (EMAIL_RE.test(email)) {
+        const emRl = await consumeRateLimit('forgot_email', email, 3, 3600);
+        if (!emRl.allowed) return tooMany(res, emRl);
+      }
       const user = EMAIL_RE.test(email) ? await getUserByEmail(email) : null;
       if (user) {
         const token = await issuePasswordResetToken(user);
@@ -1649,7 +1685,16 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
     // ── POST auth_2fa_verify {email, token, code} — sign-in challenge ──
     if (action === 'auth_2fa_verify') {
       if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      // TOTP brute-force guard: the pending challenge lives 5 minutes, so
+      // these windows let a human retry a typo a few times while capping a
+      // code-guessing run at a handful of tries per account.
+      const ipRl = await consumeRateLimit('2fa_ip', clientIp(req), 30, 900);
+      if (!ipRl.allowed) return tooMany(res, ipRl);
       const email = String(body.email || '').toLowerCase();
+      if (email) {
+        const acctRl = await consumeRateLimit('2fa_email', email, 15, 900);
+        if (!acctRl.allowed) return tooMany(res, acctRl, 'Too many verification attempts — try again in a few minutes');
+      }
       const token = String(body.token || '');
       const pendingUser = email ? await getUserByEmail(email) : null;
       const expires = pendingUser ? Date.parse(pendingUser.twoFactorPendingExpires || '') : NaN;
