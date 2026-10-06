@@ -157,7 +157,18 @@ MEDIA_LINK_SECONDS = 7 * 24 * 3600
 
 def _s3():
     import boto3
-    return boto3.client("s3", region_name=S3_REGION)
+    from botocore.config import Config
+    # addressing_style='virtual' is load-bearing: botocore's default
+    # ('auto') mints presigned URLs against the legacy global endpoint
+    # (bucket.s3.amazonaws.com) while signing the scope for af-south-1, and
+    # S3 answers that with 400 IllegalLocationConstraintException. Virtual-
+    # hosted + regional endpoint is what the JS SDK produces on the Vercel
+    # side — and the only form that actually fetches.
+    return boto3.client(
+        "s3",
+        region_name=S3_REGION,
+        config=Config(s3={"addressing_style": "virtual"}),
+    )
 
 
 def _our_s3_object(url):
@@ -1718,3 +1729,68 @@ def main():
     print("  POST /generate_text  {kind, fields}")
     print("  GET  /get_image_presets")
     print("\nUse 'modal deploy' to deploy this app")
+
+
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials")], timeout=120)
+def media_selftest(object_key: str = "renders/pr_1791056980364_fgxj/video.mp4") -> dict:
+    """Operator smoke test for the private-bucket media path (audit M-5).
+
+    Exercises, from inside the worker:
+      1. fetch_media() on a RAW object URL — the S3-API read path that keeps
+         working once the buckets are private
+      2. presign_media() + a real HTTP GET of the minted link
+      3. a no-ACL PutObject (what every render now does) followed by a raw GET
+         (403 expected once Block Public Access is on) and a presigned GET
+      4. cleanup of the probe object
+
+    Run before AND after the bucket flip:
+        modal run app_propreel_minimax.py::media_selftest
+    """
+    import time as _t
+    results: dict = {"bucket": S3_BUCKET, "object_key": object_key}
+    s3 = _s3()
+
+    # 1) raw URL → S3 API read
+    raw_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{object_key}"
+    try:
+        data = fetch_media(raw_url, timeout=60)
+        results["fetch_media"] = f"ok ({len(data)} bytes)"
+    except Exception as e:
+        results["fetch_media"] = f"FAIL: {e}"
+
+    # 2) presigned GET over HTTP
+    signed = presign_media(raw_url)
+    results["presigned_url_minted"] = signed != raw_url and "X-Amz-Signature" in signed
+    try:
+        r = requests.get(signed, timeout=60, headers={"Range": "bytes=0-1"})
+        results["presigned_http_status"] = r.status_code
+    except Exception as e:
+        results["presigned_http_status"] = f"FAIL: {e}"
+
+    # 3) upload without ACL (the shape every render uses), then probe access
+    probe_key = f"selftest/media_{int(_t.time() * 1000)}.txt"
+    probe_raw = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{probe_key}"
+    try:
+        s3.put_object(Bucket=S3_BUCKET, Key=probe_key, Body=b"propreel-media-selftest", ContentType="text/plain")
+        results["upload_no_acl"] = "ok"
+        try:
+            r = requests.get(probe_raw, timeout=30)
+            results["raw_get_status"] = r.status_code  # 403 = buckets really are private
+        except Exception as e:
+            results["raw_get_status"] = f"FAIL: {e}"
+        r2 = requests.get(presign_media(probe_raw), timeout=30)
+        results["presigned_probe_status"] = r2.status_code
+    except Exception as e:
+        results["upload_no_acl"] = f"FAIL: {e}"
+        results.setdefault("raw_get_status", "skipped")
+        results.setdefault("presigned_probe_status", "skipped")
+    finally:
+        try:
+            s3.delete_object(Bucket=S3_BUCKET, Key=probe_key)
+            results["cleanup"] = "ok"
+        except Exception as e:
+            results["cleanup"] = f"FAIL: {e}"
+
+    # Print as well as return — `modal run` doesn't surface return values.
+    print("SELFTEST " + json.dumps(results))
+    return results
