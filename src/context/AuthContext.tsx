@@ -381,8 +381,9 @@ export function CreditProvider({ children }: { children: ReactNode }) {
       return { chargedZar: data.charged_zar as number | undefined };
     }
 
-    // No active subscription → normal subscription creation flow
-    const response = await BackendAPI.createSubscription(user.id, planId, cycle);
+    // No active subscription → pay-before-activate hosted checkout; the
+    // callback's server-side verify activates and refreshes the plan.
+    const response = await BackendAPI.checkoutSubscription(user.id, planId, cycle);
     if (response.authorization_url) {
       return { authorizationUrl: response.authorization_url };
     }

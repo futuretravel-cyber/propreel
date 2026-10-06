@@ -34,7 +34,9 @@ export default function PaymentPage() {
   const verifiedRef = useRef(false);
 
   const plan = PLANS.find(p => p.id === planId);
-  const amount = isTopup ? topupAmount : priceParam;
+  // Annual plans pass the per-month equivalent in ?price= — checkout
+  // charges the full year (annualZar × 12, matching Paystack's plan).
+  const amount = isTopup ? topupAmount : (cycle === 'ANNUAL' ? priceParam * 12 : priceParam);
   const signedIn = !loading && !!user;
   const loginPath = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
 
@@ -99,11 +101,13 @@ export default function PaymentPage() {
         return; // page navigates away
       }
 
-      const response = await BackendAPI.createSubscription(user.id, planId, cycle as 'MONTHLY' | 'ANNUAL');
-      if (!response.success) throw new Error(response.message || 'Subscription could not be created');
-      await refresh();
-      setSuccess(true);
-      toast.success(`${plan?.name || planId} subscription activated — ${response.credits_allocated} credits loaded.`, 'Payment Complete');
+      // Pay-before-activate: hosted checkout for the plan's first period;
+      // the callback's server-side verify activates the subscription and
+      // refresh() reloads the plan + credits.
+      const response = await BackendAPI.checkoutSubscription(user.id, planId, cycle as 'MONTHLY' | 'ANNUAL');
+      if (!response.success) throw new Error(response.message || 'Could not start checkout');
+      window.location.href = response.authorization_url;
+      return; // page navigates away
     } catch (err: any) {
       toast.error(err.message || 'Payment failed');
       setProcessing(false);

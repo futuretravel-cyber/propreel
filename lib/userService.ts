@@ -640,8 +640,39 @@ export async function cancelSubscription(userId: string, immediate: boolean = fa
   });
 }
 
-// Process monthly credit allocation (called by cron)
+// Process monthly credit allocation (called by cron + webhooks).
+// Exactly-once per calendar month: three callers race for the same
+// allowance — the monthly cron, the subscription.renewal webhook, and
+// recurring charge.success invoices — so claim renew_<user>_<YYYY-MM>
+// atomically first; losers return null without allocating, and the claim
+// is released if the allocation itself fails so a retry can proceed.
 export async function allocateMonthlyCredits(userId: string): Promise<{ allocated: number; newBalance: number } | null> {
+  const eligibility = await getUser(userId);
+  if (!eligibility?.subscription || eligibility.subscription.status !== 'ACTIVE') {
+    return null;
+  }
+
+  const periodKey = `renew_${userId}_${new Date().toISOString().slice(0, 7)}`;
+  const claimed = await putItemIfNotExists(TABLES.SETTINGS, {
+    id: periodKey,
+    type: 'renewal_allocation',
+    userId,
+    createdAt: new Date().toISOString(),
+  });
+  if (!claimed) return null;
+
+  try {
+    return await runMonthlyAllocation(userId);
+  } catch (err) {
+    try {
+      const { deleteItem } = await import('./db-helpers');
+      await deleteItem(TABLES.SETTINGS, { id: periodKey });
+    } catch { /* best effort */ }
+    throw err;
+  }
+}
+
+async function runMonthlyAllocation(userId: string): Promise<{ allocated: number; newBalance: number } | null> {
   const user = await getUser(userId);
   if (!user || !user.subscription || user.subscription.status !== 'ACTIVE') {
     return null;
@@ -761,7 +792,9 @@ export async function getPlanDetails(planId: string, cycle: 'MONTHLY' | 'ANNUAL'
   if (!plan) return null;
   const envCode = process.env[`PAYSTACK_PLAN_${planId}_${cycle}`];
   return {
-    price: cycle === 'MONTHLY' ? plan.monthlyZar : plan.annualZar,
+    // annualZar is the per-month equivalent (see upgrade proration) —
+    // Paystack's annual plan bills it × 12 (test mode: R110 → 132000 kobo).
+    price: cycle === 'MONTHLY' ? plan.monthlyZar : plan.annualZar * 12,
     credits: plan.monthlyCredits,
     planCode: envCode || `PLN_${planId.toLowerCase()}_${cycle.toLowerCase()}`,
   };

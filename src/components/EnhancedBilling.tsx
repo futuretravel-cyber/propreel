@@ -221,7 +221,7 @@ export default function EnhancedBilling() {
     setUpgrading(true);
     try {
       track('trial_upgrade_clicked', { plan: trialPlanId });
-      const res = await BackendAPI.createSubscription(user.id, trialPlanId, 'MONTHLY');
+      const res = await BackendAPI.checkoutSubscription(user.id, trialPlanId, 'MONTHLY');
       if (res.authorization_url) { window.location.href = res.authorization_url; return; }
       if (!res.success) throw new Error(res.message || 'Subscription could not be created');
       track('trial_converted', { plan: trialPlanId });

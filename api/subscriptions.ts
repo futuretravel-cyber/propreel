@@ -1,7 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import {
   getUser,
-  createSubscription as createDbSubscription,
   cancelSubscription as cancelDbSubscription,
   hasActiveSubscription,
   getPlanDetails,
@@ -11,7 +10,7 @@ import {
   applyPendingUpgrade,
   markUpgradePaid,
 } from '../lib/userService';
-import { createSubscription as createPaystackSub, cancelSubscription as cancelPaystackSub, chargeAuthorization } from '../lib/paystack';
+import { cancelSubscription as cancelPaystackSub, chargeAuthorization } from '../lib/paystack';
 import { requireOwner } from '../lib/auth';
 
 /**
@@ -47,8 +46,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    if (action === 'create') {
+    // ── POST ?action=checkout — pay-before-activate hosted checkout ─────
+    // Plan activation requires a verified subscription_start payment: the
+    // client redirects to Paystack and the callback's /api/paystack/verify
+    // activates. The old direct-create path below minted plan credits with
+    // no payment at all (Paystack errors were swallowed), so it now demands
+    // a verified reference as a fallback only.
+    if (action === 'checkout') {
       const { user_id, plan_id, cycle } = req.body;
+
+      if (!user_id || !plan_id || !cycle) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+      if (!['MONTHLY', 'ANNUAL'].includes(cycle)) {
+        return res.status(400).json({ error: 'Invalid cycle' });
+      }
+      const gate = await requireOwner(req, user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+
+      const user = await getUser(user_id);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (await hasActiveSubscription(user_id)) {
+        return res.status(400).json({
+          error: 'User already has an active subscription',
+          subscription: user.subscription,
+        });
+      }
+
+      const planDetails = await getPlanDetails(plan_id, cycle);
+      if (!planDetails) {
+        return res.status(400).json({ error: 'Invalid plan' });
+      }
+
+      const { initializePayment } = await import('../lib/paystack');
+      const init = await initializePayment(user.email, planDetails.price, {
+        user_id,
+        type: 'subscription_start',
+        plan_id,
+        cycle,
+      });
+
+      return res.status(200).json({
+        success: true,
+        authorization_url: init.data.authorization_url,
+        access_code: init.data.access_code,
+        reference: init.data.reference,
+        amount_zar: planDetails.price,
+      });
+    }
+
+    if (action === 'create') {
+      const { user_id, plan_id, cycle, reference } = req.body;
 
       if (!user_id || !plan_id || !cycle) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -74,41 +124,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const planDetails = await getPlanDetails(plan_id, cycle);
-      if (!planDetails) {
+      // Pay-before-activate: only a VERIFIED subscription_start payment for
+      // THIS user/plan/cycle can create a plan. The verify callback usually
+      // activates already — this route is the reference-checked fallback.
+      if (!reference || typeof reference !== 'string') {
+        return res.status(402).json({ error: 'Payment required — start checkout to activate this plan' });
+      }
+      const { verifyPayment } = await import('../lib/paystack');
+      const paid = await verifyPayment(reference).catch(() => null);
+      const meta: any = paid?.data?.metadata || {};
+      if (
+        !paid?.data ||
+        paid.data.status !== 'success' ||
+        meta.type !== 'subscription_start' ||
+        meta.plan_id !== plan_id ||
+        meta.cycle !== cycle ||
+        meta.user_id !== user_id
+      ) {
+        return res.status(402).json({ error: 'Payment not verified for this plan' });
+      }
+
+      const { activateSubscriptionFromPayment } = await import('../lib/planActivation');
+      const outcome = await activateSubscriptionFromPayment({
+        userId: user_id,
+        reference,
+        planId: plan_id,
+        cycle,
+        paidZar: Math.round((paid.data.amount || 0) / 100),
+      });
+      if (outcome.status === 'invalid_plan') {
         return res.status(400).json({ error: 'Invalid plan' });
       }
-
-      let paystackSubCode: string | undefined;
-      let paystackCustomerCode: string | undefined;
-
-      try {
-        const paystackResult = await createPaystackSub(user.email, planDetails.planCode);
-        if (paystackResult.data) {
-          paystackSubCode = paystackResult.data.subscription_code;
-          paystackCustomerCode = paystackResult.data.customer_code;
-        }
-      } catch (paystackError) {
-        console.error('Paystack subscription error:', paystackError);
-        // Continue without Paystack subscription code (for testing)
+      if (outcome.status === 'amount_mismatch') {
+        console.error(`Subscriptions create: ${reference} underpaid (R${outcome.paidZar} < R${outcome.expectedZar}) — manual review`);
+        return res.status(402).json({ error: 'Payment amount does not match this plan' });
       }
 
-      const result = await createDbSubscription(
-        user_id,
-        plan_id,
-        cycle,
-        paystackSubCode,
-        paystackCustomerCode
-      );
-
-      // Give 5, get 5: first purchase by a referred user pays their referrer +5.
-      const { grantReferralPayout } = await import('../lib/referral');
-      await grantReferralPayout(user_id);
-
+      const fresh = await getUser(user_id);
       return res.status(200).json({
         success: true,
-        subscription: result.subscription,
-        credits_allocated: result.creditsAllocated,
+        subscription: fresh?.subscription,
+        credits_allocated: outcome.status === 'activated' ? outcome.credits : 0,
+        already_processed: outcome.status === 'already',
         message: 'Subscription created successfully',
       });
     }

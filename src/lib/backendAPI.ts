@@ -176,8 +176,14 @@ export const BackendAPI = {
   /**
    * Create subscription
    */
-  async createSubscription(userId: string, planId: string, cycle: 'MONTHLY' | 'ANNUAL') {
-    const response = await fetch(`${API_BASE}/api/subscriptions?action=create`, {
+  /**
+   * Start pay-before-activate plan checkout. Returns a Paystack hosted
+   * authorization_url to redirect to; the callback's server-side verify
+   * activates the subscription (action=create is a reference-gated
+   * fallback for stale bundles, never a free path).
+   */
+  async checkoutSubscription(userId: string, planId: string, cycle: 'MONTHLY' | 'ANNUAL') {
+    const response = await fetch(`${API_BASE}/api/subscriptions?action=checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, plan_id: planId, cycle }),
@@ -185,7 +191,7 @@ export const BackendAPI = {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to create subscription');
+      throw new Error(error.error || 'Failed to start checkout');
     }
 
     return response.json();

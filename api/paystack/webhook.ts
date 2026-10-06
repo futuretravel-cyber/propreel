@@ -135,6 +135,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ success: true, plan_upgrade_applied: true, reference });
       }
 
+      // ── Plan activation from hosted checkout (subscription_start) ───────
+      // Pay-before-activate: verify + the reference-gated action=create
+      // share the pay_<reference> marker inside the helper, so whichever
+      // runs first activates and the rest no-op.
+      if (data.metadata?.type === 'subscription_start') {
+        const { activateSubscriptionFromPayment } = await import('../../lib/planActivation');
+        const outcome = await activateSubscriptionFromPayment({
+          userId,
+          reference,
+          planId: String(data.metadata.plan_id || ''),
+          cycle: (data.metadata.cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY') as 'MONTHLY' | 'ANNUAL',
+          paidZar: amount,
+        });
+        if (outcome.status === 'invalid_plan') {
+          console.error(`Webhook: subscription_start ${reference} has unknown plan ${data.metadata.plan_id}`);
+          return res.status(200).json({ received: true });
+        }
+        if (outcome.status === 'amount_mismatch') {
+          console.error(`Webhook: subscription_start ${reference} underpaid (R${outcome.paidZar} < R${outcome.expectedZar}) — manual review`);
+          return res.status(200).json({ received: true });
+        }
+        const authCode = data.authorization?.authorization_code;
+        if (authCode) {
+          try {
+            await updateUser(userId, { paystackAuthorizationCode: authCode, paymentFailure: undefined } as any);
+          } catch (authErr) {
+            console.error('Auth code capture failed (non-fatal):', authErr);
+          }
+        }
+        return res.status(200).json({
+          success: true,
+          plan_activated: outcome.status === 'activated',
+          already_processed: outcome.status === 'already',
+          reference,
+        });
+      }
+
+      // ── Recurring subscription invoice: plan allowance, never cash ──────
+      // Paystack charges the saved card on the plan's billing day and this
+      // event re-fires every cycle. allocateMonthlyCredits claims
+      // renew_<user>_<YYYY-MM> atomically, so this, the paired
+      // subscription.renewal event, and the monthly cron can't triple-credit.
+      if (data.plan && !data.metadata?.type) {
+        const recurringUser = await getUserByEmail(data.customer_email || data.customer?.email || '');
+        if (recurringUser) {
+          try {
+            await allocateMonthlyCredits(recurringUser.id);
+          } catch (allocErr) {
+            console.error('Recurring invoice allocation failed (claim released for retry):', allocErr);
+          }
+        } else {
+          console.error(`Webhook: recurring charge ${reference} has no user for ${data.customer_email}`);
+        }
+        return res.status(200).json({ success: true, recurring_invoice: true, reference });
+      }
+
       // Idempotency: the client may also call /api/paystack/verify for this
       // reference — credit exactly once per Paystack reference.
       const { getItem, putItem, TABLES: T } = await import('../../lib/db');

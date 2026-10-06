@@ -97,6 +97,68 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // ── Plan activation from hosted checkout (subscription_start) ───────
+    // Pay-before-activate: the first plan payment goes through Paystack
+    // hosted checkout; activation is gated on this verified reference and
+    // shared with the webhook + reference-gated action=create via the
+    // pay_<reference> marker inside the helper.
+    if (result.data.metadata?.type === 'subscription_start') {
+      const meta = result.data.metadata;
+      const { activateSubscriptionFromPayment } = await import('../../lib/planActivation');
+      const outcome = await activateSubscriptionFromPayment({
+        userId,
+        reference,
+        planId: String(meta.plan_id || ''),
+        cycle: (meta.cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY') as 'MONTHLY' | 'ANNUAL',
+        paidZar: amount,
+      });
+      if (outcome.status === 'invalid_plan') {
+        return res.status(400).json({ success: false, error: 'Unknown plan on this payment', reference });
+      }
+      if (outcome.status === 'amount_mismatch') {
+        console.error(`Verify: subscription_start ${reference} underpaid (R${outcome.paidZar} < R${outcome.expectedZar}) — manual review`);
+        return res.status(400).json({ success: false, error: 'Payment amount does not match this plan', reference });
+      }
+      // This payment saved the card authorization that funds recurrence.
+      const authCode = result.data.authorization?.authorization_code;
+      if (authCode) {
+        try {
+          const { updateUser } = await import('../../lib/userService');
+          await updateUser(userId, {
+            paystackAuthorizationCode: authCode,
+            paymentFailure: undefined,
+          } as any);
+        } catch (authErr) {
+          console.error('Auth code capture failed (non-fatal):', authErr);
+        }
+      }
+      const activatedUser = await getUser(userId);
+      return res.status(200).json({
+        success: true,
+        reference,
+        plan_activated: outcome.status === 'activated',
+        already_processed: outcome.status === 'already',
+        credits_added: outcome.status === 'activated' ? outcome.credits : 0,
+        new_balance: activatedUser?.credits || 0,
+      });
+    }
+
+    // Recurring subscription invoice verified directly: never credit it as
+    // cash — allocateMonthlyCredits' period claim grants the plan allowance
+    // exactly once per month across cron + renewal webhook + this path.
+    if (result.data.plan && !result.data.metadata?.type) {
+      const { allocateMonthlyCredits } = await import('../../lib/userService');
+      const alloc = await allocateMonthlyCredits(userId).catch(() => null);
+      const holder = await getUser(userId);
+      return res.status(200).json({
+        success: true,
+        reference,
+        recurring_invoice: true,
+        credits_added: alloc?.allocated || 0,
+        new_balance: holder?.credits || 0,
+      });
+    }
+
     // Idempotency: the charge.success webhook also credits this reference —
     // credit exactly once per Paystack reference.
     const { getItem, putItem, TABLES } = await import('../../lib/db');
