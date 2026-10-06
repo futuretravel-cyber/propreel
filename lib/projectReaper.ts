@@ -1,5 +1,5 @@
 import { TABLES, scanItems, updateWhere, updateItem } from './db';
-import { addCredits } from './userService';
+import { refundDeduction } from './userService';
 import { rawS3Url } from './s3Urls';
 import { workerTokenHeaders } from './workerToken';
 
@@ -54,8 +54,9 @@ async function lookupJob(kind: string | undefined, jobId: string | undefined): P
  * finalized them) and reconcile:
  *   • worker says completed → record becomes READY with the video URL (the
  *     render exists in S3 — no refund owed)
- *   • worker says failed / unknown → record becomes FAILED and the credits
- *     recorded on the project are refunded server-side
+ *   • worker says failed / unknown → record becomes FAILED and any real
+ *     unreversed charge for that render is refunded (ledger-verified — the
+ *     row's own `creditsSpent` claim is never trusted)
  *
  * Each record is claimed atomically (ConditionExpression on status) so a
  * client that wakes up at the same moment can never double-refund.
@@ -99,23 +100,25 @@ export async function reapStaleProjects(maxAgeHours = 2): Promise<ReapResult> {
       result.completedJobs++;
       result.details.push(`${p.id}: job ${p.jobId} had completed — finalized READY with URL, no refund`);
     } else {
-      const amount = Math.max(0, Number(p.creditsSpent) || 0);
-      if (amount > 0 && p.userId) {
-        const refund = await addCredits(
-          p.userId,
-          amount,
-          'refund',
-          `Refund — abandoned ${p.kind === 'FLASHHEAD' ? 'Talking Head' : 'video'} render`,
-          { kind: 'reaper', projectId: p.id }
-        );
-        if (refund.success) {
+      // Refund the LEDGER, not the row: `creditsSpent` is client-written on
+      // create and in the update whitelist, so trusting it here would mint
+      // arbitrary credits (set status=PROCESSING + jobId=bogus +
+      // creditsSpent=999999 and wait for this sweep). refundDeduction
+      // reverses at most one real, unreversed charge for its actual amount —
+      // an attacker with no charge gets nothing, ever.
+      const scope = p.kind === 'FLASHHEAD' ? 'flashhead' : 'render';
+      if (p.userId) {
+        const refund = await refundDeduction(p.userId, scope);
+        if (refund.success && refund.refunded > 0) {
           result.refundedJobs++;
-          result.details.push(`${p.id}: refunded ${amount} credits to ${p.userId} (job ${p.jobId || 'unknown'} ${job ? `ended '${job.status}'` : 'not found'})`);
+          result.details.push(`${p.id}: refunded ${refund.refunded} credits to ${p.userId} (job ${p.jobId || 'unknown'} ${job ? `ended '${job.status}'` : 'not found'})`);
+        } else if (refund.success) {
+          result.details.push(`${p.id}: marked FAILED — no unreversed charge in the ledger for ${p.userId} (row claimed ${Number(p.creditsSpent) || 0}; ledger governs)`);
         } else {
-          result.details.push(`${p.id}: refund of ${amount} credits FAILED for ${p.userId} (newBalance ${refund.newBalance})`);
+          result.details.push(`${p.id}: refund FAILED for ${p.userId}: ${refund.error || 'unknown error'}`);
         }
       } else {
-        result.details.push(`${p.id}: marked FAILED — no credits recorded to refund`);
+        result.details.push(`${p.id}: marked FAILED — no userId to refund`);
       }
     }
   }

@@ -275,7 +275,12 @@ export async function updateWhere(
   opts: { attrNotExists?: string[]; attrEquals?: Record<string, any> } = {}
 ): Promise<boolean> {
   const names: Record<string, string> = {};
-  const values: Record<string, any> = { ':now': new Date().toISOString() };
+  // `:now` is only bound when the fallback branch below actually references
+  // it — DynamoDB rejects an ExpressionAttributeValues entry that no
+  // expression uses, so injecting it unconditionally made EVERY claim with
+  // real updates fail with ValidationException (the nightly reaper's atomic
+  // PROCESSING→FAILED claim has never survived a genuine stale row).
+  const values: Record<string, any> = {};
   const setExprs: string[] = [];
   const conds: string[] = ['attribute_exists(id)'];
   let i = 0;
@@ -297,7 +302,10 @@ export async function updateWhere(
     conds.push(`#e${i} = :e${i}`);
     i++;
   }
-  if (setExprs.length === 0) setExprs.push('updatedAt = :now');
+  if (setExprs.length === 0) {
+    setExprs.push('updatedAt = :now');
+    values[':now'] = new Date().toISOString();
+  }
   try {
     await docClient.send(new UpdateCommand({
       TableName: tableName,
