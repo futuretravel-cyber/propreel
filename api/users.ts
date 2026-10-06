@@ -5,7 +5,7 @@ import { TABLES, queryItems, putItem, getItem, scanItems, docClient } from '../l
 import { deleteItem } from '../lib/db-helpers';
 import {
   hashPassword, verifyPassword, createSession, getSessionUser, deleteSession,
-  deleteSessionsForUser, sessionCookie, clearSessionCookie, getTokenFromRequest,
+  deleteSessionsForUser, sessionCookie, clearSessionCookie, getTokenFromRequest, SESSION_COOKIE,
   clientMeta,
   issueEmailConfirmToken, consumeEmailConfirmToken, issuePasswordResetToken,
   consumePasswordResetToken,
@@ -17,6 +17,8 @@ import { workerTokenHeaders } from '../lib/workerToken';
 import { jobCredits } from '../lib/renderPricing';
 import { consumeRateLimit } from '../lib/rateLimit';
 import { recordCronRun } from '../lib/cronRuns';
+import { rawS3Url, signS3Url, toEdgeUrl } from '../lib/s3Urls';
+import { auditApiResponses, auditStoredRows, type MediaCheck } from '../lib/mediaAudit';
 
 const isAdminEmail = (email: string | undefined | null) =>
   !!email && ADMIN_EMAILS.includes(String(email).toLowerCase());
@@ -405,7 +407,7 @@ async function dataExport(req: VercelRequest, res: VercelResponse) {
       service: 'PropReel',
       generatedAt: new Date().toISOString(),
       exportedBy: { id: user.id, email: user.email },
-      profile: safeUser(user),
+      profile: await safeUser(user),
       projects,
       creditTransactions: transactions,
     });
@@ -665,6 +667,11 @@ async function updateUserFields(req: VercelRequest, res: VercelResponse) {
   for (const key of allowed) {
     if (key in updates) clean[key] = updates[key as keyof typeof updates];
   }
+  // Same rule as project rows: the client echoes back whatever URL it was
+  // handed, and since the media edge that is a PRESIGNED edge URL. Persist the
+  // canonical bucket form (query stripped) or the row freezes an expiring
+  // signature that no read path can renew (docs/uploads-origin-isolation.md §5).
+  if (typeof clean.avatarUrl === 'string') clean.avatarUrl = rawS3Url(clean.avatarUrl);
 
   // Agent branding profiles — server-side shape enforcement (cap, field
   // whitelisting, exactly one default) so the user row stays predictable.
@@ -680,8 +687,8 @@ async function updateUserFields(req: VercelRequest, res: VercelResponse) {
         fullName: String(p?.fullName || '').slice(0, 120),
         email: String(p?.email || '').slice(0, 200),
         phone: String(p?.phone || '').slice(0, 40),
-        photoUrl: p?.photoUrl ? String(p.photoUrl).slice(0, 600) : undefined,
-        logoUrl: p?.logoUrl ? String(p.logoUrl).slice(0, 600) : undefined,
+        photoUrl: p?.photoUrl ? (rawS3Url(String(p.photoUrl).slice(0, 600)) as string) : undefined,
+        logoUrl: p?.logoUrl ? (rawS3Url(String(p.logoUrl).slice(0, 600)) as string) : undefined,
         isDefault,
         includeBranding: p?.includeBranding !== false,
       };
@@ -694,7 +701,7 @@ async function updateUserFields(req: VercelRequest, res: VercelResponse) {
 
   await updateUser(user_id, clean as any);
   const updated = await getUser(user_id);
-  return res.status(200).json({ success: true, user: safeUser(updated) });
+  return res.status(200).json({ success: true, user: await safeUser(updated) });
 }
 
 /**
@@ -1015,9 +1022,35 @@ async function pnlRoutes(req: VercelRequest, res: VercelResponse, action: string
 }
 
 /** Strip auth secrets before a user row leaves the API. */
-function safeUser(user: any) {
+/**
+ * User shape handed to the client: secrets stripped, media RE-SIGNED.
+ *
+ * Rows store the canonical raw bucket URL (see rawS3Url) — this is the read
+ * boundary that turns it into a short-lived edge URL, the same contract
+ * signProjectUrls holds for project rows. Without it, a branding photo or
+ * avatar stored as an unsigned bucket URL would be served to `<img>` tags as
+ * a private-bucket 403 (and an edge URL echoed back by an older client would
+ * only live as long as its frozen presign).
+ */
+export async function safeUser(user: any) {
   if (!user) return user;
   const { passwordHash, emailConfirmToken, passwordResetToken, confirmEmailLastSentAt, twoFactorSecret, twoFactorPendingToken, ...rest } = user;
+
+  const rehost = async (url: any): Promise<any> =>
+    typeof url === 'string' && url ? toEdgeUrl((await signS3Url(url)) || url) : url;
+
+  if (rest.avatarUrl) rest.avatarUrl = await rehost(rest.avatarUrl);
+  if (Array.isArray(rest.agentProfiles)) {
+    rest.agentProfiles = await Promise.all(
+      rest.agentProfiles.map(async (p: any) => {
+        if (!p || typeof p !== 'object') return p;
+        const next = { ...p };
+        if (p.photoUrl) next.photoUrl = await rehost(p.photoUrl);
+        if (p.logoUrl) next.logoUrl = await rehost(p.logoUrl);
+        return next;
+      })
+    );
+  }
   return rest;
 }
 
@@ -1512,7 +1545,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       const sessionToken = await createSession(user.id, clientMeta(req));
       res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
       const updated = await getUser(user.id);
-      return res.status(200).json({ success: true, redirect: row.redirect || null, user: safeUser(updated) });
+      return res.status(200).json({ success: true, redirect: row.redirect || null, user: await safeUser(updated) });
     }
 
     // ── POST auth_resend {email, redirect?} ───────────────────────────
@@ -1610,9 +1643,9 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
       // Signed up with the two-step checkbox but not configured yet → land on setup.
       if (user.twoFactorOptIn && !user.twoFactorEnabled) {
-        return res.status(200).json({ success: true, setupRequired: true, user: safeUser(user) });
+        return res.status(200).json({ success: true, setupRequired: true, user: await safeUser(user) });
       }
-      return res.status(200).json({ success: true, user: safeUser(user) });
+      return res.status(200).json({ success: true, user: await safeUser(user) });
     }
 
     // ── GET auth_session ──────────────────────────────────────────────
@@ -1753,7 +1786,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
 
     if (action === 'auth_session') {
       const user = await getSessionUser(getTokenFromRequest(req));
-      return res.status(200).json({ user: user ? safeUser(user) : null });
+      return res.status(200).json({ user: user ? await safeUser(user) : null });
     }
 
     // ── POST auth_logout ──────────────────────────────────────────────
@@ -1818,7 +1851,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         return res.status(400).json({ error: 'Invalid code — check your authenticator app and try again' });
       }
       const updated = await updateUser(sessionUser.id, { twoFactorEnabled: true, twoFactorOptIn: false, twoFactorChangedAt: new Date().toISOString() } as any);
-      return res.status(200).json({ success: true, user: safeUser(updated) });
+      return res.status(200).json({ success: true, user: await safeUser(updated) });
     }
 
     // ── POST auth_2fa_disable {code} (session) ─────────────────────────
@@ -1831,7 +1864,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         return res.status(400).json({ error: 'Invalid code — enter the current code from your authenticator app' });
       }
       const updated = await updateUser(sessionUser.id, { twoFactorEnabled: false, twoFactorSecret: null, twoFactorOptIn: false, twoFactorChangedAt: new Date().toISOString() } as any);
-      return res.status(200).json({ success: true, user: safeUser(updated) });
+      return res.status(200).json({ success: true, user: await safeUser(updated) });
     }
 
     // ── POST auth_2fa_skip (session) — "set up later" after signup ─────
@@ -1881,7 +1914,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       await updateUser(pendingUser.id, { twoFactorPendingToken: null, twoFactorPendingExpires: null } as any);
       const sessionToken = await createSession(pendingUser.id, clientMeta(req));
       res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));
-      return res.status(200).json({ success: true, user: safeUser(pendingUser) });
+      return res.status(200).json({ success: true, user: await safeUser(pendingUser) });
     }
 
     // ── POST auth_selftest (Bearer CRON_SECRET) — enumeration selftest ────
@@ -2093,12 +2126,88 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         }
       }
 
+      // ── media invariants (lib/mediaAudit) ─────────────────────────────
+      // Two assertions, both silent until they break:
+      //   • no API response may hand the client a BUCKET hostname — the
+      //     browser must only ever see the media origin (uploads./cdn.),
+      //   • no stored row may keep a signed URL — a frozen presign no read
+      //     path can renew (the Phase-3 defect), nor an edge host, which
+      //     server-side consumers (worker fetch_media, zip, reaper) resolve
+      //     buckets past.
+      // The projects probe plants a row in canonical bucket form and reads
+      // it back through the real API with a real session: row → response →
+      // media origin, signed, byte-checked at the boundary.
+      const mediaChecks: MediaCheck[] = [];
+      let probeProjectId = '';
+      let probeSessionToken = '';
+      try {
+        const knownUser = await getUserByEmail(KNOWN_EMAIL);
+        if (!knownUser) throw new Error('selftest account missing');
+        const now = new Date().toISOString();
+        probeProjectId = `prj_selftest_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        const region = process.env.AWS_REGION || 'af-south-1';
+        const rawBucket = process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets';
+        const outBucket = process.env.AWS_S3_OUTPUT_BUCKET || 'propreel-video-outputs-sa';
+        await putItem(TABLES.PROJECTS, {
+          userId: knownUser.id,
+          id: probeProjectId,
+          title: 'Media selftest probe',
+          status: 'READY',
+          kind: 'REEL',
+          // Canonical bucket form, unsigned — exactly what a write boundary
+          // must produce, and what every read must re-sign.
+          photos: [`https://${rawBucket}.s3.${region}.amazonaws.com/_selftest/photo.jpg`],
+          videoUrl: `https://${outBucket}.s3.${region}.amazonaws.com/_selftest/video.mp4`,
+          thumbnailUrl: `https://${outBucket}.s3.${region}.amazonaws.com/_selftest/thumb.jpg`,
+          createdAt: now,
+          updatedAt: now,
+        } as any);
+        probeSessionToken = await createSession(knownUser.id, clientMeta(req));
+        const [responseChecks, rowChecks] = await Promise.all([
+          auditApiResponses(origin, `${SESSION_COOKIE}=${probeSessionToken}`, {
+            userId: knownUser.id,
+            probeProjectId,
+          }),
+          auditStoredRows(),
+        ]);
+        mediaChecks.push(...responseChecks, ...rowChecks);
+      } catch (e: any) {
+        // A crash here is a failure, never a silent skip — an audit that
+        // cannot run must not read as a pass.
+        mediaChecks.push({ name: 'media:audit', ok: false, detail: `media audit failed: ${e?.message || e}` });
+      } finally {
+        // The probe project + session exist only for the duration of this
+        // run. Sweep by prefix, not just by id: if a previous run was
+        // killed mid-flight (function timeout), its probe row would
+        // otherwise linger in the selftest account forever.
+        try {
+          const knownUser = await getUserByEmail(KNOWN_EMAIL);
+          if (knownUser) {
+            const stale = await queryItems<any>(TABLES.PROJECTS, {
+              expression: 'userId = :u',
+              values: { ':u': knownUser.id },
+            });
+            for (const p of stale) {
+              if (typeof p?.id === 'string' && p.id.startsWith('prj_selftest_')) {
+                await deleteItem(TABLES.PROJECTS, { userId: knownUser.id, id: p.id });
+              }
+            }
+          }
+          if (probeSessionToken) await deleteSession(probeSessionToken);
+        } catch (e) {
+          console.error('auth_selftest media probe cleanup failed:', e);
+        }
+      }
+
+      const mediaEvaluated = mediaChecks.filter(c => !c.skipped);
+      const mediaPass = mediaEvaluated.length > 0 && mediaEvaluated.every(c => c.ok === true);
+
       const evaluated = checks.filter(c => !c.skipped && !c.failed);
       const pairsPass = evaluated.length > 0 && evaluated.every(c => c.identical && c.no409 !== false);
       const headerEvaluated = headerChecks.filter(c => !c.skipped);
       const headersPass = headerEvaluated.length > 0 && headerEvaluated.every(c => c.ok === true);
-      const pass = pairsPass && headersPass;
-      const summary = `${evaluated.length}/${checks.length} pairs, ${headerEvaluated.length}/${headerChecks.length} headers`;
+      const pass = pairsPass && headersPass && mediaPass;
+      const summary = `${evaluated.length}/${checks.length} pairs, ${headerEvaluated.length}/${headerChecks.length} headers, ${mediaEvaluated.length}/${mediaChecks.length} media`;
 
       // Everything that actually failed — a pair that stopped being byte-
       // identical, the 409 oracle returning, or a header regression. An
@@ -2112,6 +2221,9 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
             ...headerChecks
               .filter(c => !c.skipped && c.ok !== true)
               .map(c => `header ${c.surface}: ${(c.problems || []).join('; ') || 'failed'}`),
+            ...mediaChecks
+              .filter(c => !c.skipped && c.ok !== true)
+              .map(c => `media ${c.name}: ${c.detail}`),
           ]
         : [];
       if (!pass && !failures.length) {
@@ -2155,6 +2267,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         ...(evaluated.length === 0 ? { note: 'inconclusive — every pair was rate limited or unreachable' } : {}),
         checks,
         headers: { pass: headersPass, checks: headerChecks },
+        media: { pass: mediaPass, checks: mediaChecks },
         selftestAccount: KNOWN_EMAIL,
         unknownSignupRowRemoved: unknownRemoved,
         ranAt: new Date().toISOString(),
@@ -2294,7 +2407,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
-      return res.status(200).json(safeUser(user));
+      return res.status(200).json(await safeUser(user));
     } catch (error) {
       console.error('Get user error:', error);
       return res.status(500).json({ error: 'Failed to get user' });
@@ -2322,7 +2435,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     try {
       const { user, created } = await provisionUser({ email, fullName, phone, role, agencyName, planId, cycle });
-      return res.status(created ? 201 : 200).json({ success: true, user: safeUser(user), created });
+      return res.status(created ? 201 : 200).json({ success: true, user: await safeUser(user), created });
     } catch (error) {
       console.error('Create user error:', error);
       return res.status(500).json({ error: 'Failed to create user' });

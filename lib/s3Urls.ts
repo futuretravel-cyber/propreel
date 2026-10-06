@@ -16,10 +16,11 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const REGION = process.env.AWS_REGION || 'af-south-1';
-const BUCKETS = new Set([
-  process.env.AWS_S3_OUTPUT_BUCKET || 'propreel-video-outputs-sa',
-  process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets',
-]);
+const RAW_BUCKET = process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets';
+const OUTPUT_BUCKET = process.env.AWS_S3_OUTPUT_BUCKET || 'propreel-video-outputs-sa';
+/** Regional virtual-hosted suffix — SigV4 covers exactly this host. */
+const S3_SUFFIX = `.s3.${REGION}.amazonaws.com`;
+const BUCKETS = new Set([OUTPUT_BUCKET, RAW_BUCKET]);
 
 let client: S3Client | null = null;
 function s3(): S3Client {
@@ -35,14 +36,32 @@ function s3(): S3Client {
   return client;
 }
 
-/** Parse one of our S3 object URLs → { bucket, key }, else null. */
+/**
+ * Parse one of our object URLs → { bucket, key }, else null.
+ *
+ * Accepts BOTH forms the same object can be addressed by:
+ *   • the bucket host (`propreel-raw-assets.s3.af-south-1.amazonaws.com/…`) —
+ *     what rows store and what signing mints;
+ *   • the media origin (`uploads.propreel.co.za/…`, `cdn.propreel.co.za/…`)
+ *     — what response boundaries hand the browser since Phase 2.
+ *
+ * Recognising the edge form is what keeps a client-echoed edge URL from
+ * looking like a foreign host: `rawS3Url` can strip its expiring query and
+ * `signS3Url` can mint a fresh presign for it, instead of passing the frozen
+ * signature through forever (the Phase-3 "frozen presign" bug).
+ */
 export function parseObjectUrl(url: string): { bucket: string; key: string } | null {
   try {
     const u = new URL(url);
-    const suffix = `.s3.${REGION}.amazonaws.com`;
-    if (!u.hostname.endsWith(suffix)) return null;
-    const bucket = u.hostname.slice(0, -suffix.length);
-    if (!BUCKETS.has(bucket)) return null;
+    let bucket: string | null = null;
+    if (u.hostname.endsWith(S3_SUFFIX)) {
+      bucket = u.hostname.slice(0, -S3_SUFFIX.length);
+      if (!BUCKETS.has(bucket)) return null;
+    } else {
+      // Media origin — the alias CloudFront fronts for exactly one bucket.
+      bucket = edgeBucket(u.hostname);
+      if (!bucket) return null;
+    }
     const key = decodeURIComponent(u.pathname.replace(/^\//, ''));
     return key ? { bucket, key } : null;
   } catch {
@@ -80,16 +99,33 @@ export function toEdgeUrl<T extends string | null | undefined>(url: T): T {
   }
 }
 
+/** Trim an edge-host env var to a bare hostname (or null when unset/garbage). */
+function normalizeEdgeHost(value: string | undefined): string | null {
+  const host = String(value || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return host && !/[^a-z0-9.\-]/i.test(host) ? host : null;
+}
+
 /** Configured edge hostname for a bucket; null when unset or malformed. */
 function edgeHost(bucket: string): string | null {
   const raw =
-    bucket === (process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets')
-      ? process.env.EDGE_RAW_HOST
-      : bucket === (process.env.AWS_S3_OUTPUT_BUCKET || 'propreel-video-outputs-sa')
-        ? process.env.EDGE_CDN_HOST
-        : undefined;
-  const host = String(raw || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-  return host && !/[^a-z0-9.\-]/i.test(host) ? host : null;
+    bucket === RAW_BUCKET ? process.env.EDGE_RAW_HOST
+    : bucket === OUTPUT_BUCKET ? process.env.EDGE_CDN_HOST
+    : undefined;
+  return normalizeEdgeHost(raw);
+}
+
+/**
+ * Inverse of `edgeHost`: which bucket an edge hostname fronts. Null when the
+ * host isn't one of ours — or when the EDGE_* vars are unset (rollback), in
+ * which case edge URLs simply stop parsing, exactly as before Phase 2.
+ */
+function edgeBucket(host: string): string | null {
+  const h = host.toLowerCase();
+  const raw = normalizeEdgeHost(process.env.EDGE_RAW_HOST);
+  if (raw && raw.toLowerCase() === h) return RAW_BUCKET;
+  const cdn = normalizeEdgeHost(process.env.EDGE_CDN_HOST);
+  if (cdn && cdn.toLowerCase() === h) return OUTPUT_BUCKET;
+  return null;
 }
 
 /**
@@ -117,13 +153,22 @@ export async function signS3Url(
  * drop any query string so an expiring presigned URL can never be written
  * into a row (the raw URL is the source of truth; signing happens on read).
  * Anything else — including external listing photos — passes through.
+ *
+ * Canonical row form is the BUCKET host, never the media origin: server-side
+ * consumers (the worker's `fetch_media`, the social-pack zip, the reaper)
+ * resolve bucket URLs straight through the S3 API, signature-independent —
+ * an edge host in a row would make them depend on a presign we just stripped.
+ * So an edge-hosted input (what clients echo back since Phase 2) is rewritten
+ * to its bucket host as its query is stripped.
  */
 export function rawS3Url(url: string | null | undefined): string | null | undefined {
   if (!url || typeof url !== 'string') return url;
-  if (!parseObjectUrl(url)) return url;
+  const obj = parseObjectUrl(url);
+  if (!obj) return url;
   try {
     const u = new URL(url);
-    return `${u.origin}${u.pathname}`;
+    const origin = u.hostname.endsWith(S3_SUFFIX) ? u.origin : `https://${obj.bucket}${S3_SUFFIX}`;
+    return `${origin}${u.pathname}`;
   } catch {
     return url;
   }
