@@ -1835,6 +1835,148 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       return res.status(200).json({ success: true, user: safeUser(pendingUser) });
     }
 
+    // ── POST auth_selftest (Bearer CRON_SECRET) — enumeration selftest ────
+    // Operator-triggered (same bearer gate as the Paystack webhook selftest)
+    // and repeatable: it asserts against THIS deployment that known and
+    // unknown emails get byte-identical responses on login, forgot-password
+    // and signup — the property the L-2 anti-enumeration fix depends on. Any
+    // future edit that reintroduces an oracle (distinct message, status or
+    // body) fails here instead of in the wild.
+    //
+    // Side effects, all deliberate and none reaching a human: a stable
+    // enumeration-selftest@invalid.test account is provisioned once and kept;
+    // probe mail for known addresses goes to that nonexistent mailbox; the
+    // throwaway row the unknown-signup probe creates is deleted on the way
+    // out. A pair that trips a rate limit reports `skipped`, never a false
+    // failure. Invoke:
+    //   curl -X POST '…/api/users?action=auth_selftest' -H "Authorization: Bearer $CRON_SECRET"
+    if (action === 'auth_selftest') {
+      const secret = process.env.CRON_SECRET;
+      if (!secret) return res.status(500).json({ error: 'CRON_SECRET is not configured' });
+      if (req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+
+      const origin = siteOrigin(req);
+      const KNOWN_EMAIL = 'enumeration-selftest@invalid.test';
+      const UNKNOWN_EMAIL = `enumeration-unknown-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@invalid.test`;
+      const WRONG_PASSWORD = 'selftest-this-is-never-the-password';
+
+      // The known account must be verified AND password-hashed: a missing
+      // hash short-circuits login into the same branch as an unknown email,
+      // so the login pair would pass without testing anything.
+      try {
+        const known = await getUserByEmail(KNOWN_EMAIL);
+        if (!known) {
+          const now = new Date().toISOString();
+          await putItem(TABLES.USERS, {
+            id: `usr_selftest_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            email: KNOWN_EMAIL,
+            fullName: 'Enumeration Selftest',
+            credits: 0,
+            emailVerified: true,
+            passwordHash: hashPassword(`${randomToken()}${randomToken()}`),
+            createdAt: now,
+            updatedAt: now,
+          } as any);
+        } else if (!known.emailVerified || !known.passwordHash) {
+          await updateUser(known.id, {
+            emailVerified: true,
+            ...(known.passwordHash ? {} : { passwordHash: hashPassword(`${randomToken()}${randomToken()}`) }),
+          } as any);
+        }
+      } catch (e) {
+        console.error('auth_selftest provisioning failed:', e);
+        return res.status(500).json({ error: 'Could not provision the selftest account' });
+      }
+
+      async function probe(actionName: string, body: Record<string, unknown>, email: string) {
+        const started = Date.now();
+        try {
+          const r = await fetch(`${origin}/api/users?action=${actionName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, email }),
+            signal: AbortSignal.timeout(20_000),
+          });
+          const text = await r.text();
+          return { status: r.status, text, ms: Date.now() - started };
+        } catch (e: any) {
+          return { status: 0, text: `probe failed: ${e?.message || e}`, ms: Date.now() - started };
+        }
+      }
+
+      const pairs = [
+        { name: 'login', actionName: 'auth_login', body: { password: WRONG_PASSWORD } },
+        { name: 'forgot', actionName: 'auth_forgot', body: {} },
+        {
+          name: 'signup',
+          actionName: 'auth_register',
+          body: { password: 'Selftest!pass9x', fullName: 'Enumeration Selftest', aiAcknowledged: false, startTrial: false },
+        },
+      ];
+
+      const checks: any[] = [];
+      for (const p of pairs) {
+        const knownRes = await probe(p.actionName, p.body, KNOWN_EMAIL);
+        const unknownRes = await probe(p.actionName, p.body, UNKNOWN_EMAIL);
+        // The responses may differ ONLY by the echo of the submitted address —
+        // normalise that out, then require identical status AND identical bytes.
+        const knownBody = knownRes.text.split(KNOWN_EMAIL).join('<EMAIL>');
+        const unknownBody = unknownRes.text.split(UNKNOWN_EMAIL).join('<EMAIL>');
+        const rateLimited = knownRes.status === 429 || unknownRes.status === 429;
+        const unreachable = knownRes.status === 0 || unknownRes.status === 0;
+        const identical = !rateLimited && !unreachable && knownRes.status === unknownRes.status && knownBody === unknownBody;
+        checks.push({
+          name: p.name,
+          knownStatus: knownRes.status,
+          unknownStatus: unknownRes.status,
+          identical,
+          msKnown: knownRes.ms,
+          msUnknown: unknownRes.ms,
+          ...(rateLimited ? { skipped: 'rate limited — run again later' } : {}),
+          ...(unreachable ? { failed: 'probe could not reach the API' } : {}),
+          // The signup pair additionally proves the 409 oracle stays closed.
+          ...(p.name === 'signup' && !rateLimited && !unreachable
+            ? { no409: knownRes.status !== 409 && unknownRes.status !== 409 }
+            : {}),
+        });
+      }
+
+      // The unknown-signup probe provisions a throwaway account — remove it
+      // (plus its bonus ledger row and any event locks) so runs stay idempotent.
+      let unknownRemoved = false;
+      try {
+        const created = await getUserByEmail(UNKNOWN_EMAIL);
+        if (created) {
+          const txns = await queryItems<any>(TABLES.CREDIT_TRANSACTIONS, {
+            expression: 'userId = :u',
+            values: { ':u': created.id },
+          });
+          for (const t of txns) {
+            await deleteItem(TABLES.CREDIT_TRANSACTIONS, { userId: t.userId, createdAt: t.createdAt });
+          }
+          const locks = (await scanItems<any>(TABLES.SETTINGS, { limit: 2000 })).filter(r =>
+            JSON.stringify(r).includes(created.id)
+          );
+          for (const l of locks) await deleteItem(TABLES.SETTINGS, { id: l.id });
+          await deleteUser(created.id);
+          unknownRemoved = true;
+        }
+      } catch (e) {
+        console.error('auth_selftest cleanup failed:', e);
+      }
+
+      const evaluated = checks.filter(c => !c.skipped && !c.failed);
+      const pass = evaluated.length > 0 && evaluated.every(c => c.identical && c.no409 !== false);
+      return res.status(200).json({
+        pass,
+        ...(evaluated.length === 0 ? { note: 'inconclusive — every pair was rate limited or unreachable' } : {}),
+        checks,
+        selftestAccount: KNOWN_EMAIL,
+        unknownSignupRowRemoved: unknownRemoved,
+        ranAt: new Date().toISOString(),
+      });
+    }
+
     return res.status(404).json({ error: `Unknown auth action: ${action}` });
   } catch (error) {
     console.error(`Auth action ${action} error:`, error);
