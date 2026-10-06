@@ -24,6 +24,8 @@ Disallow: /studio
 Disallow: /admin
 Disallow: /payment
 Disallow: /api
+Disallow: /confirm-email
+Disallow: /reset-password
 
 # NOTE: do not disallow /*.js$ — Googlebot must fetch the JS bundle to render
 # this single-page app, otherwise every route indexes as an empty page.

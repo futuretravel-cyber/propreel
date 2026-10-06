@@ -3,6 +3,7 @@ import { getUser, updateUser, deductCredits, addCredits } from '../lib/userServi
 import { TABLES, queryItems, putItem, updateItem, scanItems } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
 import { requireOwner } from '../lib/auth';
+import { signProjectUrls, signS3Url, rawS3Url } from '../lib/s3Urls';
 import JSZip from 'jszip';
 
 export interface ProjectFolder {
@@ -193,7 +194,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         authorized: true,
         agencyName: user.agencyName || null,
         agentCount: members.length,
-        projects,
+        projects: await Promise.all(projects.map(signProjectUrls)),
       });
     }
 
@@ -232,8 +233,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
 
       // 1) The card's own video
+      // (signS3Url: still works today on public buckets, and keeps the pack
+      //  working after the M-5 bucket-policy flip — the raw object URL is
+      //  what the DB stores; the fetch just needs read access.)
       try {
-        const main = await fetchVideo(project.videoUrl);
+        const main = await fetchVideo((await signS3Url(project.videoUrl)) || project.videoUrl);
         zip.file(`${slug}-${project.kind === 'FLASHHEAD' ? 'talking-head' : 'reel'}.mp4`, main);
       } catch (e: any) {
         return res.status(502).json({ error: `Could not fetch the video: ${e.message}` });
@@ -247,7 +251,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
         if (talkingHead) {
           try {
-            zip.file('talking-head.mp4', await fetchVideo(talkingHead.videoUrl));
+            zip.file('talking-head.mp4', await fetchVideo((await signS3Url(talkingHead.videoUrl)) || talkingHead.videoUrl));
           } catch { /* optional — pack ships without it */ }
         }
       }
@@ -358,7 +362,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
       // Newest first
       projects.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-      return res.status(200).json({ success: true, projects });
+      // M-5: rows keep the raw object URL; the client gets 1h signed URLs.
+      return res.status(200).json({ success: true, projects: await Promise.all(projects.map(signProjectUrls)) });
     }
 
     // ── POST /api/projects — create ──────────────────────────────────
@@ -411,12 +416,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jobId: typeof b.jobId === 'string' ? b.jobId.slice(0, 120) : undefined,
         creditsSpent: Number(b.creditsSpent) || undefined,
         videoTier: b.videoTier || 'ESSENTIAL',
-        videoUrl: b.videoUrl || null,
-        thumbnailUrl: b.thumbnailUrl || null,
+        videoUrl: rawS3Url(b.videoUrl) || null,
+        thumbnailUrl: rawS3Url(b.thumbnailUrl) || null,
         folder: b.folder || undefined,
         tags: Array.isArray(b.tags) ? b.tags.map(String).slice(0, 10) : [],
         favorite: Boolean(b.favorite),
-        photos: Array.isArray(b.photos) ? b.photos.map(String).slice(0, 30) : [],
+        photos: Array.isArray(b.photos) ? b.photos.map(String).map((p: string) => (rawS3Url(p) as string) || p).slice(0, 30) : [],
         description: typeof b.description === 'string' ? b.description.slice(0, 20000) : undefined,
         marketStatus: (['ACTIVE', 'DRAFT', 'SOLD', 'EXPIRED'] as const).includes(b.marketStatus) ? b.marketStatus : undefined,
         listingFeeCharged: isListing ? charged : undefined,
@@ -433,7 +438,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (charged) await addCredits(owner, NEW_LISTING_COST, 'refund', 'Refund — listing was not saved').catch(() => {});
         throw err;
       }
-      return res.status(201).json({ success: true, project });
+      return res.status(201).json({ success: true, project: await signProjectUrls(project) });
     }
 
     // ── PUT /api/projects — update (folder, favorite, status, etc.) ──
@@ -456,6 +461,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const key of allowed) {
         if (key in (updates || {})) clean[key] = updates[key];
       }
+      // Never persist an expiring presigned URL — if the client echoes back
+      // a signed URL it received from a GET, store the raw object URL.
+      if (typeof clean.videoUrl === 'string') clean.videoUrl = rawS3Url(clean.videoUrl);
+      if (typeof clean.thumbnailUrl === 'string') clean.thumbnailUrl = rawS3Url(clean.thumbnailUrl);
+      if (Array.isArray(clean.photos)) clean.photos = clean.photos.map((p: any) => rawS3Url(String(p)));
       clean.updatedAt = new Date().toISOString();
 
       // Publishing a free draft (DRAFT → ACTIVE) takes the 2-credit
@@ -476,7 +486,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         values: { ':u': user_id, ':i': id },
         limit: 1,
       });
-      return res.status(200).json({ success: true, project: updated });
+      return res.status(200).json({ success: true, project: await signProjectUrls(updated) });
     }
 
     // ── DELETE /api/projects?user_id=…&id=… ──────────────────────────

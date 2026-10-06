@@ -10,6 +10,7 @@ import { docClient, getItem, putItem, TABLES } from '../lib/db';
 import { getUser } from '../lib/userService';
 import { getSessionUser, getTokenFromRequest } from '../lib/auth';
 import { sniffMedia, audioMime } from '../lib/mediaSniff';
+import { signS3Url } from '../lib/s3Urls';
 import { consumeRateLimit } from '../lib/rateLimit';
 
 /**
@@ -216,11 +217,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(413).json({ error: 'Uploaded image must be between 1 byte and 25MB' });
         }
 
-        // First 4KB is all sharp needs to parse the header and identify it.
-        const part = await s3().send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: key, Range: 'bytes=0-4095' }));
-        const head4k = Buffer.from(await (part.Body as any).transformToByteArray());
+        // First 64KB covers the whole header chain (frame header, EXIF, XMP)
+        // — a large APP1 segment can push the frame header past 4KB, which
+        // would make sharp give up and discard a perfectly valid photo.
+        const part = await s3().send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: key, Range: 'bytes=0-65535' }));
+        const header = Buffer.from(await (part.Body as any).transformToByteArray());
         let format: string | undefined;
-        try { format = (await sharp(head4k).metadata()).format; } catch { format = undefined; }
+        try { format = (await sharp(header).metadata()).format; } catch { format = undefined; }
         if (!format || !ALLOWED_IMAGE_FORMATS.includes(format)) {
           await destroy();
           return res.status(415).json({ error: 'Not a valid JPEG, PNG or WebP image — the file was discarded' });
@@ -231,7 +234,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // for everything that passes verification).
         const normalized = format === 'jpeg' ? 'image/jpeg' : `image/${format}`;
         if ((head.ContentType || '') !== normalized) await setContentType(key, normalized);
-        return res.status(200).json({ success: true, contentType: normalized, bytes: len });
+
+        // EXIF strip: GPS coordinates on listing photos are sensitive (the
+        // address in the caption is ours to publish — the camera's location
+        // pin is not). sharp drops ALL metadata on re-encode, and rotate()
+        // bakes the orientation flag in first so phone photos don't flip.
+        // Only files whose header really carries EXIF pay the full GET +
+        // re-encode; everything else passes through byte-for-byte.
+        let exifStripped = false;
+        if (format === 'jpeg' && header.includes(Buffer.from('Exif\0\0'))) {
+          try {
+            const full = await s3().send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+            const raw = Buffer.from(await (full.Body as any).transformToByteArray());
+            const rebuilt = await sharp(raw).rotate().jpeg({ quality: 92 }).toBuffer();
+            if (rebuilt.length > 0 && rebuilt.length < raw.length * 2) {
+              await s3().send(new PutObjectCommand({
+                Bucket: S3_BUCKET,
+                Key: key,
+                Body: rebuilt,
+                ContentType: normalized,
+                ContentLength: rebuilt.length,
+              }));
+              exifStripped = true;
+            }
+          } catch (exErr) {
+            console.error('EXIF strip failed (non-fatal — image kept):', exErr);
+          }
+        }
+        return res.status(200).json({ success: true, contentType: normalized, bytes: len, exifStripped });
       } catch (err: any) {
         if (err?.name === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404) {
           return res.status(404).json({ error: 'Uploaded file not found — try the upload again' });
@@ -250,7 +280,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ExpressionAttributeValues: { ':mt': 'music_track' },
       }));
       const tracks = (result.Items || []).sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
-      return res.status(200).json({ success: true, tracks });
+      // M-5: rows keep the raw object URL (`s3Key` too); the Studio picker
+      // gets a 1h signed URL. The fields are spread manually so the stored
+      // `url` is never clobbered with an expiring one.
+      const signed = await Promise.all(tracks.map(async (t: any) => ({
+        ...t,
+        url: (await signS3Url(t.url)) || t.url,
+      })));
+      return res.status(200).json({ success: true, tracks: signed });
     }
 
     // ── POST /api/music?action=upload — presigned PUT ────────────────
@@ -316,7 +353,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: new Date().toISOString(),
       };
       await putItem(TABLES.SETTINGS, track);
-      return res.status(201).json({ success: true, track });
+      return res.status(201).json({ success: true, track: { ...track, url: (await signS3Url(track.url)) || track.url } });
     }
 
     // ── DELETE /api/music?id=xxx ─────────────────────────────────────
