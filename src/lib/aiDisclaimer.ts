@@ -11,6 +11,13 @@
  * parked as the pending render, and it fires the moment they acknowledge —
  * so acknowledging once unblocks the action they actually clicked, instead of
  * making them press Render twice.
+ *
+ * The acknowledgement lives in localStorage first (the gate is synchronous and
+ * must never wait on the network), but for a signed-in account it is also
+ * mirrored server-side as { version, timestamp } on the user record — so it
+ * follows the account to another device. The server never decides: it only
+ * hands back the version it stored, and the local gate accepts it solely when
+ * that hash matches the live notice.
  */
 
 /** The warning, verbatim. Order matters — the modal shows it sentence by
@@ -69,6 +76,50 @@ export function acceptAIDisclaimer(): void {
   try {
     localStorage.setItem(STORAGE_KEY, '1');
     localStorage.removeItem(LEGACY_STORAGE_KEY); // migrated to the versioned key
+  } catch { /* best effort */ }
+}
+
+/** The acknowledgement version that goes to the server: the notice's own
+ *  content hash. Editing any sentence above changes it, which re-prompts every
+ *  device the moment they next hydrate. */
+export const AI_NOTICE_ACK_VERSION = ACK_HASH;
+
+// `?.` keeps this callable outside Vite's runtime (harnesses/tests) — in the
+// built app Vite always defines import.meta.env.
+const apiBase = (): string => (import.meta as any).env?.VITE_API_URL || '';
+
+/**
+ * Pull the signed-in account's server-side acknowledgement and seed the local
+ * gate from it. Returns true when the account already acknowledged THIS exact
+ * notice (locally or on the server). Signed out, offline, or an older notice
+ * → false, and the local gate decides as before. Never throws, never blocks
+ * acceptance — localStorage is written, never read-and-waited on here.
+ */
+export async function hydrateServerAIDisclaimer(): Promise<boolean> {
+  if (isAIDisclaimerAccepted()) return true;
+  try {
+    const res = await fetch(`${apiBase()}/api/users?action=ai_notice`, { credentials: 'include' });
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (data?.version === ACK_HASH && data?.acknowledgedAt) {
+      acceptAIDisclaimer(); // account already covers the live notice
+      return true;
+    }
+  } catch { /* offline / signed out — local state stands */ }
+  return false;
+}
+
+/** Fire-and-forget write-through after a local accept: records the version +
+ *  timestamp on the account so other devices inherit it. Local acceptance
+ *  never waits on this, and a signed-out / offline call is a no-op. */
+export async function postAIDisclaimerAck(): Promise<void> {
+  try {
+    await fetch(`${apiBase()}/api/users?action=ai_notice`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version: ACK_HASH }),
+    });
   } catch { /* best effort */ }
 }
 

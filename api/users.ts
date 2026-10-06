@@ -585,6 +585,47 @@ async function auditLog(req: VercelRequest, res: VercelResponse) {
 /**
  * Nested route: POST /api/users?action=update — whitelisted profile updates.
  */
+/**
+ * Nested route: GET/POST /api/users?action=ai_notice — the AI-generated-content
+ * notice acknowledgement, kept on the user row so it follows the account across
+ * devices. Session cookie required; you can only read or write your own.
+ *
+ * GET  → { version, acknowledgedAt }. `version` is the client's FNV-1a hash of
+ *        the exact notice text that was acknowledged — the caller only seeds its
+ *        local acknowledgement when that hash matches its live notice, so an
+ *        edited notice re-prompts everywhere without any server-side knowledge
+ *        of the copy.
+ * POST → body { version } records the acknowledgement (idempotent per version:
+ *        re-posting the same hash never rewrites the original timestamp).
+ */
+async function aiNoticeAck(req: VercelRequest, res: VercelResponse) {
+  const user = await getSessionUser(getTokenFromRequest(req));
+  if (!user) return res.status(401).json({ error: 'Sign in to sync your acknowledgement' });
+
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      success: true,
+      version: user.aiNoticeAckVersion || null,
+      acknowledgedAt: user.aiNoticeAckAt || null,
+    });
+  }
+
+  if (req.method === 'POST') {
+    const version = String((req.body || {}).version || '');
+    if (!/^[0-9a-f]{8}$/.test(version)) {
+      return res.status(400).json({ error: 'Missing or malformed version' });
+    }
+    if (user.aiNoticeAckVersion === version && user.aiNoticeAckAt) {
+      return res.status(200).json({ success: true, version, acknowledgedAt: user.aiNoticeAckAt, unchanged: true });
+    }
+    const acknowledgedAt = new Date().toISOString();
+    await updateUser(user.id, { aiNoticeAckVersion: version, aiNoticeAckAt: acknowledgedAt });
+    return res.status(200).json({ success: true, version, acknowledgedAt });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
 async function updateUserFields(req: VercelRequest, res: VercelResponse) {
   const { user_id, updates } = req.body || {};
   if (!user_id || typeof updates !== 'object' || updates === null) {
@@ -1634,6 +1675,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Nested routes (function consolidation)
   if (req.query.action === 'preferences') {
     return notificationPreferences(req, res);
+  }
+  if (req.query.action === 'ai_notice') {
+    return aiNoticeAck(req, res);
   }
   if (req.query.action === 'update' && req.method === 'POST') {
     return updateUserFields(req, res);

@@ -71,6 +71,10 @@ export interface User {
   passwordChangedAt?: string | null;
   twoFactorChangedAt?: string | null;
   notificationPreferences?: Record<string, boolean>;
+  /** AI-generated-content notice — content-versioned ack (FNV-1a hash of the
+   *  exact notice text) + when it was given, so it follows the account */
+  aiNoticeAckVersion?: string | null;
+  aiNoticeAckAt?: string | null;
   projectFolders?: Array<{ id: string; name: string; icon: string; createdAt: string }>;
   planId?: string | null;
   cycle?: string;
