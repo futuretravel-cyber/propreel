@@ -1,5 +1,6 @@
 import { TABLES, scanItems, updateWhere, updateItem } from './db';
 import { addCredits } from './userService';
+import { rawS3Url } from './s3Urls';
 import { workerTokenHeaders } from './workerToken';
 
 const WORKER_URL = process.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
@@ -88,10 +89,12 @@ export async function reapStaleProjects(maxAgeHours = 2): Promise<ReapResult> {
     }
 
     if (completedOk) {
-      // Fill in what the client never received
-      const updates: Record<string, any> = { videoUrl: job!.videoUrl, updatedAt: new Date().toISOString() };
+      // Fill in what the client never received. The worker returns
+      // presigned links (private buckets, M-5) — rows keep the raw object
+      // URL, because signing happens on read and a stored signature expires.
+      const updates: Record<string, any> = { videoUrl: rawS3Url(job!.videoUrl) || job!.videoUrl, updatedAt: new Date().toISOString() };
       if (job!.durationSeconds != null) updates.durationSeconds = job!.durationSeconds;
-      if (job!.thumbnailUrl) updates.thumbnailUrl = job!.thumbnailUrl;
+      if (job!.thumbnailUrl) updates.thumbnailUrl = rawS3Url(job!.thumbnailUrl) || job!.thumbnailUrl;
       await updateItem(TABLES.PROJECTS, { userId: p.userId, id: p.id }, updates);
       result.completedJobs++;
       result.details.push(`${p.id}: job ${p.jobId} had completed — finalized READY with URL, no refund`);

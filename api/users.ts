@@ -988,7 +988,11 @@ async function pnlRoutes(req: VercelRequest, res: VercelResponse, action: string
 
     if (action === 'pln_pdf' && req.method === 'GET') {
       const { url, instant } = await generatePnlPdf(month);
-      return res.status(200).json({ success: true, url, instant });
+      // Buckets are private (M-5): the browser opens this link straight
+      // after the click, so a 15-minute presigned URL is plenty and never
+      // outlives the admin's own download.
+      const { signS3Url } = await import('../lib/s3Urls');
+      return res.status(200).json({ success: true, url: (await signS3Url(url, 900)) || url, instant });
     }
 
     return res.status(404).json({ error: `Unknown P&L action: ${action}` });
@@ -1763,6 +1767,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.query.action === 'audit_log' && req.method === 'GET') {
     return auditLog(req, res);
+  }
+  // ── GET ?action=invoice_pdf&user_id=…&n=PR-… ─────────────────────────
+  // Streams a stored invoice PDF through our own origin. Buckets are
+  // private (M-5), and a session gate beats a long-lived signed link:
+  // only the owner (or an admin) can fetch it, and the URL stops working
+  // the moment it is forwarded or leaked.
+  if (req.method === 'GET' && req.query.action === 'invoice_pdf') {
+    const userId = String(req.query.user_id || '');
+    const invoiceNumber = String(req.query.n || '');
+    if (!userId || !/^PR-\d{8}-[A-Za-z0-9]{1,12}$/.test(invoiceNumber)) {
+      return res.status(400).json({ error: 'Invalid invoice request' });
+    }
+    const gate = await requireOwner(req, userId);
+    if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+    try {
+      const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
+      const s3 = new S3Client({
+        region: process.env.AWS_REGION || 'af-south-1',
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+        },
+      });
+      const obj = await s3.send(new GetObjectCommand({
+        Bucket: process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets',
+        Key: `invoices/${userId}/${invoiceNumber}.pdf`,
+      }));
+      const pdf = Buffer.from(await (obj.Body as any).transformToByteArray());
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${invoiceNumber}.pdf"`);
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.status(200).send(pdf);
+    } catch (e: any) {
+      if (e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      console.error('invoice_pdf failed:', e);
+      return res.status(500).json({ error: 'Could not load the invoice' });
+    }
   }
   if (String(req.query.action || '').startsWith('auth_') || req.query.action === 'worker_token') {
     return authRoutes(req, res, String(req.query.action));

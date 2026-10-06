@@ -136,6 +136,95 @@ def _friendly_fal_error(e: Exception) -> str:
 S3_BUCKET = os.environ.get("AWS_S3_OUTPUT_BUCKET", "propreel-video-outputs-sa")
 S3_REGION = os.environ.get("AWS_REGION", "af-south-1")
 
+# ── Private-bucket media helpers (audit M-5) ───────────────────────────────
+# Both buckets are private: knowing an object URL no longer grants read
+# access. The worker holds IAM credentials, so it (a) reads OUR objects
+# through the S3 API instead of HTTP — works whatever form of URL arrives,
+# signed or raw, fresh or long expired — and (b) hands third parties
+# (fal.ai / MiniMax / Grok vision) presigned URLs, because those vendors
+# fetch the images themselves and can't sign anything.
+OUR_BUCKETS = {
+    S3_BUCKET,
+    os.environ.get("AWS_S3_RAW_BUCKET", "propreel-raw-assets"),
+}
+# Vendor fetch window: long enough for any queue delay, short enough that a
+# leaked URL is worthless once it lapses.
+MEDIA_VENDOR_SECONDS = 6 * 3600
+# What the API returns to the browser — share/copy links need a real lifespan.
+# 7 days is the SigV4 maximum for static IAM credentials.
+MEDIA_LINK_SECONDS = 7 * 24 * 3600
+
+
+def _s3():
+    import boto3
+    return boto3.client("s3", region_name=S3_REGION)
+
+
+def _our_s3_object(url):
+    """(bucket, key) when the URL points at one of OUR buckets, else None.
+
+    The query string (any existing presigned signature) is ignored, so a URL
+    signed minutes ago — or one that expired years ago — resolves to the same
+    object.
+    """
+    if not isinstance(url, str) or not url.startswith("https://"):
+        return None
+    try:
+        from urllib.parse import urlparse, unquote
+        parsed = urlparse(url)
+        suffix = f".s3.{S3_REGION}.amazonaws.com"
+        if not parsed.hostname or not parsed.hostname.endswith(suffix):
+            return None
+        bucket = parsed.hostname[: -len(suffix)]
+        if bucket not in OUR_BUCKETS:
+            return None
+        key = unquote(parsed.path.lstrip("/"))
+        return (bucket, key) if key else None
+    except Exception:
+        return None
+
+
+def presign_media(url: str, expires_in: int = MEDIA_VENDOR_SECONDS) -> str:
+    """Presigned GET for one of our object URLs; anything else passes through."""
+    obj = _our_s3_object(url)
+    if not obj:
+        return url
+    bucket, key = obj
+    try:
+        return _s3().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=int(expires_in),
+        )
+    except Exception as e:
+        # Never fail a job over signing — the raw URL is the fallback.
+        print(f"presign_media failed (falling back to raw URL): {e}")
+        return url
+
+
+def presign_urls(value, expires_in: int = MEDIA_LINK_SECONDS):
+    """Recursively presign every one-of-ours URL inside a JSON-ish structure."""
+    if isinstance(value, str):
+        return presign_media(value, expires_in) if _our_s3_object(value) else value
+    if isinstance(value, dict):
+        return {k: presign_urls(v, expires_in) for k, v in value.items()}
+    if isinstance(value, list):
+        return [presign_urls(v, expires_in) for v in value]
+    return value
+
+
+def fetch_media(url: str, timeout: int = 120) -> bytes:
+    """Download media bytes. Our own objects go through the S3 API (private-
+    bucket safe, signature-independent); everything else — fal.ai outputs,
+    external hosts — falls back to plain HTTP."""
+    obj = _our_s3_object(url)
+    if obj:
+        bucket, key = obj
+        return _s3().get_object(Bucket=bucket, Key=key)["Body"].read()
+    resp = requests.get(url, timeout=timeout)
+    resp.raise_for_status()
+    return resp.content
+
 # Credit cost per image render
 IMAGE_RENDER_CREDIT_COST = 2
 
@@ -311,7 +400,9 @@ def generate_ai_video_clip(
     handler = fal_client.submit(
         "fal-ai/minimax/hailuo-02/standard/image-to-video",
         arguments={
-            "image_url": image_url,
+            # Private buckets: fal.ai downloads the frame itself, so it needs
+            # a signature (raw object URLs now 403).
+            "image_url": presign_media(image_url),
             "prompt": prompt,
             "num_frames": duration * 24,  # 24 fps
             "resolution": resolution_upper,
@@ -365,11 +456,10 @@ def upscale_video(input_video_url: str, target_resolution: str = "1080p") -> str
     
     print(f"Upscaling video to {target_resolution}")
     
-    # Download video
-    response = requests.get(input_video_url)
+    # Download video (S3-API path for our own objects — buckets are private)
     input_path = "/tmp/input_video.mp4"
     with open(input_path, 'wb') as f:
-        f.write(response.content)
+        f.write(fetch_media(input_video_url))
     
     # Upscale using FFmpeg
     output_path = "/tmp/upscaled_video.mp4"
@@ -398,7 +488,8 @@ def upscale_video(input_video_url: str, target_resolution: str = "1080p") -> str
         output_path,
         S3_BUCKET,
         s3_key,
-        ExtraArgs={'ContentType': 'video/mp4', 'ACL': 'public-read'}
+        # No ACL: Block Public Access is on — objects are private by default.
+        ExtraArgs={'ContentType': 'video/mp4'}
     )
     
     video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
@@ -470,11 +561,10 @@ def _mix_music_bed(
     import tempfile as _tf
     import os as _os
 
-    resp = requests.get(music_url, timeout=120)
-    resp.raise_for_status()
+    music_bytes = fetch_media(music_url, timeout=120)
     ext = ".mp3" if ".mp3" in music_url.lower() else ".wav" if ".wav" in music_url.lower() else ".m4a"
     with _tf.NamedTemporaryFile(suffix=ext, delete=False) as _f:
-        _f.write(resp.content)
+        _f.write(music_bytes)
         music_path = _f.name
     try:
         # -stream_loop -1 loops the (usually short) track to cover the video;
@@ -565,13 +655,12 @@ def render_video_local(
         # Download image → normalize to the exact output canvas (cover-crop,
         # no stretching) before the zoompan stage
         raw_path = os.path.join(work, f"raw_{i}.jpg")
-        resp = requests.get(image_url, timeout=60)
-        resp.raise_for_status()
+        image_bytes = fetch_media(image_url, timeout=60)
         norm = _sp.run(
             ["ffmpeg", "-y", "-i", "-", "-vf",
              f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}",
              raw_path],
-            input=resp.content, capture_output=True, timeout=120,
+            input=image_bytes, capture_output=True, timeout=120,
         )
         if norm.returncode != 0:
             raise RuntimeError(f"ffmpeg normalize failed on image {i+1}: {(norm.stderr or b'')[-300:]}")
@@ -626,7 +715,8 @@ def render_video_local(
         output_path,
         S3_BUCKET,
         s3_key,
-        ExtraArgs={'ContentType': 'video/mp4', 'ACL': 'public-read'}
+        # No ACL: Block Public Access is on — objects are private by default.
+        ExtraArgs={'ContentType': 'video/mp4'}
     )
     video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
     print(f"Local render complete: {video_url}")
@@ -755,9 +845,8 @@ def render_video(
     # (best-effort — never fails the render)
     thumbnail_url = None
     try:
-        _resp = requests.get(video_url, timeout=120)
-        _resp.raise_for_status()
-        thumbnail_url = _thumbnail_from_video_bytes(_resp.content, f"thumbnails/render/{record_id}.jpg")
+        video_bytes = fetch_media(video_url, timeout=120)
+        thumbnail_url = _thumbnail_from_video_bytes(video_bytes, f"thumbnails/render/{record_id}.jpg")
     except Exception as _te:
         print(f"render thumbnail skipped: {_te}")
 
@@ -926,7 +1015,7 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
     if image_list:
         # Vision: Grok describes the attached photos alongside the facts
         user_content = [{"type": "text", "text": user_text}] + [
-            {"type": "image_url", "image_url": {"url": url}} for url in image_list
+            {"type": "image_url", "image_url": {"url": presign_media(url)}} for url in image_list
         ]
     text = _llm_chat([
         {"role": "system", "content": system},
@@ -995,7 +1084,7 @@ def edit_image(
         handler = fal_client.submit(
             "fal-ai/flux/dev/image-to-image",
             arguments={
-                "image_url": image_url,
+                "image_url": presign_media(image_url),
                 "prompt": prompt,
                 "negative_prompt": negative_prompt,
                 "strength": actual_strength,
@@ -1047,8 +1136,7 @@ def edit_image(
         Bucket=S3_BUCKET,
         Key=s3_key,
         Body=response.content,
-        ContentType='image/jpeg',
-        ACL='public-read'
+        ContentType='image/jpeg'
     )
     
     final_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
@@ -1113,7 +1201,7 @@ def generate_flashhead_video(
     handler = fal_client.submit(
         "fal-ai/flashhead",
         arguments={
-            "image_url": profile_image_url,
+            "image_url": presign_media(profile_image_url),
             "text": voiceover_text,
             "voice": voice,
             "stability": stability
@@ -1162,8 +1250,7 @@ def generate_flashhead_video(
         Bucket=S3_BUCKET,
         Key=video_key,
         Body=video_response.content,
-        ContentType='video/mp4',
-        ACL='public-read'
+        ContentType='video/mp4'
     )
     
     # Generate public URL
@@ -1210,13 +1297,12 @@ async def api_make_thumbnail(request: ThumbnailRequest):
     """Extract a thumbnail frame from a video URL. Used by the one-off
     backfill for pre-thumbnail renders and any client-less flows."""
     try:
-        resp = requests.get(request.video_url, timeout=120)
-        resp.raise_for_status()
+        video_bytes = fetch_media(request.video_url, timeout=120)
         import uuid as _uuid
-        url = _thumbnail_from_video_bytes(resp.content, f"thumbnails/backfill/{_uuid.uuid4().hex}.jpg")
+        url = _thumbnail_from_video_bytes(video_bytes, f"thumbnails/backfill/{_uuid.uuid4().hex}.jpg")
         if not url:
             raise HTTPException(status_code=502, detail="Thumbnail extraction failed")
-        return {"thumbnail_url": url}
+        return presign_urls({"thumbnail_url": url})
     except HTTPException:
         raise
     except Exception as e:
@@ -1258,7 +1344,9 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
                 music_url=request.music_url,
                 image_prompts=request.image_prompts
             )
-            return result
+            # Private buckets: the browser plays/shares this URL directly,
+            # so hand it a long-lived presigned link, never the raw object.
+            return presign_urls(result)
 
         # Async path: write initial job status to S3, then spawn
         _write_job_status(request.record_id, "queued", {"tier": request.tier})
@@ -1298,12 +1386,12 @@ async def api_cancel_render(request: CancelRenderRequest):
     current = _read_job_status(request.record_id)
     if current and current.get("status") == "completed":
         # Too late to cancel — hand back the finished render instead
-        return {
+        return presign_urls({
             "record_id": request.record_id,
             "status": "completed",
             "cancelled": False,
             "video_url": current.get("video_url"),
-        }
+        })
     _write_job_status(request.record_id, "cancelled", {
         "previous": (current or {}).get("status", "unknown"),
         "reason": "user_cancelled",
@@ -1316,7 +1404,7 @@ async def api_render_status(record_id: str):
     status = _read_job_status(record_id)
     if status is None:
         raise HTTPException(status_code=404, detail=f"Unknown record_id: {record_id}")
-    return status
+    return presign_urls(status)
 
 @web_app.post("/generate_flashhead_video")
 async def api_generate_flashhead_video(request: FlashHeadRequest):
@@ -1330,7 +1418,7 @@ async def api_generate_flashhead_video(request: FlashHeadRequest):
             voice=request.voice,
             stability=request.stability
         )
-        return result
+        return presign_urls(result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1351,7 +1439,7 @@ async def api_edit_image(request: EditImageRequest, raw_request: Request):
                 strength=request.strength,
                 guidance_scale=request.guidance_scale
             )
-            return result
+            return presign_urls(result)
 
         import time as _time, uuid as _uuid
         edit_id = f"edt_{int(_time.time() * 1000)}_{_uuid.uuid4().hex[:6]}"
@@ -1381,7 +1469,7 @@ async def api_edit_status(edit_id: str):
     status = _read_job_status(edit_id)
     if status is None:
         raise HTTPException(status_code=404, detail=f"Unknown edit_id: {edit_id}")
-    return status
+    return presign_urls(status)
 
 @web_app.get("/probe")
 async def api_probe(refresh: str = ""):
@@ -1434,7 +1522,7 @@ def _thumbnail_from_video_bytes(content: bytes, s3_key: str):
             with open(thumb_path, "rb") as _img:
                 s3.put_object(
                     Bucket=S3_BUCKET, Key=s3_key, Body=_img.read(),
-                    ContentType="image/jpeg", ACL="public-read",
+                    ContentType="image/jpeg",
                 )
             return f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
         finally:
@@ -1463,7 +1551,7 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
         handler = fal_client.submit(
             "fal-ai/flashhead",
             arguments={
-                "image_url": profile_image_url,
+                "image_url": presign_media(profile_image_url),
                 "text": voiceover_text,
                 "voice": voice,
                 "stability": stability,
@@ -1527,7 +1615,7 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
             print(f"probe/thumbnail unavailable ({_pe})")
         s3.put_object(
             Bucket=S3_BUCKET, Key=video_key,
-            Body=content, ContentType='video/mp4', ACL='public-read',
+            Body=content, ContentType='video/mp4',
         )
         final_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{video_key}"
         print(f"FlashHead job {job_id} complete: {final_url} ({duration_seconds}s)")
@@ -1581,7 +1669,7 @@ async def api_flashhead_status(job_id: str):
     status = _read_job_status(job_id)
     if status is None:
         raise HTTPException(status_code=404, detail=f"Unknown job_id: {job_id}")
-    return status
+    return presign_urls(status)
 
 @web_app.post("/generate_text")
 async def api_generate_text(request: GenerateTextRequest):

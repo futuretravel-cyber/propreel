@@ -485,7 +485,10 @@ export default function EnhancedBilling() {
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-sm text-white font-semibold">{formatZar(inv.amountZar)}</span>
-                      <a href={inv.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs py-1.5 px-3">
+                      {/* Streamed through our own origin (session-gated) — the
+                          buckets are private, and a forwarded S3 link must never
+                          outlive the invoice. */}
+                      <a href={`/api/users?action=invoice_pdf&user_id=${encodeURIComponent(user!.id)}&n=${encodeURIComponent(inv.invoiceNumber)}`} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs py-1.5 px-3">
                         <Download className="w-3 h-3" /> PDF
                       </a>
                     </div>

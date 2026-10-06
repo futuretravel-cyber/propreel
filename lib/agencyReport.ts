@@ -57,6 +57,13 @@ async function notifyWebhook(agency: Agency, payload: Record<string, any>): Prom
   const url = agency.webhookUrl;
   if (!url) return;
   try {
+    // Buckets are private (M-5): the receiver can't fetch the raw object
+    // URL, so hand it a presigned link instead — 7 days, the SigV4
+    // maximum, which is what a monthly report webhook needs anyway.
+    if (typeof payload.url === 'string') {
+      const { signS3Url } = await import('./s3Urls');
+      payload = { ...payload, url: (await signS3Url(payload.url, 7 * 24 * 3600)) || payload.url };
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

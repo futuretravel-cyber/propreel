@@ -169,7 +169,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         Bucket: S3_BUCKET, Key: key, ContentType: contentType, ContentLength: bytes,
       });
       const uploadUrl = await getSignedUrl(s3() as any, put, { expiresIn: 300 });
-      return res.status(200).json({ success: true, uploadUrl, publicUrl: publicUrl(key), key, expiresIn: 300 });
+      // Private buckets (M-5): the caller previews this URL immediately, so
+      // hand it a 1h presigned link. It is persisted through PUT
+      // /api/projects, which normalises it back to the raw object URL — rows
+      // never keep an expiring signature, and the worker resolves either
+      // form through the S3 API anyway.
+      const raw = publicUrl(key);
+      return res.status(200).json({ success: true, uploadUrl, publicUrl: (await signS3Url(raw)) || raw, key, expiresIn: 300 });
     }
 
     // ── POST /api/music?action=verify_upload — server-side binary check ──
