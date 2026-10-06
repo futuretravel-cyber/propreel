@@ -1259,7 +1259,7 @@ function tooMany(res: VercelResponse, rl: { retryAfterSec: number }, msg = 'Too 
 const AUTH_FLOOR_LOGIN_MS = 1200;
 const AUTH_FLOOR_FORGOT_MS = 2200;
 const AUTH_FLOOR_RESEND_MS = 2200;
-const AUTH_FLOOR_REGISTER_MS = 3500;
+const AUTH_FLOOR_REGISTER_MS = 4000;
 
 async function authRoutes(req: VercelRequest, res: VercelResponse, action: string) {
   const authStartedAt = Date.now();
@@ -1435,34 +1435,44 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         aiAcknowledged === true && /^[0-9a-f]{8}$/.test(String(termsConsentVersion || ''))
           ? String(termsConsentVersion)
           : null;
-      await updateUser(user.id, {
-        passwordHash: hashPassword(password),
-        emailVerified: false,
-        ...(enableTwoFactor ? { twoFactorOptIn: true } : {}),
-        ...(consentVersion
-          ? { termsConsentVersion: consentVersion, termsConsentAt: new Date().toISOString() }
-          : {}),
-      } as any);
-      // Temporary account (opt-in): 7-day trial clock on top of the standard
-      // 5-credit signup bonus — no extra credits. Only set when the row is
-      // new or has never had a trial, so a re-register can't reset expiry.
-      if (startTrial) {
-        const freshBefore = await getUser(user.id);
-        if (!freshBefore?.trialExpiresAt) {
-          const { startTrial: beginTrial } = await import('../lib/trial');
-          await beginTrial(user.id);
-        }
-      }
-      // Give 5, get 5: attribute to ?ref= and grant the friend's +5 now; the
-      // referrer's +5 is paid on this account's first purchase (lib/referral).
-      const { attributeReferral } = await import('../lib/referral');
-      await attributeReferral(user.id, user.email, referralCode);
-      const fresh = (await getUser(user.id)) || user;
-
-      const token = await issueEmailConfirmToken(fresh, redirect);
+      // Password/consent, the trial clock and referral touch DISJOINT
+      // attributes on the row, so they run together — both signup branches
+      // must do comparable work for the timing floor to hide the difference
+      // (this chain used to be ~4 serial round trips longer than the
+      // existing-account branch, which the selftest measured as an ~800ms
+      // systematic delta).
+      await Promise.all([
+        updateUser(user.id, {
+          passwordHash: hashPassword(password),
+          emailVerified: false,
+          ...(enableTwoFactor ? { twoFactorOptIn: true } : {}),
+          ...(consentVersion
+            ? { termsConsentVersion: consentVersion, termsConsentAt: new Date().toISOString() }
+            : {}),
+        } as any),
+        // Temporary account (opt-in): 7-day trial clock on top of the standard
+        // 5-credit signup bonus — no extra credits. Only set when the row is
+        // new or has never had a trial, so a re-register can't reset expiry.
+        (async () => {
+          if (!startTrial) return;
+          const freshBefore = await getUser(user.id);
+          if (!freshBefore?.trialExpiresAt) {
+            const { startTrial: beginTrial } = await import('../lib/trial');
+            await beginTrial(user.id);
+          }
+        })(),
+        // Give 5, get 5: attribute to ?ref= and grant the friend's +5 now; the
+        // referrer's +5 is paid on this account's first purchase (lib/referral).
+        (async () => {
+          const { attributeReferral } = await import('../lib/referral');
+          await attributeReferral(user.id, user.email, referralCode);
+        })(),
+      ]);
+      // provisionUser already returns a freshly-read row — no second read.
+      const token = await issueEmailConfirmToken(user, redirect);
       const confirmUrl = `${siteOrigin(req)}/confirm-email?token=${token}`;
-      const tpl = confirmEmailTemplate(fresh.fullName || '', confirmUrl);
-      const sent = await sendEmail({ to: fresh.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+      const tpl = confirmEmailTemplate(user.fullName || '', confirmUrl);
+      const sent = await sendEmail({ to: user.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
       if (!sent.ok) {
         console.error('Confirmation email failed:', sent.error);
         return res.status(502).json({
@@ -1473,7 +1483,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         });
       }
       await holdAuthFloor(AUTH_FLOOR_REGISTER_MS);
-      return res.status(201).json({ success: true, needsConfirmation: true, email: fresh.email });
+      return res.status(201).json({ success: true, needsConfirmation: true, email: user.email });
     }
 
     // ── GET auth_confirm&token= ───────────────────────────────────────
