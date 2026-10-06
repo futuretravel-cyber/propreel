@@ -1243,7 +1243,30 @@ function tooMany(res: VercelResponse, rl: { retryAfterSec: number }, msg = 'Too 
   return res.status(429).json({ error: msg });
 }
 
+/**
+ * Response-time floors for the existence-sensitive auth actions, measured
+ * from authRoutes entry (L-2 residual: the timing oracle).
+ *
+ * Known-email branches do strictly more work than unknown ones — forgot/
+ * resend mint a reset token and call Resend, signup provisions a row — so
+ * even with byte-identical bodies a prober could time the difference. Every
+ * branch of an action is held until startedAt + floor, which erases any
+ * delta below it. Pick a value above the SLOWER branch's typical work: a
+ * floor that is exceeded still responds immediately (a late response beats
+ * a broken one) and only narrows the guarantee. Cold starts and network sit
+ * OUTSIDE the floor and hit both branches equally.
+ */
+const AUTH_FLOOR_LOGIN_MS = 1200;
+const AUTH_FLOOR_FORGOT_MS = 2200;
+const AUTH_FLOOR_RESEND_MS = 2200;
+const AUTH_FLOOR_REGISTER_MS = 3500;
+
 async function authRoutes(req: VercelRequest, res: VercelResponse, action: string) {
+  const authStartedAt = Date.now();
+  const holdAuthFloor = async (floorMs: number): Promise<void> => {
+    const remain = authStartedAt + floorMs - Date.now();
+    if (remain > 0) await new Promise(resolve => setTimeout(resolve, remain));
+  };
   try {
     const body = req.body || {};
 
@@ -1395,6 +1418,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
             console.error('Existing-account signup notice error:', noticeErr);
           }
         }
+        await holdAuthFloor(AUTH_FLOOR_REGISTER_MS);
         return res.status(201).json({ success: true, needsConfirmation: true, email: normalized });
       }
 
@@ -1448,6 +1472,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
           needsConfirmation: true,
         });
       }
+      await holdAuthFloor(AUTH_FLOOR_REGISTER_MS);
       return res.status(201).json({ success: true, needsConfirmation: true, email: fresh.email });
     }
 
@@ -1493,7 +1518,9 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
           return res.status(502).json({ error: 'Could not send the email — try again in a moment' });
         }
       }
-      // Generic success — never reveals whether the address exists
+      // Generic success — never reveals whether the address exists (the
+      // floor keeps latency from revealing it either)
+      await holdAuthFloor(AUTH_FLOOR_RESEND_MS);
       return res.status(200).json({ success: true, message: 'If that address needs confirmation, the email is on its way.' });
     }
 
@@ -1518,9 +1545,11 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (!user || !user.passwordHash) {
         // Equalize timing so probing can't distinguish unknown emails
         verifyPassword(password, 'scrypt$16384$dummy$dummy');
+        await holdAuthFloor(AUTH_FLOOR_LOGIN_MS);
         return res.status(401).json({ error: 'Invalid email or password' });
       }
       if (!verifyPassword(password, user.passwordHash)) {
+        await holdAuthFloor(AUTH_FLOOR_LOGIN_MS);
         return res.status(401).json({ error: 'Invalid email or password' });
       }
       if (!user.emailVerified) {
@@ -1733,6 +1762,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         const sent = await sendEmail({ to: user.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
         if (!sent.ok) console.error('Password-reset email failed:', sent.error);
       }
+      await holdAuthFloor(AUTH_FLOOR_FORGOT_MS);
       return res.status(200).json({ success: true, message: 'If that address has an account, a reset link is on its way.' });
     }
 
