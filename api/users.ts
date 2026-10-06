@@ -1448,7 +1448,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
           needsConfirmation: true,
         });
       }
-      return res.status(201).json({ success: true, needsConfirmation: true, email: fresh.email, userId: fresh.id });
+      return res.status(201).json({ success: true, needsConfirmation: true, email: fresh.email });
     }
 
     // ── GET auth_confirm&token= ───────────────────────────────────────
