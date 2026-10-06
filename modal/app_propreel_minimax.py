@@ -287,10 +287,46 @@ def presign_media(url: str, expires_in: int = MEDIA_VENDOR_SECONDS) -> str:
         return url
 
 
+def to_edge_url(url: str) -> str:
+    """Rewrite one of our presigned URLs onto its CloudFront edge hostname.
+
+    Media origin isolation (docs/uploads-origin-isolation.md §5): the
+    signature still covers the bucket host — CloudFront's S3 origin rewrites
+    Host back on the origin fetch, so S3 validates it unchanged — only the
+    hostname the BROWSER sees moves.
+
+    Env-gated: EDGE_RAW_HOST / EDGE_CDN_HOST unset or empty → no-op, so a
+    rollback is emptying the secret (no redeploy). BROWSER-BOUND CALLS ONLY
+    (presign_urls): vendor submits and internal fetches must stay direct S3.
+    """
+    obj = _our_s3_object(url)
+    if not obj:
+        return url
+    bucket, _ = obj
+    if bucket == S3_BUCKET:
+        host = os.environ.get("EDGE_CDN_HOST", "")
+    elif bucket == os.environ.get("AWS_S3_RAW_BUCKET", "propreel-raw-assets"):
+        host = os.environ.get("EDGE_RAW_HOST", "")
+    else:
+        return url
+    host = host.strip()
+    for prefix in ("https://", "http://"):
+        if host.startswith(prefix):
+            host = host[len(prefix):]
+    host = host.strip("/")
+    if not host or not all(c.isalnum() or c in ".-" for c in host):
+        return url
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(url)
+    # Original path (still percent-encoded) + presigned query, verbatim.
+    return urlunparse(("https", host, parsed.path, "", parsed.query, ""))
+
+
 def presign_urls(value, expires_in: int = MEDIA_LINK_SECONDS):
-    """Recursively presign every one-of-ours URL inside a JSON-ish structure."""
+    """Recursively presign every one-of-ours URL inside a JSON-ish structure
+    and rehost it on the edge — these strings are what the browser receives."""
     if isinstance(value, str):
-        return presign_media(value, expires_in) if _our_s3_object(value) else value
+        return to_edge_url(presign_media(value, expires_in)) if _our_s3_object(value) else value
     if isinstance(value, dict):
         return {k: presign_urls(v, expires_in) for k, v in value.items()}
     if isinstance(value, list):
@@ -451,7 +487,7 @@ TIER_CONFIGS = {
     }
 }
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=600, retries=2, min_containers=0, max_containers=200, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=600, retries=2, min_containers=0, max_containers=200, scaledown_window=300)
 def generate_ai_video_clip(
     image_url: str,
     prompt: str,
@@ -524,7 +560,7 @@ def generate_ai_video_clip(
             raise Exception(f"Unknown fal.ai status: {status_type}")
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials")], timeout=600, retries=2)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials")], timeout=600, retries=2)
 def upscale_video(input_video_url: str, target_resolution: str = "1080p") -> str:
     """
     Upscale video from 720p to 1080p using FFmpeg
@@ -675,7 +711,7 @@ def _mix_music_bed(
             pass
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials")], timeout=600, retries=2)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials")], timeout=600, retries=2)
 def render_video_local(
     record_id: str,
     images: list[str],
@@ -808,7 +844,7 @@ def render_video_local(
     return video_url
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=2, min_containers=0, max_containers=100, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=2, min_containers=0, max_containers=100, scaledown_window=300)
 def render_video(
     record_id: str,
     tier: str,
@@ -963,7 +999,7 @@ def render_video_failed(record_id: str, error: str):
 # IMAGE EDITING FUNCTIONS
 # ───────────────────────────────────────────────────────────────────────────
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2, max_containers=200, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2, max_containers=200, scaledown_window=300)
 def edit_image_job(edit_id: str, image_url: str, preset_id: str, custom_prompt: str | None = None, strength: float | None = None, guidance_scale: float | None = None):
     """Async image-edit job wrapper: runs the sync edit_image body and mirrors
     progress/result into S3 so /edit_status can serve it to any poller."""
@@ -987,7 +1023,7 @@ def edit_image_job(edit_id: str, image_url: str, preset_id: str, custom_prompt: 
         _write_job_status(edit_id, "failed", {"error": _friendly_fal_error(e)})
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=120)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=120)
 def probe_fal_health():
     """Tiny fal.ai health probe: a 1-token any-llm ping. Classifies the result
     (healthy / billing_locked / auth_failed / provider_error / timeout) and
@@ -1061,7 +1097,7 @@ def _llm_chat(messages: list) -> str:
     raise last_err or RuntimeError("LLM call failed")
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("fal-credentials")], timeout=120)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("fal-credentials")], timeout=120)
 def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str:
     """Grok AI text generation for property descriptions, social captions and
     video voiceover scripts (via fal's OpenRouter integration), with optional
@@ -1109,7 +1145,7 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
     return text
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=120, schedule=modal.Cron("*/15 * * * *"))
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=120, schedule=modal.Cron("*/15 * * * *"))
 def scheduled_fal_probe():
     """Runs every 15 minutes on Modal's scheduler; refreshes the S3 health record."""
     probe_fal_health.remote()
@@ -1119,7 +1155,7 @@ def scheduled_fal_probe():
 # # IMAGE EDITING FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2)
 def edit_image(
     image_url: str,
     preset_id: str,
@@ -1252,7 +1288,7 @@ def get_image_presets() -> list:
     return IMAGE_PRESETS
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2)
 def generate_flashhead_video(
     profile_image_url: str,
     voiceover_text: str,
@@ -1626,7 +1662,7 @@ def _thumbnail_from_video_bytes(content: bytes, s3_key: str):
         return None
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=1, max_containers=100, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=1, max_containers=100, scaledown_window=300)
 def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user_id: str, voice: str = "Aria", stability: float = 0.5):
     """Async FlashHead lip-sync job (fal-ai/flashhead): mirrors progress and
     result into S3 so /flashhead_status can serve any poller. Input is the
@@ -1782,7 +1818,7 @@ async def api_get_image_presets():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Mount the FastAPI app to Modal
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("render-auth")])
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("render-auth")])
 @modal.asgi_app()
 def web():
     """Mount FastAPI app as Modal web endpoint"""
@@ -1811,7 +1847,7 @@ def main():
     print("\nUse 'modal deploy' to deploy this app")
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials")], timeout=120)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials")], timeout=120)
 def media_selftest(object_key: str = "renders/pr_1791056980364_fgxj/video.mp4") -> dict:
     """Operator smoke test for the private-bucket media path (audit M-5).
 
@@ -1846,6 +1882,19 @@ def media_selftest(object_key: str = "renders/pr_1791056980364_fgxj/video.mp4") 
         results["presigned_http_status"] = r.status_code
     except Exception as e:
         results["presigned_http_status"] = f"FAIL: {e}"
+
+    # 3b) edge rehost — only meaningful when EDGE_*_HOST is configured on the
+    # worker; the signed link must still fetch 200 through CloudFront.
+    edged = to_edge_url(signed)
+    if edged != signed:
+        try:
+            r3 = requests.get(edged, timeout=60, headers={"Range": "bytes=0-1"})
+            results["edge_http_status"] = r3.status_code
+            results["edge_host"] = edged.split("/")[2]
+        except Exception as e:
+            results["edge_http_status"] = f"FAIL: {e}"
+    else:
+        results["edge_http_status"] = "skipped (EDGE_*_HOST unset)"
 
     # 3) upload without ACL (the shape every render uses), then probe access
     probe_key = f"selftest/media_{int(_t.time() * 1000)}.txt"

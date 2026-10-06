@@ -10,7 +10,7 @@ import { docClient, getItem, putItem, TABLES } from '../lib/db';
 import { getUser } from '../lib/userService';
 import { getSessionUser, getTokenFromRequest } from '../lib/auth';
 import { sniffMedia, audioMime } from '../lib/mediaSniff';
-import { signS3Url } from '../lib/s3Urls';
+import { signS3Url, toEdgeUrl } from '../lib/s3Urls';
 import { consumeRateLimit } from '../lib/rateLimit';
 
 /**
@@ -175,7 +175,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // never keep an expiring signature, and the worker resolves either
       // form through the S3 API anyway.
       const raw = publicUrl(key);
-      return res.status(200).json({ success: true, uploadUrl, publicUrl: (await signS3Url(raw)) || raw, key, expiresIn: 300 });
+      // Edge rehost (isolation): the browser PUTs through uploads.propreel.co.za
+      // and previews through it too — both verified in the Phase-1 probe.
+      return res.status(200).json({ success: true, uploadUrl: toEdgeUrl(uploadUrl), publicUrl: toEdgeUrl((await signS3Url(raw)) || raw), key, expiresIn: 300 });
     }
 
     // ── POST /api/music?action=verify_upload — server-side binary check ──
@@ -291,7 +293,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // `url` is never clobbered with an expiring one.
       const signed = await Promise.all(tracks.map(async (t: any) => ({
         ...t,
-        url: (await signS3Url(t.url)) || t.url,
+        url: toEdgeUrl((await signS3Url(t.url)) || t.url),
       })));
       return res.status(200).json({ success: true, tracks: signed });
     }
@@ -328,7 +330,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const put = new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, ContentType: contentType, ContentLength: bytes });
       const uploadUrl = await getSignedUrl(s3() as any, put, { expiresIn: 300 });
 
-      return res.status(200).json({ success: true, uploadUrl, s3Key: key, expiresIn: 300 });
+      return res.status(200).json({ success: true, uploadUrl: toEdgeUrl(uploadUrl), s3Key: key, expiresIn: 300 });
     }
 
     // ── POST /api/music — register uploaded track ────────────────────
@@ -359,7 +361,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: new Date().toISOString(),
       };
       await putItem(TABLES.SETTINGS, track);
-      return res.status(201).json({ success: true, track: { ...track, url: (await signS3Url(track.url)) || track.url } });
+      return res.status(201).json({ success: true, track: { ...track, url: toEdgeUrl((await signS3Url(track.url)) || track.url) } });
     }
 
     // ── DELETE /api/music?id=xxx ─────────────────────────────────────

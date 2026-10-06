@@ -61,8 +61,8 @@ async function notifyWebhook(agency: Agency, payload: Record<string, any>): Prom
     // URL, so hand it a presigned link instead — 7 days, the SigV4
     // maximum, which is what a monthly report webhook needs anyway.
     if (typeof payload.url === 'string') {
-      const { signS3Url } = await import('./s3Urls');
-      payload = { ...payload, url: (await signS3Url(payload.url, 7 * 24 * 3600)) || payload.url };
+      const { signS3Url, toEdgeUrl } = await import('./s3Urls');
+      payload = { ...payload, url: toEdgeUrl((await signS3Url(payload.url, 7 * 24 * 3600)) || payload.url) };
     }
     const res = await fetch(url, {
       method: 'POST',

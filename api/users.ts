@@ -1002,8 +1002,8 @@ async function pnlRoutes(req: VercelRequest, res: VercelResponse, action: string
       // Buckets are private (M-5): the browser opens this link straight
       // after the click, so a 15-minute presigned URL is plenty and never
       // outlives the admin's own download.
-      const { signS3Url } = await import('../lib/s3Urls');
-      return res.status(200).json({ success: true, url: (await signS3Url(url, 900)) || url, instant });
+      const { signS3Url, toEdgeUrl } = await import('../lib/s3Urls');
+      return res.status(200).json({ success: true, url: toEdgeUrl((await signS3Url(url, 900)) || url), instant });
     }
 
     return res.status(404).json({ error: `Unknown P&L action: ${action}` });
