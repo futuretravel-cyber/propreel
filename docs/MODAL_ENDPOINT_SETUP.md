@@ -62,24 +62,41 @@ Navigate to the modal directory and deploy:
 
 ```bash
 cd modal
-modal deploy app_propreel_grok_tiers.py
+modal deploy app_propreel_minimax.py
 ```
+
+> ⚠️ **Always deploy `app_propreel_minimax.py` — never `app_propreel_grok_tiers.py`.**
+> Both files declare the same Modal app name (`propreel-render`), but
+> `app_propreel_grok_tiers.py` is a 211-line legacy stub with a different
+> `render_video` signature and **no web endpoints**. Deploying it replaces the
+> live app and strips `/render_video`, `/render_status`, `/cancel_render`,
+> `/health`, `/probe`, the fal-health cron and every other function — the site
+> would stop rendering immediately. The live worker is `app_propreel_minimax.py`
+> (see `modal/DEPLOYMENT_GUIDE.md`).
 
 **What happens:**
-- Modal builds the Docker image with dependencies
-- Uploads your app to Modal's cloud
-- Creates a public endpoint URL
-- Shows you the endpoint in the output
+- Modal builds the Docker image with dependencies (ffmpeg, boto3, fal.ai, …)
+- Mounts `app_propreel_minimax.py` and `image_prompts.py`
+- Deploys the worker functions plus the FastAPI web endpoint
+- Shows you the endpoint URL in the output
 
-**Expected output:**
+**Expected output (abridged):**
 ```
-✓ Created function render_video
-✓ Created function health_check
-✓ Created function process_render_queue
-✓ Built image
-✓ Deployed app propreel-render
+✓ Created objects.
+├── 🔨 Created mount …\modal\app_propreel_minimax.py
+├── 🔨 Created function render_video.
+├── 🔨 Created function render_video_job.
+├── 🔨 Created function render_video_local.
+├── …  (15 functions in total: clip generation, edits, flashhead, crons, selftest)
+└── 🔨 Created web function web =>
+│   https://futuretravel--propreel-render-web.modal.run
+✓ App deployed in ~10s! 🎉
+```
 
-App URL: https://your-username--propreel-render.modal.run
+Confirm the deployment version afterwards:
+
+```bash
+modal app history propreel-render
 ```
 
 ---
@@ -89,7 +106,14 @@ App URL: https://your-username--propreel-render.modal.run
 After deployment, Modal will display your endpoint URL. It looks like:
 
 ```
-https://your-username--propreel-render.modal.run
+https://your-username--propreel-render-web.modal.run
+```
+
+Note the **`-web`** suffix — it comes from the FastAPI web function. The live
+production URL is:
+
+```
+https://futuretravel--propreel-render-web.modal.run
 ```
 
 **Copy this URL** - you'll need it for the next step.
@@ -102,11 +126,14 @@ Open your `.env` file and update the Modal endpoint:
 
 ```bash
 # Find and replace this line:
-MODAL_RENDER_ENDPOINT=https://your-username--propreel-render.modal.run
+VITE_MODAL_ENDPOINT=https://your-username--propreel-render-web.modal.run
 
 # With your actual endpoint:
-MODAL_RENDER_ENDPOINT=https://futuretravel--propreel-render.modal.run
+VITE_MODAL_ENDPOINT=https://futuretravel--propreel-render-web.modal.run
 ```
+
+(The frontend falls back to this URL when the variable is unset — see
+`RENDER_ENDPOINT` in `src/App.tsx`.)
 
 **Your actual username will be different!** Use the URL from Step 4.
 
@@ -117,11 +144,14 @@ MODAL_RENDER_ENDPOINT=https://futuretravel--propreel-render.modal.run
 Verify your endpoint is working:
 
 ```bash
-# Test health check
-curl https://your-username--propreel-render.modal.run/health
+# Test health check (tokenless — /health and /probe are the only open routes)
+curl https://futuretravel--propreel-render-web.modal.run/health
 
 # Expected response:
-# {"status":"healthy","service":"propreel-render","version":"1.0.0"}
+# {"status":"healthy","service":"propreel-render","version":"2.1.0",
+#  "model":"fal-ai/minimax/hailuo-02","clip_duration":6,
+#  "resolutions":["512p","720p","1080p"],"audio":false,
+#  "flashhead":"fal-ai/flashhead/v1/lip-sync"}
 ```
 
 ---
@@ -134,8 +164,8 @@ When you run `modal deploy`, the URL is shown at the end:
 
 ```bash
 cd modal
-modal deploy app_propreel_grok_tiers.py
-# Look for "App URL:" in the output
+modal deploy app_propreel_minimax.py
+# Look for the "Created web function web =>" URL in the output
 ```
 
 ### Method 2: From Modal Dashboard
@@ -156,10 +186,17 @@ modal app list
 
 ## 🧪 Testing Your Setup
 
+Every route except `/health` and `/probe` requires the `X-PropReel-Token`
+header (a worker token minted by `GET /api/users?action=worker_token`), and
+the money-spending routes (`/render_video`, `/edit_image`, `/flashhead`,
+`/generate_flashhead_video`) additionally require a **single-use paid v2
+token** from `POST /api/users?action=job_token` — unsigned requests are
+rejected by design.
+
 ### Test 1: Health Check
 
 ```bash
-curl https://your-username--propreel-render.modal.run/health
+curl https://futuretravel--propreel-render-web.modal.run/health
 ```
 
 **Expected:**
@@ -167,45 +204,65 @@ curl https://your-username--propreel-render.modal.run/health
 {
   "status": "healthy",
   "service": "propreel-render",
-  "version": "1.0.0"
+  "version": "2.1.0"
 }
 ```
 
-### Test 2: Render Queue Status
+### Test 2: fal.ai Probe
 
 ```bash
-curl https://your-username--propreel-render.modal.run/queue/status
+curl https://futuretravel--propreel-render-web.modal.run/probe
 ```
 
 **Expected:**
 ```json
 {
-  "pending": 0,
-  "processing": 0,
-  "completed": 0,
-  "failed": 0
+  "healthy": true,
+  "class": "healthy",
+  "probe": "fal-ai",
+  "service": "propreel-render"
 }
 ```
 
-### Test 3: Full Render Test
-
-Create a test render request:
+### Test 3: Job Status Poll
 
 ```bash
-curl -X POST https://your-username--propreel-render.modal.run/render \
+curl -H "X-PropReel-Token: $WORKER_TOKEN" \
+  "https://futuretravel--propreel-render-web.modal.run/render_status?record_id=pr_1700000000000_abcd"
+```
+
+Returns the S3-backed job status (`queued` / `processing` / `completed` /
+`failed` / `cancelled`); an unknown id answers `404`.
+
+### Test 4: Full Render Test
+
+Full renders are paid (credits are charged when the token is minted), so the
+canonical path is the Studio in the app. To exercise the endpoint directly,
+mint a token with a signed-in session first:
+
+```bash
+TOKEN=$(curl -s -X POST "https://www.propreel.co.za/api/users?action=job_token" \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"scope":"render","tier":"SOCIAL","config_index":0}' | jq -r .token)
+
+curl -X POST https://futuretravel--propreel-render-web.modal.run/render_video \
   -H "Content-Type: application/json" \
+  -H "X-PropReel-Token: $TOKEN" \
   -d '{
     "record_id": "test_001",
-    "tier": "ESSENTIAL",
+    "tier": "SOCIAL",
+    "config_index": 0,
     "orientation": "LANDSCAPE",
     "images": ["https://example.com/image1.jpg"],
     "voiceover_text": "Welcome to this beautiful property",
     "voice_id": "Joanna",
-    "include_agent_branding": true
+    "include_agent_branding": true,
+    "audio": false
   }'
 ```
 
-**Expected:** Job ID returned, video will be processed and uploaded to S3.
+**Expected:** `{"record_id":"test_001","status":"queued", …}` — then poll
+`/render_status`. The token is consumed exactly once (a replay answers `409`).
 
 ---
 
@@ -243,19 +300,19 @@ modal secret create aws-credentials \
 **Solution:**
 ```bash
 # Check logs
-modal logs propreel-render
+modal app logs propreel-render
 
-# Redeploy
+# Redeploy (always the minimax worker — see the Step 3 warning)
 cd modal
-modal deploy app_propreel_grok_tiers.py
+modal deploy app_propreel_minimax.py
 ```
 
 ### Issue: Endpoint not responding
 
 **Solution:**
 1. Check if app is deployed: `modal app list`
-2. Check logs: `modal logs propreel-render`
-3. Verify URL is correct in `.env`
+2. Check logs: `modal app logs propreel-render`
+3. Verify the URL is correct (`VITE_MODAL_ENDPOINT`, note the `-web` suffix)
 
 ---
 
@@ -263,12 +320,20 @@ modal deploy app_propreel_grok_tiers.py
 
 Your Modal app exposes these endpoints:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/render` | POST | Submit render job |
-| `/queue/status` | GET | Queue statistics |
-| `/job/{id}` | GET | Get job status |
+| Endpoint | Method | Auth | Description |
+|----------|--------|-----|-------------|
+| `/health` | GET | none | Health check |
+| `/probe` | GET | none | fal.ai health + latency (`?refresh=true` to force) |
+| `/render_video` | POST | paid v2 | Spawn a render (async; returns `queued`) |
+| `/render_status` | GET | worker | Poll job status (`?record_id=`) |
+| `/cancel_render` | POST | worker | Cancel an in-flight job (terminal state) |
+| `/edit_image`, `/edit_status` | POST/GET | paid v2 / worker | Image editing jobs |
+| `/generate_flashhead_video`, `/flashhead`, `/flashhead_status` | POST/GET | paid v2 / worker | Avatar / lip-sync jobs |
+| `/generate_text`, `/get_image_presets`, `/make_thumbnail` | POST/GET | worker | Studio helpers |
+
+All authenticated routes take the `X-PropReel-Token` header; the paid routes
+require the v2 scope (`render` / `edit` / `flashhead`) that `?action=job_token`
+mints after charging credits.
 
 ---
 
@@ -291,11 +356,11 @@ Monitor usage: https://modal.com/dashboard
 
 ## 🔄 Updating the Modal App
 
-When you make changes to `app_propreel_grok_tiers.py`:
+When you make changes to `app_propreel_minimax.py`:
 
 ```bash
 cd modal
-modal deploy app_propreel_grok_tiers.py
+modal deploy app_propreel_minimax.py
 ```
 
 The endpoint URL stays the same, so no need to update `.env`.
@@ -307,8 +372,8 @@ The endpoint URL stays the same, so no need to update `.env`.
 Your `.env` file should have:
 
 ```env
-# Modal Render Endpoint
-MODAL_RENDER_ENDPOINT=https://your-username--propreel-render.modal.run
+# Modal Render Endpoint (frontend build variable)
+VITE_MODAL_ENDPOINT=https://futuretravel--propreel-render-web.modal.run
 
 # AWS Configuration (used by Modal)
 AWS_ACCESS_KEY_ID=your_aws_access_key
@@ -324,7 +389,7 @@ AWS_S3_OUTPUT_BUCKET=propreel-video-outputs-sa
 - [ ] Modal CLI installed
 - [ ] Modal authenticated (`modal token inspect`)
 - [ ] AWS secrets created in Modal
-- [ ] Modal app deployed (`modal deploy`)
+- [ ] Modal app deployed (`modal deploy app_propreel_minimax.py`)
 - [ ] Endpoint URL copied
 - [ ] `.env` file updated with endpoint
 - [ ] Health check test passed
@@ -335,18 +400,19 @@ AWS_S3_OUTPUT_BUCKET=propreel-video-outputs-sa
 ## 🎯 Quick Commands
 
 ```bash
-# Deploy Modal app
+# Deploy Modal app (live worker — never app_propreel_grok_tiers.py)
 cd modal
-modal deploy app_propreel_grok_tiers.py
+modal deploy app_propreel_minimax.py
 
-# Check app status
+# Check app status / deployment history
 modal app list
+modal app history propreel-render
 
 # View logs
-modal logs propreel-render
+modal app logs propreel-render
 
 # Test endpoint
-curl https://your-username--propreel-render.modal.run/health
+curl https://futuretravel--propreel-render-web.modal.run/health
 
 # Update .env
 nano .env  # or use your preferred editor

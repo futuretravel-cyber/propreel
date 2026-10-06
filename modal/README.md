@@ -12,7 +12,14 @@ The Modal backend handles:
 
 ## Files
 
-- `app_propreel_grok_tiers.py` - Main Modal application
+- `app_propreel_minimax.py` - **the live Modal application** (the render
+  worker, FastAPI web endpoint, crons and selftests — this is what
+  `modal deploy` targets)
+- `app_propreel_grok_tiers.py` - legacy stub, **do not deploy**: it declares
+  the same app name (`propreel-render`) but has no web endpoints, so deploying
+  it would replace and strip the live worker (see the warning in
+  `docs/MODAL_ENDPOINT_SETUP.md`)
+- `image_prompts.py` - prompt libraries bundled into the worker image
 
 ## Prerequisites
 
@@ -44,7 +51,7 @@ modal secret create aws-credentials \
 ### 3. Deploy the Backend
 
 ```bash
-modal deploy app_propreel_grok_tiers.py
+modal deploy app_propreel_minimax.py
 ```
 
 ## API Endpoints
