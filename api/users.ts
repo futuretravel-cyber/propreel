@@ -1259,7 +1259,7 @@ function tooMany(res: VercelResponse, rl: { retryAfterSec: number }, msg = 'Too 
 const AUTH_FLOOR_LOGIN_MS = 1200;
 const AUTH_FLOOR_FORGOT_MS = 2200;
 const AUTH_FLOOR_RESEND_MS = 2200;
-const AUTH_FLOOR_REGISTER_MS = 4000;
+const AUTH_FLOOR_REGISTER_MS = 4500;
 
 async function authRoutes(req: VercelRequest, res: VercelResponse, action: string) {
   const authStartedAt = Date.now();
