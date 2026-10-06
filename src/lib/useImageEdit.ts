@@ -16,7 +16,7 @@ type Stage = 'idle' | 'uploading' | 'deducting' | 'rendering' | 'done';
  * result URL. Failed renders refund the 2 credits automatically.
  */
 export function useImageEdit() {
-  const { addCredits, user, refresh } = useCredit() as any;
+  const { refundCredits, user, refresh } = useCredit() as any;
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -99,12 +99,12 @@ export function useImageEdit() {
       return { imageUrl: result.imageUrl };
     } catch (e: any) {
       // Failed renders auto-refund (spec: refund within 60s)
-      await addCredits(IMAGE_EDIT_COST, 'refund', 'Refund — failed image edit').catch(() => {});
+      await refundCredits('edit').catch(() => {});
       setError(e.message || 'Render failed — your 2 credits were refunded');
       setStage('idle');
       return null;
     }
-  }, [user, addCredits, refresh]);
+  }, [user, refundCredits, refresh]);
 
   return { edit, stage, error, setError, busy: stage === 'uploading' || stage === 'deducting' || stage === 'rendering' };
 }

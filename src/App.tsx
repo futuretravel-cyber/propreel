@@ -1412,7 +1412,7 @@ function DescriptionTab() {
   const navigate = useNavigate();
   const uploadWait = useUploadWait();
   const uploadQueue = useUploadQueue('description');
-  const { user, deductCredits, addCredits } = useCredit();
+  const { user, deductCredits, refundCredits } = useCredit();
   const [tone, setTone] = useState('Professional');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1535,7 +1535,7 @@ function DescriptionTab() {
       setDescription(text.trim());
       toast.success('Description generated', 'AI');
     } catch (e: any) {
-      if (charged) await addCredits(cost, 'refund', 'Refund — failed property description').catch(() => {});
+      if (charged) await refundCredits('description').catch(() => {});
       toast.error(e.message ? `${e.message} — your credit was refunded` : 'Description generation failed — your credit was refunded');
     } finally {
       setLoading(false);
@@ -1952,7 +1952,7 @@ function SocialTab() {
   const toast = useToast();
   const uploadWait = useUploadWait();
   const uploadQueue = useUploadQueue('social');
-  const { user, deductCredits, addCredits } = useCredit();
+  const { user, deductCredits, refundCredits } = useCredit();
   const [platform, setPlatform] = useState('instagram');
   const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(false);
@@ -2055,7 +2055,7 @@ function SocialTab() {
       } catch { /* non-fatal */ }
       toast.success(savedToProjects ? 'Post generated — saved to My Projects' : 'Post generated', 'AI · ⚡' + cost + ' credits');
     } catch (e: any) {
-      if (charged) await addCredits(cost, 'refund', 'Refund — failed social media post').catch(() => {});
+      if (charged) await refundCredits('social_post').catch(() => {});
       toast.error(e.message ? `${e.message} — your credits were refunded` : 'Caption generation failed — your credits were refunded');
     } finally {
       setLoading(false);
@@ -2313,7 +2313,7 @@ function SocialTab() {
 const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
 function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages = [], profileImage, onProfileImageChange }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void; initialImages?: string[]; profileImage: string | null; onProfileImageChange: (img: string | null) => void }) {
-  const { user, addCredits, refresh } = useCredit();
+  const { user, refundCredits, refresh } = useCredit();
   const toast = useToast();
   const uploadWait = useUploadWait();
   const uploadQueue = useUploadQueue('video');
@@ -2451,7 +2451,6 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
   const generateReel = async () => {
     setGenerating(true);
     reelProgress.start();
-    const totalCredits = selectedConfig.credits;
     const recordId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     recordIdRef.current = recordId;
     cancelRequestedRef.current = false; // the flag belongs to THIS render only
@@ -2603,10 +2602,11 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         PropReelAPI.updateProject(user.id, projectId, { status: 'FAILED' }).catch(() => {});
       }
       // Refund only what was actually taken — a deduction that failed (not
-      // enough credits) must not add credits to the balance.
+      // enough credits) must not add credits to the balance. The SERVER
+      // prices the reversal from the real ledger row (self-refund guard).
       if (charged) {
         try {
-          await addCredits(totalCredits, 'refund', wasCancelled ? `Refund — cancelled video render (${tier})` : `Refund — failed video render (${tier})`);
+          await refundCredits('render');
         } catch { /* best-effort */ }
       }
       setGenerating(false);

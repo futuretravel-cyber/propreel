@@ -14,13 +14,10 @@ export interface CreditDeductRequest {
   pool?: 'personal' | 'agency';
 }
 
-export interface CreditAddRequest {
+export interface CreditRefundRequest {
   user_id: string;
-  amount: number;
-  source: 'purchase' | 'bonus' | 'gift' | 'refund' | 'subscription';
-  description: string;
-  metadata?: any;
-  expires_at?: string;
+  /** Which charge this reverses — the SERVER decides the amount (never the client) */
+  scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post';
 }
 
 export interface CreditTransferRequest {
@@ -88,10 +85,15 @@ export const BackendAPI = {
   },
 
   /**
-   * Add credits to user account
+   * Request a refund for a failed/cancelled charge.
+   *
+   * The client sends only WHICH charge (scope) — the API reverses exactly
+   * one matching, not-yet-reversed deduction for its own amount. This
+   * replaced the old `action=add {source:'refund'}` call, which let any
+   * signed-in user mint arbitrary credits (self-refund hole).
    */
-  async addCredits(params: CreditAddRequest) {
-    const response = await fetch(`${API_BASE}/api/credits?action=add`, {
+  async refundCredits(params: CreditRefundRequest) {
+    const response = await fetch(`${API_BASE}/api/credits?action=refund`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -99,7 +101,7 @@ export const BackendAPI = {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to add credits');
+      throw new Error(error.error || 'Failed to refund credits');
     }
 
     return response.json();

@@ -1,10 +1,10 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail, transferCredits } from '../lib/userService';
-import { requireOwner } from '../lib/auth';
+import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail, transferCredits, refundDeduction, REFUND_SCOPES } from '../lib/userService';
+import { requireOwner, requireAdminSession } from '../lib/auth';
 
 /**
  * Unified credits endpoint (Hobby plan has a 12-function limit).
- * Routes on ?action= : add | deduct | transfer | gift_email | report
+ * Routes on ?action= : add (ADMIN) | refund | deduct | transfer | gift_email | report
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = (req.query.action as string) || '';
@@ -35,18 +35,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // ── POST /api/credits?action=add ───────────────────────────────
+    // ── POST /api/credits?action=add ──── ADMIN-ONLY, 'bonus' ONLY ───
+    // This used to gate on requireOwner(user_id) — i.e. "the caller may add
+    // credits to their OWN account" — which let any signed-in user mint
+    // unlimited credits as 'refund', 'bonus' or 'purchase'. Client-initiated
+    // refunds now run through ?action=refund (verified against the ledger);
+    // purchase/subscription credits are minted server-side by the Paystack
+    // paths; the only browser caller left is the admin grant button.
     if (req.method === 'POST' && action === 'add') {
-      const { user_id, amount, source, description, metadata, expires_at } = req.body;
+      const gate = await requireAdminSession(req);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
+      const { user_id, amount, source, description, metadata, expires_at } = req.body;
       if (!user_id || !amount || amount <= 0) {
         return res.status(400).json({ error: 'Invalid request parameters' });
       }
-      const gate = await requireOwner(req, user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
-
-      if (!source || !['purchase', 'bonus', 'gift', 'refund', 'subscription'].includes(source)) {
-        return res.status(400).json({ error: 'Invalid source type' });
+      if (source !== 'bonus') {
+        return res.status(403).json({ error: 'Admin grants are limited to source "bonus"' });
       }
 
       const result = await addCredits(
@@ -63,6 +68,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         new_balance: result.newBalance,
         added: amount,
         source,
+      });
+    }
+
+    // ── POST /api/credits?action=refund { user_id, scope } ──────────
+    // Server-verified reversal: the client names a SCOPE, never an amount
+    // or a source. The server finds the matching unreversed deduction in
+    // the ledger and returns exactly its amount — at most once per charge
+    // (event lock), so a refund can never exceed what was really charged.
+    if (req.method === 'POST' && action === 'refund') {
+      const { user_id, scope } = req.body || {};
+      if (!user_id || !scope) {
+        return res.status(400).json({ error: 'user_id and scope are required' });
+      }
+      if (!REFUND_SCOPES.includes(scope)) {
+        return res.status(400).json({ error: 'Unknown refund scope' });
+      }
+      const gate = await requireOwner(req, user_id);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+
+      const result = await refundDeduction(user_id, scope);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error || 'Refund failed' });
+      }
+      return res.status(200).json({
+        success: true,
+        new_balance: result.newBalance,
+        refunded: result.refunded,
+        scope,
       });
     }
 

@@ -21,7 +21,7 @@ type Stage = 'idle' | 'uploading' | 'deducting' | 'rendering' | 'done';
  *   5. Failed renders auto-refund the 8 credits
  */
 export function useFlashHead() {
-  const { addCredits, user, refresh } = useCredit() as any;
+  const { refundCredits, user, refresh } = useCredit() as any;
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string>('');
@@ -192,12 +192,12 @@ export function useFlashHead() {
       if (projectId) {
         PropReelAPI.updateProject(user.id, projectId, { status: 'FAILED' }).catch(() => {});
       }
-      await addCredits(FLASHHEAD_COST, 'refund', wasCancelled ? 'Refund — cancelled avatar render' : 'Refund — failed FlashHead render').catch(() => {});
+      await refundCredits('flashhead').catch(() => {});
       setError(wasCancelled ? 'Render cancelled — your 8 credits were refunded.' : (e.message || 'Render failed — your 8 credits were refunded'));
       setStage('idle');
       return null;
     }
-  }, [user, addCredits, refresh, postCancel]);
+  }, [user, refundCredits, refresh, postCancel]);
 
   return {
     generate,

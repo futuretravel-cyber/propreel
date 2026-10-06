@@ -230,7 +230,7 @@ const emptyDraft: DraftDetails = {
 const STEPS = ['Property Details', 'Photos', 'Description', 'Export'];
 
 export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => void; onSaved: () => void; initial?: Project }) {
-  const { user, deductCredits, addCredits, refresh } = useCredit();
+  const { user, deductCredits, refundCredits, refresh } = useCredit();
   const toast = useToast();
 
   const [step, setStep] = useState(0);
@@ -365,7 +365,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
       setDescription(text.trim());
       toast.success('Description generated', 'AI');
     } catch (e: any) {
-      if (charged) await addCredits(cost, 'refund', 'Refund — failed property description').catch(() => {});
+      if (charged) await refundCredits('description').catch(() => {});
       toast.error(e.message ? `${e.message} — your credit was refunded` : 'Description generation failed — your credit was refunded');
     } finally {
       setGenerating(false);

@@ -150,7 +150,8 @@ interface CreditContextType {
   downgradePlan: (planId: PlanId) => void;
   acknowledgeLowCredit: () => void;
   deductCredits: (amount: number, reason: string, metadata?: any, pool?: 'personal' | 'agency') => Promise<boolean>;
-  addCredits: (amount: number, source: 'purchase' | 'bonus' | 'gift' | 'refund' | 'subscription', description: string) => Promise<boolean>;
+  /** Reverse ONE real charge after a failure — the server picks the amount */
+  refundCredits: (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post') => Promise<boolean>;
 }
 
 export interface RegisterData {
@@ -430,21 +431,22 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  const addCredits = useCallback(async (amount: number, source: 'purchase' | 'bonus' | 'gift' | 'refund' | 'subscription', description: string): Promise<boolean> => {
+  const refundCredits = useCallback(async (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post'): Promise<boolean> => {
     if (!user) return false;
 
     try {
-      const result = await BackendAPI.addCredits({
+      // Server-verified: the API reverses one matching, unreversed deduction
+      // for its actual amount (at most once). The client can no longer name
+      // an amount or a source — that was a self-minting hole.
+      const result = await BackendAPI.refundCredits({
         user_id: user.id,
-        amount,
-        source,
-        description,
+        scope,
       });
 
       setUser(prev => prev ? { ...prev, credits: result.new_balance } : null);
       return true;
     } catch (error) {
-      console.error('Error adding credits:', error);
+      console.error('Refund failed:', error);
       throw error;
     }
   }, [user]);
@@ -460,7 +462,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
       login, loginWithTwoFactor, register, logout, refresh, acceptPendingAgencyInvite,
       purchaseCredits, setAutoTopup, giftCredits,
       upgradePlan, downgradePlan, acknowledgeLowCredit,
-      deductCredits, addCredits,
+      deductCredits, refundCredits,
     }}>
       {children}
     </CreditContext.Provider>

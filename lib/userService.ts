@@ -493,6 +493,94 @@ export async function addCredits(
   }
 }
 
+/**
+ * Refund scopes → the deduction each one reverses. Scope strings mirror the
+ * charge sites: `job_token` mints (render / flashhead / edit — priced server-
+ * side by lib/renderPricing) and the client `deduct` action (description /
+ * social_post). The matcher only ever selects a NEGATIVE ledger row, so a
+ * refund can never reverse an inflow (purchase, bonus, gift, transfer-in).
+ */
+const REFUND_MATCHERS: Record<string, (t: CreditTransaction) => boolean> = {
+  render: t => t.metadata?.scope === 'render' || t.description === 'Video generation',
+  flashhead: t => t.metadata?.scope === 'flashhead' || t.description === 'FlashHead lip-sync video',
+  edit: t => t.metadata?.scope === 'edit' || t.metadata?.kind === 'IMAGE_EDIT' || t.description.startsWith('Image edit'),
+  description: t => t.metadata?.kind === 'PROPERTY_DESCRIPTION' || t.description === 'Property description',
+  social_post: t => t.metadata?.kind === 'SOCIAL_POST' || t.description === 'Social media post',
+};
+
+export const REFUND_SCOPES = Object.keys(REFUND_MATCHERS);
+
+/** How far back a refund claim may reach — real flows refund within seconds. */
+const REFUND_WINDOW_MS = 7 * 24 * 3600_000;
+
+/**
+ * Reverse ONE real, unreversed deduction — the server-verified replacement
+ * for the client-issued `source:'refund'` mints (self-refund hole).
+ *
+ * Invariants this enforces, none of which the old path had:
+ *  - the amount is taken from the ORIGINAL deduction row, never the client;
+ *  - at most one refund per deduction (eventId `rfnd_<txnId>` → the same
+ *    settings-table event lock Paystack webhooks use — concurrent losers
+ *    get `duplicated` and mint nothing);
+ *  - only real `deduction` rows younger than REFUND_WINDOW_MS qualify, so a
+ *    refund can never exceed what was actually charged (net-zero at worst);
+ *  - nothing to reverse ⇒ success with refunded:0 (idempotent no-op, so the
+ *    client's failure path behaves exactly as before).
+ *
+ * Refunds land on the personal balance — the same choice every existing
+ * server-side refund (nightly reaper, listing rollback) already makes, even
+ * when the original charge drew the agency pool.
+ */
+export async function refundDeduction(
+  userId: string,
+  scope: string
+): Promise<{ success: boolean; newBalance: number; refunded: number; error?: string }> {
+  const matches = REFUND_MATCHERS[scope];
+  if (!matches) return { success: false, newBalance: 0, refunded: 0, error: 'Unknown refund scope' };
+
+  const txns = await getCreditTransactions(userId, 500);
+  // Originals already reversed: the reversal row carries eventId rfnd_<origId>
+  const reversed = new Set(
+    txns
+      .filter(t => t.type === 'refund' && t.eventId?.startsWith('rfnd_'))
+      .map(t => t.eventId!.slice('rfnd_'.length))
+  );
+  const candidate = txns.find(
+    t =>
+      t.type === 'deduction' &&
+      t.amount < 0 &&
+      !reversed.has(t.id) &&
+      Date.now() - Date.parse(t.createdAt) <= REFUND_WINDOW_MS &&
+      matches(t)
+  );
+
+  const current = await getUser(userId);
+  if (!current) return { success: false, newBalance: 0, refunded: 0, error: 'User not found' };
+  if (!candidate) {
+    return { success: true, newBalance: current.credits, refunded: 0 };
+  }
+
+  const amount = Math.abs(candidate.amount);
+  const result = await addCredits(
+    userId,
+    amount,
+    'refund',
+    `Refund — ${candidate.description}`,
+    {
+      reversalOf: candidate.id,
+      scope,
+      ...(candidate.metadata?.pool ? { chargedTo: candidate.metadata.pool } : {}),
+    },
+    undefined,
+    `rfnd_${candidate.id}`
+  );
+  return {
+    success: true,
+    newBalance: result.newBalance,
+    refunded: result.duplicated ? 0 : amount,
+  };
+}
+
 // Record a credit transaction. Idempotency for event-driven credits is
 // handled by the settings-table event lock in addCredits (the credit-
 // transactions table is keyed by (userId, createdAt), so a uniqueness
