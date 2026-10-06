@@ -1,21 +1,57 @@
 import crypto from 'crypto';
 
 /**
- * Verify Paystack webhook signature
+ * Verify the Paystack webhook signature (HMAC-SHA512, hex, x-paystack-signature).
+ *
+ * Paystack signs the RAW request body. On Vercel the handler normally only
+ * has the parsed body, so a signature is accepted when it matches ANY of the
+ * candidate serialisations of that body: the raw bytes when the runtime
+ * exposes them, the compact JSON.stringify form, or Python's json.dumps
+ * default (', ' / ': ') — Paystack's likely wire format. Every candidate is
+ * one exact byte string that still has to be HMAC'd with the secret key, so
+ * this does not weaken verification: without the key none of them can be
+ * forged. Comparisons are constant-time.
  */
-export async function verifyPaystackSignature(body: any, signature: string): Promise<boolean> {
-  const secretKey = process.env.PAYSTACK_SECRET_KEY;
-  
-  if (!secretKey || !signature) {
+function hmacHex(input: string | Buffer, secret: string): string {
+  return crypto.createHmac('sha512', secret).update(input).digest('hex');
+}
+
+function constantTimeHexEqual(a: string, b: string): boolean {
+  try {
+    const ba = Buffer.from(a, 'hex');
+    const bb = Buffer.from(b, 'hex');
+    if (ba.length === 0 || ba.length !== bb.length) return false;
+    return crypto.timingSafeEqual(ba, bb);
+  } catch {
     return false;
   }
+}
 
-  const hash = crypto
-    .createHmac('sha512', secretKey)
-    .update(JSON.stringify(body))
-    .digest('hex');
+/** Python json.dumps default separators: `", "` between items, `": "` after keys. */
+export function jsonWithPythonSpaces(value: any): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(jsonWithPythonSpaces).join(', ')}]`;
+  const entries = Object.entries(value).map(([k, v]) => `${JSON.stringify(k)}: ${jsonWithPythonSpaces(v)}`);
+  return `{${entries.join(', ')}}`;
+}
 
-  return hash === signature;
+export async function verifyPaystackSignature(
+  body: any,
+  signature: string,
+  rawBody?: string | Buffer | null
+): Promise<boolean> {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey || !signature) return false;
+
+  const candidates: Array<string | Buffer> = [];
+  if (rawBody && (typeof rawBody === 'string' ? rawBody.length > 0 : rawBody.length > 0)) {
+    candidates.push(rawBody);
+  }
+  candidates.push(JSON.stringify(body));
+  candidates.push(jsonWithPythonSpaces(body));
+
+  const want = signature.trim().toLowerCase();
+  return candidates.some(c => constantTimeHexEqual(hmacHex(c, secretKey), want));
 }
 
 /**

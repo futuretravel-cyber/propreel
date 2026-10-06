@@ -1,12 +1,104 @@
 import { createHash } from 'crypto';
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyPaystackSignature } from '../../lib/paystack';
+import { verifyPaystackSignature, jsonWithPythonSpaces } from '../../lib/paystack';
 import { addCredits, createSubscription, getUser, allocateMonthlyCredits, updateUser } from '../../lib/userService';
 import { generateInvoicePdf } from '../../lib/invoice';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // ── Accept-path self-test (ops only) ───────────────────────────────────
+  // POST /api/paystack/webhook?action=selftest
+  // Authorization: Bearer ${CRON_SECRET}
+  //
+  // Historically the only webhook proof was the reject path (forged
+  // signature → 401). This signs synthetic payloads with the SAME
+  // PAYSTACK_SECRET_KEY the verifier uses and delivers them over the public
+  // endpoint, so a pass exercises the real wire: signature construction,
+  // Vercel's body handling (raw bytes preserved?), routing, idempotency.
+  //   P1/P2 — unknown event types: acknowledged 200 before any handler or
+  //           marker logic → zero side effects.
+  //   P3    — bit-flipped signature → must be 401.
+  //   P4    — charge.success for a non-existent customer: the full HANDLED
+  //           path (top-level idempotency claim + handler), credits nobody;
+  //           second delivery must come back flagged duplicate, and the
+  //           marker row this probe claims is deleted before we respond.
+  if (req.query.action === 'selftest') {
+    const authHeader = req.headers.authorization;
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) return res.status(500).json({ error: 'CRON_SECRET not configured' });
+    if (authHeader !== `Bearer ${cronSecret}`) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { createHmac } = await import('crypto');
+    const key = process.env.PAYSTACK_SECRET_KEY;
+    const endpoint = `${process.env.APP_URL || 'https://www.propreel.co.za'}/api/paystack/webhook`;
+    const sign = (bytes: string) => createHmac('sha512', key || '').update(bytes).digest('hex');
+    const post = async (body: string, sig: string) => {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-paystack-signature': sig },
+        body,
+      });
+      return { status: r.status, body: (await r.text()).slice(0, 300) };
+    };
+
+    const raw: any = (req as any).rawBody;
+    const introspect = {
+      keyConfigured: !!key,
+      keyPrefix: key ? String(key).slice(0, 8) : null,
+      keyLength: key ? String(key).length : 0,
+      rawBodyType: raw === undefined ? 'undefined' : raw === null ? 'null' : Buffer.isBuffer(raw) ? 'Buffer' : typeof raw,
+      rawBodyBytes: typeof raw === 'string' ? raw.length : Buffer.isBuffer(raw) ? raw.length : 0,
+      compactBodyBytes: JSON.stringify(req.body).length,
+    };
+    if (!key) return res.status(500).json({ error: 'PAYSTACK_SECRET_KEY not configured', introspect });
+
+    const synthetic = { event: 'test.webhook_accept_probe', data: { probe: 'selftest', ts: Date.now() } };
+    const p1body = JSON.stringify(synthetic);        // compact bytes
+    const p2body = jsonWithPythonSpaces(synthetic);  // Paystack's likely wire shape
+    const p1sig = sign(p1body);
+
+    const report: any = { endpoint, introspect };
+    const [p1, p2, p3] = await Promise.all([
+      post(p1body, p1sig),
+      post(p2body, sign(p2body)),
+      post(p1body, p1sig.replace(/^./, (c) => (c === '0' ? '1' : '0'))),
+    ]);
+    report.accept_compact = p1;
+    report.accept_python_spaced = p2;
+    report.reject_forged = p3;
+
+    const p4 = {
+      event: 'charge.success',
+      data: { customer_email: 'whs-selftest@propreel.invalid', amount: 100, reference: `whs_${Date.now()}`, metadata: {} },
+    };
+    const p4body = JSON.stringify(p4);
+    const p4sig = sign(p4body);
+    report.handled_first = await post(p4body, p4sig);
+    report.handled_duplicate = await post(p4body, p4sig);
+
+    try {
+      const { deleteItem, TABLES: T } = await import('../../lib/db');
+      const markerId = `psevt_charge.success_${createHash('sha256').update(JSON.stringify(p4)).digest('hex').slice(0, 32)}`;
+      await deleteItem(T.SETTINGS, { id: markerId });
+      report.markerCleaned = markerId;
+    } catch (cleanupErr) {
+      report.markerCleaned = false; // harmless if it lingers: dedupes only this exact payload
+    }
+
+    report.verdict = {
+      accept_compact: report.accept_compact.status === 200,
+      accept_python_spaced: report.accept_python_spaced.status === 200,
+      reject_forged: report.reject_forged.status === 401,
+      handled_then_deduped:
+        report.handled_first.status === 200 &&
+        report.handled_duplicate.status === 200 &&
+        report.handled_duplicate.body.includes('"duplicate"'),
+    };
+    report.pass = Object.values(report.verdict).every(Boolean);
+    return res.status(report.pass ? 200 : 500).json(report);
   }
 
   // Set when the idempotency claim below succeeds; released on a processing
@@ -20,7 +112,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Verify webhook signature. MUST be awaited: verifyPaystackSignature is
     // async, and an un-awaited Promise is always truthy — without await this
     // check never rejected anything, letting anyone forge a charge.success.
-    if (!signature || !(await verifyPaystackSignature(payload, signature))) {
+    // The raw body bytes (when the runtime exposes them) are passed through
+    // so verification can match Paystack's exact signed bytes instead of a
+    // re-serialisation of the parsed JSON.
+    if (!signature || !(await verifyPaystackSignature(payload, signature, (req as any).rawBody))) {
       console.warn(`Paystack webhook: signature verification failed (event=${payload?.event ?? 'unknown'})`);
       return res.status(401).json({ error: 'Invalid signature' });
     }
