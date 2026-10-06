@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import MobileNav from './components/MobileNav';
 import UploadQueueNotifier from './components/UploadQueueNotifier';
 import AIDisclaimerGate from './components/AIDisclaimerGate';
+import AdminUserDetail from './components/AdminUserDetail';
 import { DashboardSkeleton, BillingSkeleton, ProjectsSkeleton, StudioSkeleton, useSimulatedLoading } from './components/Skeleton';
 import { useAuth, useCredit, AuthProvider, CreditProvider } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
@@ -3551,6 +3552,7 @@ function AdminUsers() {
   const toast = useToast();
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
+  const [detailUser, setDetailUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -3585,6 +3587,7 @@ function AdminUsers() {
       <div className="flex items-center gap-3">
         <input className="input max-w-xs" placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
+      {detailUser && <AdminUserDetail user={detailUser} onClose={() => setDetailUser(null)} />}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -3606,7 +3609,7 @@ function AdminUsers() {
                 <td className="px-3 py-3 text-sm text-white">{m.credits}</td>
                 <td className="px-3 py-3 text-xs text-ink-400">{m.createdAt ? new Date(m.createdAt).toLocaleDateString() : '—'}</td>
                 <td className="px-3 py-3">
-                  <button onClick={() => grant(m.id)} className="btn btn-ghost text-xs py-1"><Plus className="w-3 h-3" /> +100</button>
+                  <button onClick={() => grant(m.id)} className="btn btn-ghost text-xs py-1"><Plus className="w-3 h-3" /> +100</button> <button onClick={() => setDetailUser(m)} className="btn btn-ghost text-xs py-1">Details</button>
                 </td>
               </tr>
             ))}

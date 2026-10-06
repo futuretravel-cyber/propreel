@@ -790,6 +790,10 @@ async function listUsers(req: VercelRequest, res: VercelResponse) {
     planId: u.planId || null,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
+    // AI-notice ack as it stands on the row — version + timestamp for the
+    // admin user detail view (non-secret; safeUser returns them too)
+    aiNoticeAckVersion: u.aiNoticeAckVersion || null,
+    aiNoticeAckAt: u.aiNoticeAckAt || null,
   }));
   safe.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   return res.status(200).json({ success: true, users: safe });
