@@ -915,8 +915,12 @@ def render_video(
             print(f"Generating AI clip {i+1}/{len(images)}")
             
             # Per-image prompt: frontend rotation payload (A/B/C) if provided,
-            # otherwise the built-in round-robin (i % 3)
+            # otherwise the built-in round-robin (i % 3). `match` is bound
+            # unconditionally: the status write below reads it even when no
+            # payload was sent — a conditional assignment here raised
+            # UnboundLocalError on the first clip and froze progress at 0.
             supplied = None
+            match = None
             if image_prompts:
                 match = next((p for p in image_prompts if p.get("image_url") == image_url and p.get("prompt")), None)
                 supplied = match.get("prompt") if match else None
@@ -993,9 +997,57 @@ def render_video(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Failure path: mark job failed for polling clients (called via .spawn wrapper)
+# Failure path: mark job failed for polling clients
+# (called by render_video_job below — never from inside a retried attempt)
 def render_video_failed(record_id: str, error: str):
-    _write_job_status(record_id, "failed", {"error": error[:400]})# ───────────────────────────────────────────────────────────────────────────
+    _write_job_status(record_id, "failed", {"error": error[:400]})
+
+
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=3600, retries=0)
+async def render_video_job(
+    record_id: str,
+    tier: str,
+    config_index: int,
+    orientation: str,
+    images: list[str],
+    voiceover_text: str,
+    voice_id: str = "Joanna",
+    include_agent_branding: bool = True,
+    music_url: str | None = None,
+    image_prompts: list[dict] | None = None,
+) -> None:
+    """Spawn target for POST /render_video: awaits the retried render and —
+    ONLY once every Modal retry is exhausted — flips the job to `failed`.
+
+    The write cannot live inside render_video itself: it would fire on the
+    FIRST failed attempt while attempts 2-3 are still running, and the client
+    treats `failed` as terminal (refund + FAILED record) — a retry that then
+    succeeded would publish an orphaned video for a refunded job. Conversely,
+    nothing used to call render_video_failed at all, so a crash (e.g. the
+    Oct-6 UnboundLocalError) left `processing / progress 0` forever and the
+    client sat until its 25-minute deadline.
+
+    Cancellation stays safe: _write_job_status keeps `cancelled` terminal, so
+    this write is dropped for a job the user cancelled (RenderCancelled
+    propagates here as an exception like any other).
+    """
+    try:
+        await render_video.remote.aio(
+            record_id=record_id,
+            tier=tier,
+            config_index=config_index,
+            orientation=orientation,
+            images=images,
+            voiceover_text=voiceover_text,
+            voice_id=voice_id,
+            include_agent_branding=include_agent_branding,
+            music_url=music_url,
+            image_prompts=image_prompts
+        )
+    except Exception as e:
+        print(f"❌ Render {record_id} failed after retries: {type(e).__name__}: {e}")
+        render_video_failed(record_id, f"{type(e).__name__}: {e}")
+# ───────────────────────────────────────────────────────────────────────────
 # IMAGE EDITING FUNCTIONS
 # ───────────────────────────────────────────────────────────────────────────
 
@@ -1456,25 +1508,31 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
     _claim_job_token(raw_request)  # paid + single-use before any work starts
     try:
         if raw_request.query_params.get("wait") in ("true", "1"):
-            result = await render_video.remote.aio(
-                record_id=request.record_id,
-                tier=request.tier,
-                config_index=request.config_index,
-                orientation=request.orientation,
-                images=request.images,
-                voiceover_text=request.voiceover_text,
-                voice_id=request.voice_id,
-                include_agent_branding=request.include_agent_branding,
-                music_url=request.music_url,
-                image_prompts=request.image_prompts
-            )
+            try:
+                result = await render_video.remote.aio(
+                    record_id=request.record_id,
+                    tier=request.tier,
+                    config_index=request.config_index,
+                    orientation=request.orientation,
+                    images=request.images,
+                    voiceover_text=request.voiceover_text,
+                    voice_id=request.voice_id,
+                    include_agent_branding=request.include_agent_branding,
+                    music_url=request.music_url,
+                    image_prompts=request.image_prompts
+                )
+            except Exception as e:
+                # Same contract as the async path: a crashed render must land
+                # as `failed`, never freeze at `processing / progress 0`.
+                render_video_failed(request.record_id, f"{type(e).__name__}: {e}")
+                raise
             # Private buckets: the browser plays/shares this URL directly,
             # so hand it a long-lived presigned link, never the raw object.
             return presign_urls(result)
 
         # Async path: write initial job status to S3, then spawn
         _write_job_status(request.record_id, "queued", {"tier": request.tier})
-        render_video.spawn(
+        await render_video_job.spawn.aio(
             record_id=request.record_id,
             tier=request.tier,
             config_index=request.config_index,
