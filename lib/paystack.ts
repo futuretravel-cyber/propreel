@@ -35,6 +35,11 @@ export function jsonWithPythonSpaces(value: any): string {
   return `{${entries.join(', ')}}`;
 }
 
+/** Escape non-ASCII exactly like Python's json.dumps(ensure_ascii=True): `Jos\u00e9`. */
+export function escapeNonAscii(s: string): string {
+  return s.replace(/[\u007f-\uffff]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+}
+
 export async function verifyPaystackSignature(
   body: any,
   signature: string,
@@ -47,8 +52,14 @@ export async function verifyPaystackSignature(
   if (rawBody && (typeof rawBody === 'string' ? rawBody.length > 0 : rawBody.length > 0)) {
     candidates.push(rawBody);
   }
-  candidates.push(JSON.stringify(body));
-  candidates.push(jsonWithPythonSpaces(body));
+  const compact = JSON.stringify(body);
+  const spaced = jsonWithPythonSpaces(body);
+  candidates.push(
+    compact,
+    spaced,
+    escapeNonAscii(compact), // Python ensure_ascii=True, compact
+    escapeNonAscii(spaced)    // Python ensure_ascii=True, default separators (most likely wire form)
+  );
 
   const want = signature.trim().toLowerCase();
   return candidates.some(c => constantTimeHexEqual(hmacHex(c, secretKey), want));

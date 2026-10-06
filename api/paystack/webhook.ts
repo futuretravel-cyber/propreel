@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyPaystackSignature, jsonWithPythonSpaces } from '../../lib/paystack';
+import { verifyPaystackSignature, jsonWithPythonSpaces, escapeNonAscii } from '../../lib/paystack';
 import { addCredits, createSubscription, getUser, allocateMonthlyCredits, updateUser } from '../../lib/userService';
 import { generateInvoicePdf } from '../../lib/invoice';
 
@@ -57,18 +57,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const synthetic = { event: 'test.webhook_accept_probe', data: { probe: 'selftest', ts: Date.now() } };
     const p1body = JSON.stringify(synthetic);        // compact bytes
-    const p2body = jsonWithPythonSpaces(synthetic);  // Paystack's likely wire shape
+    const p2body = jsonWithPythonSpaces(synthetic);  // Python default separators
+    // Real payloads carry customer names/addresses; Python escapes non-ASCII
+    // (ensure_ascii=True) while JSON.stringify does not — this byte form must
+    // verify too or any event containing an accented name would 401.
+    const p5body = escapeNonAscii(jsonWithPythonSpaces({ ...synthetic, data: { ...synthetic.data, name: 'Jos\u00e9 Garc\u00eda \ud83c\uddff\ud83c\udde6' } }));
     const p1sig = sign(p1body);
 
     const report: any = { endpoint, introspect };
-    const [p1, p2, p3] = await Promise.all([
+    const [p1, p2, p3, p5] = await Promise.all([
       post(p1body, p1sig),
       post(p2body, sign(p2body)),
       post(p1body, p1sig.replace(/^./, (c) => (c === '0' ? '1' : '0'))),
+      post(p5body, sign(p5body)),
     ]);
     report.accept_compact = p1;
     report.accept_python_spaced = p2;
     report.reject_forged = p3;
+    report.accept_python_spaced_nonascii = p5;
 
     const p4 = {
       event: 'charge.success',
@@ -91,6 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     report.verdict = {
       accept_compact: report.accept_compact.status === 200,
       accept_python_spaced: report.accept_python_spaced.status === 200,
+      accept_python_spaced_nonascii: report.accept_python_spaced_nonascii.status === 200,
       reject_forged: report.reject_forged.status === 401,
       handled_then_deduped:
         report.handled_first.status === 200 &&
