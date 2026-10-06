@@ -347,7 +347,7 @@ export default function SignupPage() {
 
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" checked={formData.agreed} onChange={e => setFormData({...formData, agreed: e.target.checked})} className="mt-1 w-4 h-4 rounded" />
-                <span className="text-xs text-ink-400">I understand that PropReel uses AI technology, which may produce imperfect results, and I agree that spent credits are non-refundable.</span>
+                <span className="text-xs text-ink-400">I understand that PropReel uses AI technology, which may produce imperfect results, and I agree that spent credits are non-refundable. I agree to the <Link to="/terms" className="text-purple-400 hover:text-purple-300 underline">Terms of Service</Link>.</span>
               </label>
 
               <label className="flex items-start gap-3 cursor-pointer">

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { BackendAPI } from '../lib/backendAPI';
+import { TERMS_CONSENT_VERSION } from '../lib/termsContent';
 
 // ─── First-party auth over the shared /api/users function ───────────────────
 // Sessions are HttpOnly cookies issued by the API (lib/auth.ts) — no third-
@@ -298,6 +299,11 @@ export function CreditProvider({ children }: { children: ReactNode }) {
         enableTwoFactor: data.enableTwoFactor,
         referralCode: data.referralCode,
         startTrial: data.startTrial,
+        // The checkbox the caller just ticked, versioned against the exact
+        // Terms text it was given: the account records which Terms were
+        // agreed to (and the server stamps when).
+        aiAcknowledged: data.aiAcknowledged,
+        termsConsentVersion: TERMS_CONSENT_VERSION,
       }),
     });
 

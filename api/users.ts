@@ -1254,7 +1254,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         return res.status(429).json({ error: `Too many signups from this network — try again in ${waitSec}s` });
       }
 
-      const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect, enableTwoFactor = false, referralCode, startTrial = false } = body;
+      const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect, enableTwoFactor = false, referralCode, startTrial = false, aiAcknowledged = false, termsConsentVersion = null } = body;
       if (!email || !fullName) return res.status(400).json({ error: 'Missing email or fullName' });
       if (!EMAIL_RE.test(String(email))) return res.status(400).json({ error: 'Enter a valid email address' });
       if (typeof password !== 'string' || password.length < 8) {
@@ -1274,10 +1274,23 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       // Provision (creates the row + signup bonus + admin grant) or reuse the
       // still-unconfirmed row (re-register with a corrected password).
       const { user } = await provisionUser({ email: normalized, fullName, phone, agencyName, planId, cycle });
+      // Signup consent, content-versioned: the client hashes the exact Terms
+      // text its checkbox was shown (same self-versioning trick as the AI
+      // notice — the server never needs a copy of the Terms). Recorded only
+      // when the caller says the box was ticked, and stamped server-side, so
+      // an account later knows WHICH Terms it agreed to and when. A missing or
+      // malformed hash is stored as null rather than trusted verbatim.
+      const consentVersion =
+        aiAcknowledged === true && /^[0-9a-f]{8}$/.test(String(termsConsentVersion || ''))
+          ? String(termsConsentVersion)
+          : null;
       await updateUser(user.id, {
         passwordHash: hashPassword(password),
         emailVerified: false,
         ...(enableTwoFactor ? { twoFactorOptIn: true } : {}),
+        ...(consentVersion
+          ? { termsConsentVersion: consentVersion, termsConsentAt: new Date().toISOString() }
+          : {}),
       } as any);
       // Temporary account (opt-in): 7-day trial clock on top of the standard
       // 5-credit signup bonus — no extra credits. Only set when the row is

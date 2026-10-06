@@ -769,7 +769,7 @@ function RegisterPage() {
             <div><label className="label">Password</label><input type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 8 characters" required minLength={8} /></div>
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-1 w-4 h-4 rounded border-ink-600 bg-ink-800 text-purple-600 focus:ring-purple-600" />
-              <span className="text-xs text-ink-400">{AI_DISCLAIMER_TEXT}</span>
+              <span className="text-xs text-ink-400">{AI_DISCLAIMER_TEXT} I agree to the <Link to="/terms" className="text-purple-400 hover:text-purple-300 underline">Terms of Service</Link>.</span>
             </label>
             <button type="submit" disabled={loading || !agreed} className="btn btn-primary w-full">{loading ? 'Creating account...' : `Sign Up — Get ${SIGNUP_BONUS} Free Credits`}</button>
           </form>

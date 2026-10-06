@@ -31,10 +31,10 @@ export const AI_DISCLAIMER_SENTENCES: string[] = [
 
 export const AI_DISCLAIMER_TEXT = AI_DISCLAIMER_SENTENCES.join(' ');
 
-/** FNV-1a content hash of the notice — the acknowledgement key embeds it,
- *  so ANY edit to the sentences above yields a new key and every browser is
- *  prompted again. The version bumps itself; there is nothing to update. */
-function fnv1a(text: string): string {
+/** FNV-1a content hash — shared by every content-versioned acknowledgement
+ *  (the AI notice, the Terms consent). Any edit to the hashed text yields a
+ *  new version and stale acknowledgements stop counting. */
+export function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     hash ^= text.charCodeAt(i);

@@ -75,6 +75,10 @@ export interface User {
    *  exact notice text) + when it was given, so it follows the account */
   aiNoticeAckVersion?: string | null;
   aiNoticeAckAt?: string | null;
+  /** Signup consent — content-versioned hash of the exact Terms text the
+   *  signup checkbox was ticked against + when it was recorded */
+  termsConsentVersion?: string | null;
+  termsConsentAt?: string | null;
   projectFolders?: Array<{ id: string; name: string; icon: string; createdAt: string }>;
   planId?: string | null;
   cycle?: string;
