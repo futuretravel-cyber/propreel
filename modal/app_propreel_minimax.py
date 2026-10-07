@@ -346,6 +346,67 @@ def fetch_media(url: str, timeout: int = 120) -> bytes:
     resp.raise_for_status()
     return resp.content
 
+
+# Every image editor on the site returns ONE frame size: 1024×768 (4:3).
+# The model follows input aspect natively, so outputs otherwise drift
+# (1024×576, 1248×832, 2048×2048 …) — the product wants a uniform frame
+# for thumbnails, grids and downloads across Photo Editor / Staging /
+# Removal / Twilight, which all funnel through this one function.
+EDIT_OUTPUT_WIDTH = 1024
+EDIT_OUTPUT_HEIGHT = 768
+
+
+def _fit_image_bytes(data: bytes, width: int = EDIT_OUTPUT_WIDTH,
+                     height: int = EDIT_OUTPUT_HEIGHT) -> bytes:
+    """Cover-scale then center-crop to exactly width×height (never pads).
+    Already-correct bytes pass through untouched (no re-encode); any ffprobe/
+    ffmpeg failure degrades to the original rather than failing an edit the
+    agent already paid for."""
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+    in_path = out_path = None
+    try:
+        with _tf.NamedTemporaryFile(suffix='.img', delete=False) as f:
+            f.write(data)
+            in_path = f.name
+        # Already the target frame → hand back the original bytes untouched
+        try:
+            probe = _sp.run(
+                ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                 '-show_entries', 'stream=width,height', '-of', 'csv=p=0', in_path],
+                capture_output=True, text=True, timeout=30,
+            )
+            line = (probe.stdout or '').strip().splitlines()
+            if line:
+                w_str, h_str = line[0].split(',')[:2]
+                if (int(w_str), int(h_str)) == (width, height):
+                    return data
+        except Exception:
+            pass  # unreadable dims → run ffmpeg anyway
+        out_path = in_path + '.fit.jpg'
+        _sp.run(
+            ['ffmpeg', '-v', 'error', '-y', '-i', in_path,
+             '-vf', f'scale={width}:{height}:force_original_aspect_ratio=increase,'
+                    f'crop={width}:{height}',
+             '-q:v', '2', out_path],
+            check=True, capture_output=True, timeout=60,
+        )
+        with open(out_path, 'rb') as f:
+            fitted = f.read()
+        # ffmpeg writes a valid JPEG; sanity-check before replacing the payload
+        return fitted if fitted else data
+    except Exception as e:
+        print(f"fit-to-{width}x{height} skipped: {e}")
+        return data
+    finally:
+        for p in (in_path, out_path):
+            if p:
+                try:
+                    _os.unlink(p)
+                except Exception:
+                    pass
+
 # Credit cost per image render
 IMAGE_RENDER_CREDIT_COST = 2
 
@@ -1316,8 +1377,9 @@ def edit_image(
         else:
             raise Exception(f"Unknown fal.ai status: {status_type}")
     
-    # Download and upload to S3
+    # Download and upload to S3 — normalized to the site-wide 1024×768 frame
     response = requests.get(edited_image_url)
+    payload = _fit_image_bytes(response.content)
     
     s3 = boto3.client('s3', region_name=S3_REGION)
     # image_url routinely arrives presigned (the studio hands us a 1h signed
@@ -1331,7 +1393,7 @@ def edit_image(
     s3.put_object(
         Bucket=S3_BUCKET,
         Key=s3_key,
-        Body=response.content,
+        Body=payload,
         ContentType='image/jpeg'
     )
     
