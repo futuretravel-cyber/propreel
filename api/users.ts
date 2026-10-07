@@ -798,6 +798,12 @@ async function adminStats(req: VercelRequest, res: VercelResponse) {
 
 /**
  * Nested route: GET /api/users?action=list_users — real user list (admin-only).
+ *
+ * Besides the profile basics it returns each account's subscription and
+ * billing state (subscription row, trial/dunning/pending-upgrade flags,
+ * whether a card is on file) — the read half of the admin panel's
+ * subscription viewer/editor; the write half is
+ * POST /api/subscriptions?action=admin_set_subscription.
  */
 async function listUsers(req: VercelRequest, res: VercelResponse) {
   const gate = await requireAdminSession(req);
@@ -812,6 +818,13 @@ async function listUsers(req: VercelRequest, res: VercelResponse) {
     role: u.role || 'AGENT',
     credits: u.credits ?? 0,
     planId: u.planId || null,
+    // Subscription + billing state (admin-only route, see header comment)
+    subscription: u.subscription || null,
+    trialExpiresAt: u.trialExpiresAt || null,
+    trialEndedAt: u.trialEndedAt || null,
+    paymentFailure: u.paymentFailure || null,
+    pendingPlanUpgrade: u.pendingPlanUpgrade || null,
+    hasCard: Boolean(u.paystackAuthorizationCode),
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
     // AI-notice ack as it stands on the row — version + timestamp for the

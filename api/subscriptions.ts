@@ -9,13 +9,17 @@ import {
   recordTransaction,
   applyPendingUpgrade,
   markUpgradePaid,
+  creditTtlIso,
+  type Subscription,
+  type User,
 } from '../lib/userService';
 import { cancelSubscription as cancelPaystackSub, chargeAuthorization } from '../lib/paystack';
-import { requireOwner } from '../lib/auth';
+import { requireOwner, requireAdminSession } from '../lib/auth';
 
 /**
  * Unified subscriptions endpoint (Hobby plan has a 12-function limit).
- * Routes on ?action= : create | cancel | upgrade
+ * Routes on ?action= : create | cancel | upgrade | admin_set_subscription
+ * (GET ?action=pricing stays public and read-only).
  *
  * Response shapes are identical to the former /api/subscriptions/create
  * and /api/subscriptions/cancel endpoints.
@@ -330,6 +334,182 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         subscription: updated?.subscription,
         new_balance: updated?.credits,
         message: `Upgraded to ${plan_id} — R${result.chargedZar} charged, ${result.creditsAllocated} credits added`,
+      });
+    }
+
+    // ── POST ?action=admin_set_subscription — platform-admin override ─────
+    // The write half of the admin panel's subscription editor (the read
+    // half is list_users in api/users.ts, which returns every row's
+    // subscription). Lets an admin change ANY account's subscription as
+    // they see fit — grant a comp plan with no payment, switch
+    // plan/cycle/status/period, allocate the allowance, or strip the
+    // subscription outright. Each change is written to the credit ledger
+    // with the acting admin's email (kind ADMIN_SUBSCRIPTION_CHANGE) so the
+    // audit-log view shows who did what.
+    if (action === 'admin_set_subscription') {
+      const gate = await requireAdminSession(req);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+
+      const body = req.body || {};
+      const userId: string = body.user_id;
+      const reason = typeof body.reason === 'string' ? body.reason.slice(0, 200) : '';
+      if (!userId) return res.status(400).json({ error: 'user_id is required' });
+      // plan_id must be sent explicitly: null/'' means "remove it", an
+      // omitted key is a typo and never silently deletes a subscription.
+      if (body.plan_id === undefined) {
+        return res.status(400).json({ error: 'plan_id is required (send null to remove the subscription)' });
+      }
+      if (body.plan_id !== null && body.plan_id !== '' && typeof body.plan_id !== 'string') {
+        return res.status(400).json({ error: 'plan_id must be a plan id or null' });
+      }
+
+      const cycle: 'MONTHLY' | 'ANNUAL' = body.cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY';
+      const status = String(body.status || 'ACTIVE').toUpperCase();
+      if (!['ACTIVE', 'PAST_DUE', 'CANCELLED', 'DOWNGRADE_PENDING'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+
+      const user = await getUser(userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const existing = user.subscription || null;
+      const removing = body.plan_id === null || body.plan_id === '';
+      if (removing && !existing) {
+        return res.status(400).json({ error: 'This user has no subscription to remove' });
+      }
+
+      // Paystack teardown is explicit (the UI pre-ticks it for
+      // CANCELLED/removal): cancelling locally while recurrence keeps
+      // running would bill the customer for a plan the panel says is gone.
+      let paystack: 'none' | 'cancelled' | 'failed' = 'none';
+      let paystackError: string | null = null;
+      const subCode = existing?.paystackSubscriptionCode;
+      if (body.cancel_paystack === true && subCode) {
+        try {
+          await cancelPaystackSub(subCode);
+          paystack = 'cancelled';
+        } catch (err: any) {
+          paystack = 'failed';
+          paystackError = err?.message || 'Paystack cancellation failed';
+          console.error('Admin: Paystack cancel failed:', err);
+        }
+      }
+
+      let creditsAllocated = 0;
+      let periodDays: number | null = null;
+      let appliedPlan: string | null = null;
+
+      if (removing) {
+        await updateUser(userId, {
+          subscription: undefined,
+          pendingPlanUpgrade: undefined,
+        });
+      } else {
+        const planId: string = body.plan_id;
+        const plan = (await getPlans())[planId];
+        if (!plan) return res.status(400).json({ error: 'Invalid plan' });
+
+        const rawDays = body.period_days;
+        const days = rawDays === undefined || rawDays === null || rawDays === ''
+          ? (cycle === 'ANNUAL' ? 365 : 30)
+          : Math.round(Number(rawDays));
+        if (!Number.isFinite(days) || days < 1 || days > 730) {
+          return res.status(400).json({ error: 'period_days must be between 1 and 730' });
+        }
+
+        const now = new Date();
+        const periodEnd = new Date(now);
+        periodEnd.setDate(periodEnd.getDate() + days);
+
+        const subscription: Subscription = {
+          planId,
+          cycle,
+          status: status as Subscription['status'],
+          currentPeriodStart: now.toISOString(),
+          currentPeriodEnd: periodEnd.toISOString(),
+          nextChargeAmount: cycle === 'MONTHLY' ? plan.monthlyZar : plan.annualZar,
+          // Keep the Paystack recurrence unless the admin cancels it.
+          ...(subCode && body.cancel_paystack !== true
+            ? { paystackSubscriptionCode: subCode, paystackCustomerCode: existing?.paystackCustomerCode }
+            : {}),
+          ...(status === 'DOWNGRADE_PENDING' && existing?.pendingDowngrade
+            ? { pendingDowngrade: existing.pendingDowngrade }
+            : {}),
+        };
+
+        const patch: Partial<User> = {
+          subscription,
+          // An admin edit supersedes any upgrade queued behind a payment.
+          pendingPlanUpgrade: undefined,
+        };
+        if (status === 'ACTIVE') {
+          // Reactivating clears the dunning state its retries hang off …
+          patch.paymentFailure = undefined;
+          // … and a real subscription converts a temporary trial account
+          // (same wipe createSubscription does) so the trial sweep,
+          // reminders and day-7 lock can never touch a paying account.
+          patch.trialExpiresAt = undefined;
+          patch.trialEndedAt = undefined;
+          patch.trialReactivatedAt = undefined;
+          patch.trialLastReminderDate = undefined;
+        }
+        if (body.allocate_credits === true) {
+          creditsAllocated = plan.monthlyCredits;
+          patch.credits = (user.credits ?? 0) + creditsAllocated;
+          patch.creditExpiries = [
+            ...(user.creditExpiries || []),
+            { amount: creditsAllocated, expiresAt: creditTtlIso(), source: 'subscription' },
+          ];
+        }
+        await updateUser(userId, patch);
+
+        periodDays = days;
+        appliedPlan = planId;
+      }
+
+      await recordTransaction({
+        userId,
+        amount: creditsAllocated,
+        type: 'subscription',
+        description: removing
+          ? `Support removed the subscription${reason ? ` — ${reason}` : ''}`
+          : `Support set ${appliedPlan} (${cycle}) ${status}${creditsAllocated ? ` +${creditsAllocated} credits` : ''}${reason ? ` — ${reason}` : ''}`,
+        metadata: {
+          kind: 'ADMIN_SUBSCRIPTION_CHANGE',
+          by: gate.user.email,
+          planId: removing ? null : appliedPlan,
+          cycle,
+          status: removing ? 'REMOVED' : status,
+          periodDays,
+          allocated: creditsAllocated,
+          paystack,
+          reason,
+        },
+      });
+
+      const fresh = await getUser(userId);
+      return res.status(200).json({
+        success: true,
+        subscription: fresh?.subscription || null,
+        credits_allocated: creditsAllocated,
+        paystack: paystack === 'failed'
+          ? { cancelled: false, error: paystackError }
+          : { cancelled: paystack === 'cancelled' },
+        // Same safe shape list_users returns, so the panel can merge it.
+        user: {
+          id: userId,
+          subscription: fresh?.subscription || null,
+          credits: fresh?.credits ?? 0,
+          planId: fresh?.planId || null,
+          trialExpiresAt: fresh?.trialExpiresAt || null,
+          trialEndedAt: fresh?.trialEndedAt || null,
+          paymentFailure: fresh?.paymentFailure || null,
+          pendingPlanUpgrade: fresh?.pendingPlanUpgrade || null,
+          updatedAt: fresh?.updatedAt || null,
+        },
+        message: removing
+          ? 'Subscription removed'
+          : `${appliedPlan} set to ${status} for ${periodDays} day${periodDays === 1 ? '' : 's'}${creditsAllocated ? ` (+${creditsAllocated} credits)` : ''}`,
       });
     }
 

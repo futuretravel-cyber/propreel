@@ -3577,25 +3577,43 @@ function AdminUsers() {
       <div className="flex items-center gap-3">
         <input className="input max-w-xs" placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
-      {detailUser && <AdminUserDetail user={detailUser} onClose={() => setDetailUser(null)} />}
+      {detailUser && (
+        <AdminUserDetail
+          user={detailUser}
+          onClose={() => setDetailUser(null)}
+          onUpdated={u => {
+            setDetailUser(u);
+            setUsers(prev => prev.map(x => (x.id === u.id ? { ...x, ...u } : x)));
+          }}
+        />
+      )}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b border-white/5">
               <th className="text-left px-3 py-2 text-xs text-ink-400">User</th>
               <th className="text-left px-3 py-2 text-xs text-ink-400">Role</th>
+              <th className="text-left px-3 py-2 text-xs text-ink-400">Subscription</th>
               <th className="text-left px-3 py-2 text-xs text-ink-400">Credits</th>
               <th className="text-left px-3 py-2 text-xs text-ink-400">Joined</th>
               <th className="text-left px-3 py-2 text-xs text-ink-400"></th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={5} className="px-3 py-6 text-center text-ink-400 text-sm">Loading users…</td></tr>}
-            {!loading && shown.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-ink-400 text-sm">No users found</td></tr>}
+            {loading && <tr><td colSpan={6} className="px-3 py-6 text-center text-ink-400 text-sm">Loading users…</td></tr>}
+            {!loading && shown.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-ink-400 text-sm">No users found</td></tr>}
             {shown.map(m => (
               <tr key={m.id} className="border-b border-white/5">
                 <td className="px-3 py-3"><p className="text-sm text-white">{m.fullName}</p><p className="text-xs text-ink-400">{m.email}</p></td>
                 <td className="px-3 py-3"><span className="badge badge-muted">{(m.role || 'AGENT').toUpperCase()}</span></td>
+                <td className="px-3 py-3">
+                  <p className="text-sm text-white">{m.subscription?.planId || m.planId || '—'}</p>
+                  {m.subscription ? (
+                    <span className={`badge mt-1 ${m.subscription.status === 'ACTIVE' ? 'badge-success' : m.subscription.status === 'PAST_DUE' ? 'badge-warning' : m.subscription.status === 'CANCELLED' ? 'badge-danger' : 'badge-brand'}`}>{m.subscription.status}</span>
+                  ) : m.trialExpiresAt ? (
+                    <span className="badge badge-muted mt-1">Trial</span>
+                  ) : null}
+                </td>
                 <td className="px-3 py-3 text-sm text-white">{m.credits}</td>
                 <td className="px-3 py-3 text-xs text-ink-400">{m.createdAt ? new Date(m.createdAt).toLocaleDateString() : '—'}</td>
                 <td className="px-3 py-3">
