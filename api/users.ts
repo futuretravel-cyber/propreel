@@ -904,6 +904,8 @@ async function adminLedger(req: VercelRequest, res: VercelResponse) {
       description: t.description,
       eventId: t.eventId || null,
       pool: t.metadata?.pool || null,
+      // Acting admin on support-written rows (e.g. admin_set_subscription)
+      by: t.metadata?.by || null,
       createdAt: t.createdAt,
     })),
   });

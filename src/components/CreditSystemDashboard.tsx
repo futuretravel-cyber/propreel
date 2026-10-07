@@ -59,7 +59,7 @@ export default function CreditSystemDashboard() {
   }, [user?.autoTopupNeedsAuth, user?.autoTopup?.enabled]);
 
   // ── Admin: platform-wide ledger audit ────────────────────────────────
-  const [audit, setAudit] = useState<Array<{ id: string; userEmail: string | null; amount: number; type: string; description: string; createdAt: string; pool: string | null }> | null>(null);
+  const [audit, setAudit] = useState<Array<{ id: string; userEmail: string | null; amount: number; type: string; description: string; createdAt: string; pool: string | null; by: string | null }> | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const loadAudit = useCallback(async () => {
     if (!user?.email) return;
@@ -399,7 +399,7 @@ export default function CreditSystemDashboard() {
                       <td className="px-2 py-1.5 text-xs text-ink-300 max-w-[180px] truncate" title={t.userEmail || t.id}>{t.userEmail || t.id}</td>
                       <td className={`px-2 py-1.5 text-right font-semibold ${t.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>{t.amount > 0 ? '+' : ''}{t.amount}</td>
                       <td className="px-2 py-1.5"><span className="badge badge-muted text-[10px]">{t.type}{t.pool === 'agency' ? ' · pool' : ''}</span></td>
-                      <td className="px-2 py-1.5 text-xs text-ink-400 max-w-[260px] truncate" title={t.description}>{t.description}</td>
+                      <td className="px-2 py-1.5 text-xs text-ink-400 max-w-[260px] truncate" title={t.description}>{t.description}{t.by ? <span className="text-ink-500"> · by {t.by}</span> : null}</td>
                     </tr>
                   ))}
                 </tbody>
