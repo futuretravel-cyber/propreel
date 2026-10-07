@@ -352,13 +352,21 @@ def fetch_media(url: str, timeout: int = 120) -> bytes:
 # (1024×576, 1248×832, 2048×2048 …) — the product wants a uniform frame
 # for thumbnails, grids and downloads across Photo Editor / Staging /
 # Removal / Twilight, which all funnel through this one function.
+# Portrait sources are pillarboxed into the frame (see _fit_image_bytes);
+# landscape sources are center-cropped.
 EDIT_OUTPUT_WIDTH = 1024
 EDIT_OUTPUT_HEIGHT = 768
 
 
 def _fit_image_bytes(data: bytes, width: int = EDIT_OUTPUT_WIDTH,
                      height: int = EDIT_OUTPUT_HEIGHT) -> bytes:
-    """Cover-scale then center-crop to exactly width×height (never pads).
+    """Fit to exactly width×height.
+
+    Landscape/square sources cover-scale then center-crop (never pads —
+    the accepted behaviour for wide property shots). PORTRAIT sources
+    (taller than wide) scale to fit INSIDE the frame and pillarbox with
+    black bars instead: a center-crop amputates the top and bottom of a
+    vertical photo (agent loses the ceiling, the floor, half the room).
     Already-correct bytes pass through untouched (no re-encode); any ffprobe/
     ffmpeg failure degrades to the original rather than failing an edit the
     agent already paid for."""
@@ -366,6 +374,7 @@ def _fit_image_bytes(data: bytes, width: int = EDIT_OUTPUT_WIDTH,
     import tempfile as _tf
     import os as _os
     in_path = out_path = None
+    portrait = False
     try:
         with _tf.NamedTemporaryFile(suffix='.img', delete=False) as f:
             f.write(data)
@@ -380,15 +389,23 @@ def _fit_image_bytes(data: bytes, width: int = EDIT_OUTPUT_WIDTH,
             line = (probe.stdout or '').strip().splitlines()
             if line:
                 w_str, h_str = line[0].split(',')[:2]
-                if (int(w_str), int(h_str)) == (width, height):
+                src_w, src_h = int(w_str), int(h_str)
+                if (src_w, src_h) == (width, height):
                     return data
+                portrait = src_h > src_w
         except Exception:
-            pass  # unreadable dims → run ffmpeg anyway
+            pass  # unreadable dims → run ffmpeg anyway (crop fallback)
         out_path = in_path + '.fit.jpg'
+        if portrait:
+            # contain + pillarbox: the whole photo survives, bars fill the sides
+            vf = (f'scale={width}:{height}:force_original_aspect_ratio=decrease,'
+                  f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black')
+        else:
+            vf = (f'scale={width}:{height}:force_original_aspect_ratio=increase,'
+                  f'crop={width}:{height}')
         _sp.run(
             ['ffmpeg', '-v', 'error', '-y', '-i', in_path,
-             '-vf', f'scale={width}:{height}:force_original_aspect_ratio=increase,'
-                    f'crop={width}:{height}',
+             '-vf', vf,
              '-q:v', '2', out_path],
             check=True, capture_output=True, timeout=60,
         )
