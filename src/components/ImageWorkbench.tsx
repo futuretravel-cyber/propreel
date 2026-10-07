@@ -78,6 +78,33 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
     : stage === 'rendering' ? 'AI is working…'
     : '';
 
+  // A plain <a href target=_blank> OPENS the image in a tab instead of
+  // downloading it (the `download` attribute is ignored cross-origin).
+  // Fetch the bytes as a blob first — cdn.propreel.co.za serves
+  // Access-Control-Allow-Origin for our origins, so the fetch is CORS-clean —
+  // then click a same-origin object URL, which every browser downloads.
+  const downloadResult = async () => {
+    if (!resultUrl) return;
+    try {
+      const res = await fetch(resultUrl);
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const base = decodeURIComponent(resultUrl.split('?')[0].split('/').pop() || '');
+      const name = /\.(jpe?g|png|webp|avif)$/i.test(base) ? base : `edited-image-${Date.now()}.jpg`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch {
+      // CORS or network edge cases — degrade to the old open-in-tab flow
+      window.open(resultUrl, '_blank', 'noopener');
+    }
+  };
+
   return (
     <div className="space-y-4">
       {!preview ? (
@@ -118,7 +145,12 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
           <div>
             <p className="text-xs text-ink-400 mb-1.5 font-medium">Before</p>
             <div className="relative">
-              <img src={preview} alt="Original" className="w-full aspect-square object-contain bg-black/30 rounded-xl border border-white/10" />
+              {/* Natural aspect, full width: the whole photo stays visible —
+                  the old aspect-square + object-cover cropped landscape shots
+                  and upscaled them (cut off + soft). Click opens full size. */}
+              <a href={preview || undefined} target="_blank" rel="noopener" title="Open full size" className="block">
+                <img src={preview} alt="Original" className="w-full h-auto rounded-xl border border-white/10" />
+              </a>
               {/* The image stays exactly where it is (survives tab switches)
                   until the user removes it or the render finishes */}
               <button
@@ -134,7 +166,9 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
           <div>
             <p className="text-xs text-ink-400 mb-1.5 font-medium">After</p>
             {resultUrl ? (
-              <img src={resultUrl} alt="AI result" className="w-full aspect-square object-contain bg-black/30 rounded-xl border border-purple-500/30" />
+              <a href={resultUrl} target="_blank" rel="noopener" title="Open full size" className="block">
+                <img src={resultUrl} alt="AI result" className="w-full h-auto rounded-xl border border-purple-500/30" />
+              </a>
             ) : (
               <div className="w-full aspect-square rounded-xl border border-dashed border-white/10 flex items-center justify-center text-ink-500 text-xs">
                 {busy ? <Loader2 className="w-5 h-5 animate-spin text-purple-400" /> : 'Awaiting render'}
@@ -166,9 +200,9 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
           />
           {resultUrl && (
             <>
-              <a href={resultUrl} target="_blank" rel="noopener" className="btn btn-secondary min-h-[48px]">
+              <button onClick={() => downloadResult()} className="btn btn-secondary min-h-[48px]">
                 <Download className="w-4 h-4" /> Download
-              </a>
+              </button>
               <button onClick={() => { setResultUrl(null); }} className="btn btn-ghost min-h-[48px]" aria-label="Re-render">
                 <RefreshCw className="w-4 h-4" />
               </button>

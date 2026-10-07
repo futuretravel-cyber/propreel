@@ -1717,7 +1717,6 @@ function PhotoEditorTab() {
   const [strength, setStrength] = useState(photoPresets[0]?.strength.default ?? 0.3);
   const [guidance, setGuidance] = useState(photoPresets[0]?.guidanceScale.default ?? 4.5);
   const [customPrompt, setCustomPrompt] = useState('');
-  const active = photoPresets.find(p => p.id === selectedPreset);
 
   return (
     <div className="space-y-6">
@@ -1753,39 +1752,8 @@ function PhotoEditorTab() {
           ))}
         </div>
       </div>
-      {active && (
-        <div className="p-3 bg-ink-800/50 rounded-lg">
-          <p className="text-xs text-ink-400">
-            <strong className="text-ink-300">{active.label}:</strong> Strength {active.strength.min.toFixed(2)}–{active.strength.max.toFixed(2)}, Guidance {active.guidanceScale.min.toFixed(1)}–{active.guidanceScale.max.toFixed(1)} (sliders locked to preset range)
-          </p>
-        </div>
-      )}
       {selectedPreset && (
         <>
-          <div>
-            <label className="label">Strength: {strength.toFixed(2)} <span className="text-ink-500 text-xs">(preset range enforced)</span></label>
-            <input
-              type="range"
-              min={active!.strength.min}
-              max={active!.strength.max}
-              step={0.01}
-              value={strength}
-              onChange={e => setStrength(Number(e.target.value))}
-              className="w-full accent-purple-600"
-            />
-          </div>
-          <div>
-            <label className="label">Guidance scale: {guidance.toFixed(1)} <span className="text-ink-500 text-xs">(how strictly the AI follows the prompt)</span></label>
-            <input
-              type="range"
-              min={active!.guidanceScale.min}
-              max={active!.guidanceScale.max}
-              step={0.1}
-              value={guidance}
-              onChange={e => setGuidance(Number(e.target.value))}
-              className="w-full accent-purple-600"
-            />
-          </div>
           <div>
             <label className="label">Custom prompt (optional — overrides the preset)</label>
             <textarea
