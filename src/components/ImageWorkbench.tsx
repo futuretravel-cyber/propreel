@@ -118,7 +118,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
           <div>
             <p className="text-xs text-ink-400 mb-1.5 font-medium">Before</p>
             <div className="relative">
-              <img src={preview} alt="Original" className="w-full aspect-square object-cover rounded-xl border border-white/10" />
+              <img src={preview} alt="Original" className="w-full aspect-square object-contain bg-black/30 rounded-xl border border-white/10" />
               {/* The image stays exactly where it is (survives tab switches)
                   until the user removes it or the render finishes */}
               <button
@@ -134,7 +134,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
           <div>
             <p className="text-xs text-ink-400 mb-1.5 font-medium">After</p>
             {resultUrl ? (
-              <img src={resultUrl} alt="AI result" className="w-full aspect-square object-cover rounded-xl border border-purple-500/30" />
+              <img src={resultUrl} alt="AI result" className="w-full aspect-square object-contain bg-black/30 rounded-xl border border-purple-500/30" />
             ) : (
               <div className="w-full aspect-square rounded-xl border border-dashed border-white/10 flex items-center justify-center text-ink-500 text-xs">
                 {busy ? <Loader2 className="w-5 h-5 animate-spin text-purple-400" /> : 'Awaiting render'}

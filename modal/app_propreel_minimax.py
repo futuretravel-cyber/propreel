@@ -603,7 +603,11 @@ def upscale_video(input_video_url: str, target_resolution: str = "1080p") -> str
     
     # Upload to S3
     s3 = boto3.client('s3', region_name=S3_REGION)
-    s3_key = f"upscaled/{os.path.basename(input_video_url)}"
+    # Strip any presigned query — an embedded "?X-Amz-…" would become part of
+    # the key and the stored object could never be fetched back (same bug as
+    # the image-edit path).
+    from urllib.parse import urlparse
+    s3_key = f"upscaled/{os.path.basename(urlparse(input_video_url).path)}"
     
     s3.upload_file(
         output_path,
@@ -1251,19 +1255,32 @@ def edit_image(
     actual_guidance = guidance_scale if guidance_scale is not None else preset['guidanceScale']['default']
     
     print(f"Using strength: {actual_strength}, guidance: {actual_guidance}")
-    
+
+    # Kontext (fal's instruction-editing model) changes ONLY what the prompt
+    # asks for and keeps everything else faithful to the source. The old
+    # fal-ai/flux/dev/image-to-image re-rendered the whole scene at mid
+    # strength — agents got a COMPLETELY DIFFERENT house — and it silently
+    # drops negative_prompt (verified live: "no house" as a negative still
+    # returned a house), so the preset negative lists never did anything.
+    #   - FLUX-family models have no negative-prompt support at all, so the
+    #     preset's negative list rides along as an explicit
+    #     "Do not include:" instruction, which Kontext does follow.
+    #   - Kontext has no `strength`; the preset strength slider maps onto
+    #     its guidance_scale (1.5 gentle → 3.5 assertive; 2.5 is fal's
+    #     default). Client guidance ranges (4–5) predate Kontext and are
+    #     deliberately not forwarded — out of range they'd 422 the job.
+    mapped_guidance = round(max(1.5, min(3.5, 1.5 + float(actual_strength) * 2.0)), 2)
+    prompt_for_model = f"{prompt}\n\nDo not include: {negative_prompt}." if negative_prompt else prompt
+    print(f"kontext: guidance={mapped_guidance}, prompt={len(prompt_for_model)} chars")
+
     # Use fal_client.submit() for long-running tasks with polling
     try:
         handler = fal_client.submit(
-            "fal-ai/flux/dev/image-to-image",
+            "fal-ai/flux-pro/kontext",
             arguments={
                 "image_url": presign_media(image_url),
-                "prompt": prompt,
-                "negative_prompt": negative_prompt,
-                "strength": actual_strength,
-                "guidance_scale": actual_guidance,
-                "num_inference_steps": 50,
-                "enable_safety_checker": False
+                "prompt": prompt_for_model,
+                "guidance_scale": mapped_guidance,
             }
         )
     except Exception as e:
@@ -1303,7 +1320,13 @@ def edit_image(
     response = requests.get(edited_image_url)
     
     s3 = boto3.client('s3', region_name=S3_REGION)
-    s3_key = f"edited/{preset_id}_{os.path.basename(image_url)}"
+    # image_url routinely arrives presigned (the studio hands us a 1h signed
+    # preview link): the query must never land in the key. basename() used to
+    # swallow it whole, so the object was stored at "x.jpg?X-Amz-…" while
+    # every reader (status presigner, download link) requested the clean
+    # "x.jpg" → NoSuchKey on view and download.
+    from urllib.parse import urlparse
+    s3_key = f"edited/{preset_id}_{os.path.basename(urlparse(image_url).path)}"
     
     s3.put_object(
         Bucket=S3_BUCKET,
@@ -1321,7 +1344,7 @@ def edit_image(
         "image_url": final_url,
         "preset_id": preset_id,
         "strength": actual_strength,
-        "guidance_scale": actual_guidance,
+        "guidance_scale": mapped_guidance,
         "credits_used": IMAGE_RENDER_CREDIT_COST
     }
 
