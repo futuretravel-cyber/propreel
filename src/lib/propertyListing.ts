@@ -113,13 +113,20 @@ export function haversineKm(aLat: number, aLon: number, bLat: number, bLon: numb
 /** Named amenities near a confirmed point (OpenStreetMap Overpass — free).
  *  Proxied through our API first; direct Overpass mirrors as fallback. */
 export async function findNearbyAmenities(lat: number, lon: number): Promise<string[]> {
-  try {
-    const res = await fetch(`/api/projects?action=amenities&lat=${lat}&lon=${lon}`);
-    if (res.ok) {
-      const data = await res.json().catch(() => null);
-      if (Array.isArray(data?.amenities)) return data.amenities;
-    }
-  } catch { /* proxy unreachable — fall back below */ }
+  const proxied = `/api/projects?action=amenities&lat=${lat}&lon=${lon}`;
+  // Proxy twice — a transient 502 from an Overpass hiccup must not drop us
+  // straight into direct lookups that blocked environments (extensions,
+  // corporate filters) kill. Same retry pattern as geocodeAddress above.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(proxied);
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (Array.isArray(data?.amenities)) return data.amenities;
+      }
+    } catch { /* network — retry */ }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 400));
+  }
 
   const around = (r: number) => `(around:${r},${lat},${lon})`;
   const q = `[out:json][timeout:25];(
@@ -137,7 +144,9 @@ export async function findNearbyAmenities(lat: number, lon: number): Promise<str
   let lastErr: unknown = null;
   for (const host of hosts) {
     try {
-      const res = await fetch(`${host}?data=${encodeURIComponent(q)}`);
+      // 6s cap each — a hanging mirror must not leave the Confirm button
+      // spinning indefinitely (the old uncached fallback had no timeout).
+      const res = await fetch(`${host}?data=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(6000) });
       if (!res.ok) { lastErr = new Error(`${host} → HTTP ${res.status}`); continue; }
       const body = await res.json();
       if (!body || !Array.isArray(body.elements)) { lastErr = new Error(`${host} → unexpected payload`); continue; }

@@ -152,9 +152,24 @@ export async function geocodeAddress(address: string): Promise<GeoPoint | null> 
 /**
  * Named amenities around a confirmed pin (used to weave locality into the
  * description copy). Mirrors — the main Overpass instance rate-limits hard.
- * Throws when every mirror fails.
+ *
+ * All mirrors race in parallel (first valid payload wins): the two backups
+ * routinely need 20s+ to answer, so the old sequential loop burned the whole
+ * budget waiting on dead mirrors while the healthy one had already failed
+ * with a transient 429 — that was the "Nearby amenities lookup failed" toast
+ * the Description tab kept showing. Throws when every mirror fails.
  */
+const AMENITY_TTL_MS = 15 * 60 * 1000;
+const amenityCache = new Map<string, { rows: string[]; expires: number }>();
+
 export async function nearbyAmenities(lat: number, lon: number): Promise<string[]> {
+  // Warm-instance cache: retrying the same pin during one editing session
+  // answers instantly instead of re-rolling the same flaky mirrors.
+  const cacheKey = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+  const hit = amenityCache.get(cacheKey);
+  if (hit && hit.expires > Date.now()) return hit.rows;
+  amenityCache.delete(cacheKey);
+
   const around = (r: number) => `(around:${r},${lat},${lon})`;
   const q = `[out:json][timeout:25];(
     node${around(2000)}["amenity"~"^(school|kindergarten|hospital|clinic|pharmacy|restaurant|cafe|bar|fuel|gym|library|supermarket)$"];
@@ -167,23 +182,55 @@ export async function nearbyAmenities(lat: number, lon: number): Promise<string[
     'https://overpass.kumi.systems/api/interpreter',
     'https://overpass.private.coffee/api/interpreter',
   ];
-  // Total budget across mirrors: three 8s attempts in a row overflowed the
-  // function's ~10s limit and the whole lookup died with a 504.
-  const deadline = Date.now() + 8500;
+  // 25s total budget: the old 8.5s was sized for the function's former ~10s
+  // limit, which vercel.json has since lifted to maxDuration 60 — one slow
+  // mirror used to starve everything after it of its whole budget.
+  const BUDGET_MS = 25_000;
+  const started = Date.now();
+
+  const queryMirror = async (host: string, timeoutMs: number): Promise<any> => {
+    const res = await upstreamFetch(`${host}?data=${encodeURIComponent(q)}`, timeoutMs);
+    if (!res.ok) throw new Error(`${host} → HTTP ${res.status}`);
+    const body = await res.json();
+    if (!body || !Array.isArray(body.elements)) throw new Error(`${host} → unexpected payload`);
+    return body;
+  };
+
+  // First valid payload wins; the slow mirrors are only awaited while every
+  // fast one has yet to answer (manual race — Promise.any needs an ES2021 lib).
+  const raceMirrors = (): Promise<any> =>
+    new Promise((resolve, reject) => {
+      const remaining = BUDGET_MS - (Date.now() - started);
+      if (remaining <= 0) { reject(new Error('amenities time budget exhausted')); return; }
+      const timeoutMs = Math.min(15_000, remaining);
+      let pending = hosts.length;
+      const errs: string[] = [];
+      for (const host of hosts) {
+        queryMirror(host, timeoutMs).then(resolve, (e: unknown) => {
+          errs.push(e instanceof Error ? e.message : String(e));
+          if (--pending === 0) reject(new Error(errs.join('; ').slice(0, 300)));
+        });
+      }
+    });
+
   let data: any = null;
   let lastErr: unknown = null;
-  for (const host of hosts) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) { lastErr = new Error('amenities time budget exhausted'); break; }
+  for (let round = 0; round < 2; round++) {
     try {
-      const res = await upstreamFetch(`${host}?data=${encodeURIComponent(q)}`, Math.min(8000, remaining));
-      if (!res.ok) { lastErr = new Error(`${host} → HTTP ${res.status}`); continue; }
-      const body = await res.json();
-      if (!body || !Array.isArray(body.elements)) { lastErr = new Error(`${host} → unexpected payload`); continue; }
-      data = body;
+      data = await raceMirrors();
       break;
     } catch (e) {
-      lastErr = e; // network error or HTML rate-limit page — try next mirror
+      lastErr = e;
+      // One more parallel shot whenever the budget can still fit a
+      // meaningful round — transient 429 bursts AND slow-mirror timeouts
+      // (504) both recover on a re-roll. raceMirrors() refuses to start a
+      // round that cannot finish inside the deadline.
+      const elapsed = Date.now() - started;
+      if (BUDGET_MS - elapsed >= 7000) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      break;
     }
   }
   if (!data) throw new Error(`Nearby amenities lookup failed (${lastErr instanceof Error ? lastErr.message : 'unknown'})`);
@@ -211,6 +258,8 @@ export async function nearbyAmenities(lat: number, lon: number): Promise<string[
     out.push(`${r.name} (${r.kind}, ${r.dist < 10 ? `${(r.dist * 1000).toFixed(0)}m` : `${r.dist.toFixed(1)}km`} away)`);
     if (out.length >= 10) break;
   }
+  if (amenityCache.size > 200) amenityCache.clear();
+  amenityCache.set(cacheKey, { rows: out, expires: Date.now() + AMENITY_TTL_MS });
   return out;
 }
 

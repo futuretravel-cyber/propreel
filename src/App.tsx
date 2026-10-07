@@ -1460,7 +1460,9 @@ function DescriptionTab() {
       setAmenities(found);
       if (found.length) toast.success(`${found.length} nearby amenities found — they'll be woven into the copy`, 'Location confirmed');
     } catch {
-      toast.error('Nearby amenities lookup failed — the description will skip them');
+      // Amenities only garnish the copy — a mirror hiccup must not alarm the
+      // agent; the pin stays confirmed either way.
+      toast.info('Nearby amenities are unavailable right now — the description will skip them', 'Amenities');
     } finally {
       setAmenityBusy(false);
     }
@@ -2830,6 +2832,21 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
                 <option key={t.id} value={t.url}>{t.name} ({t.genre})</option>
               ))}
             </select>
+          )}
+          {selectedMusic && musicTracks.some((t) => t.url === selectedMusic) && (
+            <div className="mt-3">
+              <audio
+                key={selectedMusic}
+                controls
+                preload="none"
+                src={selectedMusic}
+                aria-label="Preview the selected background music"
+                className="w-full"
+              />
+              <p className="text-xs text-ink-500 mt-1">
+                Preview — this is how the track will sound under your reel. Choose another track above to preview it instead.
+              </p>
+            </div>
           )}
           <p className="text-xs text-ink-500 mt-2">
             Select background music to enhance your video. Music tracks are managed by administrators.
