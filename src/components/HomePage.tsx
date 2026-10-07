@@ -98,7 +98,7 @@ function Hero() {
           <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto">
             {[
               { label: 'AI Video Tiers', value: '4' },
-              { label: 'AI Photo Presets', value: '29' },
+              { label: 'AI Photo Presets', value: '27' },
               { label: 'Free Credits on Signup', value: '5' },
               { label: 'ZAR Pricing', value: 'R1/cr' },
             ].map(s => (

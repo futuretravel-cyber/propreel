@@ -144,16 +144,6 @@ IMAGE_PRESETS = [
         "guidanceScale": {"min": 4, "max": 5, "default": 4.5}
     },
     {
-        "id": "contemporary_dark",
-        "label": "Contemporary Dark",
-        "emoji": "🖤",
-        "category": "staging",
-        "prompt": """Professional real estate interior photograph of this exact empty room, virtually staged in a contemporary dark and moody style. Furnish the space with sleek furniture in charcoal, black, and deep espresso tones — a modern sofa or sectional in dark upholstery, a matte black or dark wood coffee table, subtle metallic accents in brass or matte black, and layered ambient lighting such as a floor lamp or pendant fixture. All furniture is sized, placed, and oriented realistically for the room's actual dimensions, sitting flush on the floor with correct perspective, and does not block windows, doors, or walkways. Keep every wall, window, door, floor, ceiling, and architectural detail in its exact original position and finish. Lighting stays warm and inviting despite the dark palette, avoiding a flat or gloomy look. Apply natural, high-end real estate color grading with rich contrast. Hyper-realistic, magazine-quality architectural photography, ultra-high resolution, empty of people.""",
-        "negative_prompt": """altered walls, altered windows, altered doors, altered flooring, altered ceiling, warped walls, distorted proportions, furniture floating above floor, furniture clipping through walls, mismatched scale, room appears underexposed or gloomy, muddy or crushed shadows, blocked windows, blocked doorways, cluttered arrangement, plastic textures, unrealistic reflections, low resolution, grain, noise, people, animals, text, watermark, logo""",
-        "strength": {"min": 0.45, "max": 0.55, "default": 0.5},
-        "guidanceScale": {"min": 4.5, "max": 5.5, "default": 5}
-    },
-    {
         "id": "coastal_relaxed",
         "label": "Coastal Relaxed",
         "emoji": "🌊",
@@ -300,16 +290,6 @@ IMAGE_PRESETS = [
         "negative_prompt": """altered building structure, moved architectural elements, warped walls, distorted proportions, bright clear sky, harsh sunlight, overexposure, dark or unlit windows, flat lighting, oversaturated colors, vivid neon tones, heavy fog obscuring the property, storm or lightning, low resolution, grain, noise, people, animals, vehicles, text, watermark, logo""",
         "strength": {"min": 0.4, "max": 0.5, "default": 0.45},
         "guidanceScale": {"min": 4, "max": 5, "default": 4.5}
-    },
-    {
-        "id": "festive_evening",
-        "label": "Festive Evening",
-        "emoji": "✨",
-        "category": "twilight",
-        "prompt": """Professional real estate exterior photograph of this exact property, captured on a festive evening. The sky is a deep twilight blue, clear and smooth. Tasteful holiday and festive lighting is added along the roofline, around windows, doorways, and any existing trees or shrubs, glowing warmly without appearing gaudy or overdone. Every window glows warmly with interior lighting. Exterior pathway and landscape lighting are lit, adding to the festive, welcoming atmosphere. Keep the property — every wall, window, door, roofline, tree, and landscape feature — in its exact original position, shape, and proportion; lighting is added onto existing features, nothing is structurally altered. Apply natural, high-end real estate color grading with warm, festive contrast. Hyper-realistic, magazine-quality architectural photography, ultra-high resolution, empty of people.""",
-        "negative_prompt": """altered building structure, moved architectural elements, added structures, warped walls, distorted proportions, daytime brightness, dark or unlit windows, unlit exterior lighting, garish or oversaturated neon lighting, cluttered or excessive decorations, inflatable decorations, cartoonish styling, low resolution, grain, noise, people, animals, text, watermark, logo""",
-        "strength": {"min": 0.45, "max": 0.55, "default": 0.5},
-        "guidanceScale": {"min": 4.5, "max": 5.5, "default": 5}
     }
 ]
 

@@ -129,14 +129,6 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     guidanceScale: { min: 4, max: 5, default: 4.5 }
   },
   {
-    id: 'contemporary_dark',
-    label: 'Contemporary Dark',
-    emoji: '🖤',
-    category: 'staging',
-    strength: { min: 0.45, max: 0.55, default: 0.5 },
-    guidanceScale: { min: 4.5, max: 5.5, default: 5 }
-  },
-  {
     id: 'coastal_relaxed',
     label: 'Coastal Relaxed',
     emoji: '🌊',
@@ -255,14 +247,6 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     category: 'twilight',
     strength: { min: 0.4, max: 0.5, default: 0.45 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
-  },
-  {
-    id: 'festive_evening',
-    label: 'Festive Evening',
-    emoji: '✨',
-    category: 'twilight',
-    strength: { min: 0.45, max: 0.55, default: 0.5 },
-    guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   }
 ];
 

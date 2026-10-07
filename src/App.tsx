@@ -395,7 +395,7 @@ function AboutPage() {
             Our platform is designed specifically for the South African property market, with local voices, Rand pricing, and seamless integration with Property24 and Private Property portals.
           </p>
           <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div><p className="text-3xl font-black text-purple-700">29</p><p className="text-gray-600">AI Photo Presets</p></div>
+            <div><p className="text-3xl font-black text-purple-700">27</p><p className="text-gray-600">AI Photo Presets</p></div>
             <div><p className="text-3xl font-black text-purple-700">4</p><p className="text-gray-600">AI Video Tiers</p></div>
             <div><p className="text-3xl font-black text-purple-700">R1</p><p className="text-gray-600">Per Credit, VAT Included</p></div>
           </div>
