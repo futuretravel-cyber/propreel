@@ -853,19 +853,38 @@ def narakeet_tts(text: str, voice: str) -> bytes:
     body = text.encode("utf-8")
     url = "https://api.narakeet.com/text-to-speech/mp3"
     headers = {"x-api-key": key, "content-type": "text/plain"}
-    # Streaming: ≤~1 KB body, audio bytes come straight back.
+    # Streaming: ≤~1 KB body, audio bytes come straight back. The gateway
+    # intermittently answers 403 here (verified live), so treat any bad
+    # response as retryable and fall through to the polling flow below.
     if len(body) <= 950:
-        r = requests.post(url, params={"voice": voice}, data=body,
-                          headers={**headers, "accept": "application/octet-stream"}, timeout=90)
-        if r.status_code != 200:
-            raise RuntimeError(f"Narakeet TTS failed ({r.status_code}): {r.text[:200]}")
-        if r.content[:1] == b"{":  # JSON error body on HTTP 200
-            raise RuntimeError(f"Narakeet TTS error: {r.text[:200]}")
-        return r.content
+        last_err = ""
+        for _attempt in range(2):
+            try:
+                r = requests.post(url, params={"voice": voice}, data=body,
+                                  headers={**headers, "accept": "application/octet-stream"}, timeout=90)
+                if r.status_code == 200 and r.content[:1] != b"{":
+                    return r.content
+                last_err = f"HTTP {r.status_code}: {r.text[:120]}"
+            except Exception as e:
+                last_err = str(e)[:120]
+            time.sleep(1)
+        print(f"Narakeet streaming TTS failed ({last_err}) — falling back to polling")
     # Polling: POST → statusUrl → poll until finished → download result.
-    r = requests.post(url, params={"voice": voice}, data=body, headers=headers, timeout=60)
-    if r.status_code != 200:
-        raise RuntimeError(f"Narakeet TTS submit failed ({r.status_code}): {r.text[:200]}")
+    # This path is the reliable one (verified end-to-end) and is also what
+    # longer scripts (1 MB cap) always use.
+    r = None
+    for _attempt in range(3):
+        try:
+            r = requests.post(url, params={"voice": voice}, data=body, headers=headers, timeout=60)
+            if r.status_code == 200:
+                break
+        except Exception:
+            pass
+        r = None
+        time.sleep(2)
+    if r is None or r.status_code != 200:
+        detail = f"HTTP {r.status_code}: {r.text[:200]}" if r is not None else "connection failed after 3 attempts"
+        raise RuntimeError(f"Narakeet TTS submit failed ({detail})")
     try:
         status_url = r.json().get("statusUrl")
     except Exception:
