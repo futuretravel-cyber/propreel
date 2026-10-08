@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, Check, AlertCircle, Sparkles } from 'lucide-react';
+import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, Check, AlertCircle, Sparkles, Play, Square } from 'lucide-react';
 import { useFlashHead } from '../lib/useFlashHead';
 import { useCredit } from '../context/AuthContext';
 import { useRenderProgress, typicalFlashheadSeconds } from '../lib/useRenderProgress';
@@ -7,6 +7,7 @@ import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDraf
 import RenderProgressBar from './RenderProgressBar';
 import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
+import { useVoicePreview } from '../lib/useVoicePreview';
 import { SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage } from '../lib/constants';
 
 interface FlashHeadVideoProps {
@@ -58,6 +59,8 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     if (!languageVoices.some(v => v.id === voice)) setVoice(languageVoices[0]?.id ?? 'aletta');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
+  // Short sample of the selected narrator voice, spoken in the selected language
+  const voicePreview = useVoicePreview(`${language}:${voice}`);
   const changeLanguage = (lang: string) => {
     onLanguageChange?.(lang);
     const first = voicesForLanguage(lang)[0];
@@ -293,10 +296,22 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
             </select>
           </div>
           <div>
-            <label className="label">Voice</label>
+            <div className="flex items-center justify-between">
+              <label className="label">Voice</label>
+              <button
+                type="button"
+                onClick={() => voicePreview.play(voice, language)}
+                disabled={voicePreview.loading}
+                className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 disabled:opacity-60"
+              >
+                {voicePreview.loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : voicePreview.isCurrent(voice, language) ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                {voicePreview.loading ? 'Loading…' : voicePreview.isCurrent(voice, language) ? 'Stop' : 'Preview'}
+              </button>
+            </div>
             <select className="input" value={voice} onChange={e => setVoice(e.target.value)}>
               {languageVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
+            {voicePreview.error && <p className="text-xs text-red-400 mt-1">{voicePreview.error}</p>}
           </div>
         </div>
       </div>

@@ -26,10 +26,11 @@ import { formatZar, formatDate, formatRelative, wordCount, downloadText } from '
 import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
+import { useVoicePreview } from './lib/useVoicePreview';
 import RenderProgressBar from './components/RenderProgressBar';
 import { queueVideoRender, takeVideoRender } from './lib/videoPrefill';
 import {
-  Home as HomeIcon, Video, Image, Wand2, Sofa, Trash2, Moon, Share2, Play,
+  Home as HomeIcon, Video, Image, Wand2, Sofa, Trash2, Moon, Share2, Play, Square,
   LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield,
   Users, Star, ChevronRight, Check, X, Menu, LogOut, Zap, Crown, Sparkles,
   TrendingUp, Eye, Clock, AlertCircle, AlertTriangle, Download, Copy, RefreshCw, Plus,
@@ -2301,6 +2302,8 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
     if (!languageVoices.some(v => v.id === voice)) setVoice(languageVoices[0]?.id ?? 'aletta');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
+  // Short sample of the selected narrator voice, spoken in the selected language
+  const voicePreview = useVoicePreview(`${language}:${voice}`);
   // Script lives in StudioPage state so the FlashHead tab speaks the same text
   const script = sharedScript;
   const setScript = onScriptChange;
@@ -2760,7 +2763,18 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
 
       {/* 5. Narrator Voice — only voices that natively speak the selected language */}
       <div>
-        <label className="label">Narrator Voice</label>
+        <div className="flex items-center justify-between">
+          <label className="label">Narrator Voice</label>
+          <button
+            type="button"
+            onClick={() => voicePreview.play(voice, language)}
+            disabled={voicePreview.loading}
+            className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 disabled:opacity-60"
+          >
+            {voicePreview.loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : voicePreview.isCurrent(voice, language) ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            {voicePreview.loading ? 'Loading…' : voicePreview.isCurrent(voice, language) ? 'Stop' : 'Preview'}
+          </button>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {languageVoices.map(v => (
             <button key={v.id} onClick={() => setVoice(v.id)} className={`px-3 py-2 rounded-lg text-sm text-left transition ${voice === v.id ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
@@ -2768,6 +2782,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
             </button>
           ))}
         </div>
+        {voicePreview.error && <p className="text-xs text-red-400 mt-1">{voicePreview.error}</p>}
       </div>
 
       {/* 6. AI Avatar Video add-on → dedicated Talking Head tab */}

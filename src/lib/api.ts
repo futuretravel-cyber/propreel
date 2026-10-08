@@ -342,6 +342,23 @@ export const PropReelAPI = {
     return data.text || '';
   },
 
+  // ── Narrator voice preview (Narakeet sample, S3-cached per pair) ───
+  async previewVoice(voice: string, language: string): Promise<string> {
+    const { workerHeaders } = await import('./workerAuth');
+    const res = await fetch(`${MODAL_ENDPOINT}/tts_preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+      body: JSON.stringify({ voice, language }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({} as any));
+      throw new Error(err.detail || 'Voice preview failed');
+    }
+    const data = await res.json();
+    if (!data.url) throw new Error('Voice preview returned no audio');
+    return data.url as string;
+  },
+
   // ── Account deletion (DynamoDB user row + projects) ──────────────
   async deleteAccount(userId: string): Promise<void> {
     await j<{ success: boolean }>(

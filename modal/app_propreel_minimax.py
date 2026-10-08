@@ -2314,6 +2314,60 @@ async def api_generate_text(request: GenerateTextRequest):
         return {"success": True, "kind": request.kind, "text": text}
     except Exception as e:
         raise HTTPException(status_code=502, detail=_friendly_fal_error(e))
+
+
+class VoicePreviewRequest(BaseModel):
+    voice: str = ""
+    language: str = "en-ZA"
+
+# Fixed ~5 s sample line per language (written natively, one-off generated).
+# Server-side and constant on purpose: the preview endpoint costs Narakeet
+# cents per UNIQUE (language, voice) pair only — request payloads never
+# reach TTS, so nobody can turn previews into an arbitrary-text spend lever.
+VOICE_SAMPLE_TEXT: dict = {
+    "af-ZA": "Welkom by hierdie pragtige huis, boek vandag nog 'n besigtiging asseblief.",
+    "en-ZA": "Welcome to this beautiful home, please book a viewing with us today.",
+    "nso-ZA": "Re a go amogela ntlong ye ntle, kgopela go e lebelela gona bjale.",
+    "st-ZA": "Re u amohela ntlong e ntle, kopa ho e sheba kajeno hona joale.",
+    "tn-ZA": "Re a go amogela mo ntlong e ntle, kopa go e lebelela gompieno.",
+    "xh-ZA": "Siyakwamkela kule ndlu yethu entle, nceda ubhuke ukuyibona namhlanje ngoku.",
+    "zu-ZA": "Siyakwamukela kule ndlu yethu enhle kakhulu, sicela ubhuke ukuyibona namuhla.",
+    "ssw-ZA": "Siyakwemukela kule ndlu yethu lenhle kakhulu, sicela ubhuke kuyibona namuhla.",
+    "tso-ZA": "Mi amukeriwile endlwini leyinene ngopfu, kombelani ku yi vona namuntlha.",
+    "ven-ZA": "Ndi a ni tanganedza nnḓuni yavhuḓi, kombelani u i vhona ṋamusi.",
+    "nr-ZA": "Siyakwamukela kule ndlu yethu enhle kakhulu, sicela ubhuke ukuyibona namhlanje.",
+}
+
+@web_app.post("/tts_preview")
+def api_tts_preview(request: VoicePreviewRequest):
+    """Playable ~5 s sample of a narrator voice speaking the selected language.
+
+    The pair is re-validated (stale clients post legacy voice names), the MP3
+    is cached in S3 under voice-samples/{lang}_{voice}.mp3 and served
+    presigned — so each unique pair synthesizes once, ever (bounded at ~30
+    pairs ≈ a few cents total). Auth: worker token via the shared middleware.
+    """
+    import boto3
+    lang, nar_voice = _resolve_narakeet_voice(request.voice, request.language)
+    s3_key = f"voice-samples/{lang}_{nar_voice}.mp3"
+    s3 = boto3.client('s3', region_name=S3_REGION)
+    cached = True
+    try:
+        s3.head_object(Bucket=S3_BUCKET, Key=s3_key)
+    except Exception:
+        cached = False
+    if not cached:
+        text = VOICE_SAMPLE_TEXT.get(lang) or VOICE_SAMPLE_TEXT[DEFAULT_NARAKEET_LANGUAGE]
+        try:
+            mp3 = narakeet_tts(text, nar_voice)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e)[:300])
+        s3.put_object(Bucket=S3_BUCKET, Key=s3_key, Body=mp3, ContentType='audio/mpeg')
+        print(f"voice sample synthesized: {s3_key} ({len(mp3)} bytes)")
+    raw_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+    return {**presign_urls({"url": raw_url}), "language": lang, "voice": nar_voice, "cached": cached}
+
+
 @web_app.get("/get_image_presets")
 async def api_get_image_presets():
     """API endpoint to get all image presets"""
@@ -2325,7 +2379,7 @@ async def api_get_image_presets():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Mount the FastAPI app to Modal
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("render-auth")])
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("render-auth"), modal.Secret.from_name("narakeet")])
 @modal.asgi_app()
 def web():
     """Mount FastAPI app as Modal web endpoint"""
@@ -2350,6 +2404,7 @@ def main():
     print("  GET  /edit_status?edit_id=…")
     print("  GET  /probe  (?refresh=true for immediate check)")
     print("  POST /generate_text  {kind, fields}")
+    print("  POST /tts_preview    {voice, language} — narrator sample MP3")
     print("  GET  /get_image_presets")
     print("\nUse 'modal deploy' to deploy this app")
 
