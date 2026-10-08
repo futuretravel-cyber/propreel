@@ -17,6 +17,8 @@ export interface RenderVideoParams {
   images: string[];
   voiceover_text: string;
   voice_id: string;
+  /** BCP-47 voiceover language (one of South Africa's 11 official languages) */
+  language?: string;
   include_agent_branding: boolean;
   music_url?: string;
 }
@@ -25,7 +27,8 @@ export interface FlashHeadParams {
   profile_image_url: string;
   voiceover_text: string;
   user_id: string;
-  voice?: string; // ElevenLabs voice: Aria, Roger, Sarah, Laura, Charlie, George, etc.
+  voice?: string; // Narakeet native voice id for the selected language
+  language?: string; // BCP-47 voiceover language
   stability?: number; // Voice stability 0-1, default 0.5
 }
 

@@ -7,16 +7,7 @@ import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDraf
 import RenderProgressBar from './RenderProgressBar';
 import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
-
-const VOICES = [
-  { id: 'Aria', label: 'Aria (female, warm)' },
-  { id: 'Sarah', label: 'Sarah (female, professional)' },
-  { id: 'Laura', label: 'Laura (female, upbeat)' },
-  { id: 'Charlotte', label: 'Charlotte (female, friendly)' },
-  { id: 'Roger', label: 'Roger (male, confident)' },
-  { id: 'George', label: 'George (male, warm)' },
-  { id: 'Brian', label: 'Brian (male, deep)' },
-];
+import { SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage } from '../lib/constants';
 
 interface FlashHeadVideoProps {
   /** Pre-fill from the Video tab's AI-generated script (shared Studio state) */
@@ -32,13 +23,16 @@ interface FlashHeadVideoProps {
   profileImageReady?: boolean;
   /** Removing the carried photo here also removes it in the Video tab */
   onProfileImageChange?: (img: string | null) => void;
+  /** Shared voiceover language (BCP-47) — synced with the Video tab */
+  language?: string;
+  onLanguageChange?: (language: string) => void;
 }
 
 /**
  * FlashHead Studio tab: lip-synced talking-head video from the agent's
  * profile picture + the AI-generated voiceover script. 8 credits.
  */
-export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, profileImageReady = true, onProfileImageChange }: FlashHeadVideoProps) {
+export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, profileImageReady = true, onProfileImageChange, language = DEFAULT_VOICE_LANGUAGE, onLanguageChange }: FlashHeadVideoProps) {
   const { user } = useCredit() as any;
   const { generate, busy, stage, error, setError, jobStatus, cost, cancel, cancelling } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
@@ -56,7 +50,19 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     null;
   const [dragging, setDragging] = useState(false);
   const [script, setScript] = useState(initialScript);
-  const [voice, setVoice] = useState('Aria');
+  // Narrator voices are grouped per language — keep the pick valid when the
+  // language changes (the worker also re-validates the pair server-side).
+  const languageVoices = voicesForLanguage(language);
+  const [voice, setVoice] = useState('aletta');
+  useEffect(() => {
+    if (!languageVoices.some(v => v.id === voice)) setVoice(languageVoices[0]?.id ?? 'aletta');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
+  const changeLanguage = (lang: string) => {
+    onLanguageChange?.(lang);
+    const first = voicesForLanguage(lang)[0];
+    if (first) setVoice(first.id);
+  };
   // The finished render URL stays session-only: it points at S3 and the
   // project record already keeps it for the library.
   const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -178,7 +184,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     }
     progress.start();
     try {
-      const res = await generate({ file: f ?? undefined, imageUrl: sourceUrl ?? undefined, voiceoverText: script, voice });
+      const res = await generate({ file: f ?? undefined, imageUrl: sourceUrl ?? undefined, voiceoverText: script, voice, language });
       if (res) {
         setResultUrl(res.videoUrl);
         onVideoGenerated?.(res.videoUrl);
@@ -281,9 +287,15 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
             <p className="text-xs text-ink-500 mt-1">{script.trim() ? `${script.trim().split(/\s+/).length} words` : 'FlashHead speaks this text with your face'}</p>
           </div>
           <div>
+            <label className="label">Voiceover Language</label>
+            <select className="input" value={language} onChange={e => changeLanguage(e.target.value)} aria-label="Voiceover language">
+              {SA_LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
+            </select>
+          </div>
+          <div>
             <label className="label">Voice</label>
             <select className="input" value={voice} onChange={e => setVoice(e.target.value)}>
-              {VOICES.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+              {languageVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
           </div>
         </div>

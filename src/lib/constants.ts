@@ -64,15 +64,120 @@ export const ORIENTATIONS = [
   { id: 'PORTRAIT', label: 'Portrait', ratio: '9:16', icon: '▯' },
 ];
 
-export const VOICES = [
-  { id: 'Joanna', label: 'Joanna — US Female (warm)', accent: 'US' },
-  { id: 'Kendra', label: 'Kendra — US Female (confident)', accent: 'US' },
-  { id: 'Gregory', label: 'Gregory — US Male (authoritative)', accent: 'US' },
-  { id: 'Stephen', label: 'Stephen — US Male (calm)', accent: 'US' },
-  { id: 'Amy', label: 'Amy — UK Female (elegant)', accent: 'UK' },
-  { id: 'Brian', label: 'Brian — UK Male (polished)', accent: 'UK' },
-  { id: 'Ayanda', label: 'Ayanda — SA Female (local)', accent: 'ZA' },
+export interface StudioVoice {
+  id: string;
+  label: string;
+}
+
+export interface VoiceLanguage {
+  /** BCP-47 code sent to the worker (Narakeet languageCode) */
+  id: string;
+  label: string;
+  /** Narakeet voice ids that natively speak this language */
+  voices: StudioVoice[];
+}
+
+/**
+ * The 11 official South African languages for voiceover narration.
+ * Both the Video Generator's Narrator Voice and the AI Avatar Video use
+ * this list — the selected voice must natively speak the selected language,
+ * so voices are grouped per language (Narakeet native voices; the worker
+ * re-validates the pair because stale clients post legacy voice names).
+ */
+export const SA_LANGUAGES: VoiceLanguage[] = [
+  {
+    id: 'af-ZA',
+    label: 'Afrikaans',
+    voices: [
+      { id: 'rolanda', label: 'Rolanda — Female' },
+      { id: 'jochem', label: 'Jochem — Male' },
+      { id: 'joost', label: 'Joost — Male' },
+      { id: 'laurika', label: 'Laurika — Female' },
+    ],
+  },
+  {
+    id: 'en-ZA',
+    label: 'English',
+    voices: [
+      { id: 'aletta', label: 'Aletta — SA Female' },
+      { id: 'piet', label: 'Piet — SA Male' },
+      { id: 'charlize', label: 'Charlize — SA Female' },
+      { id: 'hilda', label: 'Hilda — SA Female' },
+      { id: 'riaan', label: 'Riaan — SA Male' },
+      { id: 'joanna', label: 'Joanna — US Female' },
+      { id: 'sarah', label: 'Sarah — US Female' },
+      { id: 'amy', label: 'Amy — UK Female' },
+      { id: 'brian', label: 'Brian — UK Male' },
+    ],
+  },
+  {
+    id: 'nso-ZA',
+    label: 'Sepedi (Northern Sotho)',
+    voices: [
+      { id: 'mpho', label: 'Mpho — Female' },
+      { id: 'mogau', label: 'Mogau — Male' },
+    ],
+  },
+  {
+    id: 'st-ZA',
+    label: 'Sesotho (Southern Sotho)',
+    voices: [{ id: 'palesa', label: 'Palesa — Female' }],
+  },
+  {
+    id: 'tn-ZA',
+    label: 'Setswana',
+    voices: [{ id: 'bokang', label: 'Bokang — Female' }],
+  },
+  {
+    id: 'xh-ZA',
+    label: 'isiXhosa',
+    voices: [
+      { id: 'thabo', label: 'Thabo — Male' },
+      { id: 'lindiwe', label: 'Lindiwe — Female' },
+    ],
+  },
+  {
+    id: 'zu-ZA',
+    label: 'isiZulu',
+    voices: [
+      { id: 'nandi', label: 'Nandi — Female' },
+      { id: 'menzi', label: 'Menzi — Male' },
+      { id: 'zanele', label: 'Zanele — Female' },
+      { id: 'themba', label: 'Themba — Male' },
+    ],
+  },
+  {
+    id: 'ssw-ZA',
+    label: 'siSwati',
+    voices: [{ id: 'nomcebo', label: 'Nomcebo — Female' }],
+  },
+  {
+    id: 'tso-ZA',
+    label: 'Xitsonga',
+    voices: [{ id: 'basetsana', label: 'Basetsana — Female' }],
+  },
+  {
+    id: 'ven-ZA',
+    label: 'Tshivenda',
+    voices: [{ id: 'mulalo', label: 'Mulalo — Male' }],
+  },
+  {
+    id: 'nr-ZA',
+    label: 'isiNdebele (Southern Ndebele)',
+    voices: [{ id: 'dumisani', label: 'Dumisani — Male' }],
+  },
 ];
+
+export const DEFAULT_VOICE_LANGUAGE = 'en-ZA';
+
+/** Voices valid for a language — unknown ids fall back to English. */
+export function voicesForLanguage(languageId: string): StudioVoice[] {
+  return (
+    SA_LANGUAGES.find(l => l.id === languageId)?.voices ??
+    SA_LANGUAGES.find(l => l.id === DEFAULT_VOICE_LANGUAGE)?.voices ??
+    []
+  );
+}
 
 export const SOCIAL_PLATFORMS = [
   { 

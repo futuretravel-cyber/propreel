@@ -436,6 +436,9 @@ class RenderVideoRequest(BaseModel):
     images: List[str]
     voiceover_text: str
     voice_id: str = "Joanna"
+    # BCP-47 code of one of South Africa's 11 official languages — the
+    # narrator must natively speak it (re-validated against voice_id below).
+    language: str = "en-ZA"
     include_agent_branding: bool = True
     music_url: Optional[str] = None
     image_prompts: Optional[List[dict]] = None  # [{image_url, prompt_id, prompt}] rotation overrides
@@ -451,6 +454,7 @@ class FlashHeadRequest(BaseModel):
     voiceover_text: str
     user_id: str
     voice: str = "Aria"
+    language: str = "en-ZA"  # BCP-47 voiceover language (11 official SA languages)
     stability: float = 0.5
 
 class EditImageRequest(BaseModel):
@@ -793,7 +797,207 @@ def _mix_music_bed(
             pass
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials")], timeout=600, retries=2)
+# ── Voiceover: Narakeet TTS for all 11 official SA languages ──────────────
+# ElevenLabs (via fal) only accepts af/en — every other official SA language
+# 422s ("feature_not_supported") — so narration is synthesized by Narakeet,
+# whose native ZA voices cover all 11. Voice list mirrors
+# src/lib/constants.ts; the pair is re-validated below because stale clients
+# post legacy ElevenLabs names (Joanna, Aria…).
+NARAKEET_VOICES: dict = {
+    "af-ZA": ["rolanda", "jochem", "joost", "laurika"],
+    "en-ZA": ["aletta", "piet", "charlize", "hilda", "riaan", "joanna", "sarah", "amy", "brian"],
+    "nso-ZA": ["mpho", "mogau"],
+    "st-ZA": ["palesa"],
+    "tn-ZA": ["bokang"],
+    "xh-ZA": ["thabo", "lindiwe"],
+    "zu-ZA": ["nandi", "menzi", "zanele", "themba"],
+    "ssw-ZA": ["nomcebo"],
+    "tso-ZA": ["basetsana"],
+    "ven-ZA": ["mulalo"],
+    "nr-ZA": ["dumisani"],
+}
+DEFAULT_NARAKEET_LANGUAGE = "en-ZA"
+
+
+def _resolve_narakeet_voice(voice_id: str | None, language: str | None) -> tuple:
+    """Pick the (language, voice) pair the narrator will actually speak.
+
+    The SELECTED LANGUAGE always wins — a stale client posting a legacy
+    ElevenLabs name or a mismatched voice falls back to that language's
+    native default voice. A client that sends only a voice (no language)
+    gets the voice's own language.
+    """
+    v = (voice_id or "").strip().lower()
+    lang = (language or "").strip()
+    if lang not in NARAKEET_VOICES:
+        lang = next((l for l, voices in NARAKEET_VOICES.items() if v in voices),
+                    DEFAULT_NARAKEET_LANGUAGE)
+    if v not in NARAKEET_VOICES[lang]:
+        v = NARAKEET_VOICES[lang][0]
+    return lang, v
+
+
+def narakeet_tts(text: str, voice: str) -> bytes:
+    """Synthesize `text` with a Narakeet native voice → MP3 bytes.
+
+    Short scripts use the streaming endpoint (single request, ~1 KB body
+    cap); anything longer goes through the polling API (1 MB / 45 min caps).
+    Requires NARAKEET_API_KEY via the `narakeet` Modal secret.
+    """
+    key = os.environ.get("NARAKEET_API_KEY", "")
+    if not key:
+        raise RuntimeError("NARAKEET_API_KEY missing — create the 'narakeet' Modal secret")
+    text = (text or "").strip()
+    if not text:
+        raise RuntimeError("narakeet_tts called with empty text")
+    body = text.encode("utf-8")
+    url = "https://api.narakeet.com/text-to-speech/mp3"
+    headers = {"x-api-key": key, "content-type": "text/plain"}
+    # Streaming: ≤~1 KB body, audio bytes come straight back.
+    if len(body) <= 950:
+        r = requests.post(url, params={"voice": voice}, data=body,
+                          headers={**headers, "accept": "application/octet-stream"}, timeout=90)
+        if r.status_code != 200:
+            raise RuntimeError(f"Narakeet TTS failed ({r.status_code}): {r.text[:200]}")
+        if r.content[:1] == b"{":  # JSON error body on HTTP 200
+            raise RuntimeError(f"Narakeet TTS error: {r.text[:200]}")
+        return r.content
+    # Polling: POST → statusUrl → poll until finished → download result.
+    r = requests.post(url, params={"voice": voice}, data=body, headers=headers, timeout=60)
+    if r.status_code != 200:
+        raise RuntimeError(f"Narakeet TTS submit failed ({r.status_code}): {r.text[:200]}")
+    try:
+        status_url = r.json().get("statusUrl")
+    except Exception:
+        status_url = None
+    if not status_url:
+        raise RuntimeError(f"Narakeet TTS returned no statusUrl: {r.text[:200]}")
+    deadline = time.time() + 180
+    while time.time() < deadline:
+        time.sleep(1.5)
+        try:
+            data = requests.get(status_url, timeout=30).json()
+        except Exception:
+            continue
+        if not data.get("finished"):
+            continue
+        if not data.get("succeeded") or not data.get("result"):
+            raise RuntimeError(f"Narakeet TTS failed: {str(data.get('message'))[:200]}")
+        audio = requests.get(data["result"], timeout=120)
+        audio.raise_for_status()
+        return audio.content
+    raise RuntimeError("Narakeet TTS timed out after 180s")
+
+
+def _narakeet_audio_url(text: str, voice_id: str | None, language: str | None,
+                        user_id: str) -> str:
+    """Synthesize narration in the selected language and host it on S3.
+
+    Returns a presigned URL fal.ai can fetch (media URLs are private —
+    knowing the object URL no longer grants read access). The mp3 lands
+    under flashhead/, so the 30-day retention cron purges it too.
+    """
+    import boto3
+    import uuid as _uuid
+    lang, nar_voice = _resolve_narakeet_voice(voice_id, language)
+    mp3 = narakeet_tts(text, nar_voice)
+    s3_key = f"flashhead/{user_id}/narration_{_uuid.uuid4().hex}.mp3"
+    boto3.client('s3', region_name=S3_REGION).put_object(
+        Bucket=S3_BUCKET, Key=s3_key, Body=mp3, ContentType='audio/mpeg'
+    )
+    raw = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+    return presign_media(raw)
+
+
+def _media_duration(path: str) -> float:
+    """Duration in seconds via ffprobe (raises on failure)."""
+    import subprocess as _sp
+    p = _sp.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", path],
+        capture_output=True, text=True, timeout=60,
+    )
+    try:
+        return float(p.stdout.strip())
+    except ValueError:
+        raise RuntimeError(f"ffprobe could not measure {path}: {(p.stderr or b'')[-200:]}")
+
+
+def _mix_narration(video_path: str, narration_path: str, out_path: str,
+                   music_url: str | None = None, music_volume: float = 0.22) -> float:
+    """One ffmpeg pass: narration + optional music bed over a silent render.
+
+    If the narration runs longer than the video (AI-tier clips are ~6 s while
+    scripts target 30 s+), the last frame is frozen — tpad=stop_mode=clone —
+    so the voiceover is never cut off. A music fetch failure degrades to a
+    narration-only mix; a mixing failure raises. Returns final duration (s).
+    """
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+
+    video_dur = _media_duration(video_path)
+    narr_dur = _media_duration(narration_path)
+    if narr_dur + 0.3 > video_dur:
+        target = narr_dur + 0.3
+        extend = target - video_dur
+    else:
+        target = video_dur
+        extend = 0.0
+
+    music_path = None
+    if music_url:
+        try:
+            music_bytes = fetch_media(music_url, timeout=120)
+            ext = ".mp3" if ".mp3" in music_url.lower() else ".wav" if ".wav" in music_url.lower() else ".m4a"
+            with _tf.NamedTemporaryFile(suffix=ext, delete=False) as _f:
+                _f.write(music_bytes)
+                music_path = _f.name
+        except Exception as me:
+            print(f"Music fetch failed — narration-only mix: {me}")
+            music_path = None
+    try:
+        inputs = ["-y", "-i", video_path, "-i", narration_path]
+        chains = []
+        if extend > 0.05:
+            chains.append(f"[0:v]tpad=stop_mode=clone:stop_duration={extend:.3f},format=yuv420p[v]")
+            video_map, video_args = ("[v]", ["-c:v", "libx264", "-preset", "medium",
+                                              "-crf", "19", "-pix_fmt", "yuv420p"])
+        else:
+            video_map, video_args = ("0:v", ["-c:v", "copy"])
+        # Narration padded with silence up to the full target length
+        chains.append(f"[1:a]aresample=44100,apad,atrim=0:{target:.3f},asetpts=PTS-STARTPTS[vo]")
+        if music_path:
+            inputs += ["-stream_loop", "-1", "-i", music_path]
+            fade_start = max(target - 2.0, 0.0)
+            chains.append(
+                f"[2:a]volume={music_volume},aresample=44100,apad,atrim=0:{target:.3f},"
+                f"asetpts=PTS-STARTPTS,afade=t=out:st={fade_start:.3f}:d=2[bg]"
+            )
+            chains.append("[vo][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=0.98[a]")
+            audio_map = "[a]"
+        else:
+            audio_map = "[vo]"
+        proc = _sp.run(
+            ["ffmpeg", *inputs,
+             "-filter_complex", ";".join(chains),
+             "-map", video_map, "-map", audio_map,
+             *video_args, "-c:a", "aac", "-b:a", "160k",
+             "-t", f"{target:.3f}", out_path],
+            capture_output=True, timeout=600,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg narration mix failed: {(proc.stderr or b'')[-300:]}")
+    finally:
+        if music_path:
+            try:
+                _os.unlink(music_path)
+            except Exception:
+                pass
+    return target
+
+
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("narakeet")], timeout=720, retries=2)
 def render_video_local(
     record_id: str,
     images: list[str],
@@ -801,6 +1005,9 @@ def render_video_local(
     orientation: str,
     image_prompts: list[dict] | None = None,
     music_url: str | None = None,
+    voiceover_text: str = "",
+    voice_id: str = "Joanna",
+    language: str = "en-ZA",
 ) -> str:
     """
     Render video with pure FFmpeg (ESSENTIAL tier — no fal.ai involved).
@@ -818,6 +1025,9 @@ def render_video_local(
         image_prompts: Optional per-image rotation payload from the frontend
             ([{image_url, prompt_id, prompt}]) — only the prompt_id (A/B/C)
             is used here to pick the matching motion style.
+        voiceover_text: Narration the narrator speaks in `language`.
+        voice_id: Preferred Narakeet voice (re-validated against `language`).
+        language: BCP-47 code of one of SA's 11 official languages.
 
     Returns:
         URL of the rendered video
@@ -898,10 +1108,24 @@ def render_video_local(
         if concat.returncode != 0:
             raise RuntimeError(f"ffmpeg concat failed: {(concat.stderr or b'')[-300:]}")
 
-    # Optional music bed: loop/trim the admin track under the video and mix
-    # with ffmpeg. The video stream is stream-copied — only audio is added.
-    # If the track can't be fetched/decoded we ship the silent version.
-    if music_url:
+    # Narration first (the promise the user paid for — a TTS failure raises
+    # and the job refunds), with the music bed mixed in the same pass.
+    # Without narration, the music bed keeps its old standalone path.
+    if (voiceover_text or "").strip():
+        lang, nar_voice = _resolve_narakeet_voice(voice_id, language)
+        print(f"Synthesizing narration ({lang} / {nar_voice}): {len(voiceover_text)} chars")
+        narr_bytes = narakeet_tts(voiceover_text, nar_voice)
+        narr_path = os.path.join(work, "narration.mp3")
+        with open(narr_path, "wb") as nf:
+            nf.write(narr_bytes)
+        mixed_path = os.path.join(work, "output_voiceover.mp4")
+        final_dur = _mix_narration(output_path, narr_path, mixed_path, music_url=music_url)
+        _os.replace(mixed_path, output_path)
+        print(f"Voiceover mixed in ({final_dur:.1f}s final duration)")
+    elif music_url:
+        # Optional music bed: loop/trim the admin track under the video and mix
+        # with ffmpeg. The video stream is stream-copied — only audio is added.
+        # If the track can't be fetched/decoded we ship the silent version.
         try:
             print(f"Mixing music bed from {music_url[:80]}…")
             mixed_path = os.path.join(work, "output_music.mp4")
@@ -926,7 +1150,7 @@ def render_video_local(
     return video_url
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=2, min_containers=0, max_containers=100, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("narakeet")], timeout=900, retries=2, min_containers=0, max_containers=100, scaledown_window=300)
 def render_video(
     record_id: str,
     tier: str,
@@ -935,6 +1159,7 @@ def render_video(
     images: list[str],
     voiceover_text: str,
     voice_id: str = "Joanna",
+    language: str = "en-ZA",
     include_agent_branding: bool = True,
     music_url: str | None = None,
     image_prompts: list[dict] | None = None
@@ -949,7 +1174,9 @@ def render_video(
         orientation: Video orientation (LANDSCAPE or PORTRAIT)
         images: List of image URLs to include in the video
         voiceover_text: Text for the voiceover narration
-        voice_id: Voice identifier for TTS (default: Joanna)
+        voice_id: Preferred Narakeet voice (re-validated against `language`)
+        language: BCP-47 code of one of SA's 11 official languages — the
+            narrator natively speaks it (Narakeet native voice)
         include_agent_branding: Whether to include agent branding
         music_url: Optional background music URL
     
@@ -975,6 +1202,9 @@ def render_video(
     images = images[:config['images']]
     
     _write_job_status(record_id, "processing", {"tier": tier, "progress": 0})
+    # Real (post-narration) runtime: AI tiers freeze-extend the clip when the
+    # script outruns it, so it can differ from the tier's nominal duration.
+    actual_duration = float(config['duration'])
 
     if processing_type == "local":
         # ESSENTIAL tier: pure-FFmpeg Ken Burns render (no fal.ai) with the
@@ -987,6 +1217,9 @@ def render_video(
             orientation=orientation,
             image_prompts=image_prompts,
             music_url=music_url,
+            voiceover_text=voiceover_text,
+            voice_id=voice_id,
+            language=language,
         )
     else:
         # SOCIAL, CINEMATIC, PREMIUM tiers: AI rendering
@@ -1040,9 +1273,42 @@ def render_video(
                 input_video_url=video_url,
                 target_resolution="1080p"
             )
-    
-    # Add voiceover and music (placeholder)
-    # In production, you'd use moviepy to add audio tracks
+
+        # Voiceover + music for AI tiers: fal clips arrive silent (and only
+        # ~6 s while scripts target 30 s+), so synthesize the narration in
+        # the selected language, freeze the last frame if it overruns the
+        # clip, mix the music bed in the same pass, and publish to OUR S3
+        # (fal media URLs are not covered by the 30-day retention purge).
+        # The ESSENTIAL tier already mixed narration inside render_video_local.
+        if (voiceover_text or "").strip():
+            import tempfile as _tf
+            import os as _os
+            lang, nar_voice = _resolve_narakeet_voice(voice_id, language)
+            print(f"Synthesizing narration ({lang} / {nar_voice}): {len(voiceover_text)} chars")
+            narr_bytes = narakeet_tts(voiceover_text, nar_voice)
+            workdir = _tf.mkdtemp(prefix=f"vo_{record_id}_")
+            try:
+                src = os.path.join(workdir, "src.mp4")
+                narr_path = os.path.join(workdir, "narration.mp3")
+                dst = os.path.join(workdir, "out.mp4")
+                with open(src, "wb") as vf:
+                    vf.write(fetch_media(video_url, timeout=300))
+                with open(narr_path, "wb") as nf:
+                    nf.write(narr_bytes)
+                final_dur = _mix_narration(src, narr_path, dst, music_url=music_url)
+                s3 = boto3.client('s3', region_name=S3_REGION)
+                s3_key = f"renders/{record_id}/video.mp4"
+                s3.upload_file(dst, S3_BUCKET, s3_key,
+                               ExtraArgs={'ContentType': 'video/mp4'})
+                video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+                actual_duration = round(final_dur, 1)
+                print(f"Voiceover mixed in ({final_dur:.1f}s): {video_url}")
+            finally:
+                try:
+                    import shutil as _shutil
+                    _shutil.rmtree(workdir, ignore_errors=True)
+                except Exception:
+                    pass
     
     print(f"✅ Render complete: {video_url}")
 
@@ -1054,13 +1320,31 @@ def render_video(
     try:
         video_bytes = fetch_media(video_url, timeout=120)
         thumbnail_url = _thumbnail_from_video_bytes(video_bytes, f"thumbnails/render/{record_id}.jpg")
+        # Measured runtime: narration can freeze-extend a render past its
+        # nominal tier duration (short clip, long script) — the project
+        # record should show what actually plays.
+        try:
+            import tempfile as _tf
+            with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as _f:
+                _f.write(video_bytes)
+                _dur_path = _f.name
+            try:
+                actual_duration = round(_media_duration(_dur_path), 1)
+            finally:
+                try:
+                    import os as _os
+                    _os.unlink(_dur_path)
+                except Exception:
+                    pass
+        except Exception as _de:
+            print(f"duration probe skipped: {_de}")
     except Exception as _te:
         print(f"render thumbnail skipped: {_te}")
 
     _write_job_status(record_id, "completed", {
         "video_url": video_url,
         "progress": 100,
-        "duration_seconds": config['duration'],
+        "duration_seconds": actual_duration,
         **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
     })
     
@@ -1070,11 +1354,11 @@ def render_video(
         "video_url": video_url,
         "tier": tier,
         "config_index": config_index,
-        "duration": config['duration'],
         "resolution": resolution,
         "processing_type": processing_type,
         "credits_used": config['credits'],
-        "image_count": len(images)
+        "image_count": len(images),
+        "duration": actual_duration
     }
 
 
@@ -1094,6 +1378,7 @@ async def render_video_job(
     images: list[str],
     voiceover_text: str,
     voice_id: str = "Joanna",
+    language: str = "en-ZA",
     include_agent_branding: bool = True,
     music_url: str | None = None,
     image_prompts: list[dict] | None = None,
@@ -1122,6 +1407,7 @@ async def render_video_job(
             images=images,
             voiceover_text=voiceover_text,
             voice_id=voice_id,
+            language=language,
             include_agent_branding=include_agent_branding,
             music_url=music_url,
             image_prompts=image_prompts
@@ -1257,12 +1543,34 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
         ),
         "video_script": (
             "You are a real estate video scriptwriter. Write a spoken voiceover script for a property "
-            "tour video using the exact facts in the provided fields. Plain spoken English only — no "
-            "stage directions, no scene labels, no markdown. Roughly 140 words (about 60 seconds "
-            "of narration). End with a call to action to book a viewing. Never invent facts."
+            "tour video using the exact facts in the provided fields. {LANGUAGE_RULE} no "
+            "stage directions, no scene labels, no markdown. Roughly {WORD_RULE}. End with a call "
+            "to action to book a viewing. Never invent facts."
         ),
     }
     system = system_prompts.get(kind, system_prompts["description"])
+    # The narrator speaks the SELECTED language (one of SA's 11 official
+    # languages), so the AI-written script must be in it too. The frontend
+    # sends `language` / `language_label` / `target_words` / `duration_seconds`
+    # with video_script requests; other kinds ignore them.
+    if kind == "video_script":
+        lang_label = str(fields.get("language_label") or "").strip()
+        lang_code = str(fields.get("language") or "").strip()
+        target_words = fields.get("target_words")
+        duration_s = fields.get("duration_seconds")
+        if lang_label and lang_label.lower() != "english":
+            language_rule = (
+                f"Write the ENTIRE script in {lang_label} (language code {lang_code}) — plain "
+                f"spoken {lang_label} only, every word including the call to action, never "
+                f"English or another language —"
+            )
+        else:
+            language_rule = "Plain spoken English only —"
+        if target_words and duration_s:
+            word_rule = f"Roughly {int(target_words)} words (about {int(duration_s)} seconds of narration)"
+        else:
+            word_rule = "Roughly 140 words (about 60 seconds of narration)"
+        system = system.replace("{LANGUAGE_RULE}", language_rule).replace("{WORD_RULE}", word_rule)
     facts = "\n".join(f"{k}: {v}" for k, v in fields.items() if v not in (None, "", []))
     user_text = f"Property facts:\n{facts}"
     user_content = user_text
@@ -1442,44 +1750,51 @@ def get_image_presets() -> list:
     return IMAGE_PRESETS
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("narakeet")], timeout=420, retries=2)
 def generate_flashhead_video(
     profile_image_url: str,
     voiceover_text: str,
     user_id: str,
     voice: str = "Aria",
+    language: str = "en-ZA",
     stability: float = 0.5
 ) -> dict:
     """
-    Generate a lip-synced video using fal-ai/flashhead
-    
+    Generate a lip-synced video from the agent's headshot + narration.
+
+    Narakeet synthesizes the narration in the selected language (one of SA's
+    11 official languages, native voice) and fal's flashhead audio-to-video
+    mode lip-syncs the avatar to it — the old text mode only had ElevenLabs
+    af/en voices, so it could never speak the other nine languages.
+
     Args:
         profile_image_url: URL of the agent's profile image (portrait recommended)
-        voiceover_text: Text to speak (converted to speech via ElevenLabs)
+        voiceover_text: Narration text — spoken in `language`
         user_id: User identifier for S3 storage
-        voice: ElevenLabs voice name (default: Aria)
-               Options: Aria, Roger, Sarah, Laura, Charlie, George, Callum, 
-                       River, Liam, Charlotte, Alice, Matilda, Will, Jessica, 
-                       Eric, Chris, Brian, Daniel, Lily, Bill
-        stability: Voice stability 0-1 (default: 0.5)
-    
+        voice: Preferred Narakeet voice (re-validated against `language`)
+        language: BCP-47 code of one of SA's 11 official languages
+        stability: Unused — kept for API compatibility
+
     Returns:
         Dictionary with video URL and metadata
     """
     import boto3
     import fal_client
-    
+
+    lang, nar_voice = _resolve_narakeet_voice(voice, language)
     print(f"Generating FlashHead video for user: {user_id}")
-    print(f"Voice: {voice}, Text length: {len(voiceover_text)} characters")
-    
-    # Use fal_client.submit() for long-running tasks with polling
+    print(f"Voice: {nar_voice} ({lang}), Text length: {len(voiceover_text)} characters")
+
+    # 1) Narration → hosted on S3 → presigned URL fal can fetch
+    audio_url = _narakeet_audio_url(voiceover_text, voice, language, user_id)
+
+    # 2) Lip-sync the avatar to that audio (no text/voice/stability — the
+    #    audio-to-video schema takes {image_url, audio_url} only)
     handler = fal_client.submit(
-        "fal-ai/flashhead",
+        "fal-ai/flashhead/audio-to-video",
         arguments={
             "image_url": presign_media(profile_image_url),
-            "text": voiceover_text,
-            "voice": voice,
-            "stability": stability
+            "audio_url": audio_url,
         }
     )
     
@@ -1540,8 +1855,9 @@ def generate_flashhead_video(
         "seed": result.get("seed", 0),
         "user_id": user_id,
         "credits_used": 8,  # FlashHead costs 8 credits
-        "model": "fal-ai/flashhead",
-        "voice": voice
+        "model": "fal-ai/flashhead/audio-to-video",
+        "voice": nar_voice,
+        "language": lang
     }
 
 
@@ -1619,6 +1935,7 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
                     images=request.images,
                     voiceover_text=request.voiceover_text,
                     voice_id=request.voice_id,
+                    language=request.language,
                     include_agent_branding=request.include_agent_branding,
                     music_url=request.music_url,
                     image_prompts=request.image_prompts
@@ -1642,6 +1959,7 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
             images=request.images,
             voiceover_text=request.voiceover_text,
             voice_id=request.voice_id,
+            language=request.language,
             include_agent_branding=request.include_agent_branding,
             music_url=request.music_url,
             image_prompts=request.image_prompts
@@ -1701,6 +2019,7 @@ async def api_generate_flashhead_video(request: FlashHeadRequest, raw_request: R
             voiceover_text=request.voiceover_text,
             user_id=request.user_id,
             voice=request.voice,
+            language=request.language,
             stability=request.stability
         )
         return presign_urls(result)
@@ -1822,25 +2141,32 @@ def _thumbnail_from_video_bytes(content: bytes, s3_key: str):
         return None
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=1, max_containers=100, scaledown_window=300)
-def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user_id: str, voice: str = "Aria", stability: float = 0.5):
-    """Async FlashHead lip-sync job (fal-ai/flashhead): mirrors progress and
-    result into S3 so /flashhead_status can serve any poller. Input is the
-    agent's profile picture + the AI-generated voiceover script text."""
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("narakeet")], timeout=900, retries=1, max_containers=100, scaledown_window=300)
+def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user_id: str, voice: str = "Aria", language: str = "en-ZA", stability: float = 0.5):
+    """Async FlashHead lip-sync job: Narakeet narrates the script in the
+    selected language, fal's fal-ai/flashhead/audio-to-video lip-syncs the
+    agent's profile picture to it, and the result is mirrored into S3 so
+    /flashhead_status can serve any poller."""
     import boto3
     import time
     import uuid
 
+    s3 = boto3.client('s3', region_name=S3_REGION)
+    video_key = f"flashhead/{user_id}/{uuid.uuid4().hex}.mp4"
+
     _write_job_status(job_id, "processing", {"kind": "flashhead"})
     try:
-        print(f"FlashHead job {job_id}: voice={voice}, text={len(voiceover_text)} chars")
+        lang, nar_voice = _resolve_narakeet_voice(voice, language)
+        print(f"FlashHead job {job_id}: voice={nar_voice} ({lang}), text={len(voiceover_text)} chars")
+        # 1) Narration in the selected language → hosted on S3 → presigned
+        audio_url = _narakeet_audio_url(voiceover_text, voice, language, user_id)
+        # 2) Lip-sync the avatar to that audio (audio-to-video schema:
+        #    {image_url, audio_url} — no text/voice/stability)
         handler = fal_client.submit(
-            "fal-ai/flashhead",
+            "fal-ai/flashhead/audio-to-video",
             arguments={
                 "image_url": presign_media(profile_image_url),
-                "text": voiceover_text,
-                "voice": voice,
-                "stability": stability,
+                "audio_url": audio_url,
             },
         )
 
@@ -1919,6 +2245,7 @@ class FlashHeadJobRequest(BaseModel):
     voiceover_text: str
     user_id: str
     voice: str = "Aria"
+    language: str = "en-ZA"  # BCP-47 voiceover language (11 official SA languages)
     stability: float = 0.5
 
 
@@ -1941,6 +2268,7 @@ async def api_flashhead(request: FlashHeadJobRequest, raw_request: Request):
             voiceover_text=request.voiceover_text,
             user_id=request.user_id,
             voice=request.voice,
+            language=request.language,
             stability=request.stability,
         )
         return {

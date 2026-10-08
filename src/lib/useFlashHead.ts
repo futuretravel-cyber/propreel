@@ -58,6 +58,8 @@ export function useFlashHead() {
     imageUrl?: string;
     voiceoverText: string;
     voice?: string;
+    /** BCP-47 language the narrator speaks — Narakeet native voice pair */
+    language?: string;
     stability?: number;
   }): Promise<{ videoUrl: string } | null> => {
     setError(null);
@@ -107,7 +109,7 @@ export function useFlashHead() {
     let jobToken: Record<string, string>;
     try {
       jobToken = await jobHeaders('flashhead', {
-        metadata: { kind: 'FLASHHEAD', voice: opts.voice || 'Aria' },
+        metadata: { kind: 'FLASHHEAD', voice: opts.voice || 'aletta', language: opts.language || 'en-ZA' },
       });
       void refresh();
     } catch (e: any) {
@@ -130,7 +132,8 @@ export function useFlashHead() {
           profile_image_url: publicUrl,
           voiceover_text: opts.voiceoverText,
           user_id: user.id,
-          voice: opts.voice || 'Aria',
+          voice: opts.voice || 'aletta',
+          language: opts.language || 'en-ZA',
           stability: opts.stability ?? 0.5,
         }),
       });
@@ -152,7 +155,8 @@ export function useFlashHead() {
           userId: user.id,
           title: `AI Avatar Video — ${opts.voiceoverText.trim().replace(/\s+/g, ' ').slice(0, 60)}`,
           kind: 'FLASHHEAD',
-          voice: opts.voice || 'Aria',
+          voice: opts.voice || 'aletta',
+          language: opts.language || 'en-ZA',
           status: 'PROCESSING',
           jobId,
           creditsSpent: FLASHHEAD_COST,

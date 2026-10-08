@@ -12,7 +12,7 @@ import { DashboardSkeleton, BillingSkeleton, ProjectsSkeleton, StudioSkeleton, u
 import { useAuth, useCredit, AuthProvider, CreditProvider } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
 import { SearchButton } from './components/GlobalSearch';
-import { TIERS, ORIENTATIONS, VOICES, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, PROVINCES, PROPERTY_TYPES } from './lib/constants';
+import { TIERS, ORIENTATIONS, SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, PROVINCES, PROPERTY_TYPES } from './lib/constants';
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI, useUploadWait } from './lib/api';
 import { drainBacklog, enqueueImagesForAI, uploadStatusText, useUploadQueue } from './lib/uploadQueue';
@@ -1314,6 +1314,9 @@ function StudioPageInner() {
   };
   // Shared voiceover script: the Video tab generates it, FlashHead speaks it
   const [sharedScript, setSharedScript] = useState('');
+  // Shared voiceover language (BCP-47): both tabs narrate the same script in
+  // the same one of South Africa's 11 official languages.
+  const [sharedLanguage, setSharedLanguage] = useState(DEFAULT_VOICE_LANGUAGE);
   // Shared avatar photo: chosen in the Video tab's AI Avatar Video add-on,
   // carried over to the Talking Head tab automatically. Persisted so a full
   // page reload doesn't orphan the photo the agent already picked.
@@ -1382,8 +1385,8 @@ function StudioPageInner() {
         <div className={tab === 'removal' ? undefined : 'hidden'}><ErrorBoundary label="Furniture Removal"><RemovalTab /></ErrorBoundary></div>
         <div className={tab === 'twilight' ? undefined : 'hidden'}><ErrorBoundary label="Twilight"><TwilightTab /></ErrorBoundary></div>
         <div className={tab === 'social' ? undefined : 'hidden'}><ErrorBoundary label="Social Media"><SocialTab /></ErrorBoundary></div>
-        <div className={tab === 'video' ? undefined : 'hidden'}><ErrorBoundary label="Video Generator"><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} /></ErrorBoundary></div>
-        <div className={tab === 'flashhead' ? undefined : 'hidden'}><ErrorBoundary label="AI Avatar Video"><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} /></ErrorBoundary></div>
+        <div className={tab === 'video' ? undefined : 'hidden'}><ErrorBoundary label="Video Generator"><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} /></ErrorBoundary></div>
+        <div className={tab === 'flashhead' ? undefined : 'hidden'}><ErrorBoundary label="AI Avatar Video"><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} /></ErrorBoundary></div>
       </div>
     </div>
   );
@@ -2282,7 +2285,7 @@ function SocialTab() {
 
 const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
-function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages = [], profileImage, onProfileImageChange }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void; initialImages?: string[]; profileImage: string | null; onProfileImageChange: (img: string | null) => void }) {
+function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages = [], profileImage, onProfileImageChange, language, onLanguageChange }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void; initialImages?: string[]; profileImage: string | null; onProfileImageChange: (img: string | null) => void; language: string; onLanguageChange: (l: string) => void }) {
   const { user, refundCredits, refresh } = useCredit();
   const toast = useToast();
   const uploadWait = useUploadWait();
@@ -2290,7 +2293,14 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
   const [tier, setTier] = useState('SOCIAL');
   const [configIndex, setConfigIndex] = useState(0);
   const [orientation, setOrientation] = useState('LANDSCAPE');
-  const [voice, setVoice] = useState('Joanna');
+  // Narrator voices are grouped per language — keep the pick valid when the
+  // language changes (the worker also re-validates the pair server-side).
+  const languageVoices = voicesForLanguage(language);
+  const [voice, setVoice] = useState('aletta');
+  useEffect(() => {
+    if (!languageVoices.some(v => v.id === voice)) setVoice(languageVoices[0]?.id ?? 'aletta');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
   // Script lives in StudioPage state so the FlashHead tab speaks the same text
   const script = sharedScript;
   const setScript = onScriptChange;
@@ -2391,6 +2401,8 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         tier,
         duration_seconds: selectedConfig.duration,
         target_words: targetWords,
+        language,
+        language_label: SA_LANGUAGES.find(l => l.id === language)?.label ?? 'English',
       });
       setScript(text.trim());
     } catch (e: any) {
@@ -2489,6 +2501,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
           images: uploadedImages,
           voiceover_text: script,
           voice_id: voice,
+          language,
           include_agent_branding: branding,
           audio: false,
           music_url: selectedMusic || undefined,
@@ -2708,7 +2721,18 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
 
       {/* 4. Voiceover Script */}
       <div>
-        <div className="flex items-center justify-between">
+        <label className="label">Voiceover Language</label>
+        <select
+          className="input"
+          value={language}
+          onChange={e => onLanguageChange(e.target.value)}
+          aria-label="Voiceover language"
+        >
+          {SA_LANGUAGES.map(l => (
+            <option key={l.id} value={l.id}>{l.label}</option>
+          ))}
+        </select>
+        <div className="flex items-center justify-between mt-4">
           <label className="label">
             Voiceover Script 
             <span className="text-xs text-ink-400 ml-2">
@@ -2734,14 +2758,13 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         </p>
       </div>
 
-      {/* 5. Narrator Voice */}
+      {/* 5. Narrator Voice — only voices that natively speak the selected language */}
       <div>
         <label className="label">Narrator Voice</label>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {VOICES.map(v => (
+          {languageVoices.map(v => (
             <button key={v.id} onClick={() => setVoice(v.id)} className={`px-3 py-2 rounded-lg text-sm text-left transition ${voice === v.id ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
-              <Mic className="w-3 h-3 inline mr-1" /> {v.id}
-              <span className="text-xs text-ink-500 ml-1">({v.accent})</span>
+              <Mic className="w-3 h-3 inline mr-1" /> {v.label}
             </button>
           ))}
         </div>
