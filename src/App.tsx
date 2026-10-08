@@ -2355,6 +2355,13 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
 
   const targetWords = calculateTargetWords(selectedConfig.duration);
 
+  // Narration runs at the same 2.4 words/sec the target uses; when the voiced
+  // script outlasts the render, the worker freezes the final frame to fit it.
+  // Flag overruns ≥20% of the tier duration before the agent spends credits.
+  const estimatedNarrationSec = Math.round(wordCount(script) / 2.4);
+  const freezeOverrunSec = estimatedNarrationSec - selectedConfig.duration;
+  const narrationTooLong = freezeOverrunSec >= Math.round(selectedConfig.duration * 0.2);
+
   // Photo upload: presigned browser → S3, keeps the public URLs the render
   // worker rotates its A/B/C prompts against (fully server-side).
   // Backlog drain — see DescriptionTab. Photos uploaded while this panel
@@ -2739,7 +2746,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
           <label className="label">
             Voiceover Script 
             <span className="text-xs text-ink-400 ml-2">
-              ({wordCount(script)} / {targetWords} words, ~{Math.round(wordCount(script) / 2.4)}s)
+              ({wordCount(script)} / {targetWords} words, ~{estimatedNarrationSec}s)
             </span>
           </label>
           <button 
@@ -2759,6 +2766,16 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         <p className="text-xs text-ink-500 mt-1">
           Target word count: {targetWords} words (based on {selectedConfig.duration}s duration at 2.4 words/second)
         </p>
+        {narrationTooLong && (
+          <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
+            <p className="text-xs text-amber-300">
+              Narration reads at ~{estimatedNarrationSec}s but this tier renders {selectedConfig.duration}s — the last
+              frame will stay frozen ~{freezeOverrunSec}s past the end to fit the voiceover.
+              Trim to about {targetWords} words, or pick a longer duration.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* 5. Narrator Voice — only voices that natively speak the selected language */}
