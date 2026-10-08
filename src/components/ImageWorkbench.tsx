@@ -7,6 +7,7 @@ import { useCredit } from '../context/AuthContext';
 import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
 import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
+import { downloadRemoteFile } from '../lib/utils';
 
 interface ImageWorkbenchProps {
   presetId: string;
@@ -78,27 +79,13 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
     : stage === 'rendering' ? 'AI is working…'
     : '';
 
-  // A plain <a href target=_blank> OPENS the image in a tab instead of
-  // downloading it (the `download` attribute is ignored cross-origin).
-  // Fetch the bytes as a blob first — cdn.propreel.co.za serves
-  // Access-Control-Allow-Origin for our origins, so the fetch is CORS-clean —
-  // then click a same-origin object URL, which every browser downloads.
+  // See downloadRemoteFile: a cross-origin <a download> opens a tab instead
+  // of saving (the attribute is ignored cross-origin), so we fetch → blob →
+  // same-origin object URL, which every browser downloads.
   const downloadResult = async () => {
     if (!resultUrl) return;
     try {
-      const res = await fetch(resultUrl);
-      if (!res.ok) throw new Error(String(res.status));
-      const blob = await res.blob();
-      const base = decodeURIComponent(resultUrl.split('?')[0].split('/').pop() || '');
-      const name = /\.(jpe?g|png|webp|avif)$/i.test(base) ? base : `edited-image-${Date.now()}.jpg`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      await downloadRemoteFile(resultUrl);
     } catch {
       // CORS or network edge cases — degrade to the old open-in-tab flow
       window.open(resultUrl, '_blank', 'noopener');

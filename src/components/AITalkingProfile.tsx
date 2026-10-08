@@ -165,7 +165,7 @@ export default function AITalkingProfile({
                 </button>
               )}
               <p className="text-xs text-ink-500 mt-2">
-                Perfect size: 1024 × 1280 portrait (4:5) — one face, centered, head &amp; shoulders, good lighting · max 5MB
+                Perfect size: 1080 × 1080 square (1:1) — one face, centered, head &amp; shoulders, good lighting · max 5MB
               </p>
               {photoIssue && (
                 <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">

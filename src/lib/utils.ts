@@ -60,4 +60,28 @@ export function downloadText(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Download a remote file reliably. Browsers IGNORE the `download` attribute
+ * when the href is cross-origin (cdn.propreel.co.za), so a plain
+ * `<a href={signedUrl} download>` just navigates to a new tab instead of
+ * saving. Fetch the bytes as a blob first — the CDN sends CORS headers for
+ * our origins — then click a same-origin object URL, which every browser
+ * saves as a file. Throws so the caller can fall back to open-in-tab.
+ */
+export async function downloadRemoteFile(fileUrl: string, fallbackName?: string): Promise<void> {
+  const res = await fetch(fileUrl);
+  if (!res.ok) throw new Error(`download failed: ${res.status}`);
+  const blob = await res.blob();
+  const base = decodeURIComponent(fileUrl.split('?')[0].split('/').pop() || '');
+  const name = fallbackName || (/\.[a-z0-9]{1,5}$/i.test(base) ? base : `download-${Date.now()}`);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());

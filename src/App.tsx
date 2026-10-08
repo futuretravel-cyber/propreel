@@ -23,6 +23,7 @@ import { geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
 import { useStudioDraft, studioDraftKey } from './lib/studioDrafts';
 import { useReorderable } from './lib/reorder';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
+import { playRenderComplete } from './lib/renderSound';
 import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
@@ -2597,6 +2598,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
       setGenerating(false);
       reelProgress.stop();
       setCancelling(false);
+      playRenderComplete();
       toast.success('Video rendered successfully!', 'Render Complete');
     } catch (error: any) {
       console.error('Error generating video:', error);

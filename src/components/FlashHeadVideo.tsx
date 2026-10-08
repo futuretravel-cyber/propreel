@@ -12,6 +12,7 @@ import { useAvatarPhotoIssue } from '../lib/useAvatarPhotoIssue';
 import LanguageMismatchBanner from './LanguageMismatchBanner';
 import type { VoiceoverLanguageCheck } from '../lib/useVoiceoverLanguageCheck';
 import { SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage } from '../lib/constants';
+import { downloadRemoteFile } from '../lib/utils';
 
 interface FlashHeadVideoProps {
   /** Pre-fill from the Video tab's AI-generated script (shared Studio state) */
@@ -260,7 +261,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
               >
                 <User className="w-8 h-8 text-ink-400 mx-auto mb-2" />
                 <p className="text-ink-400 text-sm">Drop a headshot here or click to upload</p>
-                <p className="text-ink-500 text-xs mt-1">Perfect size: 1024 × 1280 portrait (4:5) — one face, centered, head &amp; shoulders, good lighting · JPEG/PNG up to 25MB</p>
+                <p className="text-ink-500 text-xs mt-1">Perfect size: 1080 × 1080 square (1:1) — one face, centered, head &amp; shoulders, good lighting · JPEG/PNG up to 25MB</p>
               </div>
               {brandingPhoto && (
                 <button
@@ -391,7 +392,20 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
             <video src={resultUrl} controls playsInline className="w-full aspect-square" />
           </div>
           <div className="flex gap-3 mt-3 justify-center">
-            <a href={resultUrl} download="propreel-ai-avatar-video.mp4" className="btn btn-secondary text-sm"><Download className="w-4 h-4" /> Download</a>
+            {/* Not an <a download>: the signed CDN URL is cross-origin, so
+                browsers ignore the download attribute and just navigate to a
+                new tab. Fetch → blob → same-origin object URL instead. */}
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await downloadRemoteFile(resultUrl, 'propreel-ai-avatar-video.mp4');
+                } catch {
+                  window.open(resultUrl, '_blank', 'noopener');
+                }
+              }}
+              className="btn btn-secondary text-sm"
+            ><Download className="w-4 h-4" /> Download</button>
           </div>
         </div>
       )}

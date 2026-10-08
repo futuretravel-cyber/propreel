@@ -6,6 +6,7 @@ import { PropReelAPI } from './api';
 import { FLASHHEAD_CREDITS as FLASHHEAD_COST } from '../../lib/renderPricing';
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 import { workerHeaders, jobHeaders } from './workerAuth';
+import { playRenderComplete } from './renderSound';
 
 const POLL_INTERVAL_MS = 5000;
 const MAX_WAIT_MS = 10 * 60 * 1000; // fal FlashHead takes ~4–6 min for real scripts
@@ -182,6 +183,7 @@ export function useFlashHead() {
             }).catch(() => {});
           }
           track('render_completed', { kind: 'FLASHHEAD' });
+          playRenderComplete();
           setStage('done');
           return { videoUrl: job.video_url };
         }

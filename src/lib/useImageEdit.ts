@@ -5,6 +5,7 @@ import { useCredit } from '../context/AuthContext';
 import { track } from './analytics';
 import { PropReelAPI } from './api';
 import { IMAGE_PRESETS } from './imagePrompts';
+import { playRenderComplete } from './renderSound';
 
 import { IMAGE_EDIT_CREDITS as IMAGE_EDIT_COST } from '../../lib/renderPricing';
 
@@ -79,6 +80,7 @@ export function useImageEdit() {
         customPrompt: opts.customPrompt,
       }, jobToken);
       track('render_completed', { kind: 'IMAGE_EDIT', presetId: opts.presetId });
+      playRenderComplete();
       // Store the output in My Projects (kind: IMAGE) so every Photo Editor /
       // Staging / Removal / Twilight render has a home. Best-effort: the edit
       // itself already succeeded, so a failed row write must not surface.
