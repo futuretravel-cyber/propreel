@@ -1620,6 +1620,23 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
             "stage directions, no scene labels, no markdown. Roughly {WORD_RULE}. End with a call "
             "to action to book a viewing. Never invent facts."
         ),
+        "language_check": (
+            "You are a strict language detector for South African property voiceover scripts. "
+            "You receive a target language and a script. Reply with ONLY minified JSON and nothing "
+            "else: {\"detected\":\"<code>\",\"ok\":<true|false>}. `detected` is the language the "
+            "SCRIPT is actually written in — one of af-ZA, en-ZA, nso-ZA, st-ZA, tn-ZA, xh-ZA, "
+            "zu-ZA, ssw-ZA, tso-ZA, ven-ZA, nr-ZA (closest match otherwise). `ok` is true only when "
+            "the script is correctly written IN THE TARGET LANGUAGE: code-switched property names, "
+            "suburbs, numbers and contact details are fine, but text written wholesale in another "
+            "language must return false. Never add commentary or code fences."
+        ),
+        "translate": (
+            "You are a translator for South African property voiceover scripts. Translate the "
+            "user's script into the target language named in the request — natural, spoken wording "
+            "suitable for narration by a native voice. Keep property names, suburbs, numbers, prices "
+            "and agent contact details EXACTLY as written. Output ONLY the translated script: no "
+            "quotes, no notes, no explanation."
+        ),
     }
     system = system_prompts.get(kind, system_prompts["description"])
     # The narrator speaks the SELECTED language (one of SA's 11 official
@@ -1645,7 +1662,13 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
             word_rule = "Roughly 140 words (about 60 seconds of narration)"
         system = system.replace("{LANGUAGE_RULE}", language_rule).replace("{WORD_RULE}", word_rule)
     facts = "\n".join(f"{k}: {v}" for k, v in fields.items() if v not in (None, "", []))
-    user_text = f"Property facts:\n{facts}"
+    if kind in ("language_check", "translate"):
+        # Frontend-driven mismatch detection / auto-correction: fields carry
+        # {text, target_language, language_label} — no property-facts framing.
+        user_text = (f"target_language: {fields.get('target_language')}"
+                     f" ({fields.get('language_label') or ''})\n\nscript:\n{fields.get('text')}")
+    else:
+        user_text = f"Property facts:\n{facts}"
     user_content = user_text
     image_list = [u for u in (images or []) if u]
     if image_list:
@@ -2329,7 +2352,7 @@ class FlashHeadJobRequest(BaseModel):
 
 
 class GenerateTextRequest(BaseModel):
-    kind: str  # description | social_caption | video_script
+    kind: str  # description | social_caption | video_script | language_check | translate
     fields: dict = {}
     images: list[str] = []  # optional photo URLs for Grok vision
 

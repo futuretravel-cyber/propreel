@@ -324,7 +324,7 @@ export const PropReelAPI = {
 
   // ── AI text generation (Grok via Modal's OpenRouter route) ──────────────
   async generateText(
-    kind: 'description' | 'social_caption' | 'video_script',
+    kind: 'description' | 'social_caption' | 'video_script' | 'language_check' | 'translate',
     fields: Record<string, any>,
     images: string[] = []
   ): Promise<string> {

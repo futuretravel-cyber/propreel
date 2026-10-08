@@ -9,6 +9,8 @@ import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
 import { useVoicePreview } from '../lib/useVoicePreview';
 import { useAvatarPhotoIssue } from '../lib/useAvatarPhotoIssue';
+import LanguageMismatchBanner from './LanguageMismatchBanner';
+import type { VoiceoverLanguageCheck } from '../lib/useVoiceoverLanguageCheck';
 import { SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage } from '../lib/constants';
 
 interface FlashHeadVideoProps {
@@ -28,13 +30,15 @@ interface FlashHeadVideoProps {
   /** Shared voiceover language (BCP-47) — synced with the Video tab */
   language?: string;
   onLanguageChange?: (language: string) => void;
+  /** Shared script-vs-language mismatch check (banner under the script) */
+  langCheck: VoiceoverLanguageCheck;
 }
 
 /**
  * FlashHead Studio tab: lip-synced talking-head video from the agent's
  * profile picture + the AI-generated voiceover script. 8 credits.
  */
-export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, profileImageReady = true, onProfileImageChange, language = DEFAULT_VOICE_LANGUAGE, onLanguageChange }: FlashHeadVideoProps) {
+export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, profileImageReady = true, onProfileImageChange, language = DEFAULT_VOICE_LANGUAGE, onLanguageChange, langCheck }: FlashHeadVideoProps) {
   const { user } = useCredit() as any;
   const { generate, busy, stage, error, setError, jobStatus, cost, cancel, cancelling } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
@@ -52,6 +56,10 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     null;
   const [dragging, setDragging] = useState(false);
   const [script, setScript] = useState(initialScript);
+  // Parent → panel: the shared script (AI Write, one-click translation,
+  // listing prefill) must land here too. Edits from THIS textarea write the
+  // parent with the same text, so the effect is a no-op mid-typing.
+  useEffect(() => { setScript(initialScript); }, [initialScript]);
   // Narrator voices are grouped per language — keep the pick valid when the
   // language changes (the worker also re-validates the pair server-side).
   const languageVoices = voicesForLanguage(language);
@@ -299,6 +307,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
               placeholder="Welcome to this stunning family home in Constantia…"
             />
             <p className="text-xs text-ink-500 mt-1">{script.trim() ? `${script.trim().split(/\s+/).length} words` : 'FlashHead speaks this text with your face'}</p>
+            <LanguageMismatchBanner check={langCheck} />
           </div>
           <div>
             <label className="label">Voiceover Language</label>

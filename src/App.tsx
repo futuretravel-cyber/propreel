@@ -27,6 +27,8 @@ import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
 import { useVoicePreview } from './lib/useVoicePreview';
+import { useVoiceoverLanguageCheck, type VoiceoverLanguageCheck } from './lib/useVoiceoverLanguageCheck';
+import LanguageMismatchBanner from './components/LanguageMismatchBanner';
 import RenderProgressBar from './components/RenderProgressBar';
 import { queueVideoRender, takeVideoRender } from './lib/videoPrefill';
 import {
@@ -1318,6 +1320,11 @@ function StudioPageInner() {
   // Shared voiceover language (BCP-47): both tabs narrate the same script in
   // the same one of South Africa's 11 official languages.
   const [sharedLanguage, setSharedLanguage] = useState(DEFAULT_VOICE_LANGUAGE);
+  // Script-vs-language mismatch detection (LLM, debounced, fail-open): the
+  // narrator reads the script verbatim with no auto-translation, so a
+  // wrong-language script must surface a warning + one-click fix in BOTH
+  // tabs that speak it. One shared instance keeps dismissal consistent.
+  const langCheck = useVoiceoverLanguageCheck(sharedScript, sharedLanguage, setSharedScript);
   // Shared avatar photo: chosen in the Video tab's AI Avatar Video add-on,
   // carried over to the Talking Head tab automatically. Persisted so a full
   // page reload doesn't orphan the photo the agent already picked.
@@ -1386,8 +1393,8 @@ function StudioPageInner() {
         <div className={tab === 'removal' ? undefined : 'hidden'}><ErrorBoundary label="Furniture Removal"><RemovalTab /></ErrorBoundary></div>
         <div className={tab === 'twilight' ? undefined : 'hidden'}><ErrorBoundary label="Twilight"><TwilightTab /></ErrorBoundary></div>
         <div className={tab === 'social' ? undefined : 'hidden'}><ErrorBoundary label="Social Media"><SocialTab /></ErrorBoundary></div>
-        <div className={tab === 'video' ? undefined : 'hidden'}><ErrorBoundary label="Video Generator"><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} /></ErrorBoundary></div>
-        <div className={tab === 'flashhead' ? undefined : 'hidden'}><ErrorBoundary label="AI Avatar Video"><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} /></ErrorBoundary></div>
+        <div className={tab === 'video' ? undefined : 'hidden'}><ErrorBoundary label="Video Generator"><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} langCheck={langCheck} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} /></ErrorBoundary></div>
+        <div className={tab === 'flashhead' ? undefined : 'hidden'}><ErrorBoundary label="AI Avatar Video"><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} langCheck={langCheck} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} /></ErrorBoundary></div>
       </div>
     </div>
   );
@@ -2286,7 +2293,7 @@ function SocialTab() {
 
 const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
-function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages = [], profileImage, onProfileImageChange, language, onLanguageChange }: { sharedScript: string; onScriptChange: (s: string) => void; onNavigateTab: (t: string) => void; initialImages?: string[]; profileImage: string | null; onProfileImageChange: (img: string | null) => void; language: string; onLanguageChange: (l: string) => void }) {
+function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, initialImages = [], profileImage, onProfileImageChange, language, onLanguageChange }: { sharedScript: string; onScriptChange: (s: string) => void; langCheck: VoiceoverLanguageCheck; onNavigateTab: (t: string) => void; initialImages?: string[]; profileImage: string | null; onProfileImageChange: (img: string | null) => void; language: string; onLanguageChange: (l: string) => void }) {
   const { user, refundCredits, refresh } = useCredit();
   const toast = useToast();
   const uploadWait = useUploadWait();
@@ -2770,6 +2777,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         <p className="text-xs text-ink-500 mt-1">
           Target word count: {targetWords} words (based on {selectedConfig.duration}s duration at 2.4 words/second)
         </p>
+        <LanguageMismatchBanner check={langCheck} />
         {narrationTooLong && !noNarration && (
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
