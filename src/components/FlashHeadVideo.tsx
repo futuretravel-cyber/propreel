@@ -8,6 +8,7 @@ import RenderProgressBar from './RenderProgressBar';
 import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
 import { useVoicePreview } from '../lib/useVoicePreview';
+import { useAvatarPhotoIssue } from '../lib/useAvatarPhotoIssue';
 import { SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage } from '../lib/constants';
 
 interface FlashHeadVideoProps {
@@ -73,6 +74,10 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
   // Elapsed-vs-typical progress: typical scales with the script length
   const scriptWords = script.trim() ? script.trim().split(/\s+/).length : 0;
   const progress = useRenderProgress(typicalFlashheadSeconds(scriptWords));
+
+  // Whichever photo is active (upload, branding, carried from the Video tab)
+  // gets measured — landscape/low-res shots render a broken avatar.
+  const photoIssue = useAvatarPhotoIssue(preview);
 
   // Keep the shared Studio script in sync (the Video tab reads from it)
   const updateScript = (text: string) => {
@@ -247,7 +252,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
               >
                 <User className="w-8 h-8 text-ink-400 mx-auto mb-2" />
                 <p className="text-ink-400 text-sm">Drop a headshot here or click to upload</p>
-                <p className="text-ink-500 text-xs mt-1">Front-facing portrait, good lighting — JPEG/PNG up to 25MB</p>
+                <p className="text-ink-500 text-xs mt-1">Perfect size: 1024 × 1280 portrait (4:5) — one face, centered, head &amp; shoulders, good lighting · JPEG/PNG up to 25MB</p>
               </div>
               {brandingPhoto && (
                 <button
@@ -272,6 +277,12 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
               </div>
               {sourceUrl && (
                 <p className="text-xs text-ink-500 mt-1">Using your branding profile image — remove it to upload a different photo.</p>
+              )}
+              {photoIssue && (
+                <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
+                  <p className="text-xs text-amber-300">{photoIssue}</p>
+                </div>
               )}
             </>
           )}

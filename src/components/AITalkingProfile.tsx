@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { User, Upload, Sparkles, Zap, Info, Video } from 'lucide-react';
+import { User, Upload, Sparkles, Zap, Info, Video, AlertCircle } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { useCredit } from '../context/AuthContext';
+import { useAvatarPhotoIssue } from '../lib/useAvatarPhotoIssue';
 
 interface AITalkingProfileProps {
   enabled: boolean;
@@ -21,6 +22,9 @@ export default function AITalkingProfile({
   const toast = useToast();
   const { user } = useCredit();
   const [uploading, setUploading] = useState(false);
+  // Warn straight away when the photo is landscape / too small — this photo
+  // feeds the AI Avatar Video tab, where a bad crop renders a broken avatar.
+  const photoIssue = useAvatarPhotoIssue(profileImage);
 
   // Current profile image from Agent Branding (default profile first),
   // falling back to the account avatar
@@ -161,8 +165,14 @@ export default function AITalkingProfile({
                 </button>
               )}
               <p className="text-xs text-ink-500 mt-2">
-                Upload a clear, front-facing photo (max 5MB)
+                Perfect size: 1024 × 1280 portrait (4:5) — one face, centered, head &amp; shoulders, good lighting · max 5MB
               </p>
+              {photoIssue && (
+                <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
+                  <p className="text-xs text-amber-300">{photoIssue}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
