@@ -347,15 +347,19 @@ def fetch_media(url: str, timeout: int = 120) -> bytes:
     return resp.content
 
 
-# Every image editor on the site returns ONE frame size: 1024×768 (4:3).
+# Every image editor on the site returns ONE frame size: 1920×1080 (16:9).
 # The model follows input aspect natively, so outputs otherwise drift
 # (1024×576, 1248×832, 2048×2048 …) — the product wants a uniform frame
 # for thumbnails, grids and downloads across Photo Editor / Staging /
 # Removal / Twilight, which all funnel through this one function.
 # Portrait sources are pillarboxed into the frame (see _fit_image_bytes);
-# landscape sources are center-cropped.
-EDIT_OUTPUT_WIDTH = 1024
-EDIT_OUTPUT_HEIGHT = 768
+# narrower landscape sources are scaled by WIDTH and center-cropped
+# top/bottom. That direction matters: the horizontal field of view is
+# always preserved, so a landscape photo is never magnified the way the
+# old 4:3 frame magnified it (cropping the SIDES made everything look
+# "zoomed in" next to the untouched Before).
+EDIT_OUTPUT_WIDTH = 1920
+EDIT_OUTPUT_HEIGHT = 1080
 
 
 def _fit_image_bytes(data: bytes, width: int = EDIT_OUTPUT_WIDTH,
@@ -1693,6 +1697,98 @@ def scheduled_fal_probe():
 # # IMAGE EDITING FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _hdr_boost_bytes(data: bytes) -> bytes:
+    """Deterministic HDR tone-map of the SOURCE pixels.
+
+    HDR Boost used to ask flux-pro/kontext for an "HDR look" at gentle
+    guidance: agents got essentially the same photo back ("it keeps the
+    photo as is"), and whatever slight reframing the model did read as a
+    zoom. Dynamic range is a TONAL property, not a compositional one — so
+    this bypasses the generative model entirely and runs a real single-
+    exposure tone-map in ffmpeg instead:
+
+      1. curves  — lift crushed shadows, roll off blown highlights so
+                   detail shows at BOTH ends of the range (the HDR base)
+      2. eq      — restore punch: contrast, colour richness, a touch of gamma
+      3. unsharp — local contrast ("clarity") so stucco, brick, foliage and
+                   window frames snap instead of looking flat
+
+    Framing is untouched (the standard fit to EDIT_OUTPUT_* below is the
+    only geometry change) and the result is identical on every run. Any
+    ffmpeg failure degrades to the untouched source rather than failing a
+    render the agent already paid for."""
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+    in_path = out_path = None
+    try:
+        with _tf.NamedTemporaryFile(suffix='.img', delete=False) as f:
+            f.write(data)
+            in_path = f.name
+        out_path = in_path + '.hdr.jpg'
+        vf = (
+            "curves=master='0/0.05 0.10/0.18 0.30/0.355 0.50/0.505 0.70/0.69 0.88/0.83 1/0.93',"
+            "eq=contrast=1.05:saturation=1.32:gamma=1.02,"
+            # NOTE: ffmpeg's unsharp caps luma width/height at 13 (chroma too)
+            # — wider args make ffmpeg reject the WHOLE filter graph and
+            # this function would silently fall back to the untouched source.
+            "unsharp=13:13:0.9:13:13:0.0"
+        )
+        _sp.run(
+            ['ffmpeg', '-v', 'error', '-y', '-i', in_path, '-vf', vf,
+             '-q:v', '2', out_path],
+            check=True, capture_output=True, timeout=60,
+        )
+        with open(out_path, 'rb') as f:
+            boosted = f.read()
+        return boosted if boosted else data
+    except Exception as e:
+        print(f"hdr boost skipped: {e}")
+        return data
+    finally:
+        for p in (in_path, out_path):
+            if p:
+                try:
+                    _os.unlink(p)
+                except Exception:
+                    pass
+
+
+def _store_edit(payload: bytes, image_url: str, preset_id: str,
+                strength_value, guidance_value) -> dict:
+    """Persist an edited frame at edited/<preset>_<source>.jpg and return the
+    standard edit-response dict. Shared by the generative path and the
+    deterministic HDR path so both store and answer identically."""
+    import boto3
+    from urllib.parse import urlparse
+    # image_url routinely arrives presigned (the studio hands us a 1h signed
+    # preview link): the query must never land in the key. basename() used to
+    # swallow it whole, so the object was stored at "x.jpg?X-Amz-…" while
+    # every reader (status presigner, download link) requested the clean
+    # "x.jpg" → NoSuchKey on view and download.
+    s3_key = f"edited/{preset_id}_{os.path.basename(urlparse(image_url).path)}"
+
+    s3 = boto3.client('s3', region_name=S3_REGION)
+    s3.put_object(
+        Bucket=S3_BUCKET,
+        Key=s3_key,
+        Body=payload,
+        ContentType='image/jpeg'
+    )
+
+    final_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+    print(f"✅ Image edit complete: {final_url}")
+
+    return {
+        "status": "completed",
+        "image_url": final_url,
+        "preset_id": preset_id,
+        "strength": strength_value,
+        "guidance_scale": guidance_value,
+        "credits_used": IMAGE_RENDER_CREDIT_COST
+    }
+
+
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2)
 def edit_image(
     image_url: str,
@@ -1737,6 +1833,18 @@ def edit_image(
     actual_guidance = guidance_scale if guidance_scale is not None else preset['guidanceScale']['default']
     
     print(f"Using strength: {actual_strength}, guidance: {actual_guidance}")
+
+    # HDR Boost (no custom instruction) is a tone-map, not a regeneration:
+    # process the source pixels directly — zero generative reframing, no fal
+    # job, guaranteed visible dynamic-range recovery. A custom prompt is an
+    # explicit request for generative editing and keeps the Kontext path.
+    if preset_id == 'hdr_boost' and not custom_prompt:
+        print("hdr_boost: deterministic tone-map (no fal job)")
+        source_bytes = fetch_media(image_url, timeout=60)
+        return _store_edit(
+            _fit_image_bytes(_hdr_boost_bytes(source_bytes)),
+            image_url, preset_id, actual_strength, actual_guidance
+        )
 
     # Kontext (fal's instruction-editing model) changes ONLY what the prompt
     # asks for and keeps everything else faithful to the source. The old
@@ -1798,38 +1906,12 @@ def edit_image(
         else:
             raise Exception(f"Unknown fal.ai status: {status_type}")
     
-    # Download and upload to S3 — normalized to the site-wide 1024×768 frame
+    # Download fal's output and normalize to the site-wide 1920×1080 frame,
+    # then store exactly like the deterministic HDR path does.
     response = requests.get(edited_image_url)
     payload = _fit_image_bytes(response.content)
-    
-    s3 = boto3.client('s3', region_name=S3_REGION)
-    # image_url routinely arrives presigned (the studio hands us a 1h signed
-    # preview link): the query must never land in the key. basename() used to
-    # swallow it whole, so the object was stored at "x.jpg?X-Amz-…" while
-    # every reader (status presigner, download link) requested the clean
-    # "x.jpg" → NoSuchKey on view and download.
-    from urllib.parse import urlparse
-    s3_key = f"edited/{preset_id}_{os.path.basename(urlparse(image_url).path)}"
-    
-    s3.put_object(
-        Bucket=S3_BUCKET,
-        Key=s3_key,
-        Body=payload,
-        ContentType='image/jpeg'
-    )
-    
-    final_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
-    
-    print(f"✅ Image edit complete: {final_url}")
-    
-    return {
-        "status": "completed",
-        "image_url": final_url,
-        "preset_id": preset_id,
-        "strength": actual_strength,
-        "guidance_scale": mapped_guidance,
-        "credits_used": IMAGE_RENDER_CREDIT_COST
-    }
+
+    return _store_edit(payload, image_url, preset_id, actual_strength, mapped_guidance)
 
 
 @app.function(image=image)
