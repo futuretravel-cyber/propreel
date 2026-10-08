@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, Check, AlertCircle, Sparkles, Play, Square } from 'lucide-react';
+import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, AlertCircle, Sparkles, Play, Square } from 'lucide-react';
 import { useFlashHead } from '../lib/useFlashHead';
 import { useCredit } from '../context/AuthContext';
 import { useRenderProgress, typicalFlashheadSeconds } from '../lib/useRenderProgress';
@@ -362,10 +362,11 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
         )}
       </div>
 
-      {/* Result */}
+      {/* Result — the project record (kind FLASHHEAD, status READY) is
+          written by useFlashHead, so this clip surfaces in My Projects,
+          Listings, search and the activity feed automatically. */}
       {resultUrl && (
         <div className="card-dark p-4">
-          <p className="text-sm text-green-400 flex items-center gap-2 mb-3"><Check className="w-4 h-4" /> AI Avatar Video ready — stored in your AWS library</p>
           <div className="max-w-md mx-auto rounded-xl overflow-hidden bg-black">
             <video src={resultUrl} controls playsInline className="w-full aspect-square" />
           </div>
