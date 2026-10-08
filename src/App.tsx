@@ -33,7 +33,7 @@ import {
   Home as HomeIcon, Video, Image, Wand2, Sofa, Trash2, Moon, Share2, Play, Square,
   LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield,
   Users, Star, ChevronRight, Check, X, Menu, LogOut, Zap, Crown, Sparkles,
-  TrendingUp, Eye, Clock, AlertCircle, AlertTriangle, Download, Copy, RefreshCw, Plus,
+  TrendingUp, Eye, Clock, AlertCircle, AlertTriangle, Download, Copy, RefreshCw, Plus, VolumeX,
   Search, Filter, ArrowRight, Globe, Phone, Mail, MapPin, ChevronDown, ChevronLeft,
   Monitor, Smartphone, Mic, Camera, Palette, Sun, Cloud, Moon as MoonIcon, Bell,
   FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle, FolderOpen
@@ -2304,6 +2304,10 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
   }, [language]);
   // Short sample of the selected narrator voice, spoken in the selected language
   const voicePreview = useVoicePreview(`${language}:${voice}`);
+  // Agents can keep the script (AI Write + the avatar tab both need it) but
+  // render THIS reel silent — the worker skips synthesis entirely when
+  // voiceover_text is empty, so no TTS cost and no freeze-extension.
+  const [noNarration, setNoNarration] = useState(false);
   // Script lives in StudioPage state so the FlashHead tab speaks the same text
   const script = sharedScript;
   const setScript = onScriptChange;
@@ -2509,7 +2513,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
           config_index: configIndex,
           orientation,
           images: uploadedImages,
-          voiceover_text: script,
+          voiceover_text: noNarration ? '' : script,
           voice_id: voice,
           language,
           include_agent_branding: branding,
@@ -2766,7 +2770,7 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         <p className="text-xs text-ink-500 mt-1">
           Target word count: {targetWords} words (based on {selectedConfig.duration}s duration at 2.4 words/second)
         </p>
-        {narrationTooLong && (
+        {narrationTooLong && !noNarration && (
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
             <p className="text-xs text-amber-300">
@@ -2778,28 +2782,54 @@ function VideoTab({ sharedScript, onScriptChange, onNavigateTab, initialImages =
         )}
       </div>
 
-      {/* 5. Narrator Voice — only voices that natively speak the selected language */}
+      {/* 5. Narrator Voice — only voices that natively speak the selected
+          language; the choice below lets agents skip narration entirely */}
       <div>
         <div className="flex items-center justify-between">
           <label className="label">Narrator Voice</label>
+          {!noNarration && (
+            <button
+              type="button"
+              onClick={() => voicePreview.play(voice, language)}
+              disabled={voicePreview.loading}
+              className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 disabled:opacity-60"
+            >
+              {voicePreview.loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : voicePreview.isCurrent(voice, language) ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              {voicePreview.loading ? 'Loading…' : voicePreview.isCurrent(voice, language) ? 'Stop' : 'Preview'}
+            </button>
+          )}
+        </div>
+        <div className="flex gap-2 mb-2">
           <button
             type="button"
-            onClick={() => voicePreview.play(voice, language)}
-            disabled={voicePreview.loading}
-            className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 disabled:opacity-60"
+            onClick={() => setNoNarration(false)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${!noNarration ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-300 hover:bg-white/10 border border-transparent'}`}
           >
-            {voicePreview.loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : voicePreview.isCurrent(voice, language) ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-            {voicePreview.loading ? 'Loading…' : voicePreview.isCurrent(voice, language) ? 'Stop' : 'Preview'}
+            <Mic className="w-3 h-3 inline mr-1" /> Narrator voice
+          </button>
+          <button
+            type="button"
+            onClick={() => { setNoNarration(true); voicePreview.stop(); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${noNarration ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-300 hover:bg-white/10 border border-transparent'}`}
+          >
+            <VolumeX className="w-3 h-3 inline mr-1" /> No narration
           </button>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {languageVoices.map(v => (
-            <button key={v.id} onClick={() => setVoice(v.id)} className={`px-3 py-2 rounded-lg text-sm text-left transition ${voice === v.id ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
-              <Mic className="w-3 h-3 inline mr-1" /> {v.label}
-            </button>
-          ))}
-        </div>
-        {voicePreview.error && <p className="text-xs text-red-400 mt-1">{voicePreview.error}</p>}
+        {noNarration ? (
+          <p className="text-xs text-ink-400 bg-white/5 rounded-lg p-3">
+            This video renders without a voiceover — background music still plays if selected below.
+            Your script and language stay put for AI Write and the AI Avatar Video tab.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {languageVoices.map(v => (
+              <button key={v.id} onClick={() => setVoice(v.id)} className={`px-3 py-2 rounded-lg text-sm text-left transition ${voice === v.id ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
+                <Mic className="w-3 h-3 inline mr-1" /> {v.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {!noNarration && voicePreview.error && <p className="text-xs text-red-400 mt-1">{voicePreview.error}</p>}
       </div>
 
       {/* 6. AI Avatar Video add-on → dedicated Talking Head tab */}
