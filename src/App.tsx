@@ -3010,7 +3010,7 @@ function AdminPage() {
         <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {['overview', 'pnl', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music'].map(t => (
+        {['overview', 'pnl', 'ops', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music'].map(t => (
           <button key={t} onClick={() => setTab(t)} className={`tab-pill ${tab === t ? 'tab-pill-active' : ''}`}>
             {t === 'music' ? 'Music Library' : t === 'pnl' ? 'P&L' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -3019,6 +3019,7 @@ function AdminPage() {
       <div className="card-dark p-6">
         {tab === 'overview' && <AdminOverview />}
         {tab === 'pnl' && <AdminPnl />}
+        {tab === 'ops' && <AdminNarakeetOps />}
         {tab === 'users' && <AdminUsers />}
         {tab === 'agencies' && <AdminAgencies />}
         {tab === 'reviews' && <AdminReviews />}
@@ -3213,6 +3214,136 @@ function AdminOverview() {
           </div>
           <p className="text-[11px] text-ink-500">
             Video runtime is the planned tier duration; AI Avatar Video runtime is measured from the finished file. Renders whose browser closed mid-job may be missing duration.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Admin: Narakeet voiceover ops — billed minutes (and est. USD) per
+// render, so TTS spend sits next to the credit ledger. Aggregated from the
+// worker's jobs/{id}.json records by GET admin_narakeet_usage. ──────────────
+function AdminNarakeetOps() {
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState('');
+  const [days, setDays] = useState(30);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    fetch(`/api/users?action=admin_narakeet_usage&days=${days}`)
+      .then(r => { if (!r.ok) throw new Error('Ops report unavailable'); return r.json(); })
+      .then(d => { if (!cancelled) setData(d); })
+      .catch(e => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [days]);
+
+  const langLabel = (code: string) => SA_LANGUAGES.find(l => l.id === code)?.label || code;
+  const kindLabel = (kind: string) => (kind === 'flashhead' ? 'Avatar' : 'Reel');
+  const t = data?.totals;
+  const tiles = t ? [
+    { label: 'Narration minutes', value: t.minutes.toFixed(1), sub: `billed audio (${Math.round(t.seconds)}s)` },
+    { label: 'Est. TTS cost', value: `$${t.estCostUsd.toFixed(2)}`, sub: `at $${data.usdPerMinute.toFixed(2)}/min` },
+    { label: 'Jobs with voiceover', value: `${t.withNarration}/${t.videoJobs}`, sub: `${t.withoutNarration} rendered without narration` },
+    { label: 'Unmeasured', value: String(t.unmeasured), sub: t.unmeasured ? 'predates instrumentation' : 'full coverage' },
+  ] : [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <Mic className="w-4 h-4 text-purple-400" /> Voiceover ops — Narakeet minutes per render
+        </h3>
+        <div className="flex items-center gap-2">
+          {[7, 30, 90].map(d => (
+            <button key={d} onClick={() => setDays(d)} className={`tab-pill ${days === d ? 'tab-pill-active' : ''}`}>{d}d</button>
+          ))}
+          <button onClick={() => setDays(v => v)} disabled={loading} className="text-xs text-purple-400 hover:text-purple-300" aria-label="Refresh report">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="bg-red-950/30 border border-red-500/30 rounded-xl p-4 text-sm text-red-300">{error}</div>}
+      {!data && !error && <p className="text-sm text-ink-400">Loading usage…</p>}
+
+      {t && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {tiles.map(item => (
+              <div key={item.label} className="bg-ink-800/50 rounded-xl p-4">
+                <p className="text-xs text-ink-400">{item.label}</p>
+                <p className="text-2xl font-bold text-white mt-1">{item.value}</p>
+                <p className="text-[11px] text-ink-500">{item.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {data.byLanguage.length > 0 && (
+            <div className="bg-ink-800/50 rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-purple-300 uppercase tracking-wider mb-3">Minutes by language</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {data.byLanguage.map((row: any) => (
+                  <div key={row.language} className="bg-ink-900/60 rounded-lg p-3">
+                    <p className="text-[11px] text-ink-400 truncate">{langLabel(row.language)}</p>
+                    <p className="text-lg font-bold text-white">{row.minutes.toFixed(1)} min</p>
+                    <p className="text-[11px] text-ink-500">{row.renders} render{row.renders === 1 ? '' : 's'} · ${(row.minutes * data.usdPerMinute).toFixed(2)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-ink-800/50 rounded-xl p-4">
+            <h4 className="text-xs font-semibold text-purple-300 uppercase tracking-wider mb-3">Per render — newest {Math.min(50, data.recent.length)}</h4>
+            {data.recent.length === 0 ? (
+              <p className="text-sm text-ink-400">No video jobs in this window.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-ink-400 border-b border-white/10">
+                      <th className="px-3 py-2 font-medium">When</th>
+                      <th className="px-3 py-2 font-medium">Job</th>
+                      <th className="px-3 py-2 font-medium">Kind</th>
+                      <th className="px-3 py-2 font-medium">Tier</th>
+                      <th className="px-3 py-2 font-medium">Voice</th>
+                      <th className="px-3 py-2 font-medium">Language</th>
+                      <th className="px-3 py-2 font-medium text-right">Minutes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.recent.map((r: any) => (
+                      <tr key={r.id} className="border-b border-white/5">
+                        <td className="px-3 py-2 text-ink-300 whitespace-nowrap">
+                          {new Date(r.when).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' })}{' '}
+                          {new Date(r.when).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-ink-400" title={r.id}>{r.id}</td>
+                        <td className="px-3 py-2 text-ink-300">{kindLabel(r.kind)}</td>
+                        <td className="px-3 py-2 text-ink-400">{r.tier || '—'}</td>
+                        <td className="px-3 py-2 text-ink-300">{r.voice || '—'}</td>
+                        <td className="px-3 py-2 text-ink-300">{r.language ? langLabel(r.language) : '—'}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-white">
+                          {r.seconds === null ? <span className="text-ink-500" title="Predates instrumentation">unmeasured</span>
+                            : r.seconds > 0 ? (r.seconds / 60).toFixed(2)
+                            : <span className="text-ink-500">0</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <p className="text-[11px] text-ink-500">
+            Minutes are the billed synthesis duration recorded by the render worker ({data.fetched} of {data.listed} job records read, newest {data.fetched}).
+            Jobs predating the instrumentation — and jobs that failed after synthesis — show as unmeasured. Voice preview samples are cached per voice+language and excluded.
           </p>
         </div>
       )}

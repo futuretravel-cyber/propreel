@@ -30,7 +30,8 @@ export interface PurgeResult {
   cutoff: string;
 }
 
-async function s3() {
+/** Shared S3 client for the output/raw buckets (creds from the Vercel env). */
+export async function s3() {
   const { S3Client } = await import('@aws-sdk/client-s3');
   return new S3Client({
     region: REGION,

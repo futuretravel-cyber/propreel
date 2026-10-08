@@ -837,8 +837,44 @@ def _resolve_narakeet_voice(voice_id: str | None, language: str | None) -> tuple
     return lang, v
 
 
-def narakeet_tts(text: str, voice: str) -> bytes:
-    """Synthesize `text` with a Narakeet native voice → MP3 bytes.
+def _narakeet_audio_seconds(header_value, mp3: bytes) -> float:
+    """Billed length of one synthesis (seconds) for the admin ops report.
+
+    Narakeet reports what it bills for on both flows — `x-duration-seconds`
+    on streaming, `durationInSeconds` on polling. If either is missing,
+    ffprobe measures the very same mp3; a silent 0 would under-count spend.
+    """
+    try:
+        s = float(header_value)
+        if s > 0:
+            return round(s, 2)
+    except (TypeError, ValueError):
+        pass
+    try:
+        import subprocess as _sp
+        import tempfile as _tf
+        import os as _os
+        with _tf.NamedTemporaryFile(suffix=".mp3", delete=False) as _f:
+            _f.write(mp3)
+            _tmp = _f.name
+        try:
+            out = _sp.run(["ffprobe", "-v", "error", "-show_entries",
+                           "format=duration", "-of",
+                           "default=noprint_wrappers=1:nokey=1", _tmp],
+                          capture_output=True, text=True, timeout=30)
+            return round(float(out.stdout.strip()), 2)
+        finally:
+            _os.unlink(_tmp)
+    except Exception as e:
+        print(f"Narakeet duration unavailable ({e}) — counting 0s")
+        return 0.0
+
+
+def narakeet_tts(text: str, voice: str) -> tuple:
+    """Synthesize `text` with a Narakeet native voice → (MP3 bytes, seconds).
+
+    The seconds are exactly what Narakeet bills for and feed the admin ops
+    report (Narakeet minutes per render / per avatar video).
 
     Short scripts use the streaming endpoint (single request, ~1 KB body
     cap); anything longer goes through the polling API (1 MB / 45 min caps).
@@ -863,7 +899,8 @@ def narakeet_tts(text: str, voice: str) -> bytes:
                 r = requests.post(url, params={"voice": voice}, data=body,
                                   headers={**headers, "accept": "application/octet-stream"}, timeout=90)
                 if r.status_code == 200 and r.content[:1] != b"{":
-                    return r.content
+                    return r.content, _narakeet_audio_seconds(
+                        r.headers.get("x-duration-seconds"), r.content)
                 last_err = f"HTTP {r.status_code}: {r.text[:120]}"
             except Exception as e:
                 last_err = str(e)[:120]
@@ -904,28 +941,29 @@ def narakeet_tts(text: str, voice: str) -> bytes:
             raise RuntimeError(f"Narakeet TTS failed: {str(data.get('message'))[:200]}")
         audio = requests.get(data["result"], timeout=120)
         audio.raise_for_status()
-        return audio.content
+        return audio.content, _narakeet_audio_seconds(
+            data.get("durationInSeconds"), audio.content)
     raise RuntimeError("Narakeet TTS timed out after 180s")
 
 
 def _narakeet_audio_url(text: str, voice_id: str | None, language: str | None,
-                        user_id: str) -> str:
+                        user_id: str) -> tuple:
     """Synthesize narration in the selected language and host it on S3.
 
-    Returns a presigned URL fal.ai can fetch (media URLs are private —
-    knowing the object URL no longer grants read access). The mp3 lands
-    under flashhead/, so the 30-day retention cron purges it too.
+    Returns (presigned URL fal.ai can fetch, billed seconds). Media URLs
+    are private: knowing the object URL no longer grants read access. The
+    mp3 lands under flashhead/, so the 30-day retention cron purges it too.
     """
     import boto3
     import uuid as _uuid
     lang, nar_voice = _resolve_narakeet_voice(voice_id, language)
-    mp3 = narakeet_tts(text, nar_voice)
+    mp3, tts_seconds = narakeet_tts(text, nar_voice)
     s3_key = f"flashhead/{user_id}/narration_{_uuid.uuid4().hex}.mp3"
     boto3.client('s3', region_name=S3_REGION).put_object(
         Bucket=S3_BUCKET, Key=s3_key, Body=mp3, ContentType='audio/mpeg'
     )
     raw = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
-    return presign_media(raw)
+    return presign_media(raw), tts_seconds
 
 
 def _media_duration(path: str) -> float:
@@ -1130,10 +1168,13 @@ def render_video_local(
     # Narration first (the promise the user paid for — a TTS failure raises
     # and the job refunds), with the music bed mixed in the same pass.
     # Without narration, the music bed keeps its old standalone path.
+    narakeet_seconds = 0.0
     if (voiceover_text or "").strip():
         lang, nar_voice = _resolve_narakeet_voice(voice_id, language)
         print(f"Synthesizing narration ({lang} / {nar_voice}): {len(voiceover_text)} chars")
-        narr_bytes = narakeet_tts(voiceover_text, nar_voice)
+        narr_bytes, tts_seconds = narakeet_tts(voiceover_text, nar_voice)
+        narakeet_seconds = round(tts_seconds, 2)
+        print(f"Narakeet billed {narakeet_seconds:.1f}s ({lang} / {nar_voice})")
         narr_path = os.path.join(work, "narration.mp3")
         with open(narr_path, "wb") as nf:
             nf.write(narr_bytes)
@@ -1166,7 +1207,7 @@ def render_video_local(
     )
     video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
     print(f"Local render complete: {video_url}")
-    return video_url
+    return video_url, narakeet_seconds
 
 
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("narakeet")], timeout=900, retries=2, min_containers=0, max_containers=100, scaledown_window=300)
@@ -1224,12 +1265,13 @@ def render_video(
     # Real (post-narration) runtime: AI tiers freeze-extend the clip when the
     # script outruns it, so it can differ from the tier's nominal duration.
     actual_duration = float(config['duration'])
+    narakeet_seconds = 0.0
 
     if processing_type == "local":
         # ESSENTIAL tier: pure-FFmpeg Ken Burns render (no fal.ai) with the
         # same A/B/C motion-style rotation the AI tiers use for prompts
         _ensure_not_cancelled(record_id)
-        video_url = render_video_local.remote(
+        video_url, narakeet_seconds = render_video_local.remote(
             record_id=record_id,
             images=images,
             duration=config['duration'],
@@ -1304,7 +1346,8 @@ def render_video(
             import os as _os
             lang, nar_voice = _resolve_narakeet_voice(voice_id, language)
             print(f"Synthesizing narration ({lang} / {nar_voice}): {len(voiceover_text)} chars")
-            narr_bytes = narakeet_tts(voiceover_text, nar_voice)
+            narr_bytes, narakeet_seconds = narakeet_tts(voiceover_text, nar_voice)
+            print(f"Narakeet billed {narakeet_seconds:.1f}s ({lang} / {nar_voice})")
             workdir = _tf.mkdtemp(prefix=f"vo_{record_id}_")
             try:
                 src = os.path.join(workdir, "src.mp4")
@@ -1360,10 +1403,21 @@ def render_video(
     except Exception as _te:
         print(f"render thumbnail skipped: {_te}")
 
+    # Ops report: Narakeet bills per synthesized second — record it on every
+    # completed video job (0 = no narration) so old records stay guessable
+    # (absent key = predates measurement, excluded from the report totals).
+    nar_extra = {"narakeet_seconds": round(float(narakeet_seconds), 2)}
+    if narakeet_seconds > 0:
+        _rep_lang, _rep_voice = _resolve_narakeet_voice(voice_id, language)
+        nar_extra.update({"narakeet_voice": _rep_voice, "narakeet_language": _rep_lang})
+
     _write_job_status(record_id, "completed", {
         "video_url": video_url,
         "progress": 100,
         "duration_seconds": actual_duration,
+        "kind": "render",
+        "tier": tier,
+        **nar_extra,
         **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
     })
     
@@ -1805,7 +1859,7 @@ def generate_flashhead_video(
     print(f"Voice: {nar_voice} ({lang}), Text length: {len(voiceover_text)} characters")
 
     # 1) Narration → hosted on S3 → presigned URL fal can fetch
-    audio_url = _narakeet_audio_url(voiceover_text, voice, language, user_id)
+    audio_url, nar_seconds = _narakeet_audio_url(voiceover_text, voice, language, user_id)
 
     # 2) Lip-sync the avatar to that audio (no text/voice/stability — the
     #    audio-to-video schema takes {image_url, audio_url} only)
@@ -1876,7 +1930,8 @@ def generate_flashhead_video(
         "credits_used": 8,  # FlashHead costs 8 credits
         "model": "fal-ai/flashhead/audio-to-video",
         "voice": nar_voice,
-        "language": lang
+        "language": lang,
+        "narakeet_seconds": round(float(nar_seconds), 2)
     }
 
 
@@ -2178,7 +2233,7 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
         lang, nar_voice = _resolve_narakeet_voice(voice, language)
         print(f"FlashHead job {job_id}: voice={nar_voice} ({lang}), text={len(voiceover_text)} chars")
         # 1) Narration in the selected language → hosted on S3 → presigned
-        audio_url = _narakeet_audio_url(voiceover_text, voice, language, user_id)
+        audio_url, nar_seconds = _narakeet_audio_url(voiceover_text, voice, language, user_id)
         # 2) Lip-sync the avatar to that audio (audio-to-video schema:
         #    {image_url, audio_url} — no text/voice/stability)
         handler = fal_client.submit(
@@ -2252,6 +2307,11 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
         print(f"FlashHead job {job_id} complete: {final_url} ({duration_seconds}s)")
         _write_job_status(job_id, "completed", {
             "video_url": final_url,
+            # Ops report: billed Narakeet seconds per avatar video
+            "kind": "flashhead",
+            "narakeet_seconds": round(float(nar_seconds), 2),
+            "narakeet_voice": nar_voice,
+            "narakeet_language": lang,
             **({"duration_seconds": duration_seconds} if duration_seconds else {}),
             **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
         })
@@ -2359,11 +2419,11 @@ def api_tts_preview(request: VoicePreviewRequest):
     if not cached:
         text = VOICE_SAMPLE_TEXT.get(lang) or VOICE_SAMPLE_TEXT[DEFAULT_NARAKEET_LANGUAGE]
         try:
-            mp3 = narakeet_tts(text, nar_voice)
+            mp3, tts_seconds = narakeet_tts(text, nar_voice)
         except Exception as e:
             raise HTTPException(status_code=502, detail=str(e)[:300])
         s3.put_object(Bucket=S3_BUCKET, Key=s3_key, Body=mp3, ContentType='audio/mpeg')
-        print(f"voice sample synthesized: {s3_key} ({len(mp3)} bytes)")
+        print(f"voice sample synthesized: {s3_key} ({len(mp3)} bytes, {tts_seconds:.1f}s)")
     raw_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
     return {**presign_urls({"url": raw_url}), "language": lang, "voice": nar_voice, "cached": cached}
 

@@ -912,6 +912,133 @@ async function adminLedger(req: VercelRequest, res: VercelResponse) {
 }
 
 /**
+ * Nested route: GET /api/users?action=admin_narakeet_usage&days=30 —
+ * ops report: Narakeet voiceover minutes consumed per render (admin only).
+ *
+ * Sums `narakeet_seconds` — the billed audio duration the worker records on
+ * every completed video job status (jobs/{id}.json, retention-exempt so the
+ * history persists). Records predating the field are counted as
+ * `unmeasured` rather than silently reported as zero spend.
+ */
+async function adminNarakeetUsage(req: VercelRequest, res: VercelResponse) {
+  const gate = await requireAdminSession(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+
+  const days = Math.min(365, Math.max(1, parseInt(String(req.query.days || '30'), 10) || 30));
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  // Newest N job records read — bounds the Vercel runtime on busy windows.
+  const FETCH_CAP = 400;
+  // Narakeet's published pay-as-you-go rate (~$0.20 per synthesized minute).
+  const USD_PER_MINUTE = 0.2;
+
+  const { s3 } = await import('../lib/mediaRetention');
+  const { ListObjectsV2Command, GetObjectCommand } = await import('@aws-sdk/client-s3');
+  const client = await s3();
+  const bucket = process.env.AWS_S3_OUTPUT_BUCKET || 'propreel-video-outputs-sa';
+
+  // List jobs/ (keys + timestamps only), keep top-level status files inside
+  // the window; nested jobs/claims/ and jobs/health/ are never job records.
+  const candidates: { key: string; when: Date }[] = [];
+  let token: string | undefined;
+  do {
+    const page = await client.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: 'jobs/',
+      ContinuationToken: token,
+      MaxKeys: 1000,
+    }));
+    for (const o of page.Contents || []) {
+      const key = o.Key || '';
+      if (!/^jobs\/[^/]+\.json$/.test(key)) continue;
+      if (!o.LastModified || o.LastModified.getTime() < cutoff) continue;
+      candidates.push({ key, when: o.LastModified });
+    }
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  candidates.sort((a, b) => b.when.getTime() - a.when.getTime());
+  const toFetch = candidates.slice(0, FETCH_CAP);
+
+  const totals = { videoJobs: 0, withNarration: 0, withoutNarration: 0, unmeasured: 0, seconds: 0 };
+  const byLang = new Map<string, { renders: number; seconds: number }>();
+  const recent: any[] = [];
+
+  for (let i = 0; i < toFetch.length; i += 25) {
+    const batch = toFetch.slice(i, i + 25);
+    const docs = await Promise.all(batch.map(async c => {
+      try {
+        const obj = await client.send(new GetObjectCommand({ Bucket: bucket, Key: c.key }));
+        const text = await obj.Body!.transformToString();
+        return { c, doc: JSON.parse(text) as any };
+      } catch {
+        return { c, doc: null as any };
+      }
+    }));
+
+    for (const { c, doc } of docs) {
+      if (!doc) continue;
+      const id = String(doc.record_id || c.key.slice('jobs/'.length, -'.json'.length));
+      // Classify video jobs; image-edit and other job files carry no
+      // voiceover and are excluded entirely.
+      const kind = doc.kind === 'flashhead' || id.startsWith('fh_') ? 'flashhead'
+        : doc.kind === 'render' || id.startsWith('pr_') ? 'render'
+        : null;
+      if (!kind) continue;
+
+      totals.videoJobs += 1;
+      const secs = typeof doc.narakeet_seconds === 'number' ? doc.narakeet_seconds : null;
+      if (secs === null) {
+        totals.unmeasured += 1;
+      } else {
+        totals.seconds += secs;
+        if (secs > 0) {
+          totals.withNarration += 1;
+          const lang = String(doc.narakeet_language || 'unknown');
+          const row = byLang.get(lang) || { renders: 0, seconds: 0 };
+          row.renders += 1;
+          row.seconds += secs;
+          byLang.set(lang, row);
+        } else {
+          totals.withoutNarration += 1;
+        }
+      }
+
+      if (recent.length < 50) {
+        recent.push({
+          id,
+          kind,
+          status: String(doc.status || 'unknown'),
+          when: c.when.toISOString(),
+          tier: doc.tier || null,
+          language: doc.narakeet_language || null,
+          voice: doc.narakeet_voice || null,
+          seconds: secs,
+        });
+      }
+    }
+  }
+
+  const minutes = Math.round((totals.seconds / 60) * 10) / 10;
+  return res.status(200).json({
+    success: true,
+    days,
+    cutoffIso: new Date(cutoff).toISOString(),
+    listed: candidates.length,
+    fetched: toFetch.length,
+    totals: {
+      ...totals,
+      seconds: Math.round(totals.seconds * 10) / 10,
+      minutes,
+      estCostUsd: Math.round(minutes * USD_PER_MINUTE * 100) / 100,
+    },
+    usdPerMinute: USD_PER_MINUTE,
+    byLanguage: [...byLang.entries()]
+      .map(([language, v]) => ({ language, renders: v.renders, minutes: Math.round((v.seconds / 60) * 10) / 10 }))
+      .sort((a, b) => b.minutes - a.minutes),
+    recent,
+  });
+}
+
+/**
  * Nested route: GET /api/users?action=image_presets — the full AI prompt
  * library (prompt + negative-prompt text) for the admin Prompts viewer.
  * Admin session required. The text itself never ships in the public JS
@@ -2388,6 +2515,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.method === 'GET' && req.query.action === 'admin_ledger') {
     return adminLedger(req, res);
+  }
+  if (req.method === 'GET' && req.query.action === 'admin_narakeet_usage') {
+    return adminNarakeetUsage(req, res);
   }
   if (req.method === 'GET' && req.query.action === 'image_presets') {
     return imagePresets(req, res);
