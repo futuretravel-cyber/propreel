@@ -141,7 +141,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Family Comfortable',
     emoji: '👨‍👩‍👧',
     category: 'staging',
-    strength: { min: 0.4, max: 0.5, default: 0.45 },
+    strength: { min: 0.45, max: 0.6, default: 0.55 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
   },
   {
@@ -165,7 +165,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Industrial Loft',
     emoji: '⚙️',
     category: 'staging',
-    strength: { min: 0.45, max: 0.55, default: 0.5 },
+    strength: { min: 0.5, max: 0.6, default: 0.55 },
     guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   },
 

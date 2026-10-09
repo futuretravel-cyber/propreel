@@ -428,6 +428,102 @@ def _fit_image_bytes(data: bytes, width: int = EDIT_OUTPUT_WIDTH,
                 except Exception:
                     pass
 
+def _luma_mean(data: bytes) -> float | None:
+    """Mean luminance (0-255) of a still image, via ffmpeg downscale to a
+    64x36 gray raster. None when ffmpeg cannot read the bytes."""
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+    p = None
+    try:
+        with _tf.NamedTemporaryFile(suffix='.img', delete=False) as f:
+            f.write(data)
+            p = f.name
+        r = _sp.run(
+            ['ffmpeg', '-v', 'error', '-i', p,
+             '-vf', 'scale=64:36,format=gray', '-f', 'rawvideo', '-'],
+            capture_output=True, timeout=30,
+        )
+        if r.returncode == 0 and r.stdout:
+            return sum(r.stdout) / len(r.stdout)
+    except Exception:
+        pass
+    finally:
+        if p:
+            try:
+                _os.unlink(p)
+            except Exception:
+                pass
+    return None
+
+
+# Staging renders occasionally come back cave-dark (the style vocabulary
+# outweighs the prompt's lighting instructions — twice-reported by agents:
+# Industrial Loft at mean 24.7/255 against a 154-bright source). Prompt
+# fixes reduce the frequency but cannot guarantee it, so the store path
+# enforces a floor: a staging output below 60% of the SOURCE's mean
+# luminance gets an ffmpeg gamma lift until it clears the bar. Twilight
+# presets are deliberately exempt (Blue Hour / Night are SUPPOSED dark).
+STAGING_BRIGHTNESS_FLOOR = 0.60
+_STAGING_GAMMA_LADDER = (1.3, 1.5, 1.75, 2.0)
+
+
+def _staging_brightness_floor(payload: bytes, source: bytes) -> bytes:
+    """Gamma-lift a too-dark staging render toward its source photo's
+    brightness. Best-effort and bounded: any failure returns the original
+    payload — an edit the agent paid for must never fail over cosmetics."""
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+    try:
+        src_mean = _luma_mean(source)
+        out_mean = _luma_mean(payload)
+        if not src_mean or not out_mean:
+            return payload
+        target = STAGING_BRIGHTNESS_FLOOR * src_mean
+        if out_mean >= target:
+            return payload
+        print(f"brightness floor: output {out_mean:.0f} < {target:.0f} "
+              f"(60% of source {src_mean:.0f}) — lifting")
+        in_path = None
+        best, best_mean = payload, out_mean
+        try:
+            with _tf.NamedTemporaryFile(suffix='.img', delete=False) as f:
+                f.write(payload)
+                in_path = f.name
+            for gamma in _STAGING_GAMMA_LADDER:
+                out_path = in_path + f'.g{gamma}.jpg'
+                _sp.run(
+                    ['ffmpeg', '-v', 'error', '-y', '-i', in_path,
+                     '-vf', f'eq=gamma={gamma}', '-q:v', '2', out_path],
+                    check=True, capture_output=True, timeout=60,
+                )
+                with open(out_path, 'rb') as f:
+                    lifted = f.read()
+                mean = _luma_mean(lifted)
+                if lifted and mean and mean > best_mean:
+                    best, best_mean = lifted, mean
+                if lifted and mean and mean >= target:
+                    print(f"brightness floor: gamma {gamma} -> {mean:.0f}")
+                    return lifted
+                try:
+                    _os.unlink(out_path)
+                except Exception:
+                    pass
+        finally:
+            if in_path:
+                try:
+                    _os.unlink(in_path)
+                except Exception:
+                    pass
+        # Nothing reached the floor — hand back the brightest attempt.
+        print(f"brightness floor: best effort {best_mean:.0f} (target {target:.0f})")
+        return best
+    except Exception as e:
+        print(f"brightness floor skipped: {e}")
+        return payload
+
+
 # Credit cost per image render
 IMAGE_RENDER_CREDIT_COST = 2
 
@@ -1910,6 +2006,11 @@ def edit_image(
     # then store exactly like the deterministic HDR path does.
     response = requests.get(edited_image_url)
     payload = _fit_image_bytes(response.content)
+
+    # Staging only: enforce the brightness floor against the source photo
+    # (twilight presets are exempt on purpose — night is supposed to be dark).
+    if preset.get("category") == "staging":
+        payload = _staging_brightness_floor(payload, fetch_media(image_url, timeout=60))
 
     return _store_edit(payload, image_url, preset_id, actual_strength, mapped_guidance)
 
