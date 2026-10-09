@@ -524,6 +524,38 @@ def _staging_brightness_floor(payload: bytes, source: bytes) -> bytes:
         return payload
 
 
+# Caption system prompt for the room-anchor injected into staging/removal
+# edit prompts. Kontext routinely reinvents featureless rooms (white-walled
+# open-plan spaces especially) into furniture-catalog interiors — stairs,
+# brick, dropped ceilings that were never in the photo. Describing THE actual
+# room factually inside the prompt anchors the edit to this photo's geometry.
+# Entities must never be named conditionally ("no staircase…"), because
+# Kontext tends to PAINT whatever the prompt mentions — so the caption states
+# only what is visible, and geometry rules speak in constraints, not objects.
+_ROOM_ANCHOR_SYSTEM = (
+    "Describe the room photographed in this image factually for downstream "
+    "image-editing software. In 2-3 sentences state the room layout, the visible "
+    "openings and doorways and where they lead, the ceiling shape and height, the "
+    "wall colours and materials, the floor material, the furniture exactly as "
+    "placed, and any built-in features. State only what is actually visible. "
+    "No styles, no suggestions, no marketing language."
+)
+
+
+def _room_anchor_bytes_url(image_url: str) -> str:
+    """Best-effort factual caption of the input photo (see _ROOM_ANCHOR_SYSTEM).
+
+    Raises on failure — callers decide whether that is fatal or skippable."""
+    caption = _llm_chat([
+        {"role": "system", "content": _ROOM_ANCHOR_SYSTEM},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Describe this room."},
+            {"type": "image_url", "image_url": {"url": presign_media(image_url)}},
+        ]},
+    ])
+    return " ".join(caption.split())[:600]
+
+
 # Credit cost per image render
 IMAGE_RENDER_CREDIT_COST = 2
 
@@ -1923,6 +1955,17 @@ def edit_image(
     # Use custom prompt if provided, otherwise use preset prompt
     prompt = custom_prompt if custom_prompt else preset['prompt']
     negative_prompt = preset['negative_prompt']
+
+    # Room anchor (staging/removal only): caption the actual source photo and
+    # inject it ahead of the negative tail, so the model edits THIS room.
+    # Best-effort: an LLM hiccup must not fail a paid render.
+    _anchor = ""
+    if preset.get("category") in ("staging", "removal") and not custom_prompt:
+        try:
+            _anchor = _room_anchor_bytes_url(image_url)
+            print(f"room anchor: {_anchor[:160]}")
+        except Exception as e:
+            print(f"room anchor skipped: {e}")
     
     # Use provided strength/guidance or preset defaults
     actual_strength = strength if strength is not None else preset['strength']['default']
@@ -1956,7 +1999,15 @@ def edit_image(
     #     default). Client guidance ranges (4–5) predate Kontext and are
     #     deliberately not forwarded — out of range they'd 422 the job.
     mapped_guidance = round(max(1.5, min(3.5, 1.5 + float(actual_strength) * 2.0)), 2)
-    prompt_for_model = f"{prompt}\n\nDo not include: {negative_prompt}." if negative_prompt else prompt
+    if _anchor:
+        prompt_for_model = (
+            f"{prompt}\n\nTHIS EXACT ROOM for reference: {_anchor}\n\n"
+            f"Do not include: {negative_prompt}."
+        )
+    elif negative_prompt:
+        prompt_for_model = f"{prompt}\n\nDo not include: {negative_prompt}."
+    else:
+        prompt_for_model = prompt
     print(f"kontext: guidance={mapped_guidance}, prompt={len(prompt_for_model)} chars")
 
     # Use fal_client.submit() for long-running tasks with polling
