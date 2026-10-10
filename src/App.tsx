@@ -21,6 +21,7 @@ import FeatureChips from './components/FeatureChips';
 import CurrencyInput from './components/CurrencyInput';
 import { geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
 import { useStudioDraft, studioDraftKey } from './lib/studioDrafts';
+import { useRepairDraftPhotos } from './lib/repairDraftPhotos';
 import { useReorderable } from './lib/reorder';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
 import { playRenderComplete } from './lib/renderSound';
@@ -1445,6 +1446,8 @@ function DescriptionTab() {
   // across reloads — they're already uploaded to S3, so only URLs are stored)
   const [images, setImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'description:images'), []);
   const imgOrder = useReorderable(setImages);
+  // Same presign-decay repair as the video grid (see VideoTab / repairDraftPhotos).
+  const descRepair = useRepairDraftPhotos(studioDraftKey(user?.id, 'description:images'), images, setImages);
   const [uploading, setUploading] = useState(false);
   const imagesInputRef = useRef<HTMLInputElement>(null);
 
@@ -1669,7 +1672,7 @@ function DescriptionTab() {
           <div className="grid grid-cols-4 gap-3 mt-3">
             {images.map((src, i) => (
               <div key={src} className={imgOrder.dragClass(i, 'relative group')} {...imgOrder.dragProps(i)}>
-                <img src={src} alt={`Property ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
+                <img src={descRepair.display[src] || src} alt={`Property ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
                 <button
                   onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}
                   className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition"
@@ -1955,6 +1958,8 @@ function SocialTab() {
   // persisted so a reload doesn't drop the agent's photo selection
   const [images, setImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'social:images'), []);
   const imgOrder = useReorderable(setImages);
+  // Same presign-decay repair as the video grid (see VideoTab / repairDraftPhotos).
+  const socialRepair = useRepairDraftPhotos(studioDraftKey(user?.id, 'social:images'), images, setImages);
   const [uploading, setUploading] = useState(false);
   const imagesInputRef = useRef<HTMLInputElement>(null);
 
@@ -2146,7 +2151,7 @@ function SocialTab() {
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mt-3">
               {images.map((src, i) => (
                 <div key={src} className={imgOrder.dragClass(i, 'relative group')} {...imgOrder.dragProps(i)}>
-                  <img src={src} alt={`Post ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
+                  <img src={socialRepair.display[src] || src} alt={`Post ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
                   <button
                     onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}
                     className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition"
@@ -2334,6 +2339,14 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
   const [generating, setGenerating] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [uploadedImages, setUploadedImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'video:images'), []);
+  // Reload the Studio after an hour and every draft photo's 1h presign has
+  // died — the grid shows a few broken tiles and users read that as "it
+  // doesn't upload more than 2 photos". Heal: re-sign dead slots (session-
+  // gated, per-user prefix), persist the raw bucket form, render the fresh
+  // signature. See lib/repairDraftPhotos.ts.
+  const draftKey = studioDraftKey(user?.id, 'video:images');
+  const videoPhotoRepair = useRepairDraftPhotos(draftKey, uploadedImages, setUploadedImages);
+  const userFacingPhoto = (src: string) => videoPhotoRepair.display[src] || src;
   const videoOrder = useReorderable(setUploadedImages);
   // Prefilled photos (listing / project / description hand-off). Runs after
   // mount too, because the Studio consumes the queue in its own effect.
@@ -2711,7 +2724,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mt-3">
             {uploadedImages.map((src, i) => (
               <div key={src} className={videoOrder.dragClass(i, 'relative group')} {...videoOrder.dragProps(i)}>
-                <img src={src} alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
+                <img src={userFacingPhoto(src)} alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
                 <span className="absolute top-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">{i + 1}</span>
                 <button
                   onClick={e => { e.stopPropagation(); setUploadedImages(prev => prev.filter((_, idx) => idx !== i)); }}

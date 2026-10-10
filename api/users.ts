@@ -2457,6 +2457,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.action === 'audit_log' && req.method === 'GET') {
     return auditLog(req, res);
   }
+  // ── GET ?action=media_sign&url=… ────────────────────────────────────
+  // Studio drafts persist their photo URLs in IndexedDB (studioDrafts):
+  // the upload flow hands back a 1 h signed edge URL, so yesterday's draft
+  // previews are dead on arrival — every <img> 403s (and with nosniff the
+  // browser discards even the XML error, surfacing as a broken grid that
+  // LOOKS like an upload limit). The server-side fix is rows-only
+  // (rawS3Url), but a draft written before that boundary needs a live
+  // renewal path: re-sign ONE of our own objects for the signed-in owner.
+  // Ownership is enforced by key prefix, so a user can only renew their
+  // own uploads — never someone else's, and nothing outside uploads/.
+  if (req.method === 'GET' && req.query.action === 'media_sign') {
+    const actor = await sessionUser(req);
+    if (!actor) return res.status(401).json({ error: 'Sign in required' });
+    const url = String(req.query.url || '');
+    const { parseObjectUrl, signS3Url, toEdgeUrl } = await import('../lib/s3Urls');
+    const obj = parseObjectUrl(url);
+    const PREFIX = `uploads/${actor.id}/`;
+    if (!obj || obj.bucket !== (process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets') || !obj.key.startsWith(PREFIX)) {
+      return res.status(403).json({ error: 'Not your media' });
+    }
+    try {
+      const signed = await signS3Url(`https://${obj.bucket}.s3.${process.env.AWS_REGION || 'af-south-1'}.amazonaws.com/${obj.key}`);
+      return res.status(200).json({ success: true, url: toEdgeUrl(signed) || signed });
+    } catch (e) {
+      console.error('media_sign failed:', e);
+      return res.status(500).json({ error: 'Could not sign the media URL' });
+    }
+  }
   // ── GET ?action=invoice_pdf&user_id=…&n=PR-… ─────────────────────────
   // Streams a stored invoice PDF through our own origin. Buckets are
   // private (M-5), and a session gate beats a long-lived signed link:
