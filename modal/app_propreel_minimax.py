@@ -542,15 +542,52 @@ _ROOM_ANCHOR_SYSTEM = (
 )
 
 
-def _room_anchor_bytes_url(image_url: str) -> str:
+def _room_cleared(image_url: str, emptied_url: str) -> bool:
+    """Vision check: did the emptier leave furniture in the room?
+
+    Feeds the original + emptied photos to the LLM and asks strictly whether
+    any movable item remains. The stubborn dining set survived stage A even
+    at guidance 2.9 in three different wordings — the reliable pattern is a
+    strict Y/N vision gate, not firmer prose."""
+    caption = _llm_chat([
+        {"role": "system", "content": (
+            "You check whether a room was successfully emptied of furniture. "
+            "You are shown PHOTO 1 (the original furnished room) and PHOTO 2 "
+            "(the same room after a removal edit). Built-in elements — "
+            "kitchen units, cupboards, appliances, counters, light switches, "
+            "wall art, curtains, doors — SHOULD remain and do not count as "
+            "furniture. Movable items — tables, chairs, sofas, beds, lamps, "
+            "rugs, side tables, decorative objects, personal belongings — "
+            "MUST all be gone. Answer with ONLY the word YES if photo 2 "
+            "contains any such movable item from photo 1, or NO if the room "
+            "is completely empty of movable items. One word, nothing else."
+        )},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Is PHOTO 2 completely empty of movable furniture and items? PHOTO 1 is the original, PHOTO 2 is the emptied room."},
+            *[
+                {"type": "image_url", "image_url": {"url": presign_media(u)}}
+                for u in (image_url, emptied_url)
+            ],
+        ]},
+    ])
+    verdict = caption.strip().upper()
+    return verdict.endswith("YES")
+
+
+def _room_anchor_bytes_url(image_url: str, images: "list | None" = None) -> str:
     """Best-effort factual caption of the input photo (see _ROOM_ANCHOR_SYSTEM).
 
-    Raises on failure — callers decide whether that is fatal or skippable."""
+    Raises on failure — callers decide whether that is fatal or skippable.
+    `images` overrides the photo list (urls are presigned via presign_media)."""
+    image_list = images if images is not None else [image_url]
     caption = _llm_chat([
         {"role": "system", "content": _ROOM_ANCHOR_SYSTEM},
         {"role": "user", "content": [
             {"type": "text", "text": "Describe this room."},
-            {"type": "image_url", "image_url": {"url": presign_media(image_url)}},
+            *[
+                {"type": "image_url", "image_url": {"url": presign_media(u)}}
+                for u in image_list
+            ],
         ]},
     ])
     return " ".join(caption.split())[:600]
@@ -1882,6 +1919,106 @@ def _hdr_boost_bytes(data: bytes) -> bytes:
                     pass
 
 
+# Two-stage staging (empty then furnish): a single Kontext pass that must
+# BOTH clear the old furniture AND place a new set routinely re-renders the
+# whole room on featureless spaces, substituting architecture outright.
+# Splitting the task halves the instructions per pass, so gentler guidance
+# suffices per pass and the room survives both:
+#   Stage A — clear: remove freestanding furniture, reconstruct floors/walls.
+#             (a single-object removal task Kontext performs reliably)
+#   Stage B — furnish: add ONLY the preset's new furniture into the now-empty
+#             room. Nothing to remove, nothing to drift past.
+# Both passes get the same room-anchor caption ("THIS EXACT ROOM for
+# reference") and the brightness floor. Timeout doubles because two fal jobs
+# run back-to-back. Custom prompts skip the two-stage path.
+def _run_kontext(image_url: str, prompt: str, guidance: float):
+    """Submit one Kontext job and return its output image bytes.
+
+    Shared by the single- and two-stage staging paths so error handling and
+    polling stay identical. Raises RuntimeError on provider errors (plain,
+    deserializable) and Exception on timeout/failure."""
+    import fal_client
+    try:
+        handler = fal_client.submit(
+            "fal-ai/flux-pro/kontext",
+            arguments={
+                "image_url": presign_media(image_url),
+                "prompt": prompt,
+                "guidance_scale": guidance,
+            }
+        )
+    except Exception as e:
+        # Convert provider errors to a plain exception: custom classes like
+        # FalClientHTTPError fail to deserialize on the caller side and bury
+        # the real cause (e.g. billing lock) in a deserialization blob.
+        raise RuntimeError(_friendly_fal_error(e)) from None
+
+    import time
+    max_wait = 240  # 4 minutes per pass (leave 1 minute buffer before 5 minute timeout)
+    start_time = time.time()
+
+    while True:
+        elapsed = time.time() - start_time
+        if elapsed > max_wait:
+            raise Exception(f"Timeout: fal.ai image edit task did not complete within {max_wait}s")
+
+        status = handler.status()  # Returns status object (Queued, InProgress, Completed, Failed)
+        status_type = type(status).__name__  # Get the class name
+
+        if status_type == "Completed":
+            result = handler.get()
+            edited_image_url = result.get("images", [{}])[0].get("url")
+            if not edited_image_url:
+                raise Exception("Failed to generate edited image")
+            break
+        elif status_type == "Failed":
+            raise Exception(f"fal.ai image edit task failed: {status.error}")
+        elif status_type in ["Queued", "InProgress"]:
+            print(f"fal.ai image edit task {status_type}... ({int(elapsed)}s elapsed)")
+            time.sleep(3)  # Poll every 3 seconds (faster for images)
+        else:
+            raise Exception(f"Unknown fal.ai status: {status_type}")
+
+    response = requests.get(edited_image_url)
+    return response.content
+
+
+def _style_hint(preset_prompt: str) -> str:
+    """Extract the preset's furniture sentence for stage B of two-stage
+    staging: the text between 'Only add or replace freestanding furniture and
+    soft furnishings: ' and the following '.'."""
+    marker = "Only add or replace freestanding furniture and soft furnishings: "
+    i = preset_prompt.find(marker)
+    if i == -1:
+        return preset_prompt[:200]
+    rest = preset_prompt[i + len(marker):]
+    j = rest.find(".")
+    return rest[: j if j != -1 else 300].strip()
+
+
+def _store_intermediate(payload: bytes, image_url: str, preset_id: str,
+                        tag: str) -> str:
+    """Persist a mid-pipeline frame (e.g. stage A 'empty' pass) under
+    edited/_tmp/<preset>_<tag>_<source>.<ext> and return its serving URL for
+    stage B's input. Same clean-key handling as _store_edit."""
+    import boto3
+    from urllib.parse import urlparse
+    ext = os.path.splitext(os.path.basename(urlparse(image_url).path))[1] or ".jpg"
+    s3_key_free = f"edited/_tmp/{preset_id}_{tag}_{os.path.basename(urlparse(image_url).path)}"
+    s3_key = s3_key_free if ext == ".jpg" else (s3_key_free[:-len(ext)] + ".jpg")
+
+    s3 = boto3.client('s3', region_name=S3_REGION)
+    s3.put_object(
+        Bucket=S3_BUCKET,
+        Key=s3_key,
+        Body=payload,
+        ContentType='image/jpeg'
+    )
+    url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+    print(f"stage A stored: {url}")
+    return url
+
+
 def _store_edit(payload: bytes, image_url: str, preset_id: str,
                 strength_value, guidance_value) -> dict:
     """Persist an edited frame at edited/<preset>_<source>.jpg and return the
@@ -1999,64 +2136,94 @@ def edit_image(
     #     default). Client guidance ranges (4–5) predate Kontext and are
     #     deliberately not forwarded — out of range they'd 422 the job.
     mapped_guidance = round(max(1.5, min(3.5, 1.5 + float(actual_strength) * 2.0)), 2)
-    if _anchor:
-        prompt_for_model = (
-            f"{prompt}\n\nTHIS EXACT ROOM for reference: {_anchor}\n\n"
-            f"Do not include: {negative_prompt}."
+
+    def _wrap(prompt_body: str) -> str:
+        if _anchor:
+            return (
+                f"{prompt_body}\n\nTHIS EXACT ROOM for reference: {_anchor}\n\n"
+                f"Do not include: {negative_prompt}."
+            )
+        if negative_prompt:
+            return f"{prompt_body}\n\nDo not include: {negative_prompt}."
+        return prompt_body
+
+    # Staging replaces furniture in one shot only when the room is already
+    # empty; otherwise a combined clear+place task re-renders whole rooms.
+    # Split: pass 1 gently empties (single removal task), pass 2 gently
+    # furnishes the emptied frame. Both passes stay anchored and gentle, so
+    # the architecture holds and the furniture genuinely changes.
+    if preset.get("category") == "staging" and not custom_prompt and _anchor:
+        # Stage A reuses the remove_all_furniture preset prompt verbatim:
+        # it's the exact single-purpose task the removal preset was verified
+        # on (VQA PASS), so no bespoke weakened wording. Stage B is the
+        # staging preset's own furnish text (clear-first sentence stripped —
+        # wrong for an already-emptied room) with an explicit
+        # "already-empty room" frame.
+        _empty_preset = next(
+            (p for p in IMAGE_PRESETS if p["id"] == "remove_all_furniture"), None)
+        removal_prompt = _empty_preset["prompt"] if _empty_preset else preset["prompt"]
+        stage_a_prompt = _wrap(removal_prompt)
+
+        _directive = (
+            " This room is already furnished: FIRST remove the existing "
+            "freestanding furniture and movable decor — tables, chairs, "
+            "sofas, armchairs, lamps, rugs and loose items — reconstructing "
+            "the floor beneath them naturally, THEN place the new furniture "
+            "set. Nothing may remain from the old furnishing."
         )
-    elif negative_prompt:
-        prompt_for_model = f"{prompt}\n\nDo not include: {negative_prompt}."
-    else:
-        prompt_for_model = prompt
+        stage_b_prompt = _wrap(
+            "The room in this photo is already empty and unfurnished. "
+            + preset["prompt"].replace(_directive, ""))
+
+        # Stage A at the removal preset's proven default (0.55 → gc 2.6-
+        # equivalent); stage B gentle (2.0): furnishing an EMPTY room needs
+        # no force — the only risk left is redrawing architecture.
+        stage_a_guidance = 2.9
+        stage_b_guidance = 2.0
+        print(f"staging two-stage: stageA gc={stage_a_guidance}, stageB gc={stage_b_guidance}")
+        # Clear-and-verify loop: Kontext sometimes leaves stubborn pieces
+        # (this user's dining set survived three firmer wordings). Each retry
+        # costs one fal job but preserves the guarantee the preset is sold on.
+        stage_a_url = None
+        for attempt in range(3):
+            stage_a_bytes = _run_kontext(image_url, stage_a_prompt, stage_a_guidance)
+            stage_a_url = _store_intermediate(
+                stage_a_bytes, image_url, preset_id, f"empty{attempt or ''}")
+            try:
+                cleared = _room_cleared(image_url, stage_a_url)
+            except Exception as e:
+                print(f"cleared-check skipped: {e}")
+                cleared = True  # don't loop forever on LLM hiccups
+            if cleared:
+                _anchor = _anchor or ""  # keep original anchor for stage B
+                break
+            print(f"stage A attempt {attempt}: furniture remains — retrying")
+        if stage_a_url is None:
+            raise Exception("staging: emptier produced no output")
+        # Anchor stage B on BOTH frames: the emptied stage-A output is the
+        # geometry it must furnish into, and the ORIGINAL photo anchor pins
+        # the pillar/openings that stage A must have kept. Recaptioning only
+        # the emptied frame lets stage B quietly drop structural features it
+        # can no longer see (the middle-room pillar vanished this way).
+        try:
+            stage_b_anchor = _room_anchor_bytes_url(
+                stage_a_url, images=[image_url, stage_a_url])
+        except Exception as e:
+            print(f"stage B anchor skipped: {e}")
+            stage_b_anchor = _anchor
+        stage_b_prompt = (
+            f"{stage_b_prompt}\n\nTHIS EXACT ROOM for reference: "
+            f"{stage_b_anchor}\n\nDo not include: {negative_prompt}."
+        )
+        stage_b_bytes = _run_kontext(stage_a_url, stage_b_prompt, stage_b_guidance)
+        payload = _fit_image_bytes(stage_b_bytes)
+        payload = _staging_brightness_floor(payload, fetch_media(image_url, timeout=60))
+        return _store_edit(payload, image_url, preset_id, actual_strength, mapped_guidance)
+
+    prompt_for_model = _wrap(prompt)
     print(f"kontext: guidance={mapped_guidance}, prompt={len(prompt_for_model)} chars")
 
-    # Use fal_client.submit() for long-running tasks with polling
-    try:
-        handler = fal_client.submit(
-            "fal-ai/flux-pro/kontext",
-            arguments={
-                "image_url": presign_media(image_url),
-                "prompt": prompt_for_model,
-                "guidance_scale": mapped_guidance,
-            }
-        )
-    except Exception as e:
-        # Convert provider errors to a plain exception: custom classes like
-        # FalClientHTTPError fail to deserialize on the caller side and bury
-        # the real cause (e.g. billing lock) in a deserialization blob.
-        raise RuntimeError(_friendly_fal_error(e)) from None
-    
-    # Poll for completion with timeout
-    import time
-    max_wait = 240  # 4 minutes (leave 1 minute buffer before 5 minute timeout)
-    start_time = time.time()
-    
-    while True:
-        elapsed = time.time() - start_time
-        if elapsed > max_wait:
-            raise Exception(f"Timeout: fal.ai image edit task did not complete within {max_wait}s")
-        
-        status = handler.status()  # Returns status object (Queued, InProgress, Completed, Failed)
-        status_type = type(status).__name__  # Get the class name
-        
-        if status_type == "Completed":
-            result = handler.get()
-            edited_image_url = result.get("images", [{}])[0].get("url")
-            if not edited_image_url:
-                raise Exception("Failed to generate edited image")
-            break
-        elif status_type == "Failed":
-            raise Exception(f"fal.ai image edit task failed: {status.error}")
-        elif status_type in ["Queued", "InProgress"]:
-            print(f"fal.ai image edit task {status_type}... ({int(elapsed)}s elapsed)")
-            time.sleep(3)  # Poll every 3 seconds (faster for images)
-        else:
-            raise Exception(f"Unknown fal.ai status: {status_type}")
-    
-    # Download fal's output and normalize to the site-wide 1920×1080 frame,
-    # then store exactly like the deterministic HDR path does.
-    response = requests.get(edited_image_url)
-    payload = _fit_image_bytes(response.content)
+    payload = _fit_image_bytes(_run_kontext(image_url, prompt_for_model, mapped_guidance))
 
     # Staging only: enforce the brightness floor against the source photo
     # (twilight presets are exempt on purpose — night is supposed to be dark).
