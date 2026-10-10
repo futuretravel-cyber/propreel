@@ -2189,8 +2189,6 @@ def edit_image(
             from urllib.parse import urlparse as _ulp
             source_bytes = fetch_media(image_url, timeout=60)
             mask_bytes = fetch_media(mask_url, timeout=60)
-            # fit to source dimensions — Fill requires mask and image to
-            # share aspect exactly at pixel level.
             from PIL import Image
             import io as _io2
             src_img = Image.open(_io2.BytesIO(source_bytes))
@@ -2203,7 +2201,9 @@ def edit_image(
             _set_hint_b = _style_hint(preset["prompt"])
             mapped_guidance = round(max(1.5, min(3.5, 1.5 + float(actual_strength) * 2.0)), 2)  # unused in fill path (kept for response shape)
 
-            # Call 1 — remove furniture inside the mask
+            # Call 1 — remove furniture inside the mask. Output comes back in
+            # Fill's target frame (1920x1080), which may differ from the
+            # source's aspect for photos wider/taller than 16:9.
             removed = _fill_pro(
                 image_url, mask_fitted_url,
                 "Completely remove the furniture and objects inside the "
@@ -2218,21 +2218,39 @@ def edit_image(
             removed_store = _store_intermediate(
                 _fit_image_bytes(removed), image_url, preset_id, "masked_empty")
 
-            # Call 2 — furnish the SAME mask region of the emptied frame
+            # Call 2 — furnish the SAME mask region of the emptied frame.
+            # The emptied frame lives in Fill's 1920x1080 output frame, so the
+            # mask MUST be re-fitted to THAT frame — reusing the source-fitted
+            # mask here is what made fal reject "Image and mask sizes do not
+            # match" on photos wider than 16:9 (Fill center-cropped Call 1's
+            # output to the 16:9 frame) and silently fall back to whole-frame
+            # Kontext, which re-rendered the entire room. Re-fit from the            # ORIGINAL user mask to the emptied frame's true pixel size so            # Call 2 regenerates exactly the furniture regions of Call 1's            # output — the staircase/kitchen outside the paint never moves.
+            removed_img = Image.open(_io2.BytesIO(_fit_image_bytes(removed)))
+            mask_for_b = _mask_png_bytes(mask_bytes, removed_img.width, removed_img.height)
+            mask_b_key = f"edited/_masks/{preset_id}_b_{os.path.basename(_ulp(image_url).path)}.png"
+            s3m.put_object(Bucket=S3_BUCKET, Key=mask_b_key,
+                           Body=mask_for_b, ContentType='image/png')
+            mask_b_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{mask_b_key}"
+
             final_bytes = _fill_pro(
-                removed_store, mask_fitted_url,
+                removed_store, mask_b_url,
                 "Virtual staging: fill the masked floor area with the "
                 f"following furniture, placed realistically with correct "
                 f"perspective, scale, and natural shadows matching the "
                 f"room's existing daylight: {_set_hint_b} All furniture "
+
                 "sits flush on the existing floor. Natural bright daylight "
                 "consistent with the room's existing light sources. "
                 "High-end real estate color grading. Hyper-realistic, "
+
                 "magazine-quality, ultra-high resolution. Do not modify "
                 "anything outside the masked area.",
             )
+
             payload = _fit_image_bytes(final_bytes)
+
             payload = _staging_brightness_floor(payload, source_bytes)
+
             return _store_edit(payload, image_url, preset_id,
                                actual_strength, actual_guidance)
         except Exception as e:
