@@ -632,6 +632,8 @@ class EditImageRequest(BaseModel):
     custom_prompt: Optional[str] = None
     strength: Optional[float] = None
     guidance_scale: Optional[float] = None
+    # Brush-tool mask (staging): white = regenerable, black = locked.
+    mask_url: Optional[str] = None
 
 # Video prompts (rotating A, B, C)
 VIDEO_PROMPTS = {
@@ -1662,7 +1664,7 @@ async def render_video_job(
 # ───────────────────────────────────────────────────────────────────────────
 
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2, max_containers=200, scaledown_window=300)
-def edit_image_job(edit_id: str, image_url: str, preset_id: str, custom_prompt: str | None = None, strength: float | None = None, guidance_scale: float | None = None):
+def edit_image_job(edit_id: str, image_url: str, preset_id: str, custom_prompt: str | None = None, strength: float | None = None, guidance_scale: float | None = None, mask_url: str | None = None):
     """Async image-edit job wrapper: runs the sync edit_image body and mirrors
     progress/result into S3 so /edit_status can serve it to any poller."""
     _write_job_status(edit_id, "processing")
@@ -1672,7 +1674,8 @@ def edit_image_job(edit_id: str, image_url: str, preset_id: str, custom_prompt: 
             preset_id=preset_id,
             custom_prompt=custom_prompt,
             strength=strength,
-            guidance_scale=guidance_scale
+            guidance_scale=guidance_scale,
+            mask_url=mask_url,
         )
         _write_job_status(edit_id, "completed", {
             "image_url": result.get("image_url"),
@@ -1983,6 +1986,53 @@ def _run_kontext(image_url: str, prompt: str, guidance: float):
     return response.content
 
 
+def _fill_pro(image_url: str, mask_url: str, prompt: str) -> bytes:
+    """One fal-ai/flux-pro/v1/fill (inpainting) call: regenerate ONLY the masked
+    region; everything outside the mask is physically locked to the source
+    pixels — a hard constraint, unlike prompt-based 'keep the walls' language.
+    Returns the output image bytes. guidance defaults are fal's own.
+
+    Fill accepts regular images and data URIs; source and mask must have the
+    same aspect ratio — callers pre-crop the mask to the image size.
+    """
+    import fal_client
+    try:
+        result = fal_client.run(
+            "fal-ai/flux-pro/v1/fill",
+            arguments={
+                "image_url": presign_media(image_url),
+                "mask_url": presign_media(mask_url),
+                "prompt": prompt,
+                "image_size": {"width": 1920, "height": 1080},
+            },
+        )
+    except Exception as e:
+        raise RuntimeError(_friendly_fal_error(e)) from None
+    # Fill's response shape is {images: [{url, ...}], timings, seed, ...}
+    images = (result or {}).get("images") or []
+    out_url = (images[0] or {}).get("url") if images else None
+    if not out_url:
+        raise Exception(f"Fill Pro returned no image: {str(result)[:200]}")
+    return requests.get(out_url, timeout=120).content
+
+
+def _mask_png_bytes(data: bytes, width: int, height: int) -> bytes:
+    """Decode uploaded mask (PNG/JPEG, arbitrary size) and fit it exactly onto
+    (width, height): mask is white where regeneration happens, black elsewhere.
+    JPEG masks come off the brush tool slightly gray — threshold pushes
+    anything past half-brightness to full white so furniture coverage matches
+    what the user painted.
+    """
+    from PIL import Image
+    import io as _io
+    img = Image.open(_io.BytesIO(data)).convert("L")
+    img = img.resize((width, height), Image.LANCZOS)
+    img = img.point(lambda v: 255 if v > 127 else 0, mode="1").convert("L")
+    out = _io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()
+
+
 def _style_hint(preset_prompt: str) -> str:
     """Extract the preset's furniture sentence for stage B of two-stage
     staging: the text between 'Only add or replace freestanding furniture and
@@ -2060,7 +2110,8 @@ def edit_image(
     preset_id: str,
     custom_prompt: str | None = None,
     strength: float | None = None,
-    guidance_scale: float | None = None
+    guidance_scale: float | None = None,
+    mask_url: str | None = None
 ) -> dict:
     """
     Edit an image using fal-ai with comprehensive prompt library
@@ -2096,8 +2147,10 @@ def edit_image(
     # Room anchor (staging/removal only): caption the actual source photo and
     # inject it ahead of the negative tail, so the model edits THIS room.
     # Best-effort: an LLM hiccup must not fail a paid render.
+    # Masked staging skips the anchor entirely: Fill Pro physically locks the
+    # unmasked pixels, so the caption adds nothing.
     _anchor = ""
-    if preset.get("category") in ("staging", "removal") and not custom_prompt:
+    if preset.get("category") in ("staging", "removal") and not custom_prompt and not mask_url:
         try:
             _anchor = _room_anchor_bytes_url(image_url)
             print(f"room anchor: {_anchor[:160]}")
@@ -2121,6 +2174,71 @@ def edit_image(
             _fit_image_bytes(_hdr_boost_bytes(source_bytes)),
             image_url, preset_id, actual_strength, actual_guidance
         )
+
+    # Masked staging (brush tool): FLUX.1 Fill [pro] inpainting. The mask is
+    # a HARD constraint — everything outside it never changes — so both calls
+    # can reuse the SAME user-painted furniture mask:
+    #   Call 1 removes: fill masked-area with continuation of surrounding
+    #                   floor/walls → emptied room, zero structural drift.
+    #   Call 2 furnishes: use call 1's output, same mask over the now-empty
+    #                   floor → place the preset's furniture set there.
+    # Falls back gracefully: mask processing failures land on the Kontext
+    # two-stage path rather than failing a paid render.
+    if preset.get("category") == "staging" and not custom_prompt and mask_url:
+        try:
+            from urllib.parse import urlparse as _ulp
+            source_bytes = fetch_media(image_url, timeout=60)
+            mask_bytes = fetch_media(mask_url, timeout=60)
+            # fit to source dimensions — Fill requires mask and image to
+            # share aspect exactly at pixel level.
+            from PIL import Image
+            import io as _io2
+            src_img = Image.open(_io2.BytesIO(source_bytes))
+            fitted = _mask_png_bytes(mask_bytes, src_img.width, src_img.height)
+            mask_s3_key = f"edited/_masks/{preset_id}_{os.path.basename(_ulp(image_url).path)}.png"
+            s3m = boto3.client('s3', region_name=S3_REGION)
+            s3m.put_object(Bucket=S3_BUCKET, Key=mask_s3_key,
+                           Body=fitted, ContentType='image/png')
+            mask_fitted_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{mask_s3_key}"
+            _set_hint_b = _style_hint(preset["prompt"])
+            mapped_guidance = round(max(1.5, min(3.5, 1.5 + float(actual_strength) * 2.0)), 2)  # unused in fill path (kept for response shape)
+
+            # Call 1 — remove furniture inside the mask
+            removed = _fill_pro(
+                image_url, mask_fitted_url,
+                "Completely remove the furniture and objects inside the "
+                "masked area. Replace each masked area with a seamless, "
+                "natural continuation of the existing floor tiles and white "
+                "walls visible in the surrounding unmasked areas. Match the "
+                "existing tile color, grout lines, wall texture, skirting "
+                "boards, and natural lighting exactly. The result must be a "
+                "completely empty room showing only fixed architecture. "
+                "Do not modify anything outside the masked area.",
+            )
+            removed_store = _store_intermediate(
+                _fit_image_bytes(removed), image_url, preset_id, "masked_empty")
+
+            # Call 2 — furnish the SAME mask region of the emptied frame
+            final_bytes = _fill_pro(
+                removed_store, mask_fitted_url,
+                "Virtual staging: fill the masked floor area with the "
+                f"following furniture, placed realistically with correct "
+                f"perspective, scale, and natural shadows matching the "
+                f"room's existing daylight: {_set_hint_b} All furniture "
+                "sits flush on the existing floor. Natural bright daylight "
+                "consistent with the room's existing light sources. "
+                "High-end real estate color grading. Hyper-realistic, "
+                "magazine-quality, ultra-high resolution. Do not modify "
+                "anything outside the masked area.",
+            )
+            payload = _fit_image_bytes(final_bytes)
+            payload = _staging_brightness_floor(payload, source_bytes)
+            return _store_edit(payload, image_url, preset_id,
+                               actual_strength, actual_guidance)
+        except Exception as e:
+            # Failed inpaint falls through to the Kontext two-stage path
+            # (blur is not fatal — mask tool is best-effort on paid renders)
+            print(f"masked staging failed ({e}); falling back to Kontext two-stage")
 
     # Kontext (fal's instruction-editing model) changes ONLY what the prompt
     # asks for and keeps everything else faithful to the source. The old
@@ -2540,7 +2658,8 @@ async def api_edit_image(request: EditImageRequest, raw_request: Request):
                 preset_id=request.preset_id,
                 custom_prompt=request.custom_prompt,
                 strength=request.strength,
-                guidance_scale=request.guidance_scale
+                guidance_scale=request.guidance_scale,
+                mask_url=request.mask_url,
             )
             return presign_urls(result)
 
@@ -2553,7 +2672,8 @@ async def api_edit_image(request: EditImageRequest, raw_request: Request):
             preset_id=request.preset_id,
             custom_prompt=request.custom_prompt,
             strength=request.strength,
-            guidance_scale=request.guidance_scale
+            guidance_scale=request.guidance_scale,
+            mask_url=request.mask_url,
         )
         return {
             "edit_id": edit_id,

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Camera, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
+import { Brush, Eraser, Camera, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { useImageEdit } from '../lib/useImageEdit';
 import { useRenderProgress, TYPICAL_IMAGE_EDIT_SECONDS } from '../lib/useRenderProgress';
 import RenderProgressBar from './RenderProgressBar';
@@ -8,6 +8,7 @@ import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDraf
 import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
 import { downloadRemoteFile } from '../lib/utils';
+import { useBrushMask } from '../lib/useBrushMask';
 
 interface ImageWorkbenchProps {
   presetId: string;
@@ -38,6 +39,10 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
   const inputRef = useRef<HTMLInputElement>(null);
   const { edit, busy, stage, error, setError } = useImageEdit();
   const uploadWait = useUploadWait();
+  // Brush mask (staging presets only): paint over furniture to replace.
+  const isStaging = ['luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
+    'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft'].includes(presetId);
+  const mask = useBrushMask(preview);
   // Elapsed-vs-typical progress for the ~30s FLUX edit
   const editProgress = useRenderProgress(TYPICAL_IMAGE_EDIT_SECONDS);
 
@@ -67,7 +72,13 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
     if (!f) return;
     editProgress.start();
     try {
-      const res = await edit({ file: f, presetId, strength, guidanceScale, customPrompt });
+      const maskFile = isStaging ? mask.exportMaskFile() : null;
+      if (isStaging && !maskFile) {
+        setError('Paint over the furniture you want replaced before generating — everything you leave unpainted is locked.');
+        editProgress.stop();
+        return;
+      }
+      const res = await edit({ file: f, presetId, strength, guidanceScale, customPrompt, maskFile });
       if (res) setResultUrl(res.imageUrl);
     } finally {
       editProgress.stop();
@@ -135,9 +146,45 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
               {/* Natural aspect, full width: the whole photo stays visible —
                   the old aspect-square + object-cover cropped landscape shots
                   and upscaled them (cut off + soft). Click opens full size. */}
+              {isStaging ? (
+                /* Mask editor: the photo sits under a semi-transparent
+                   overlay canvas; white brush strokes mark what gets
+                   replaced. Everything NOT painted stays pixel-locked
+                   (Fill Pro physically constrains the edit to the mask). */
+                <div
+                  className="relative"
+                  onPointerDown={e => {
+                    const el = e.currentTarget.querySelector('canvas') as HTMLCanvasElement | null;
+                    if (!el) return;
+                    const r = el.getBoundingClientRect();
+                    mask.stroke(e.clientX - r.left, e.clientY - r.top);
+                  }}
+                  onPointerMove={e => {
+                    if (e.buttons !== 1) return;
+                    const el = e.currentTarget.querySelector('canvas') as HTMLCanvasElement | null;
+                    if (!el) return;
+                    const r = el.getBoundingClientRect();
+                    mask.stroke(e.clientX - r.left, e.clientY - r.top);
+                  }}
+                  onPointerUp={() => mask.endStroke()}
+                  onPointerLeave={() => mask.endStroke()}
+                  style={{ touchAction: 'none' }}
+                >
+                  <img src={preview} alt="Original" className="w-full h-auto rounded-xl border border-white/10 pointer-events-none select-none" draggable={false} />
+                  <canvas
+                    ref={mask.bindCanvas}
+                    width={640}
+                    height={480}
+                    className="absolute inset-0 w-full h-full cursor-crosshair"
+                    style={{ mixBlendMode: 'screen', opacity: 0.55 }}
+                    aria-label="Mask painter — paint over the furniture you want replaced"
+                  />
+                </div>
+              ) : (
               <a href={preview || undefined} target="_blank" rel="noopener" title="Open full size" className="block">
                 <img src={preview} alt="Original" className="w-full h-auto rounded-xl border border-white/10" />
               </a>
+              )}
               {/* The image stays exactly where it is (survives tab switches)
                   until the user removes it or the render finishes */}
               <button
@@ -172,8 +219,23 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
         </div>
       )}
 
+      {preview && isStaging && (
+        <div className="flex items-center gap-3 text-xs text-ink-400">
+          <Brush className="w-4 h-4 text-purple-400" />
+          <span>Paint over the furniture to replace — {mask.hasStrokes ? 'masked ✓' : 'nothing painted yet'}</span>
+          <button
+            onClick={mask.clear}
+            className="btn btn-ghost text-xs min-h-[32px]"
+            disabled={busy || !mask.hasStrokes}
+            aria-label="Clear mask"
+          >
+            <Eraser className="w-3 h-3" /> Clear mask
+          </button>
+        </div>
+      )}
+
       {preview && (
-        <div className="flex gap-3">            <button onClick={() => guardAIRender(run)} disabled={busy} className="btn btn-primary flex-1 min-h-[48px]">
+        <div className="flex gap-3">            <button onClick={() => guardAIRender(run)} disabled={busy || (isStaging && !mask.hasStrokes)} className="btn btn-primary flex-1 min-h-[48px]">
             {busy ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
             ) : (

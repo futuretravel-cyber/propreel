@@ -27,8 +27,8 @@ export function useImageEdit() {
     strength?: number;
     guidanceScale?: number;
     customPrompt?: string;
-  }): Promise<{ imageUrl: string } | null> => {
-    setError(null);
+    maskFile?: File | null; // brush mask (staging) → Fill Pro path
+  }): Promise<{ imageUrl: string } | null> => {    setError(null);
 
     if (!user) {
       setError('You must be signed in');
@@ -50,6 +50,21 @@ export function useImageEdit() {
       setError(e.message || 'Upload failed');
       setStage('idle');
       return null;
+    }
+
+    // 1b) Optional paint-mask: brush overlay exported as a white-on-black
+    //     PNG, uploaded to the raw bucket (uploads/ prefix, presigned like
+    //     the photo). Presence of mask_url switches the worker to the
+    //     anchored Fill Pro two-call staging path.
+    let maskUrl: string | undefined;
+    if (opts.maskFile) {
+      try {
+        maskUrl = await PropReelAPI.uploadImageFile(user.id, opts.maskFile);
+      } catch (e: any) {
+        setError(e.message || 'Mask upload failed');
+        setStage('idle');
+        return null;
+      }
     }
 
     // 2) Pay at mint: ?action=job_token charges the 2 credits server-side
@@ -78,6 +93,7 @@ export function useImageEdit() {
         strength: opts.strength,
         guidanceScale: opts.guidanceScale,
         customPrompt: opts.customPrompt,
+        maskUrl,
       }, jobToken);
       track('render_completed', { kind: 'IMAGE_EDIT', presetId: opts.presetId });
       playRenderComplete();

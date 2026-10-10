@@ -17,6 +17,7 @@ export interface FalEditParams {
   strength?: number;        // within the preset's min–max; server defaults to preset default
   guidanceScale?: number;
   customPrompt?: string;    // overrides the preset prompt (AI Photo Editor custom box)
+  maskUrl?: string;         // brush mask (staging); triggers the Fill Pro path
 }
 
 export interface FalEditResult {
@@ -44,6 +45,7 @@ export async function falEditImage(params: FalEditParams, jobToken?: Record<stri
       strength: params.strength,
       guidance_scale: params.guidanceScale,
       custom_prompt: params.customPrompt || undefined,
+      mask_url: params.maskUrl || undefined,
     }),
   });
 
