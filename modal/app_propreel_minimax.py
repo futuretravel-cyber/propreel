@@ -250,18 +250,31 @@ def _our_s3_object(url):
 
     The query string (any existing presigned signature) is ignored, so a URL
     signed minutes ago — or one that expired years ago — resolves to the same
-    object.
+    object. The hostname may be either the bucket itself OR its CloudFront
+    edge alias (uploads./cdn.propreel.co.za): since Phase 2 of the media
+    isolation, EVERYTHING the browser receives — including the music_url
+    this worker gets back from the Studio — is edge-hosted, and a plain
+    HTTP fetch of those 403s. Resolving edge URLs to the bucket+key and
+    reading through the S3 API is what makes the music bed actually audible
+    in finished renders.
     """
     if not isinstance(url, str) or not url.startswith("https://"):
         return None
     try:
         from urllib.parse import urlparse, unquote
         parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+        bucket = None
         suffix = f".s3.{S3_REGION}.amazonaws.com"
-        if not parsed.hostname or not parsed.hostname.endswith(suffix):
-            return None
-        bucket = parsed.hostname[: -len(suffix)]
-        if bucket not in OUR_BUCKETS:
+        edge_raw = os.environ.get("EDGE_RAW_HOST", "propreel-raw-assets").replace("https://", "").strip("/")
+        edge_cdn = os.environ.get("EDGE_CDN_HOST", "propreel-video").replace("https://", "").strip("/")
+        if hostname.endswith(suffix):
+            bucket = hostname[: -len(suffix)]
+        elif edge_raw and hostname == edge_raw.lower():
+            bucket = os.environ.get("AWS_S3_RAW_BUCKET", "propreel-raw-assets")
+        elif edge_cdn and hostname == edge_cdn.lower():
+            bucket = S3_BUCKET
+        if not bucket or bucket not in OUR_BUCKETS:
             return None
         key = unquote(parsed.path.lstrip("/"))
         return (bucket, key) if key else None
@@ -670,6 +683,12 @@ class RenderVideoRequest(BaseModel):
     music_url: Optional[str] = None
     image_prompts: Optional[List[dict]] = None  # [{image_url, prompt_id, prompt}] rotation overrides
     audio: bool = False
+    # Agent branding payload (Video Generator → Enhancements toggle). The
+    # flag alone was never enough — the worker had nothing to draw, so the
+    # toggle silently produced no overlay. Everything the renderer needs
+    # rides along: photo top-left, logo top-right, contact line at the
+    # bottom. use_avatar swaps the agent photo for the AI-avatar headshot.
+    branding: Optional[dict] = None  # {photo_url, logo_url, contact_line, use_avatar}
 
 class CancelRenderRequest(BaseModel):
     # render record_id or flashhead job_id — both live in the jobs/ store
@@ -937,13 +956,24 @@ def upscale_video(input_video_url: str, target_resolution: str = "1080p") -> str
 # ESSENTIAL-tier Ken Burns motion styles, rotated A → B → C per image exactly
 # like the AI tiers rotate their Hailuo prompts. Each style is an ffmpeg
 # zoompan expression (x, y, zoom over the clip's frame count).
+# ESSENTIAL-tier Ken Burns motion styles, rotated A → B → C per image exactly
+# like the AI tiers rotate their Hailuo prompts. Each style is an ffmpeg
+# zoompan expression (x, y, zoom over the clip's frame count).
+#
+# Amplitude: the first pass used ~10–13% zoom, which over a still frame reads
+# as "the video hardly moves" (agent-reported). These zoom bands (~1.0 →
+# 1.25+) with an explicit edge-to-edge lateral drift are visibly cinematic
+# without fisheye-ing the room.
 ESSENTIAL_MOTION_STYLES = [
-    # A — slow push-in from center (mirrors AI prompt A's "dramatic focal push-in")
-    {"id": "A", "zoom": "min(zoom+{zrate},1.13)", "x": "iw/2-(iw/zoom/2)", "y": "ih/2-(ih/zoom/2)"},
-    # B — left-to-right lateral drift with gentle zoom ("cinematic tracking arc")
-    {"id": "B", "zoom": "min(zoom+{zrate},1.10)", "x": "(iw-iw/zoom)*({tfrac})", "y": "ih/2-(ih/zoom/2)"},
-    # C — slow pull-back reveal (starts tight, eases out — a distinct third feel)
-    {"id": "C", "zoom": "if(eq(on,1),1.12,max(zoom-{zrate},1.0))", "x": "iw/2-(iw/zoom/2)", "y": "(ih-ih/zoom)*0.35"},
+    # A — decisive push-in from center ("dramatic focal push-in")
+    {"id": "A", "zoom": "min(zoom+{zrate},1.28)", "x": "iw/2-(iw/zoom/2)", "y": "ih/2-(ih/zoom/2)"},
+    # B — REAL left-to-right pan: the window sweeps across the frame ("tracking arc")
+    {"id": "B", "zoom": "min(zoom+{zrate},1.22)",
+     # start at the frame's left edge, travel to its right edge over the clip
+     "x": "(iw-iw/zoom)*on/({frames}-1)", "y": "ih/2-(ih/zoom/2)"},
+    # C — top-to-bottom tilt with a strong pull-back reveal
+    {"id": "C", "zoom": "if(eq(on,1),1.25,max(zoom-{zrate},1.0))",
+     "x": "iw/2-(iw/zoom/2)", "y": "(ih-ih/zoom)*on/({frames}-1)"},
 ]
 
 
@@ -960,13 +990,14 @@ def _essential_kenburns_clip(
     The image is upscaled 1.4x first so zoompan never samples beyond the frame."""
     import subprocess as _sp
     frames = max(int(round(seconds * fps)), 2)
-    zrate = 0.12 / frames  # ~12% zoom across the segment
+    zrate = 0.09 / frames  # steady zoom shared by every style band
     style_fmt = {
         "id": style["id"],
         "zoom": style["zoom"].format(zrate=f"{zrate:.6f}"),
-        # tfrac: horizontal position over time for the lateral drift (B)
-        "x": style["x"].format(tfrac="on/" + str(frames - 1)) if "{tfrac}" in style["x"] else style["x"],
-        "y": style["y"],
+        # The pan styles track on/frames-1 explicitly — a uniform velocity
+        # sweep over the frame, not a curve.
+        "x": style["x"].format(frames=frames) if "{frames}" in style["x"] else style["x"],
+        "y": style["y"].format(frames=frames) if "{frames}" in style["y"] else style["y"],
     }
     vf = (
         f"scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,crop={width * 2}:{height * 2},"
@@ -981,6 +1012,159 @@ def _essential_kenburns_clip(
     )
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg zoompan failed: {(proc.stderr or b'')[-300:]}")
+
+
+# ── Agent branding overlay (Video Generator) ───────────────────────────────
+# The toggle-SERVED flag used to flow all the way down with NO artwork:
+# the worker had nothing to draw on, so "Agent Profile Branding INCLUDED"
+# rendered exactly like OFF. This composes, with Pillow, ONE transparent
+# strip PNG per video (agent photo in a white-ringed circle top-left,
+# agency logo top-right, contact line in a translucent bar along the
+# bottom, all scaled to the render's canvas) and the renderer overlays it
+# for the whole duration. Every element degrades independently: no logo →
+# just photo+bar; nothing fetched → no overlay flag ever fails a render.
+
+def _branding_card_png(
+    branding: dict,
+    use_avatar: bool,
+    width: int,
+    height: int,
+    work_dir: str,
+) -> str | None:
+    """Compose the full-canvas transparent branding strip; returns its path.
+
+    Elements: agent photo (or AI-avatar headshot) in a white-ringed circle
+    at the TOP-LEFT, agency logo at the TOP-RIGHT, and the agent's contact
+    details on a translucent bar along the BOTTOM. Scales from the video
+    canvas so the card looks identical at 1080p and 512p.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    # 1080p reference design (relative to height): photo Ø96, margin 28.
+    scale = height / 1080.0
+    margin = int(36 * scale)
+    photo_d = int(110 * scale)
+    ring = max(3, int(5 * scale))
+    logo_h = int(72 * scale)
+    bar_h = int(96 * scale)
+    font_size = int(40 * scale)
+
+    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+
+    photo_url = (branding or {}).get("use_avatar_url") if use_avatar else (branding or {}).get("photo_url")
+    if not photo_url:
+        photo_url = (branding or {}).get("photo_url")
+
+    # 1) Agent / avatar photo — top-left, white-ringed circle.
+    photo_fetched = False
+    if photo_url:
+        try:
+            from io import BytesIO
+            img = Image.open(BytesIO(fetch_media(photo_url, timeout=60))).convert("RGBA")
+            side = max(img.width, img.height)
+            # center-crop to a square then scale
+            left = (img.width - side) // 2
+            top = (img.height - side) // 2
+            img = img.crop((left, top, left + side, top + side)).resize((photo_d, photo_d), Image.LANCZOS)
+            mask = Image.new("L", (photo_d, photo_d), 0)
+            ImageDraw.Draw(mask).ellipse((0, 0, photo_d, photo_d), fill=255)
+            cx, cy = margin + photo_d // 2, margin + photo_d // 2
+            ImageDraw.Draw(canvas).ellipse(
+                (cx - photo_d // 2 - ring, cy - photo_d // 2 - ring,
+                 cx + photo_d // 2 + ring, cy + photo_d // 2 + ring),
+                fill=(255, 255, 255, 235),
+            )
+            canvas.paste(img, (margin, margin), mask)
+            photo_fetched = True
+        except Exception as pe:
+            print(f"branding photo fetch failed (skipped): {pe}")
+
+    # 2) Agency logo — top-right, fitted height.
+    logo_url = (branding or {}).get("logo_url")
+    logo_fetched = False
+    if logo_url:
+        try:
+            from io import BytesIO
+            logo = Image.open(BytesIO(fetch_media(logo_url, timeout=60))).convert("RGBA")
+            w = max(1, int(logo.width * logo_h / max(logo.height, 1)))
+            logo = logo.resize((min(w, width // 3), logo_h), Image.LANCZOS)
+            canvas.alpha_composite(logo, (width - margin - logo.width, margin))
+            logo_fetched = True
+        except Exception as le:
+            print(f"branding logo fetch failed (skipped): {le}")
+
+    # 3) Contact bar — bottom, full width, translucent dark with white text.
+    contact = str((branding or {}).get("contact_line") or "").strip()
+    if contact:
+        draw = ImageDraw.Draw(canvas)
+        bar_top = height - bar_h
+        draw.rectangle((0, bar_top, width, height), fill=(8, 6, 18, 190))
+        try:
+            # DejaVu ships with matplotlib at root; the Modal container
+            # otherwise has no bundled fonts — fall back to Pillow's default.
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        except Exception:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), contact, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        max_w = width - 2 * margin
+        if tw > max_w:  # never spill: shrink font until it fits
+            font = ImageFont.load_default()
+            bbox = draw.textbbox((0, 0), contact, font=font)
+            tw = bbox[2] - bbox[0]
+        draw.text(((width - tw) // 2, bar_top + (bar_h - th) // 2 - bbox[1], ), contact,
+                  font=font, fill=(255, 255, 255, 245))
+
+    if not (photo_fetched or logo_fetched or contact):
+        return None
+    out = os.path.join(work_dir, f"branding_{width}x{height}.png")
+    canvas.save(out)
+    return out
+
+
+def _apply_branding_overlay(video_path: str, branding: dict | None, use_avatar: bool,
+                            width: int, height: int, work_dir: str) -> str:
+    """Burn the branding strip onto the finished video (stream copy if the
+    overlay's both absent; re-encode is unavoidable otherwise). Never raises
+    for cosmetic reasons: a card-composition failure returns the input path
+    and the render ships unbranded rather than failing a paid job."""
+    if not branding:
+        return video_path
+    try:
+        card = _branding_card_png(branding, use_avatar, width, height, work_dir)
+    except Exception as be:
+        print(f"branding card compose failed — shipping unbranded: {be}")
+        return video_path
+    if not card:
+        return video_path
+    import subprocess as _sp
+    out_path = video_path.replace(".mp4", "_branded.mp4")
+    proc = _sp.run(
+        ["ffmpeg", "-y", "-i", video_path, "-i", card,
+         "-filter_complex", "[0:v][1:v]overlay=0:0:format=auto[v]",
+         "-map", "[v]", "-map", "0:a?",
+         "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
+         "-c:a", "copy", out_path],
+        capture_output=True, timeout=600,
+    )
+    if proc.returncode != 0:
+        # Fallback: drop the audio copy flag (a video-only source has no #0:a)
+        proc = _sp.run(
+            ["ffmpeg", "-y", "-i", video_path, "-i", card,
+             "-filter_complex", "[0:v][1:v]overlay=0:0:format=auto",
+             "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
+             out_path],
+            capture_output=True, timeout=600,
+        )
+        if proc.returncode != 0:
+            print(f"branding overlay failed — shipping unbranded: {(proc.stderr or b'')[-300:]}")
+            return video_path
+    print("Branding overlay burned in")
+    try:
+        os.unlink(video_path)
+    except Exception:
+        pass
+    return out_path
 
 
 def _mix_music_bed(
@@ -1294,6 +1478,8 @@ def render_video_local(
     voiceover_text: str = "",
     voice_id: str = "Joanna",
     language: str = "en-ZA",
+    branding: dict | None = None,
+    use_avatar: bool = False,
 ) -> str:
     """
     Render video with pure FFmpeg (ESSENTIAL tier — no fal.ai involved).
@@ -1424,6 +1610,12 @@ def render_video_local(
         except Exception as me:
             print(f"Music mix failed — shipping silent render: {me}")
 
+    # Agent branding: profile photo top-left, agency logo top-right,
+    # contact details along the bottom — burned in on the final assembly.
+    output_path = _apply_branding_overlay(
+        output_path, branding, use_avatar, width, height, work,
+    )
+
     # Upload to S3
     s3 = boto3.client('s3', region_name=S3_REGION)
     s3_key = f"renders/{record_id}/video.mp4"
@@ -1451,7 +1643,9 @@ def render_video(
     language: str = "en-ZA",
     include_agent_branding: bool = True,
     music_url: str | None = None,
-    image_prompts: list[dict] | None = None
+    image_prompts: list[dict] | None = None,
+    branding: dict | None = None,
+    use_avatar: bool = False,
 ) -> dict:
     """
     Render a property video based on the provided parameters.
@@ -1510,6 +1704,8 @@ def render_video(
             voiceover_text=voiceover_text,
             voice_id=voice_id,
             language=language,
+            branding=branding,
+            use_avatar=use_avatar,
         )
     else:
         # SOCIAL, CINEMATIC, PREMIUM tiers: AI rendering
@@ -1605,6 +1801,36 @@ def render_video(
 
     _ensure_not_cancelled(record_id)  # cancelled during assembly — don't publish
 
+    # Agent branding burn-in (AI tiers): the overlay needs LOCAL bytes, and
+    # the assembled video is a URL — fetch it, burn the card, re-upload.
+    # Cosmetic: any failure ships unbranded rather than failing the job.
+    if include_agent_branding and branding:
+        try:
+            import tempfile as _tf
+            with _tf.TemporaryDirectory(prefix=f"blist_{record_id}_") as _work:
+                src = os.path.join(_work, "src.mp4")
+                branded = os.path.join(_work, "branded.mp4")
+                with open(src, "wb") as bvf:
+                    bvf.write(fetch_media(video_url, timeout=300))
+                # Render dimensions: tier resolution (1920 landscape default)
+                if orientation == "PORTRAIT":
+                    bw, bh = 1080, 1920
+                else:
+                    bw, bh = 1920, 1080
+                if tier in ("SOCIAL",):
+                    bw, bh = (1920, 1080) if orientation != "PORTRAIT" else (1080, 1920)
+                branded_path = _apply_branding_overlay(src, branding, use_avatar, bw, bh, _work)
+                if os.path.exists(branded_path) and branded_path != src:
+                    import os as _os2
+                    s3b = boto3.client('s3', region_name=S3_REGION)
+                    s3_key = f"renders/{record_id}/video.mp4"
+                    s3b.upload_file(branded_path, S3_BUCKET, s3_key,
+                                    ExtraArgs={'ContentType': 'video/mp4'})
+                    video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+                    print(f"Branding burned in (AI tier): {video_url}")
+        except Exception as be:
+            print(f"AI-tier branding burn-in failed — shipping unbranded: {be}")
+
     # Thumbnail for Listings cards: grab a frame from the finished video
     # (best-effort — never fails the render)
     thumbnail_url = None
@@ -1684,6 +1910,8 @@ async def render_video_job(
     include_agent_branding: bool = True,
     music_url: str | None = None,
     image_prompts: list[dict] | None = None,
+    branding: dict | None = None,
+    use_avatar: bool = False,
 ) -> None:
     """Spawn target for POST /render_video: awaits the retried render and —
     ONLY once every Modal retry is exhausted — flips the job to `failed`.
@@ -1712,7 +1940,9 @@ async def render_video_job(
             language=language,
             include_agent_branding=include_agent_branding,
             music_url=music_url,
-            image_prompts=image_prompts
+            image_prompts=image_prompts,
+            branding=branding,
+            use_avatar=use_avatar
         )
     except Exception as e:
         print(f"❌ Render {record_id} failed after retries: {type(e).__name__}: {e}")
@@ -1846,8 +2076,8 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
         ),
         "video_script": (
             "You are a real estate video scriptwriter. Write a spoken voiceover script for a property "
-            "tour video using the exact facts in the provided fields. {LANGUAGE_RULE} no "
-            "stage directions, no scene labels, no markdown. Roughly {WORD_RULE}. End with a call "
+            "tour video. {SOURCE_RULE} {LANGUAGE_RULE} no "
+            "stage directions, no scene labels, no markdown. End with a call "
             "to action to book a viewing. Never invent facts."
         ),
         "language_check": (
@@ -1887,10 +2117,32 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
         else:
             language_rule = "Plain spoken English only —"
         if target_words and duration_s:
-            word_rule = f"Roughly {int(target_words)} words (about {int(duration_s)} seconds of narration)"
+            word_rule = f"The script must fill {int(duration_s)} seconds of narration: roughly {int(target_words)} words"
         else:
-            word_rule = "Roughly 140 words (about 60 seconds of narration)"
-        system = system.replace("{LANGUAGE_RULE}", language_rule).replace("{WORD_RULE}", word_rule)
+            word_rule = "The script must fill about 60 seconds of narration: roughly 140 words"
+        # Source rule: agents write the Property Description on its own tab and
+        # hand it over — when it exists the script must SPEAK that copy; when it
+        # doesn't, the uploaded photos (attached as vision images) are the ONLY
+        # ground truth and the model must describe what IT sees in them.
+        if fields.get("property_description"):
+            source_rule = (
+                f"Base the script on this Property Description from the listing — speak its "
+                f"content in narration order, trimmed to fit the narration length:\n"
+                f"{str(fields['property_description'])[:3000]}\n"
+            )
+        elif fields.get("describe_photos"):
+            source_rule = (
+                "There is NO property description — the attached photos are your only source: "
+                "describe what you can SEE in them (rooms, finishes, light, garden, views, "
+                "saleable features) as you narrate through the tour. Never invent specifics "
+                "(no made-up prices, suburbs or schools).\n"
+            )
+        else:
+            source_rule = "Using the exact facts in the provided fields,"
+        system = (system
+                  .replace("{SOURCE_RULE}", source_rule)
+                  .replace("{LANGUAGE_RULE}", language_rule)
+                  .replace("{WORD_RULE}", word_rule))
     facts = "\n".join(f"{k}: {v}" for k, v in fields.items() if v not in (None, "", []))
     if kind in ("language_check", "translate"):
         # Frontend-driven mismatch detection / auto-correction: fields carry
@@ -2686,7 +2938,9 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
                     language=request.language,
                     include_agent_branding=request.include_agent_branding,
                     music_url=request.music_url,
-                    image_prompts=request.image_prompts
+                    image_prompts=request.image_prompts,
+                    branding=request.branding,
+                    use_avatar=bool((request.branding or {}).get("use_avatar")),
                 )
             except Exception as e:
                 # Same contract as the async path: a crashed render must land
@@ -2710,7 +2964,9 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
             language=request.language,
             include_agent_branding=request.include_agent_branding,
             music_url=request.music_url,
-            image_prompts=request.image_prompts
+            image_prompts=request.image_prompts,
+            branding=request.branding,
+            use_avatar=bool((request.branding or {}).get("use_avatar")),
         )
         return {
             "record_id": request.record_id,

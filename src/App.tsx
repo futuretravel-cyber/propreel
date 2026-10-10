@@ -2387,6 +2387,33 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
   const freezeOverrunSec = estimatedNarrationSec - selectedConfig.duration;
   const narrationTooLong = freezeOverrunSec >= Math.round(selectedConfig.duration * 0.2);
 
+  // AI Write records the duration it was written FOR. Switching configs (30s
+  // → 60s …) with a script not written for the new length used to silently
+  // render with the WRONG-length narration (frozen tail or a script that
+  // stops half way) — the popup asks for an explicit AI Write re-run.
+  const scriptWrittenForSec = useRef<number | null>(null);
+  const [durationMismatchSeen, setDurationMismatchSeen] = useState(false);
+  useEffect(() => {
+    if (
+      script.trim() &&
+      scriptWrittenForSec.current !== null &&
+      scriptWrittenForSec.current !== selectedConfig.duration &&
+      !durationMismatchSeen
+    ) {
+      setDurationMismatchSeen(true);
+      toast.info(
+        `Your script was written for a ${scriptWrittenForSec.current}s video but you selected ${selectedConfig.duration}s. Press AI Write again so the narration fills the new length (or accept the frozen extra seconds), then Generate.`,
+        'Duration changed — re-write the script',
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConfig.duration]);
+
+  // Where the script content should come from: a Property Description the
+  // agent wrote/generated (primary), or the uploaded photos via vision.
+  const hasDescription = !!sharedScript.trim();
+  const primarySource: 'description' | 'photo_list' = hasDescription ? 'description' : 'photo_list';
+
   // Photo upload: presigned browser → S3, keeps the public URLs the render
   // worker rotates its A/B/C prompts against (fully server-side).
   // Backlog drain — see DescriptionTab. Photos uploaded while this panel
@@ -2428,8 +2455,18 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
       .catch(() => setMusicTracks([]));
   }, []);
 
-  // Real AI script generation via fal-ai/any-llm, sized to the selected duration
+  // Real AI script generation via fal-ai/any-llm, sized to the selected duration.
+  // Source priority: (1) a Property Description the agent already wrote or
+  // generated (shared with this tab), (2) Grok VISION over the uploaded
+  // photos. The old call sent NEITHER — the script was invented with zero
+  // grounding in the listing, so agents retyped it every time.
   const generateScript = async () => {
+    if (primarySource === 'photo_list') {
+      toast.info(
+        'No Property Description yet — the script will be written from your uploaded photos instead.',
+        'Writing from photos'
+      );
+    }
     setGeneratingScript(true);
     try {
       const text = await PropReelAPI.generateText('video_script', {
@@ -2438,8 +2475,14 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         target_words: targetWords,
         language,
         language_label: SA_LANGUAGES.find(l => l.id === language)?.label ?? 'English',
-      });
+        // Grounding for the model: the listing copy when it exists, else
+        // a signal that it MUST describe what it sees in the photos.
+        ...(sharedScript.trim()
+          ? { property_description: sharedScript.trim() }
+          : { describe_photos: true }),
+      }, uploadedImages);
       setScript(text.trim());
+      scriptWrittenForSec.current = selectedConfig.duration; // regenerated for THIS length
     } catch (e: any) {
       toast.error(e.message || 'Script generation failed');
     } finally {
@@ -2523,6 +2566,25 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
       charged = true;
       void refresh(); // the balance display — the charge landed server-side
 
+      // Agent branding artwork for the worker's burn-in: the toggle alone
+      // used to reach the worker with nothing to draw. This is the DEFAULT
+      // profile's photo + logo + a contact line; the AI-avatar headshot
+      // replaces the agent photo in the top-left corner when the add-on is
+      // on (the avatar itself lip-syncs in its own FlashHead render — see
+      // the AI Avatar Video tab).
+      const brandProfile = user?.agentProfiles?.find(p => p.isDefault) || user?.agentProfiles?.[0];
+      const contactLine = brandProfile
+        ? [brandProfile.fullName, brandProfile.phone, brandProfile.email]
+            .filter(Boolean).join(' · ')
+        : '';
+      const brandingPayload = branding ? {
+        photo_url: brandProfile?.photoUrl || undefined,
+        logo_url: brandProfile?.logoUrl || undefined,
+        contact_line: contactLine || undefined,
+        use_avatar: !!aiTalkingProfile,
+        use_avatar_url: aiTalkingProfile ? (profileImage || undefined) : undefined,
+      } : undefined;
+
       // 3) Start the async render job
       if (cancelRequestedRef.current) { wasCancelled = true; throw new Error('Render cancelled'); }
       const response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
@@ -2540,6 +2602,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
           include_agent_branding: branding,
           audio: false,
           music_url: selectedMusic || undefined,
+          branding: brandingPayload,
         }),
       });
 
