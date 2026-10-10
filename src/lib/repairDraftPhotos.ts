@@ -12,22 +12,20 @@ import { useEffect, useRef, useState } from 'react';
  * throws even the S3 XML error away, surfacing as a grid with most photos
  * missing. Users read that as "it does not upload more than 2 photos".
  *
- * `useRepairDraftPhotos(key, urls, setUrls)` runs once per draft slot after
- * hydration:
- *   1. it probes each URL (presign math first — a 1 h URL from yesterday is
- *      dead without a network hit; otherwise a HEAD),
- *   2. every dead slot is re-signed via GET /api/users?action=media_sign
- *      (server checks the session AND the uploads/<uid>/ key prefix),
- *   3. the setter is called with the CANONICAL raw bucket form (query
- *      stripped) so the draft never freezes another presign, and
- *   4. a display map original→fresh-signed is returned so the grid renders
- *      the healed copy while the draft keeps the raw form.
+ * `useRepairDraftPhotos(key, urls, setUrls)`:
+ *   1. flags every slot whose presign is already past its X-Amz-Date+Expires
+ *      (no network hit) — only OUR rehosted presigns carry those params.
+ *   2. re-signs each dead slot via GET /api/users?action=media_sign
+ *      (server checks the session AND the uploads/<uid>/ key prefix).
+ *   3. writes the FRESH SIGNED url back into the draft (setUrls) and
+ *      mirrors it in a display map keyed by the ORIGINAL slot url, so the
+ *      grid repaints the healed copy in the same render that swaps the
+ *      draft over.
  *
- * Idempotent: one repair per slot per browser session (CACHE), one at a
- * time (inflight).
+ * The draft therefore always holds a URL that works for the next hour —
+ * and each visit re-heals anything that died since. One repair per mount
+ * (idempotent via CACHE/inflight), re-runs on hydration landing.
  */
-
-/** Parse a SigV4 presign's expiry from the URL itself (X-Amz-Date + Expires). */
 function presignExpiry(url: string): number | null {
   const d = /X-Amz-Date=(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/.exec(url);
   const x = /X-Amz-Expires=(\d+)/.exec(url);
@@ -36,9 +34,10 @@ function presignExpiry(url: string): number | null {
   return Date.UTC(+y, +mo - 1, +dd, +hh, +mm, +ss) + Number(x[1]) * 1000;
 }
 
-/** Only a presigned edge/bucket URL can expire — plain https photos can't. */
-function isPresign(url: string): boolean {
-  return url.includes('X-Amz-Signature=') && presignExpiry(url) !== null;
+/** Only a SigV4 presign expires; plain https, data: or bucket URLs never do. */
+function isExpiredPresign(url: string): boolean {
+  const exp = presignExpiry(url);
+  return exp !== null && exp - 60_000 <= Date.now();
 }
 
 async function healOne(url: string): Promise<string | null> {
@@ -61,12 +60,9 @@ export function useRepairDraftPhotos(
   const [display, setDisplay] = useState<Record<string, string>>({});
   const inflight = useRef(false);
 
-  // Deps must include the CONTENTS, not just the key: a draft hydrates
-  // asynchronously from IndexedDB, so the first effect run sees an empty
-  // list — keying only on the key meant the repair never ran at all. The
-  // CACHE + inflight guards make any re-run idempotent (one repair per
-  // slot per page load).
-  const urlsSig = urls.length ? `${urls.length}:${urls[urls.length - 1]}` : '';
+  // Re-run when the draft CONTENT lands (hydration is async) — but exactly
+  // one batch at a time and one per slot per page load (CACHE).
+  const urlsSig = `${urls.length}:${urls[urls.length - 1] || ''}`;
 
   useEffect(() => {
     if (!draftKey || inflight.current) return;
@@ -74,41 +70,19 @@ export function useRepairDraftPhotos(
     inflight.current = true;
     (async () => {
       try {
-        // Only our rehosted presigns can go stale. An uploaded photo and an
-        // external listing photo both need no help.
-        const suspect = urls.filter(isPresign);
-        if (!suspect.length) { CACHE.add(draftKey); return; }
-
-        const dead: string[] = [];
-        await Promise.all(suspect.map(async u => {
-          if ((presignExpiry(u) ?? Infinity) - 60_000 <= Date.now()) { dead.push(u); return; }
-          try {
-            const r = await fetch(u, { method: 'HEAD', cache: 'no-store' });
-            if (r.status === 403 || r.status === 410) dead.push(u);
-          } catch { /* network error ≠ signature problem — leave alone */ }
-        }));
+        const dead = urls.filter(isExpiredPresign);
         if (!dead.length) { CACHE.add(draftKey); return; }
-
         setHealing(true);
-        const fresh = new Map<string, string>();   // original → newly signed
-        const raw = new Map<string, string>();     // original → query-stripped bucket form
+        const healedNow = new Map<string, string>(); // original → fresh signed
         for (const u of [...new Set(dead)]) {
           const healed = await healOne(u);
-          if (!healed) continue; // slot stays broken — user re-uploads that photo
-          fresh.set(u, healed);
-          try {
-            const h = new URL(healed);
-            // Canonical draft form: bucket host, no query. parseObjectUrl on
-            // the server accepts both forms, so nothing downstream breaks.
-            const obj = /X-Amz/.test(healed)
-              ? `${h.protocol}//${h.hostname}` // edge host — resolved server-side
-              : h.origin;
-            raw.set(u, `${obj}${h.pathname}`);
-          } catch { raw.set(u, healed); }
+          // A slot that won't heal keeps its (broken) URL — the user's fix
+          // is to remove & re-upload that one photo.
+          if (healed) healedNow.set(u, healed);
         }
-        if (fresh.size) {
-          setDisplay(prev => ({ ...prev, ...Object.fromEntries(fresh) }));
-          setUrls(urls.map(u => raw.get(u) || u));
+        if (healedNow.size) {
+          setDisplay(prev => ({ ...prev, ...Object.fromEntries(healedNow) }));
+          setUrls(urls.map(u => healedNow.get(u) || u));
         }
         CACHE.add(draftKey);
       } finally {
