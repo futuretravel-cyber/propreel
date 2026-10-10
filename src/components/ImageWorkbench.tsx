@@ -177,6 +177,16 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
                   style={{ touchAction: 'none' }}
                 >
                   <img ref={mask.drawImageRef} src={preview} alt="Original" className="w-full h-auto rounded-xl border border-white/10 pointer-events-none select-none" draggable={false} />
+                  {/* Off-screen export twin: same strokes, white on black —
+                      purple is screen-only (brand theme), the mask file the
+                      worker receives stays strictly white-on-black. */}
+                  <canvas
+                    ref={mask.bindExportCanvas}
+                    width={2}
+                    height={2}
+                    className="hidden"
+                    aria-hidden="true"
+                  />
                   <canvas
                     ref={mask.bindCanvas}
                     className="absolute inset-0 w-full h-full cursor-crosshair rounded-xl"
@@ -187,7 +197,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
                     /* Live brush footprint ring — shows exactly what a stroke
                        will cover before you click. */
                     <div
-                      className="absolute rounded-full ring-2 ring-white/95 bg-white/25 pointer-events-none mix-blend-screen"
+                      className="absolute rounded-full ring-2 ring-purple-400/95 bg-purple-500/30 pointer-events-none mix-blend-screen"
                       style={{
                         width: `${mask.brushPct}%`,
                         aspectRatio: '1 / 1',

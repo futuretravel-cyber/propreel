@@ -3,6 +3,11 @@ import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent }
 const MAX_BACKING = 2048; // mask raster cap (longest side) — the worker re-fits to the source anyway
 /** Brush footprint as a fraction of the displayed photo's width. */
 export const BRUSH_SIZE_PCT = 5;
+/** Brand purple for the on-screen paint (PropReel theme). The EXPORTED mask
+ *  stays white — fal Fill Pro thresholds on grayscale brightness and purple's
+ *  luminance sits right at the 127 cut, so strokes are mirrored to a hidden
+ *  white-on-black canvas for the file the worker receives. */
+export const BRUSH_COLOR = 'rgba(168,85,247,1)'; // purple-500
 
 /**
  * Brush mask overlay for the staging workbench: paint over the furniture you
@@ -19,18 +24,22 @@ export const BRUSH_SIZE_PCT = 5;
  */
 export function useBrushMask(enabled: boolean) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Hidden twin canvas: same strokes in white-on-black, exactly what the
+  // worker must receive (visibility canvas shows the brand-purple paint).
+  const exportCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [hasStrokes, setHasStrokes] = useState(false);
   // Live brush position in % of the displayed photo, for the footprint ring
   const [cursor, setCursor] = useState<{ xPct: number; yPct: number } | null>(null);
   const lastPt = useRef<{ x: number; y: number } | null>(null);
 
-  // Size the backing store to the photo's real aspect (downscaled only, so a
-  // 6000px panorama doesn't blow up raster memory) and reset the layer.
+  // Size both backing stores to the photo's real aspect (downscaled only, so
+  // a 6000px panorama doesn't blow up raster memory) and reset the layers.
   const fit = useCallback(() => {
     const el = canvasRef.current;
+    const ex = exportCanvasRef.current;
     const img = imgRef.current;
-    if (!el || !img || !img.naturalWidth || !img.naturalHeight) return;
+    if (!img || !img.naturalWidth || !img.naturalHeight) return;
     const ar = img.naturalWidth / img.naturalHeight;
     let w: number;
     let h: number;
@@ -38,10 +47,18 @@ export function useBrushMask(enabled: boolean) {
     else { h = Math.min(img.naturalHeight, MAX_BACKING); w = Math.round(h * ar); }
     w = Math.max(2, w);
     h = Math.max(2, h);
-    if (el.width !== w) el.width = w;
-    if (el.height !== h) el.height = h;
-    const ctx = el.getContext('2d');
-    if (ctx) ctx.clearRect(0, 0, w, h); // transparent = unpainted = locked
+    if (el) {
+      if (el.width !== w) el.width = w;
+      if (el.height !== h) el.height = h;
+      const ctx = el.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, w, h); // transparent = unpainted = locked
+    }
+    if (ex) {
+      if (ex.width !== w) ex.width = w;
+      if (ex.height !== h) ex.height = h;
+      const ectx = ex.getContext('2d');
+      if (ectx) { ectx.fillStyle = '#000'; ectx.fillRect(0, 0, w, h); } // black = locked
+    }
     setHasStrokes(false);
     setCursor(null);
     lastPt.current = null;
@@ -58,6 +75,13 @@ export function useBrushMask(enabled: boolean) {
 
   const bindCanvas = useCallback((el: HTMLCanvasElement | null) => {
     canvasRef.current = el;
+    if (el) fit();
+  }, [fit]);
+
+  // Hidden canvas lives off-screen; it only exists so export PNG stays
+  // white-on-black regardless of how the visible layer is styled.
+  const bindExportCanvas = useCallback((el: HTMLCanvasElement | null) => {
+    exportCanvasRef.current = el;
     if (el) fit();
   }, [fit]);
 
@@ -83,7 +107,7 @@ export function useBrushMask(enabled: boolean) {
     const ctx = el.getContext('2d');
     if (!ctx) return;
     const lineWidth = Math.max(12, el.width * (BRUSH_SIZE_PCT / 100));
-    ctx.strokeStyle = 'rgba(255,255,255,1)'; // white = regenerable
+    ctx.strokeStyle = BRUSH_COLOR; // purple on screen
     ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -97,8 +121,28 @@ export function useBrushMask(enabled: boolean) {
       // Single click → dot
       ctx.beginPath();
       ctx.arc(pt.x, pt.y, lineWidth / 2, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,1)';
+      ctx.fillStyle = BRUSH_COLOR;
       ctx.fill();
+    }
+    // Mirror the same stroke, white-on-black, onto the export twin.
+    const ex = exportCanvasRef.current;
+    const ectx = ex?.getContext('2d');
+    if (ex && ectx) {
+      ectx.strokeStyle = 'rgba(255,255,255,1)'; // white = regenerable
+      ectx.lineWidth = lineWidth;
+      ectx.lineCap = 'round';
+      ectx.lineJoin = 'round';
+      if (prev && (prev.x !== pt.x || prev.y !== pt.y)) {
+        ectx.beginPath();
+        ectx.moveTo(prev.x, prev.y);
+        ectx.lineTo(pt.x, pt.y);
+        ectx.stroke();
+      } else if (!prev) {
+        ectx.beginPath();
+        ectx.arc(pt.x, pt.y, lineWidth / 2, 0, Math.PI * 2);
+        ectx.fillStyle = 'rgba(255,255,255,1)';
+        ectx.fill();
+      }
     }
     lastPt.current = { x: pt.x, y: pt.y };
     setHasStrokes(true);
@@ -119,27 +163,24 @@ export function useBrushMask(enabled: boolean) {
 
   const clear = useCallback(() => {
     const el = canvasRef.current;
-    if (!el) return;
-    const ctx = el.getContext('2d');
-    if (ctx) ctx.clearRect(0, 0, el.width, el.height);
+    if (el) {
+      const ctx = el.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, el.width, el.height);
+    }
+    const ex = exportCanvasRef.current;
+    if (ex) {
+      const ectx = ex.getContext('2d');
+      if (ectx) { ectx.fillStyle = '#000'; ectx.fillRect(0, 0, ex.width, ex.height); }
+    }
     setHasStrokes(false);
     lastPt.current = null;
   }, []);
 
-  /** Export strokes as a PNG File: solid white paint on solid black.
-   *  (On screen strokes render translucent; the mask itself must be firm.) */
+  /** Export the hidden twin: solid white paint on solid black. */
   const exportMaskFile = useCallback((): File | null => {
-    const el = canvasRef.current;
-    if (!el || !hasStrokes) return null;
-    const out = document.createElement('canvas');
-    out.width = el.width;
-    out.height = el.height;
-    const octx = out.getContext('2d');
-    if (!octx) return null;
-    octx.fillStyle = '#000';
-    octx.fillRect(0, 0, out.width, out.height);
-    octx.drawImage(el, 0, 0);
-    const dataUrl = out.toDataURL('image/png');
+    const ex = exportCanvasRef.current;
+    if (!ex || !hasStrokes) return null;
+    const dataUrl = ex.toDataURL('image/png');
     const bin = atob(dataUrl.split(',')[1]);
     const arr = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
@@ -147,7 +188,7 @@ export function useBrushMask(enabled: boolean) {
   }, [hasStrokes]);
 
   return {
-    drawImageRef, bindCanvas, stroke, track, hideCursor, endStroke, clear,
+    drawImageRef, bindCanvas, bindExportCanvas, stroke, track, hideCursor, endStroke, clear,
     hasStrokes, exportMaskFile, cursor, brushPct: BRUSH_SIZE_PCT,
   };
 }
