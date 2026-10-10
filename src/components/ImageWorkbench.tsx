@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Brush, Eraser, Camera, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { useImageEdit } from '../lib/useImageEdit';
 import { useRenderProgress, TYPICAL_IMAGE_EDIT_SECONDS } from '../lib/useRenderProgress';
@@ -9,6 +9,7 @@ import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
 import { downloadRemoteFile } from '../lib/utils';
 import { useBrushMask } from '../lib/useBrushMask';
+import MaskTutorial from './ModalMaskTutorial';
 
 interface ImageWorkbenchProps {
   presetId: string;
@@ -42,7 +43,16 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
   // Brush mask (staging presets only): paint over furniture to replace.
   const isStaging = ['luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
     'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft'].includes(presetId);
-  const mask = useBrushMask(preview);
+  // The mask tutorial plays EVERY time the staging tab is entered (or the
+  // draft first appears) — small enough that it teaches without blocking.
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  useEffect(() => {
+    if (preview && isStaging) setTutorialOpen(true);
+    else setTutorialOpen(false);
+    // Intentionally re-arms whenever the photo changes: a new photo = a fresh
+    // surface to paint on, so a new popup is wanted.
+  }, [preview, isStaging]);
+  const mask = useBrushMask(isStaging && !!preview);
   // Elapsed-vs-typical progress for the ~30s FLUX edit
   const editProgress = useRenderProgress(TYPICAL_IMAGE_EDIT_SECONDS);
 
@@ -147,38 +157,48 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
                   the old aspect-square + object-cover cropped landscape shots
                   and upscaled them (cut off + soft). Click opens full size. */}
               {isStaging ? (
-                /* Mask editor: the photo sits under a semi-transparent
-                   overlay canvas; white brush strokes mark what gets
-                   replaced. Everything NOT painted stays pixel-locked
-                   (Fill Pro physically constrains the edit to the mask). */
+                /* Mask editor: the photo sits under a translucent overlay
+                   canvas; purple-white strokes mark what gets replaced.
+                   Everything NOT painted stays pixel-locked (Fill Pro
+                   constrains the edit to the mask). The canvas backing store
+                   is sized to the photo's real pixels inside useBrushMask and
+                   pointer coords are mapped through the live layout rect —
+                   strokes land exactly under the cursor on any aspect. */
                 <div
                   className="relative"
-                  onPointerDown={e => {
-                    const el = e.currentTarget.querySelector('canvas') as HTMLCanvasElement | null;
-                    if (!el) return;
-                    const r = el.getBoundingClientRect();
-                    mask.stroke(e.clientX - r.left, e.clientY - r.top);
-                  }}
+                  onPointerDown={e => { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); mask.stroke(e); }}
                   onPointerMove={e => {
-                    if (e.buttons !== 1) return;
-                    const el = e.currentTarget.querySelector('canvas') as HTMLCanvasElement | null;
-                    if (!el) return;
-                    const r = el.getBoundingClientRect();
-                    mask.stroke(e.clientX - r.left, e.clientY - r.top);
+                    if (e.buttons === 1) mask.stroke(e);
+                    else mask.track(e);
                   }}
                   onPointerUp={() => mask.endStroke()}
-                  onPointerLeave={() => mask.endStroke()}
+                  onPointerCancel={() => mask.endStroke()}
+                  onPointerLeave={() => { mask.endStroke(); mask.hideCursor(); }}
                   style={{ touchAction: 'none' }}
                 >
-                  <img src={preview} alt="Original" className="w-full h-auto rounded-xl border border-white/10 pointer-events-none select-none" draggable={false} />
+                  <img ref={mask.drawImageRef} src={preview} alt="Original" className="w-full h-auto rounded-xl border border-white/10 pointer-events-none select-none" draggable={false} />
                   <canvas
                     ref={mask.bindCanvas}
-                    width={640}
-                    height={480}
-                    className="absolute inset-0 w-full h-full cursor-crosshair"
+                    className="absolute inset-0 w-full h-full cursor-crosshair rounded-xl"
                     style={{ mixBlendMode: 'screen', opacity: 0.55 }}
                     aria-label="Mask painter — paint over the furniture you want replaced"
                   />
+                  {mask.cursor && (
+                    /* Live brush footprint ring — shows exactly what a stroke
+                       will cover before you click. */
+                    <div
+                      className="absolute rounded-full ring-2 ring-white/95 bg-white/25 pointer-events-none mix-blend-screen"
+                      style={{
+                        width: `${mask.brushPct}%`,
+                        aspectRatio: '1 / 1',
+                        maxWidth: '14%',
+                        maxHeight: '14%',
+                        left: `${mask.cursor.xPct}%`,
+                        top: `${mask.cursor.yPct}%`,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                    />
+                  )}
                 </div>
               ) : (
               <a href={preview || undefined} target="_blank" rel="noopener" title="Open full size" className="block">
@@ -220,26 +240,33 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
       )}
 
       {preview && isStaging && (
-        <div className="flex items-center gap-3 text-xs text-ink-400">
-          <Brush className="w-4 h-4 text-purple-400" />
-          <span>Paint over the furniture to replace — {mask.hasStrokes ? 'masked ✓' : 'nothing painted yet'}</span>
-          <button
-            onClick={mask.clear}
-            className="btn btn-ghost text-xs min-h-[32px]"
-            disabled={busy || !mask.hasStrokes}
-            aria-label="Clear mask"
-          >
-            <Eraser className="w-3 h-3" /> Clear mask
-          </button>
+        <div className="rounded-lg bg-purple-950/40 border border-purple-500/25 px-3 py-2">
+          <MaskTutorial
+            photoSrc={preview}
+            variant="hint"
+            hasStrokes={mask.hasStrokes}
+            onClearStrokes={mask.clear}
+            busy={busy}
+          />
         </div>
       )}
 
+      {preview && isStaging && tutorialOpen && (
+        <MaskTutorial
+          photoSrc={preview}
+          hasStrokes={mask.hasStrokes}
+          onClearStrokes={mask.clear}
+          onClose={() => setTutorialOpen(false)}
+        />
+      )}
+
       {preview && (
-        <div className="flex gap-3">            <button onClick={() => guardAIRender(run)} disabled={busy || (isStaging && !mask.hasStrokes)} className="btn btn-primary flex-1 min-h-[48px]">
+        <div className="flex gap-3">
+            <button onClick={() => guardAIRender(run)} disabled={busy || (isStaging && !mask.hasStrokes)} className="btn btn-primary flex-1 min-h-[48px]">
             {busy ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
             ) : (
-              <><Zap className="w-4 h-4" /> {ctaLabel}</>
+              <><Zap className="w-4 h-4" /> {isStaging && !mask.hasStrokes ? 'Paint the mask to enable' : ctaLabel}</>
             )}
           </button>
           <RenderProgressBar
