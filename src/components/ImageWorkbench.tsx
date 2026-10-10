@@ -40,19 +40,22 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
   const inputRef = useRef<HTMLInputElement>(null);
   const { edit, busy, stage, error, setError } = useImageEdit();
   const uploadWait = useUploadWait();
-  // Brush mask (staging presets only): paint over furniture to replace.
+  // Brush mask (staging + removal presets): paint over furniture to replace
+  // / remove. Same mask plumbing for both — the worker routes on category.
   const isStaging = ['luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
     'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft'].includes(presetId);
+  const isRemoval = ['remove_all_furniture', 'remove_clutter', 'remove_personal_items'].includes(presetId);
+  const showBrush = isStaging || isRemoval;
   // The mask tutorial plays EVERY time the staging tab is entered (or the
   // draft first appears) — small enough that it teaches without blocking.
   const [tutorialOpen, setTutorialOpen] = useState(false);
   useEffect(() => {
-    if (preview && isStaging) setTutorialOpen(true);
+    if (preview && showBrush) setTutorialOpen(true);
     else setTutorialOpen(false);
     // Intentionally re-arms whenever the photo changes: a new photo = a fresh
     // surface to paint on, so a new popup is wanted.
-  }, [preview, isStaging]);
-  const mask = useBrushMask(isStaging && !!preview);
+  }, [preview, showBrush]);
+  const mask = useBrushMask(showBrush && !!preview);
   // Elapsed-vs-typical progress for the ~30s FLUX edit
   const editProgress = useRenderProgress(TYPICAL_IMAGE_EDIT_SECONDS);
 
@@ -82,8 +85,8 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
     if (!f) return;
     editProgress.start();
     try {
-      const maskFile = isStaging ? mask.exportMaskFile() : null;
-      if (isStaging && !maskFile) {
+      const maskFile = showBrush ? mask.exportMaskFile() : null;
+      if (showBrush && !maskFile) {
         setError('Paint over the furniture you want replaced before generating — everything you leave unpainted is locked.');
         editProgress.stop();
         return;
@@ -156,7 +159,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
               {/* Natural aspect, full width: the whole photo stays visible —
                   the old aspect-square + object-cover cropped landscape shots
                   and upscaled them (cut off + soft). Click opens full size. */}
-              {isStaging ? (
+              {showBrush ? (
                 /* Mask editor: the photo sits under a translucent overlay
                    canvas; purple-white strokes mark what gets replaced.
                    Everything NOT painted stays pixel-locked (Fill Pro
@@ -249,7 +252,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
         </div>
       )}
 
-      {preview && isStaging && (
+      {preview && showBrush && (
         <div className="rounded-lg bg-purple-950/40 border border-purple-500/25 px-3 py-2">
           <MaskTutorial
             photoSrc={preview}
@@ -261,7 +264,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
         </div>
       )}
 
-      {preview && isStaging && tutorialOpen && (
+      {preview && showBrush && tutorialOpen && (
         <MaskTutorial
           photoSrc={preview}
           hasStrokes={mask.hasStrokes}
@@ -272,11 +275,11 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
 
       {preview && (
         <div className="flex gap-3">
-            <button onClick={() => guardAIRender(run)} disabled={busy || (isStaging && !mask.hasStrokes)} className="btn btn-primary flex-1 min-h-[48px]">
+            <button onClick={() => guardAIRender(run)} disabled={busy || (showBrush && !mask.hasStrokes)} className="btn btn-primary flex-1 min-h-[48px]">
             {busy ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
             ) : (
-              <><Zap className="w-4 h-4" /> {isStaging && !mask.hasStrokes ? 'Paint the mask to enable' : ctaLabel}</>
+              <><Zap className="w-4 h-4" /> {showBrush && !mask.hasStrokes ? 'Paint the mask to enable' : ctaLabel}</>
             )}
           </button>
           <RenderProgressBar
