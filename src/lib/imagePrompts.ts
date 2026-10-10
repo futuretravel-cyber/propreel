@@ -117,7 +117,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Luxury Modern',
     emoji: '🛋️',
     category: 'staging',
-    strength: { min: 0.28, max: 0.42, default: 0.34 },
+    strength: { min: 0.45, max: 0.55, default: 0.5 },
     guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   },
   {
@@ -125,7 +125,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Scandinavian Minimal',
     emoji: '🪵',
     category: 'staging',
-    strength: { min: 0.28, max: 0.42, default: 0.34 },
+    strength: { min: 0.4, max: 0.5, default: 0.45 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
   },
   {
@@ -133,7 +133,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Coastal Relaxed',
     emoji: '🌊',
     category: 'staging',
-    strength: { min: 0.28, max: 0.42, default: 0.34 },
+    strength: { min: 0.4, max: 0.5, default: 0.45 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
   },
   {
@@ -141,7 +141,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Family Comfortable',
     emoji: '👨‍👩‍👧',
     category: 'staging',
-    strength: { min: 0.28, max: 0.42, default: 0.34 },
+    strength: { min: 0.45, max: 0.6, default: 0.55 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
   },
   {
@@ -149,7 +149,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Luxury Bedroom',
     emoji: '🛏️',
     category: 'staging',
-    strength: { min: 0.28, max: 0.42, default: 0.34 },
+    strength: { min: 0.45, max: 0.55, default: 0.5 },
     guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   },
   {
@@ -157,7 +157,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Home Office',
     emoji: '💼',
     category: 'staging',
-    strength: { min: 0.28, max: 0.42, default: 0.34 },
+    strength: { min: 0.4, max: 0.5, default: 0.45 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
   },
   {
@@ -165,7 +165,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Industrial Loft',
     emoji: '⚙️',
     category: 'staging',
-    strength: { min: 0.32, max: 0.45, default: 0.38 },
+    strength: { min: 0.5, max: 0.6, default: 0.55 },
     guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   },
 
@@ -177,7 +177,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Remove All Furniture',
     emoji: '🗑️',
     category: 'removal',
-    strength: { min: 0.35, max: 0.5, default: 0.42 },
+    strength: { min: 0.5, max: 0.6, default: 0.55 },
     guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   },
   {
