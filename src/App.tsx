@@ -3094,21 +3094,6 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
           )}
         </button>
         {generating && (
-          <button
-            type="button"
-            onClick={cancelRender}
-            disabled={cancelling}
-            className="btn btn-secondary w-full min-h-[44px]"
-            aria-label="Cancel the in-flight render and refund credits"
-          >
-            {cancelling ? (
-              <><RefreshCw className="w-4 h-4 animate-spin" /> Cancelling — refunding credits…</>
-            ) : (
-              <><XCircle className="w-4 h-4" /> Cancel render — credits refunded</>
-            )}
-          </button>
-        )}
-        {generating && (
           <RenderProgressBar
             progress={reelProgress}
             stage={renderStatus === 'processing' ? 'processing' : renderStatus === 'queued' ? 'queued' : ''}

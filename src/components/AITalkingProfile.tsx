@@ -200,16 +200,6 @@ export default function AITalkingProfile({
             <Video className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" />
             <div className="text-xs text-purple-200">
               <p className="font-semibold mb-1">AI Avatar Video Active</p>
-              <p className="text-purple-300 mb-2">
-                Your profile will be animated using FlashHead AI to create a professional lip-synced AI Avatar Video.
-              </p>
-              <div className="space-y-1 text-purple-300">
-                <p>• Text converted to speech with ElevenLabs</p>
-                <p>• Image animated with FlashHead AI</p>
-                <p>• Processed via Modal backend</p>
-                <p>• Stored in AWS S3</p>
-                <p>• Integrated into final property reel</p>
-              </div>
             </div>
           </div>
         </div>
