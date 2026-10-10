@@ -34,10 +34,30 @@ function presignExpiry(url: string): number | null {
   return Date.UTC(+y, +mo - 1, +dd, +hh, +mm, +ss) + Number(x[1]) * 1000;
 }
 
-/** Only a SigV4 presign expires; plain https, data: or bucket URLs never do. */
-function isExpiredPresign(url: string): boolean {
+/**
+ * Only a SigV4 presign expires; everything else is one of:
+ *   • a plain https photo (external listing photo) — always fine;
+ *   • the BUCKET host, query-stripped (a pre-repair draft) — private,
+ *     403s for the browser but is still renewáble server-side;
+ *   • the EDGE host, query-stripped (cut-1 of this fix persisted those) —
+ *     same as the bucket form for practical purposes.
+ * The first cut's mistake: judging deadness ONLY from a timestamp in the
+ * URL — queryless slots were never flagged, so a draft once poisoned with
+ * them stayed broken forever. Anything that is ONE OF OUR object URLs and
+ * does not carry a CURRENT signature is repairable.
+ */
+function isReparable(url: string): boolean {
+  const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
+  const ours =
+    host === (import.meta.env.VITE_EDGE_RAW_HOST || 'uploads.propreel.co.za') ||
+    host === (import.meta.env.VITE_EDGE_CDN_HOST || 'cdn.propreel.co.za') ||
+    /(^|\.)s3[.-].*amazonaws\.com$|\.s3\.amazonaws\.com$/.test(host);
+  if (!ours) return false;
   const exp = presignExpiry(url);
-  return exp !== null && exp - 60_000 <= Date.now();
+  // No timestamp at all (query-stripped form) → treat as dead.
+  if (exp === null) return true;
+  // Timestamp present → live only if it outlasts a grace minute.
+  return exp - 60_000 <= Date.now();
 }
 
 async function healOne(url: string): Promise<string | null> {
@@ -70,7 +90,7 @@ export function useRepairDraftPhotos(
     inflight.current = true;
     (async () => {
       try {
-        const dead = urls.filter(isExpiredPresign);
+        const dead = urls.filter(isReparable);
         if (!dead.length) { CACHE.add(draftKey); return; }
         setHealing(true);
         const healedNow = new Map<string, string>(); // original → fresh signed
