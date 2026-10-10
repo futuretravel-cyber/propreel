@@ -1799,7 +1799,7 @@ function StagingTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Virtual Staging costs 4 credits per render (Fill Pro inpainting)
+          ⚡4 Virtual Staging — 4 credits per render (Fill Pro inpainting)
         </p>
       </div>
       {/* Upload first — the drop zone sits at the top of the workflow */}

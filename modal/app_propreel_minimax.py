@@ -468,6 +468,64 @@ STAGING_BRIGHTNESS_FLOOR = 0.60
 _STAGING_GAMMA_LADDER = (1.3, 1.5, 1.75, 2.0)
 
 
+def _twilight_brightness_floor(payload: bytes, source: bytes, preset_id: str) -> bytes:
+    """Twilight variants with bounded luminance targets: the render must keep
+    some readability (an agent's listing photo that reads as a black rectangle
+    is a failed render) while still being visibly night/day-mood appropriate.
+    Enforced per preset because each mood has a different natural floor:
+    absolute mean-luma targets. Best-effort gamma lift only (same machinery
+    as the staging floor); a cosmetic failure never fails a paid render."""
+    # Absolute target (mean luma /255). Measured against the failure window:
+    # night_lights came back ~19/255 for a 103/255 source (unreadable), while
+    # the correct target for a classic dusk real-estate shot sits 60-80.
+    TWILIGHT_TARGETS = {
+        "blue_hour": 78.0,          # brightest twilight — holds ambient light
+        "night_lights": 62.0,       # dark sky but a luminous, inviting home
+        "moody_atmospheric": 68.0,  # overcast evening, soft readable light
+    }
+    target = TWILIGHT_TARGETS.get(preset_id)
+    if target is None:
+        return payload
+    out_mean = _luma_mean(payload)
+    if not out_mean or out_mean >= target:
+        return payload
+    print(f"twilight floor: {preset_id} output {out_mean:.0f} < target {target} — lifting")
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+    in_path = None
+    best, best_mean = payload, out_mean
+    try:
+        with _tf.NamedTemporaryFile(suffix='.img', delete=False) as f:
+            f.write(payload)
+            in_path = f.name
+        for gamma in _STAGING_GAMMA_LADDER:
+            out_path = in_path + f'.tw{gamma}.jpg'
+            _sp.run(
+                ['ffmpeg', '-v', 'error', '-y', '-i', in_path,
+                 '-vf', f'eq=gamma={gamma}', '-q:v', '2', out_path],
+                check=True, capture_output=True, timeout=60,
+            )
+            with open(out_path, 'rb') as g:
+                cand = g.read()
+            cand_mean = _luma_mean(cand)
+            if best_mean is None or (cand_mean is not None and abs(cand_mean - target) < abs(best_mean - target)):
+                best, best_mean = cand, cand_mean
+            if cand_mean is not None and cand_mean >= target:
+                best, best_mean = cand, cand_mean
+                break
+        return best
+    except Exception as e:
+        print(f"twilight floor skipped: {e}")
+        return payload
+    finally:
+        try:
+            if in_path:
+                _os.unlink(in_path)
+        except Exception:
+            pass
+
+
 def _staging_brightness_floor(payload: bytes, source: bytes) -> bytes:
     """Gamma-lift a too-dark staging render toward its source photo's
     brightness. Best-effort and bounded: any failure returns the original
@@ -2412,10 +2470,15 @@ def edit_image(
 
     payload = _fit_image_bytes(_run_kontext(image_url, prompt_for_model, mapped_guidance))
 
-    # Staging only: enforce the brightness floor against the source photo
-    # (twilight presets are exempt on purpose — night is supposed to be dark).
+    # Staging: enforce the relative brightness floor against the source photo.
     if preset.get("category") == "staging":
         payload = _staging_brightness_floor(payload, fetch_media(image_url, timeout=60))
+    # Twilight: three presets kept coming back cave-dark (agents: "too dark")
+    # even after prompt text was strengthened — 'night'/'blue hour' vocabulary
+    # outweighs lighting instructions. Bounded absolute luma targets instead.
+    if preset.get("category") == "twilight":
+        payload = _twilight_brightness_floor(
+            payload, fetch_media(image_url, timeout=60), preset_id)
 
     return _store_edit(payload, image_url, preset_id, actual_strength, mapped_guidance)
 
