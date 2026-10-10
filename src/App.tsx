@@ -2324,6 +2324,12 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
   // Script lives in StudioPage state so the FlashHead tab speaks the same text
   const script = sharedScript;
   const setScript = onScriptChange;
+  // Property Description SOURCE for AI Write: an independent slot inside this
+  // tab (persisted), so the agent can complete the listing copy HERE and the
+  // voiceover is grounded in it. The sharedScript above is the voiceover
+  // OUTPUT (and what the Description tab hands over); this one is the RAW
+  // listing description the narration should speak from.
+  const [propertyDescription, setPropertyDescription] = useStudioDraft<string>(studioDraftKey(user?.id, 'video:property-description'), '');
   const [branding, setBranding] = useState(true);
   // The default Agent Branding profile drives the initial toggle state
   useEffect(() => {
@@ -2410,8 +2416,13 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
   }, [selectedConfig.duration]);
 
   // Where the script content should come from: a Property Description the
-  // agent wrote/generated (primary), or the uploaded photos via vision.
-  const hasDescription = !!sharedScript.trim();
+  // agent completed here (this tab's own slot), or the Description tab's
+  // shared copy, or — with neither — the uploaded photos via vision. Photos
+  // ALWAYS ride along when present: even with a description, what Grok sees
+  // in them refines the narration (finishes, light, garden, views).
+  const localDescription = propertyDescription.trim();
+  const sharedDescription = sharedScript.trim();
+  const hasDescription = !!(localDescription || sharedDescription);
   const primarySource: 'description' | 'photo_list' = hasDescription ? 'description' : 'photo_list';
 
   // Photo upload: presigned browser → S3, keeps the public URLs the render
@@ -2461,6 +2472,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
   // photos. The old call sent NEITHER — the script was invented with zero
   // grounding in the listing, so agents retyped it every time.
   const generateScript = async () => {
+    const source = localDescription || sharedDescription;
     if (primarySource === 'photo_list') {
       toast.info(
         'No Property Description yet — the script will be written from your uploaded photos instead.',
@@ -2475,10 +2487,13 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         target_words: targetWords,
         language,
         language_label: SA_LANGUAGES.find(l => l.id === language)?.label ?? 'English',
-        // Grounding for the model: the listing copy when it exists, else
-        // a signal that it MUST describe what it sees in the photos.
-        ...(sharedScript.trim()
-          ? { property_description: sharedScript.trim() }
+        // Grounding: the Property Description (this tab's slot first, then
+        // the Description tab's shared copy) when one exists, plus a
+        // photos-are-alongside signal; vision images also ride along so the
+        // model can see what it is narrating. With NO description at all,
+        // the photos are the only source and the model must describe them.
+        ...(source
+          ? { property_description: source, photos_supplement: uploadedImages.length > 0 }
           : { describe_photos: true }),
       }, uploadedImages);
       setScript(text.trim());
@@ -2846,16 +2861,41 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
             {generatingScript ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI Write
           </button>
         </div>
-        <textarea 
-          className="input min-h-[120px]" 
-          value={script} 
-          onChange={e => setScript(e.target.value)} 
-          placeholder={`Write your voiceover script or use AI to generate one...\n\nTarget: ${targetWords} words for ${selectedConfig.duration}s video`}
-        />
         <p className="text-xs text-ink-500 mt-1">
           Target word count: {targetWords} words (based on {selectedConfig.duration}s duration at 2.4 words/second)
         </p>
-        <LanguageMismatchBanner check={langCheck} />
+      {/* 4.5 Property Description (source) + Voiceover Script (output) —
+          AI Write narrates the completed description here, with the
+          uploaded photos refining what the model says it sees. */}
+      <div>
+        <div className="flex items-center justify-between">
+          <label className="label">Property Description (source)</label>
+          {propertyDescription.trim() && (
+            <button onClick={() => setPropertyDescription('')} className="text-xs text-ink-400 hover:text-red-400">Clear</button>
+          )}
+        </div>
+        <textarea
+          className="input min-h-[110px]"
+          value={propertyDescription}
+          onChange={e => setPropertyDescription(e.target.value)}
+          placeholder={"Bedrooms, bathrooms, stand size, finishes, view, garden, location highlights...\n\nAI Write turns this into a voiceover script that fills the selected video length — your uploaded photos sharpen what it describes."}
+          aria-label="Property Description source for the AI voiceover script"
+        />
+        <p className="text-xs text-ink-500 mt-1">
+          {/* Keep the phrase in sync with generateScript's toast */}
+          {propertyDescription.trim()
+            ? 'AI Write will base the voiceover on this description' + (uploadedImages.length ? ` and what it sees in your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}` : '')
+            : uploadedImages.length
+              ? `No description yet — AI Write will write purely from your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}`
+              : 'Add a description or photos for AI Write to work from'}</p>
+      </div>
+
+      <textarea 
+        className="input min-h-[120px]" 
+        value={script} 
+        onChange={e => setScript(e.target.value)} 
+        placeholder={`Write your voiceover script or use AI to generate one...\n\nTarget: ${targetWords} words for ${selectedConfig.duration}s video`}
+      />
         {narrationTooLong && !noNarration && (
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />

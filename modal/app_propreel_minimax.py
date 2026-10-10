@@ -2120,14 +2120,23 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
             word_rule = f"The script must fill {int(duration_s)} seconds of narration: roughly {int(target_words)} words"
         else:
             word_rule = "The script must fill about 60 seconds of narration: roughly 140 words"
-        # Source rule: agents write the Property Description on its own tab and
-        # hand it over — when it exists the script must SPEAK that copy; when it
-        # doesn't, the uploaded photos (attached as vision images) are the ONLY
-        # ground truth and the model must describe what IT sees in them.
+        # Source rule: agents complete the Property Description on the Video
+        # tab (with photos uploaded alongside) — the description is PRIMARY
+        # and the attached photos REFINE it (what the model sees: room
+        # layout, finishes, light, garden). With no description the photos
+        # are the ONLY ground truth. With neither, fall back to form facts.
         if fields.get("property_description"):
+            photos_note = (
+                " The attached photos show what the narrated tour visits — describe the rooms "
+                "and features you can see in them as you move through the script so words and "
+                "picture agree."
+                if fields.get("photos_supplement")
+                else ""
+            )
             source_rule = (
                 f"Base the script on this Property Description from the listing — speak its "
-                f"content in narration order, trimmed to fit the narration length:\n"
+                f"content in narration order, trimmed to fit the narration length. "
+                f"Do not contradict it; do not add facts it does not mention." + photos_note + "\n"
                 f"{str(fields['property_description'])[:3000]}\n"
             )
         elif fields.get("describe_photos"):
