@@ -1513,7 +1513,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
 
       const b = (req.body || {}) as any;
       const scope = String(b.scope || '');
-      const credits = jobCredits(scope, { tier: b.tier, configIndex: b.config_index });
+      const credits = jobCredits(scope, { tier: b.tier, configIndex: b.config_index, presetId: b.preset_id ?? b.metadata?.presetId });
       if (credits == null) {
         return res.status(400).json({ error: 'Unknown job scope or tier' });
       }

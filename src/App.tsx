@@ -1799,7 +1799,7 @@ function StagingTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits
+          Virtual Staging costs 4 credits per render (Fill Pro inpainting)
         </p>
       </div>
       {/* Upload first — the drop zone sits at the top of the workflow */}
@@ -1808,7 +1808,7 @@ function StagingTab() {
         draftSlot="staging"
         strength={selectedPreset?.strength.default}
         guidanceScale={selectedPreset?.guidanceScale.default}
-        ctaLabel="Stage Room (2 credits)"
+        ctaLabel="Stage Room (4 credits)"
         emptyHint="Upload an empty room photo — JPEG/PNG/WEBP up to 25MB"
       />
       <div>
@@ -1854,7 +1854,7 @@ function RemovalTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each image render costs 2 credits
+          Furniture Removal costs 4 credits per render (Fill Pro inpainting)
         </p>
       </div>
       {/* Upload first — the drop zone sits at the top of the workflow */}
@@ -1863,7 +1863,7 @@ function RemovalTab() {
         draftSlot="removal"
         strength={selectedPreset?.strength.default}
         guidanceScale={selectedPreset?.guidanceScale.default}
-        ctaLabel="Remove (2 credits)"
+        ctaLabel="Remove (4 credits)"
         emptyHint="Upload a photo with furniture or clutter to remove"
       />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

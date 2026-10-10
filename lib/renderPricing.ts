@@ -64,8 +64,24 @@ export const TIERS = [
 
 /** AI Avatar (FlashHead lip-sync) — fixed price. */
 export const FLASHHEAD_CREDITS = 8;
-/** Preset image edit (FLUX dev) — fixed price. */
+/** Preset image edit (Kontext / local HDR tone-map) — fixed price. */
 export const IMAGE_EDIT_CREDITS = 2;
+/** Staging/brush-mask presets: Fill Pro costs ~2x Kontext per fal call and
+ *  the render is the product the agent paid for, so it prices at 4 credits
+ *  (R4 at R1/credit vs ~R1.65 fal cost ~$0.10). Routed through the same
+ *  'edit' scope; the mint decides by presetId. */
+export const STAGING_EDIT_CREDITS = 4;
+/** Preset ids that route through the masked Fill path (kept in sync with
+ *  modal/image_prompts.py categories — staging + removal presets). */
+export const STAGING_PRESET_IDS = [
+  'luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
+  'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft',
+  'remove_all_furniture', 'remove_clutter', 'remove_personal_items',
+];
+
+export function isStagingPreset(presetId: string | undefined | null): boolean {
+  return !!presetId && STAGING_PRESET_IDS.includes(presetId);
+}
 
 /** Job scopes the worker accepts a paid single-use token for. */
 export type JobScope = 'render' | 'flashhead' | 'edit';
@@ -76,10 +92,15 @@ export type JobScope = 'render' | 'flashhead' | 'edit';
  */
 export function jobCredits(
   scope: string,
-  args: { tier?: string; configIndex?: number } = {}
+  args: { tier?: string; configIndex?: number; presetId?: string } = {}
 ): number | null {
   if (scope === 'flashhead') return FLASHHEAD_CREDITS;
-  if (scope === 'edit') return IMAGE_EDIT_CREDITS;
+  if (scope === 'edit') {
+    // Brush-mask staging/removal runs Fill Pro (~2x Kontext's fal cost) and
+    // is the tool agents actually pay for — price it at 4 credits. Plain
+    // preset edits (twilight, sky fix, HDR tone-map…) stay at 2 credits.
+    return isStagingPreset(args.presetId) ? STAGING_EDIT_CREDITS : IMAGE_EDIT_CREDITS;
+  }
   if (scope === 'render') {
     const tier = TIERS.find(t => t.id === String(args.tier || '').toUpperCase());
     if (!tier) return null;

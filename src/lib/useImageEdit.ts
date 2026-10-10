@@ -7,7 +7,7 @@ import { PropReelAPI } from './api';
 import { IMAGE_PRESETS } from './imagePrompts';
 import { playRenderComplete } from './renderSound';
 
-import { IMAGE_EDIT_CREDITS as IMAGE_EDIT_COST } from '../../lib/renderPricing';
+import { IMAGE_EDIT_CREDITS as IMAGE_EDIT_COST, STAGING_EDIT_CREDITS, isStagingPreset } from '../../lib/renderPricing';
 
 type Stage = 'idle' | 'uploading' | 'deducting' | 'rendering' | 'done';
 
@@ -20,6 +20,11 @@ export function useImageEdit() {
   const { refundCredits, user, refresh } = useCredit() as any;
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  /** Price for this render: staging/removal presets run Fill Pro (4 credits),
+   *  everything else is the base 2-credit edit. Mirrors jobCredits(). */
+  const costFor = (presetId?: string) =>
+    isStagingPreset(presetId) ? STAGING_EDIT_CREDITS : IMAGE_EDIT_COST;
 
   const edit = useCallback(async (opts: {
     file: File;
@@ -34,8 +39,8 @@ export function useImageEdit() {
       setError('You must be signed in');
       return null;
     }
-    if (((user as any).credits ?? 0) < IMAGE_EDIT_COST) {
-      setError('Not enough credits — each image edit costs 2 credits. Recharge from your dashboard.');
+    if (((user as any).credits ?? 0) < costFor(opts.presetId)) {
+      setError(`Not enough credits — this render costs ${costFor(opts.presetId)} credits. Recharge from your dashboard.`);
       return null;
     }
 
