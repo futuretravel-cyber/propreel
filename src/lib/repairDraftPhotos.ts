@@ -61,6 +61,13 @@ export function useRepairDraftPhotos(
   const [display, setDisplay] = useState<Record<string, string>>({});
   const inflight = useRef(false);
 
+  // Deps must include the CONTENTS, not just the key: a draft hydrates
+  // asynchronously from IndexedDB, so the first effect run sees an empty
+  // list — keying only on the key meant the repair never ran at all. The
+  // CACHE + inflight guards make any re-run idempotent (one repair per
+  // slot per page load).
+  const urlsSig = urls.length ? `${urls.length}:${urls[urls.length - 1]}` : '';
+
   useEffect(() => {
     if (!draftKey || inflight.current) return;
     if (!urls.length || CACHE.has(draftKey)) return;
@@ -110,7 +117,7 @@ export function useRepairDraftPhotos(
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftKey]);
+  }, [draftKey, urlsSig]);
 
   return { healing, display };
 }
