@@ -71,8 +71,10 @@ export const IMAGE_EDIT_CREDITS = 2;
  *  (R4 at R1/credit vs ~R1.65 fal cost ~$0.10). Routed through the same
  *  'edit' scope; the mint decides by presetId. */
 export const STAGING_EDIT_CREDITS = 4;
-/** Preset ids that route through the masked Fill path (kept in sync with
- *  modal/image_prompts.py categories — staging + removal presets). */
+/** Preset ids priced at the 4-credit brush-render rate. Staging renders run
+ *  the masked Fill [pro] path; removal presets render via the plain Kontext
+ *  path with their full preset prompts (kept in sync with
+ *  modal/image_prompts.py categories). */
 export const STAGING_PRESET_IDS = [
   'luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
   'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft',

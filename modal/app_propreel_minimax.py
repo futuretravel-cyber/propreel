@@ -2494,56 +2494,10 @@ def edit_image(
             image_url, preset_id, actual_strength, actual_guidance
         )
 
-    # Masked removal (brush tool, removal presets): FLUX.1 Fill [pro]
-    # inpainting with the user's painted mask. Same hard pixel lock as masked
-    # staging: only what the brush covered can change. The preset prompt's
-    # full geometry contract is unnecessary here — the mask already forbids
-    # touching any unpainted pixel — so the condensed prompt focuses on
-    # removing the painted objects and reconstructing the hidden surfaces.
-    # Removal presets that KEEP furniture (remove_clutter, personal items)
-    # must not run through the removal wording unless the user painted those
-    # pieces — the prompt adapts via a dynamic instruction.
-    if preset.get("category") == "removal" and not custom_prompt and mask_url:
-        try:
-            from urllib.parse import urlparse as _ulp
-            source_bytes = fetch_media(image_url, timeout=60)
-            mask_bytes = fetch_media(mask_url, timeout=60)
-            from PIL import Image
-            import io as _io2
-            src_img = Image.open(_io2.BytesIO(source_bytes))
-            fitted = _mask_png_bytes(mask_bytes, src_img.width, src_img.height)
-            mask_s3_key = f"edited/_masks/{preset_id}_{os.path.basename(_ulp(image_url).path)}.png"
-            s3m = boto3.client('s3', region_name=S3_REGION)
-            s3m.put_object(Bucket=S3_BUCKET, Key=mask_s3_key,
-                           Body=fitted, ContentType='image/png')
-            mask_fitted_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{mask_s3_key}"
-
-            if "remove_all " in preset_id or preset_id == "remove_all_furniture":
-                removal_note = ("Remove every piece of furniture and movable "
-                                "object inside the masked area completely, "
-                                "including anything the paint is near.")
-            else:
-                removal_note = ("Remove the items inside the masked area "
-                                "completely.")
-            removal_prompt_masked = (
-                f"{removal_note} Replace each masked area with a seamless, "
-                "natural continuation of the existing floor, wall, surface, "
-                "tile, or countertop visible in the surrounding unmasked "
-                "areas. Match the existing material color, texture, grout "
-                "lines, baseboards, and natural lighting exactly. The result "
-                "must show the room exactly as it was, minus only the painted "
-                "objects — furniture and fixtures outside the painted area "
-                "stay exactly where they are. Do not modify anything outside "
-                "the masked area."
-            )
-            removed_fill = _fill_pro(
-                image_url, mask_fitted_url, removal_prompt_masked)
-            payload = _fit_image_bytes(removed_fill)
-            print(f"masked removal succeeded (fill path) preset={preset_id}")
-            return _store_edit(payload, image_url, preset_id,
-                               actual_strength, actual_guidance)
-        except Exception as e:
-            print(f"masked removal failed ({e}); falling back to Kontext path")
+    # Furniture Removal runs the plain Kontext path with the full preset
+    # prompts (modal/image_prompts.py) — the brush/paint-to-replace masked
+    # removal route was removed from the frontend, so a removal preset never
+    # carries a mask_url here. Only staging keeps the masked Fill path.
 
     # Masked staging (brush tool): FLUX.1 Fill [pro] inpainting. The mask is
     # a HARD constraint — everything outside it never changes — so both calls
