@@ -2463,13 +2463,16 @@ def edit_image(
     prompt = custom_prompt if custom_prompt else preset['prompt']
     negative_prompt = preset['negative_prompt']
 
-    # Room anchor (staging/removal only): caption the actual source photo and
-    # inject it ahead of the negative tail, so the model edits THIS room.
-    # Best-effort: an LLM hiccup must not fail a paid render.
-    # Masked staging skips the anchor entirely: Fill Pro physically locks the
-    # unmasked pixels, so the caption adds nothing.
+    # Room anchor (staging + the three furniture-removal presets): caption
+    # the actual source photo and inject it ahead of the negative tail, so
+    # the model edits THIS room. Best-effort: an LLM hiccup must not fail a
+    # paid render. Masked staging skips the anchor entirely: Fill Pro
+    # physically locks the unmasked pixels, so the caption adds nothing.
+    # remove_vehicles deliberately gets NO anchor — it must run exactly the
+    # same path as the photo-editor remove_cars preset that works.
     _anchor = ""
-    if preset.get("category") in ("staging", "removal") and not custom_prompt and not mask_url:
+    _anchor_ids = ("remove_all_furniture", "remove_clutter", "remove_personal_items")
+    if (preset.get("category") == "staging" or preset_id in _anchor_ids) and not custom_prompt and not mask_url:
         try:
             _anchor = _room_anchor_bytes_url(image_url)
             print(f"room anchor: {_anchor[:160]}")

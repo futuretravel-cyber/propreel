@@ -201,8 +201,8 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Remove Vehicles',
     emoji: '🚙',
     category: 'removal',
-    strength: { min: 0.45, max: 0.55, default: 0.5 },
-    guidanceScale: { min: 4.5, max: 5.5, default: 5 }
+    strength: { min: 0.4, max: 0.5, default: 0.45 },
+    guidanceScale: { min: 4, max: 5, default: 4.5 }
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
