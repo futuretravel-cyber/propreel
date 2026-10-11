@@ -11,7 +11,8 @@ BUCKET = "propreel-raw-assets"
 OUT_BUCKET = "propreel-video-outputs-sa"
 SRC_KEY = "uploads/usr_1790936779746_o2qhlegu5/1791617633908-2fayzu.jpg"
 PAIRS = [
-    ("industrial_loft_fill_pro_masked_FIXED", "edited/industrial_loft_1791617633908-2fayzu.jpg"),
+    ("dev_fill_AB", "edited/_ab/fill_ab_dev_fill.jpg"),
+    ("pro_fill_AB", "edited/_ab/fill_ab_pro_fill.jpg"),
 ]
 QUESTIONS = (
     "Q1: Do the two photos show the same room?\\n"
@@ -19,6 +20,7 @@ QUESTIONS = (
     "Q3: Is the kitchen area (counter, cupboards, hood) identical in both?\\n"
     "Q4: Are the brick walls, windows and ceiling beams unchanged between the two?\\n"
     "Q5: Do the photos appear to be rendered from the same camera position and field of view?\\n"
+    "Q6: Does PHOTO 2 contain realistic, well-placed furniture (sofas, tables, lamps) with correct perspective and shadows?\\n"
 )
 SYSTEM = (
     "You verify that an AI photo edit preserved the room structure of the "

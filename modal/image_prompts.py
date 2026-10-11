@@ -202,7 +202,7 @@ IMAGE_PRESETS = [
         "label": "Remove All Furniture",
         "emoji": "🗑️",
         "category": "removal",
-        "prompt": """Professional real estate interior photograph of this exact room, with all furniture completely removed to show the empty space. Remove sofas, chairs, tables, beds, cabinets, shelving, rugs, lamps, and any other freestanding furniture or movable decor items. Reconstruct the floor, walls, and any areas previously hidden behind furniture with seamless, natural continuation of the existing flooring material, wall finish, and baseboards, matching color, texture, and lighting exactly. Keep every wall, window, door, ceiling, built-in fixture, light fixture, and architectural detail in its exact original position and finish — only freestanding furniture is removed. Natural lighting consistent with the room's existing light sources. Apply natural, high-end real estate color grading. Hyper-realistic, magazine-quality architectural photography, ultra-high resolution, empty room, empty of people.""",
+        "prompt": """Remove all furniture and movable objects completely including their cast shadows and any floor impressions. Reconstruct the floor, walls and all surfaces in the masked areas with seamless continuation of the existing flooring texture, wall finish, skirting boards and lighting. Result: a completely empty room showing only fixed architecture.""",
         "negative_prompt": """remaining furniture, remaining rugs, remaining lamps, remaining wall art, altered walls, altered windows, altered doors, altered ceiling, altered built-in fixtures, warped walls, distorted proportions, mismatched flooring texture, mismatched wall texture, visible patches or seams, floating shadows, ghosting artifacts, discoloration, overexposure, harsh shadows, plastic textures, unrealistic reflections, low resolution, grain, noise, people, animals, text, watermark, logo""",
         "strength": {"min": 0.5, "max": 0.6, "default": 0.55},
         "guidanceScale": {"min": 4.5, "max": 5.5, "default": 5}
@@ -212,7 +212,7 @@ IMAGE_PRESETS = [
         "label": "Remove Clutter Only",
         "emoji": "🧹",
         "category": "removal",
-        "prompt": """Professional real estate interior photograph of this exact room, with loose clutter and small miscellaneous items removed while all furniture stays in place. Remove stray items such as papers, boxes, cables, dishes, small personal objects, loose clothing, and miscellaneous items from floors, countertops, and surfaces. Keep every piece of furniture, all walls, windows, doors, floors, ceiling, and architectural detail in its exact original position, shape, and finish — only small loose clutter items are removed, nothing is rearranged or replaced. Surfaces appear clean and tidy where clutter was removed, with natural continuation of the existing surface material and lighting. Apply natural, high-end real estate color grading. Hyper-realistic, magazine-quality architectural photography, ultra-high resolution, empty of people.""",
+        "prompt": """Remove only the small loose clutter items in the masked areas: papers, boxes, cables, dishes, personal objects. Reconstruct each surface with seamless continuation of the existing countertop, floor, or shelf texture and color. Do not remove or alter any furniture or fixed elements outside the mask.""",
         "negative_prompt": """remaining clutter, remaining stray items, moved furniture, removed furniture, altered layout, altered walls, altered windows, altered doors, altered flooring, warped walls, distorted proportions, mismatched surface texture, visible patches or seams, ghosting artifacts, discoloration, overexposure, harsh shadows, plastic textures, unrealistic reflections, low resolution, grain, noise, people, animals, text, watermark, logo""",
         "strength": {"min": 0.35, "max": 0.45, "default": 0.4},
         "guidanceScale": {"min": 4, "max": 5, "default": 4.5}
@@ -222,7 +222,7 @@ IMAGE_PRESETS = [
         "label": "Remove Personal Items",
         "emoji": "📷",
         "category": "removal",
-        "prompt": """Professional real estate interior photograph of this exact room, with personal items removed for neutral, buyer-ready presentation. Remove family photographs, personal artwork, religious or cultural items, toiletries, toys, personal documents, refrigerator magnets and notes, and any other identifying personal belongings from walls, surfaces, and shelves. Keep every piece of furniture, all walls, windows, doors, floors, ceiling, and architectural detail in its exact original position, shape, and finish — only personal and identifying items are removed, nothing else is rearranged or replaced. Surfaces and walls appear clean and neutral where items were removed, with natural continuation of the existing surface material and lighting. Apply natural, high-end real estate color grading. Hyper-realistic, magazine-quality architectural photography, ultra-high resolution, empty of people.""",
+        "prompt": """Remove the personal items in the masked areas: family photos, personal artwork, toiletries, toys, fridge magnets, and personal documents. Reconstruct walls and surfaces behind removed items with seamless continuation of existing wall paint, texture, and lighting. Result: neutral, buyer-ready presentation.""",
         "negative_prompt": """remaining personal photos, remaining personal artwork, remaining personal items, moved furniture, removed furniture, altered layout, altered walls, altered windows, altered doors, altered flooring, warped walls, distorted proportions, mismatched wall texture, visible patches or seams, ghosting artifacts, discoloration, overexposure, harsh shadows, plastic textures, unrealistic reflections, low resolution, grain, noise, people, animals, text, watermark, logo""",
         "strength": {"min": 0.4, "max": 0.5, "default": 0.45},
         "guidanceScale": {"min": 4, "max": 5, "default": 4.5}
@@ -298,9 +298,10 @@ IMAGE_PRESETS = [
 # (staircase/brick/roofline drifting) while performing the edit.
 # Furniture Removal presets are NEVER suffixed: all four run their exact
 # specified text so "Do not include:" reaches the model byte-for-byte as
-# written — the three Studio Dashboard prompts above, plus remove_vehicles
-# as a clone of the photo-editor remove_cars preset. Structure protection
-# for the three now lives inside their prompt text instead.
+# written — the three FLUX Erase [pro] prompts above (painted-mask erase,
+# verbatim as the erase call's prompt), plus remove_vehicles as a clone of
+# the photo-editor remove_cars preset. For the erase presets the mask is
+# the hard structure constraint, so no structure-lock language is needed.
 _STRUCTURE_NEGATIVE_LOCK = (
     "changed wall material or finish, exposed brick replaced with painted drywall, "
     "repainted or retextured walls, removed staircase, removed mezzanine or loft, "

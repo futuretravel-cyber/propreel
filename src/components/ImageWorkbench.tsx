@@ -40,12 +40,13 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
   const inputRef = useRef<HTMLInputElement>(null);
   const { edit, busy, stage, error, setError } = useImageEdit();
   const uploadWait = useUploadWait();
-  // Brush mask (staging presets only): paint over the furniture to replace.
-  // Furniture Removal went back to the prompt-driven Kontext path — full
-  // preset prompts, no mask, no paint-to-replace (see RemovalTab).
-  const isStaging = ['luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
-    'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft'].includes(presetId);
-  const showBrush = isStaging;
+  // Brush mask presets: staging paints the furniture to REPLACE (Fill Pro);
+  // the three furniture-removal presets paint what to ERASE (FLUX Erase
+  // [pro]) — the painted mask is required for both. remove_vehicles stays
+  // maskless on the Kontext path.
+  const showBrush = ['luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
+    'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft',
+    'remove_all_furniture', 'remove_clutter', 'remove_personal_items'].includes(presetId);
   // The mask tutorial plays EVERY time the staging tab is entered (or the
   // draft first appears) — small enough that it teaches without blocking.
   const [tutorialOpen, setTutorialOpen] = useState(false);

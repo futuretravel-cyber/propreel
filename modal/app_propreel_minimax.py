@@ -2337,6 +2337,34 @@ def _fill_pro(image_url: str, mask_url: str, prompt: str) -> bytes:
     return requests.get(out_url, timeout=120).content
 
 
+def _erase_pro(image_url: str, mask_url: str, prompt: str) -> bytes:
+    """One fal-ai/flux-pro/v1/erase call: regenerate ONLY the white mask
+    pixels — whatever the user painted is erased as seamless continuation
+    of the surrounding floor/walls, and everything outside the mask stays
+    source pixels. (The 'fal-ai/flux-erase' alias does not exist —
+    flux-pro/v1/erase is the real endpoint; verified 2026-10-11.)
+    Returns the output image bytes.
+    """
+    import fal_client
+    try:
+        result = fal_client.run(
+            "fal-ai/flux-pro/v1/erase",
+            arguments={
+                "image_url": presign_media(image_url),
+                "mask_url": presign_media(mask_url),
+                "prompt": prompt,
+            },
+        )
+    except Exception as e:
+        raise RuntimeError(_friendly_fal_error(e)) from None
+    # Erase's response shape matches Fill: {images: [{url, ...}], ...}
+    images = (result or {}).get("images") or []
+    out_url = (images[0] or {}).get("url") if images else None
+    if not out_url:
+        raise Exception(f"Erase Pro returned no image: {str(result)[:200]}")
+    return requests.get(out_url, timeout=120).content
+
+
 def _mask_png_bytes(data: bytes, width: int, height: int) -> bytes:
     """Decode uploaded mask (PNG/JPEG, arbitrary size) and fit it exactly onto
     (width, height): mask is white where regeneration happens, black elsewhere.
@@ -2499,10 +2527,32 @@ def edit_image(
             image_url, preset_id, actual_strength, actual_guidance
         )
 
-    # Furniture Removal runs the plain Kontext path with the full preset
-    # prompts (modal/image_prompts.py) — the brush/paint-to-replace masked
-    # removal route was removed from the frontend, so a removal preset never
-    # carries a mask_url here. Only staging keeps the masked Fill path.
+    # The three furniture-removal presets erase the user-painted mask with
+    # FLUX Erase [pro] (fal-ai/flux-pro/v1/erase — the "fal-ai/flux-erase"
+    # alias does not exist; verified 2026-10-11). White mask pixels are
+    # regenerated as seamless continuation of what surrounds them; the mask
+    # is the hard structure constraint, and the preset prompt is passed
+    # verbatim. remove_vehicles / remove_cars keep the plain Kontext path,
+    # and a removal preset WITHOUT a mask (stale client) falls through to
+    # the same Kontext path as before.
+    if preset_id in ("remove_all_furniture", "remove_clutter", "remove_personal_items") and not custom_prompt and mask_url:
+        from urllib.parse import urlparse as _ulp
+        source_bytes = fetch_media(image_url, timeout=60)
+        mask_bytes = fetch_media(mask_url, timeout=60)
+        from PIL import Image
+        import io as _io3
+        src_img = Image.open(_io3.BytesIO(source_bytes))
+        fitted = _mask_png_bytes(mask_bytes, src_img.width, src_img.height)
+        mask_s3_key = f"edited/_masks/{preset_id}_{os.path.basename(_ulp(image_url).path)}.png"
+        s3m = boto3.client('s3', region_name=S3_REGION)
+        s3m.put_object(Bucket=S3_BUCKET, Key=mask_s3_key,
+                       Body=fitted, ContentType='image/png')
+        mask_fitted_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{mask_s3_key}"
+        erased = _erase_pro(image_url, mask_fitted_url, preset["prompt"])
+        return _store_edit(
+            _fit_image_bytes(erased), image_url, preset_id,
+            actual_strength, actual_guidance
+        )
 
     # Masked staging (brush tool): FLUX.1 Fill [pro] inpainting. The mask is
     # a HARD constraint — everything outside it never changes — so both calls
