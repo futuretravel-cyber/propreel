@@ -1,5 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { BillingSkeleton } from './Skeleton';
+
+// Billing (invoices, transaction history, bundles) lives inside Credits now
+// as its own sub-tab — one fewer sidebar entry.
+const EnhancedBilling = lazy(() => import('./EnhancedBilling'));
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar, formatDate } from '../lib/utils';
@@ -22,6 +27,16 @@ export default function CreditSystemDashboard() {
   const [giftAmount, setGiftAmount] = useState(50);
   const [autoTopupAuthPrompt, setAutoTopupAuthPrompt] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
+  // Sub-tab in the URL (?tab=billing) so the old /dashboard/billing links and
+  // the profile menu's "Go to Billing" land straight on the billing view.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'billing' ? 'billing' : 'credits';
+  const setActiveTab = (t: 'credits' | 'billing') => {
+    const next = new URLSearchParams(searchParams);
+    if (t === 'billing') next.set('tab', 'billing');
+    else next.delete('tab');
+    setSearchParams(next, { replace: true });
+  };
 
   // One-click prorated upgrade (saved card: charged instantly; no card:
   // hosted checkout, applied automatically when payment clears)
@@ -113,6 +128,19 @@ export default function CreditSystemDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Credits / Billing sub-tabs */}
+      <div className="flex gap-2">
+        <button onClick={() => setActiveTab('credits')} className={`tab-pill ${activeTab === 'credits' ? 'tab-pill-active' : ''}`}>Credits</button>
+        <button onClick={() => setActiveTab('billing')} className={`tab-pill ${activeTab === 'billing' ? 'tab-pill-active' : ''}`}>Billing</button>
+      </div>
+
+      {activeTab === 'billing' ? (
+        /* A crash inside billing (bad invoice row, malformed Paystack payload)
+           must not blank the whole page — retry lands on this card only. */
+        <ErrorBoundaryWrapper>
+          <Suspense fallback={<BillingSkeleton />}><EnhancedBilling /></Suspense>
+        </ErrorBoundaryWrapper>
+      ) : (<>
       <LowCreditBanner />
 
       {/* One-time auto-recharge setup prompt (nightly sweep flagged this) */}
@@ -213,7 +241,7 @@ export default function CreditSystemDashboard() {
           <p className="font-semibold text-sm mt-2">Gift Credits</p>
           <p className="text-xs text-pink-200 mt-1">Transfer to agent</p>
         </button>
-        <button onClick={() => navigate('/dashboard/billing')} className="bg-gradient-to-br from-orange-600 to-orange-800 rounded-xl p-4 text-left text-white hover:scale-[1.02] transition-transform">
+        <button onClick={() => setActiveTab('billing')} className="bg-gradient-to-br from-orange-600 to-orange-800 rounded-xl p-4 text-left text-white hover:scale-[1.02] transition-transform">
           <CreditCard className="w-5 h-5" />
           <p className="font-semibold text-sm mt-2">Billing History</p>
           <p className="text-xs text-orange-200 mt-1">View invoices</p>
@@ -454,6 +482,25 @@ export default function CreditSystemDashboard() {
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
+}
+
+/** Minimal local error boundary so a billing-tab crash doesn't take the
+ *  whole Credits page down with it. */
+class ErrorBoundaryWrapper extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="card-dark p-6 border border-red-500/30">
+          <p className="text-sm text-red-300 mb-3">Billing failed to load: {this.state.error.message}</p>
+          <button onClick={() => this.setState({ error: null })} className="btn btn-secondary text-sm">Retry</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }

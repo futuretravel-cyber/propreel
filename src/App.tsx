@@ -8,7 +8,7 @@ import MobileNav from './components/MobileNav';
 import UploadQueueNotifier from './components/UploadQueueNotifier';
 import AIDisclaimerGate from './components/AIDisclaimerGate';
 import AdminUserDetail from './components/AdminUserDetail';
-import { DashboardSkeleton, BillingSkeleton, ProjectsSkeleton, StudioSkeleton, useSimulatedLoading } from './components/Skeleton';
+import { DashboardSkeleton, ProjectsSkeleton, useSimulatedLoading } from './components/Skeleton';
 import { useAuth, useCredit, AuthProvider, CreditProvider } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
 import { SearchButton } from './components/GlobalSearch';
@@ -54,7 +54,6 @@ import { workerHeaders, jobHeaders } from './lib/workerAuth';
 // Code-split the heavy dashboard sections (recharts, framer-motion, admin UI)
 // so the marketing site loads without them.
 const EnhancedOverview = lazy(() => import('./components/EnhancedOverview'));
-const EnhancedBilling = lazy(() => import('./components/EnhancedBilling'));
 const EnhancedAnalytics = lazy(() => import('./components/EnhancedAnalytics'));
 const EnhancedAgency = lazy(() => import('./components/EnhancedAgency'));
 
@@ -146,13 +145,13 @@ function KeyboardShortcutsModal({ isOpen, onClose }: { isOpen: boolean; onClose:
   if (!isOpen) return null;
   
   const shortcuts = [
-    { keys: ['N'], description: 'Open Studio', category: 'Navigation' },
+    { keys: ['N'], description: 'Open Video Generator', category: 'Navigation' },
     { keys: ['R'], description: 'Recent Projects', category: 'Navigation' },
     { keys: ['⌘', 'K'], description: 'Global Search', category: 'Navigation' },
     { keys: ['?'], description: 'Show keyboard shortcuts', category: 'Help' },
     { keys: ['Esc'], description: 'Close modals', category: 'General' },
-    { keys: ['Tab'], description: 'Switch between tools', category: 'Studio' },
-    { keys: ['Enter'], description: 'Generate / Submit', category: 'Studio' },
+    { keys: ['Tab'], description: 'Switch between tools', category: 'Tools' },
+    { keys: ['Enter'], description: 'Generate / Submit', category: 'Tools' },
   ];
 
   const categories = [...new Set(shortcuts.map(s => s.category))];
@@ -809,7 +808,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   // per session via lastLowCreditWarnedAt so it stays visible until acted on.
   const bannerVisible = (() => {
     if (lowCreditWarning === 'none') return false;
-    if (location.pathname.startsWith('/dashboard/credits') || location.pathname.startsWith('/dashboard/billing')) return false;
+    if (location.pathname.startsWith('/dashboard/credits') || location.pathname.startsWith('/dashboard/billing')) return false; // credits page hosts Billing as a sub-tab
     const ack = user?.lastLowCreditWarnedAt ? new Date(user.lastLowCreditWarnedAt).getTime() : 0;
     return ack < Date.now() - 12 * 60 * 60 * 1000; // re-surface 12h after ack
   })();
@@ -833,18 +832,20 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Overview' },
-    { path: '/studio', icon: <Video className="w-5 h-5" />, label: 'Studio' },
+    { path: '/dashboard/photo-editor', icon: <Camera className="w-5 h-5" />, label: 'Photo Editor' },
+    { path: '/dashboard/description', icon: <FileText className="w-5 h-5" />, label: 'Property Description' },
+    { path: '/dashboard/video', icon: <Video className="w-5 h-5" />, label: 'Video Generator' },
     { path: '/dashboard/credits', icon: <Zap className="w-5 h-5" />, label: 'Credits' },
     { path: '/dashboard/listings', icon: <List className="w-5 h-5" />, label: 'Listings' },
     { path: '/dashboard/projects', icon: <FolderOpen className="w-5 h-5" />, label: 'My Projects' },
     { path: '/dashboard/branding', icon: <Palette className="w-5 h-5" />, label: 'Agent Branding' },
     { path: '/dashboard/analytics', icon: <BarChart3 className="w-5 h-5" />, label: 'Analytics' },
-    { path: '/dashboard/billing', icon: <CreditCard className="w-5 h-5" />, label: 'Billing' },
     // Agency tab only appears once an agency signup exists (or for admins,
     // who have full visibility across the site including agency dashboards)
     ...((user?.agencyId || isAdmin) ? [{ path: '/dashboard/agency', icon: <Building2 className="w-5 h-5" />, label: 'Agency' }] : []),
+    // Billing lives inside Credits (?tab=billing); Notifications inside
+    // Settings (?tab=notifications) — one less sidebar item each.
     { path: '/dashboard/settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
-    { path: '/dashboard/notifications', icon: <Bell className="w-5 h-5" />, label: 'Notifications' },
   ];
 
   if (isAdmin) {
@@ -944,7 +945,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-4 ml-auto">
             <SearchButton />
-            <Link to="/dashboard/notifications" className="relative text-ink-400 hover:text-white" aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}>
+            <Link to="/dashboard/settings?tab=notifications" className="relative text-ink-400 hover:text-white" aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}>
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
@@ -984,7 +985,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
                   <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/settings?tab=security'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
                     <Settings className="w-4 h-4" /> Go to Settings
                   </button>
-                  <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/billing'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
+                  <button role="menuitem" onClick={() => { setProfileMenu(false); navigate('/dashboard/credits?tab=billing'); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-300 hover:bg-white/5 hover:text-white text-left">
                     <CreditCard className="w-4 h-4" /> Go to Billing
                   </button>
                   <div className="border-t border-white/5 mt-1 pt-1">
@@ -1042,7 +1043,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => navigate('/dashboard/billing')} className="btn btn-primary text-xs py-2 px-3">{trialEndedNotice ? 'Subscribe now' : 'Upgrade anytime'}</button>
+                <button onClick={() => navigate('/dashboard/credits?tab=billing')} className="btn btn-primary text-xs py-2 px-3">{trialEndedNotice ? 'Subscribe now' : 'Upgrade anytime'}</button>
               </div>
             </div>
           )}
@@ -1106,18 +1107,6 @@ function DashboardAnalytics() {
   return <Suspense fallback={<DashboardSkeleton />}><EnhancedAnalytics /></Suspense>;
 }
 
-function DashboardBilling() {
-  const loading = useSimulatedLoading(450);
-  if (loading) return <BillingSkeleton />;
-  // A crash inside billing (bad invoice row, malformed Paystack payload) must
-  // not blank the whole dashboard route — retry lands on this card only.
-  return (
-    <ErrorBoundary label="Billing">
-      <Suspense fallback={<BillingSkeleton />}><EnhancedBilling /></Suspense>
-    </ErrorBoundary>
-  );
-}
-
 function DashboardAgency() {
   return <Suspense fallback={<DashboardSkeleton />}><EnhancedAgency /></Suspense>;
 }
@@ -1132,7 +1121,7 @@ function DashboardSettings() {
   // Tab lives in the URL (?tab=profile|security|account) so the profile
   // menu's "Go to profile" / "Go to Settings" land on the right section.
   const [searchParams, setSearchParams] = useSearchParams();
-  const TABS = ['profile', 'security', 'account'] as const;
+  const TABS = ['profile', 'security', 'account', 'notifications'] as const;
   type SettingsTab = typeof TABS[number];
   const param = searchParams.get('tab');
   const tab: SettingsTab = (TABS as readonly string[]).includes(param || '') ? (param as SettingsTab) : 'profile';
@@ -1149,6 +1138,7 @@ function DashboardSettings() {
         <button onClick={() => setTab('profile')} className={`tab-pill ${tab === 'profile' ? 'tab-pill-active' : ''}`}>Profile</button>
         <button onClick={() => setTab('security')} className={`tab-pill ${tab === 'security' ? 'tab-pill-active' : ''}`}>Security & Privacy</button>
         <button onClick={() => setTab('account')} className={`tab-pill ${tab === 'account' ? 'tab-pill-active' : ''}`}>Account</button>
+        <button onClick={() => setTab('notifications')} className={`tab-pill ${tab === 'notifications' ? 'tab-pill-active' : ''}`}>Notifications</button>
       </div>
       {tab === 'profile' ? (
         <div className="space-y-6">
@@ -1173,6 +1163,8 @@ function DashboardSettings() {
         </div>
       ) : tab === 'security' ? (
         <SecuritySettings />
+      ) : tab === 'notifications' ? (
+        <NotificationCenter />
       ) : (
         <div className="space-y-6">
           <div className="card-dark p-6">
@@ -1205,7 +1197,7 @@ function DashboardSettings() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// STUDIO (7 TABS)
+// AI TOOL PAGES — Photo Editor / Property Description / Video Generator
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -1247,7 +1239,7 @@ function TrialDeadlineModal() {
 
   const goUpgrade = () => {
     track('trial_studio_upgrade_clicked', { daysLeft, ended: !running });
-    navigate('/dashboard/billing');
+    navigate('/dashboard/credits?tab=billing');
   };
 
   return (
@@ -1299,107 +1291,157 @@ function TrialDeadlineModal() {
   );
 }
 
-function StudioPage() {
-  const loading = useSimulatedLoading(400);
-  if (loading) return <StudioSkeleton />;
-  return <StudioPageInner />;
+/** Shared page header for the three AI tool routes. */
+function ToolPageHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  const { user } = useCredit();
+  return (
+    <div className="flex items-start justify-between">
+      <div>
+        <h1 className="text-2xl font-bold text-white">{title}</h1>
+        <p className="text-ink-400 mt-1">{subtitle}</p>
+        <p className="text-xs text-ink-500 mt-1 flex items-center gap-1"><Clock className="w-3 h-3 shrink-0" /> {RETENTION_NOTICE}</p>
+        <p className="text-xs text-amber-400/90 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3 shrink-0" /> Every tool here renders with AI — outputs can be wrong, and credits spent on unsatisfactory results are non-refundable. <button type="button" onClick={openAIDisclaimer} className="underline hover:text-amber-300 font-medium">Read the full AI notice</button></p>
+      </div>
+      <Link
+        to="/dashboard/credits"
+        className="badge badge-brand hover:bg-white/10 transition"
+        title="Recharge credits"
+      >
+        <Zap className="w-3 h-3" /> {user?.credits ?? 0} credits
+      </Link>
+    </div>
+  );
 }
 
-function StudioPageInner() {
-  const { user } = useCredit();
-  // Tab lives in the URL (?tab=photo). Navigating to the same route with a
-  // different query does NOT remount this component, so a useState
-  // initializer would silently miss deep links (onboarding tour, help links).
+/** Sub-tab state in the URL (?tab=…), same deep-link contract the Studio had. */
+function useToolTab(valid: string[], fallback: string): [string, (t: string) => void] {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get('tab') || 'description';
+  const raw = searchParams.get('tab') || '';
+  const tab = valid.includes(raw) ? raw : fallback;
   const setTab = (t: string) => {
     const next = new URLSearchParams(searchParams);
     next.set('tab', t);
     setSearchParams(next, { replace: true });
   };
-  // Shared voiceover script: the Video tab generates it, FlashHead speaks it
+  return [tab, setTab];
+}
+
+// ── Photo Editor: AI Photo Editor 2⚡ / Virtual Staging 4⚡ /
+//    Furniture Removal 4⚡ / Twilight 2⚡ ──────────────────────────────────
+function PhotoEditorPage() {
+  const loading = useSimulatedLoading(300);
+  const [tab, setTab] = useToolTab(['photo', 'staging', 'removal', 'twilight'], 'photo');
+  const tabs = [
+    { id: 'photo', label: 'AI Photo Editor', icon: <Camera className="w-4 h-4" />, cost: 2 },
+    { id: 'staging', label: 'Virtual Staging', icon: <Sofa className="w-4 h-4" />, cost: 4 },
+    { id: 'removal', label: 'Furniture Removal', icon: <Trash2 className="w-4 h-4" />, cost: 4 },
+    { id: 'twilight', label: 'Twilight', icon: <MoonIcon className="w-4 h-4" />, cost: 2 },
+  ];
+  if (loading) return <DashboardSkeleton />;
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <TrialDeadlineModal />
+      <ToolPageHeader title="Photo Editor" subtitle="AI enhancements for listing photos — edit, stage, clear out furniture, or turn day into dusk." />
+      <div className="flex flex-wrap gap-2 pb-2">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 ${tab === t.id ? 'tab-pill tab-pill-active' : 'tab-pill'}`}>
+            {t.icon} <span className="hidden sm:inline">{t.label}</span>
+            <span className="text-[10px] font-bold text-yellow-300" title={`${t.cost} credits per render`}>⚡{t.cost}</span>
+          </button>
+        ))}
+      </div>
+      {/* Every panel stays mounted (inactive ones display:none) so uploads,
+          drafts and in-flight renders survive sub-tab switches. */}
+      <div className="card-dark p-6">
+        <div className={tab === 'photo' ? undefined : 'hidden'}><ErrorBoundary label="AI Photo Editor"><PhotoEditorTab /></ErrorBoundary></div>
+        <div className={tab === 'staging' ? undefined : 'hidden'}><ErrorBoundary label="Virtual Staging"><StagingTab /></ErrorBoundary></div>
+        <div className={tab === 'removal' ? undefined : 'hidden'}><ErrorBoundary label="Furniture Removal"><RemovalTab /></ErrorBoundary></div>
+        <div className={tab === 'twilight' ? undefined : 'hidden'}><ErrorBoundary label="Twilight"><TwilightTab /></ErrorBoundary></div>
+      </div>
+    </div>
+  );
+}
+
+// ── Property Description: Description 1⚡ / Social Media 2⚡ ─────────────
+function DescriptionPage() {
+  const loading = useSimulatedLoading(300);
+  const [tab, setTab] = useToolTab(['description', 'social'], 'description');
+  const tabs = [
+    { id: 'description', label: 'Description', icon: <FileText className="w-4 h-4" />, cost: 1 },
+    { id: 'social', label: 'Social Media', icon: <Share2 className="w-4 h-4" />, cost: 2 },
+  ];
+  if (loading) return <DashboardSkeleton />;
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <TrialDeadlineModal />
+      <ToolPageHeader title="Property Description" subtitle="AI write-ups for your listing — a full description or ready-to-post social copy." />
+      <div className="flex flex-wrap gap-2 pb-2">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 ${tab === t.id ? 'tab-pill tab-pill-active' : 'tab-pill'}`}>
+            {t.icon} <span className="hidden sm:inline">{t.label}</span>
+            <span className="text-[10px] font-bold text-yellow-300" title={`${t.cost} credits per render`}>⚡{t.cost}</span>
+          </button>
+        ))}
+      </div>
+      <div className="card-dark p-6">
+        <div className={tab === 'description' ? undefined : 'hidden'}><ErrorBoundary label="Description"><DescriptionTab /></ErrorBoundary></div>
+        <div className={tab === 'social' ? undefined : 'hidden'}><ErrorBoundary label="Social Media"><SocialTab /></ErrorBoundary></div>
+      </div>
+    </div>
+  );
+}
+
+// ── Video Generator: the 8-step render wizard (see VideoTab) ────────────
+function VideoGeneratorPage() {
+  const { user } = useCredit();
+  // Shared voiceover script: the wizard's AI Write step generates it, the
+  // AI Avatar Video step speaks it.
   const [sharedScript, setSharedScript] = useState('');
-  // Shared voiceover language (BCP-47): both tabs narrate the same script in
-  // the same one of South Africa's 11 official languages.
+  // Shared voiceover language (BCP-47): reel and avatar narrate the same
+  // script in the same one of South Africa's 11 official languages.
   const [sharedLanguage, setSharedLanguage] = useState(DEFAULT_VOICE_LANGUAGE);
   // Script-vs-language mismatch detection (LLM, debounced, fail-open): the
   // narrator reads the script verbatim with no auto-translation, so a
-  // wrong-language script must surface a warning + one-click fix in BOTH
-  // tabs that speak it. One shared instance keeps dismissal consistent.
+  // wrong-language script must surface a warning + one-click fix. One shared
+  // instance keeps dismissal consistent across the steps that speak it.
   const langCheck = useVoiceoverLanguageCheck(sharedScript, sharedLanguage, setSharedScript);
-  // Shared avatar photo: chosen in the Video tab's AI Avatar Video add-on,
-  // carried over to the Talking Head tab automatically. Persisted so a full
-  // page reload doesn't orphan the photo the agent already picked.
+  // Shared avatar photo: chosen in the AI Avatar Video step, persisted so a
+  // full page reload doesn't orphan the photo the agent already picked.
   const [sharedProfileImage, setSharedProfileImage, sharedProfileImageReady] = useStudioDraft<string | null>(studioDraftKey(user?.id, 'studio:profile-image'), null);
   // Photos + script handed over from a listing card, a project card or the
-  // Property Description tab (queued via src/lib/videoPrefill.ts).
+  // Property Description page (queued via src/lib/videoPrefill.ts).
   const [prefillImages, setPrefillImages] = useState<string[]>([]);
   useEffect(() => {
-    if (tab !== 'video') return;
     const pf = takeVideoRender();
     if (!pf) return;
     if (pf.script) setSharedScript(pf.script);
     if (pf.images && pf.images.length) setPrefillImages(pf.images);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
-  const tabs = [
-    { id: 'description', label: 'Description', icon: <FileText className="w-4 h-4" />, cost: 1 },
-    { id: 'photo', label: 'Photo Editor', icon: <Camera className="w-4 h-4" />, cost: 2 },
-    { id: 'staging', label: 'Virtual Staging', icon: <Sofa className="w-4 h-4" />, cost: 2 },
-    { id: 'removal', label: 'Furniture Removal', icon: <Trash2 className="w-4 h-4" />, cost: 2 },
-    { id: 'twilight', label: 'Twilight', icon: <MoonIcon className="w-4 h-4" />, cost: 2 },
-    { id: 'social', label: 'Social Media', icon: <Share2 className="w-4 h-4" />, cost: 2 },
-    { id: 'video', label: 'Video Generator', icon: <Video className="w-4 h-4" />, cost: null },
-    { id: 'flashhead', label: 'AI Avatar Video', icon: <Mic className="w-4 h-4" />, cost: 8 },
-  ];
-
+  }, []);
   return (
     <div className="space-y-6 animate-fade-in">
       <TrialDeadlineModal />
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Studio</h1>
-          <p className="text-ink-400 mt-1">8 AI-powered tools to market your properties.</p>
-          <p className="text-xs text-ink-500 mt-1 flex items-center gap-1"><Clock className="w-3 h-3 shrink-0" /> {RETENTION_NOTICE}</p>
-          <p className="text-xs text-amber-400/90 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3 shrink-0" /> Every tool here renders with AI — outputs can be wrong, and credits spent on unsatisfactory results are non-refundable. <button type="button" onClick={openAIDisclaimer} className="underline hover:text-amber-300 font-medium">Read the full AI notice</button></p>
-        </div>
-        <Link
-          to="/dashboard/credits"
-          className="badge badge-brand hover:bg-white/10 transition"
-          title="Recharge credits"
-        >
-          <Zap className="w-3 h-3" /> {user?.credits ?? 0} credits
-        </Link>
-      </div>
-      {/* Tab Navigation */}
-      <div className="flex flex-wrap gap-2 pb-2">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 ${tab === t.id ? 'tab-pill tab-pill-active' : 'tab-pill'}`}>
-            {t.icon} <span className="hidden sm:inline">{t.label}</span>
-            {t.cost ? <span className="text-[10px] font-bold text-yellow-300" title={`${t.cost} credits per render`}>⚡{t.cost}</span> : <span className="text-[10px] font-bold text-yellow-300" title="Credits by video tier">⚡</span>}
-          </button>
-        ))}
-      </div>
-      {/* Tab Content — every panel stays mounted (inactive ones are
-          display:none) so uploads, drafts and in-flight renders survive tab
-          switches: an image must not vanish because the user peeked at
-          another tab. The user removes an image, or the render completes —
-          only then does it leave the panel. */}
+      <ToolPageHeader title="AI Video Generator" subtitle="Property reel in 8 guided steps — description, tier, photos, orientation, voiceover, avatar, music & branding, render." />
       <div className="card-dark p-6">
-        {/* Each panel gets its own boundary so one tool's render error shows a
-            labelled retry card inside its (possibly hidden) wrapper instead of
-            unmounting the whole Studio — the other seven tabs keep working. */}
-        <div className={tab === 'description' ? undefined : 'hidden'}><ErrorBoundary label="Description"><DescriptionTab /></ErrorBoundary></div>
-        <div className={tab === 'photo' ? undefined : 'hidden'}><ErrorBoundary label="Photo Editor"><PhotoEditorTab /></ErrorBoundary></div>
-        <div className={tab === 'staging' ? undefined : 'hidden'}><ErrorBoundary label="Virtual Staging"><StagingTab /></ErrorBoundary></div>
-        <div className={tab === 'removal' ? undefined : 'hidden'}><ErrorBoundary label="Furniture Removal"><RemovalTab /></ErrorBoundary></div>
-        <div className={tab === 'twilight' ? undefined : 'hidden'}><ErrorBoundary label="Twilight"><TwilightTab /></ErrorBoundary></div>
-        <div className={tab === 'social' ? undefined : 'hidden'}><ErrorBoundary label="Social Media"><SocialTab /></ErrorBoundary></div>
-        <div className={tab === 'video' ? undefined : 'hidden'}><ErrorBoundary label="Video Generator"><VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} langCheck={langCheck} onNavigateTab={setTab} initialImages={prefillImages} profileImage={sharedProfileImage} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} /></ErrorBoundary></div>
-        <div className={tab === 'flashhead' ? undefined : 'hidden'}><ErrorBoundary label="AI Avatar Video"><FlashHeadVideo initialScript={sharedScript} onScriptChange={setSharedScript} langCheck={langCheck} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} /></ErrorBoundary></div>
+        <ErrorBoundary label="Video Generator">
+          <VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} langCheck={langCheck} initialImages={prefillImages} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} />
+        </ErrorBoundary>
       </div>
     </div>
   );
+}
+
+/** Legacy /studio links (help pages, bookmarks, old notifications) land on
+ *  the matching new dashboard tool route. */
+function StudioRedirect() {
+  const [searchParams] = useSearchParams();
+  const t = searchParams.get('tab');
+  const to =
+    t === 'video' || t === 'flashhead' ? '/dashboard/video'
+    : t === 'description' || t === 'social' ? '/dashboard/description'
+    : t === 'staging' || t === 'removal' || t === 'twilight' ? `/dashboard/photo-editor?tab=${t}`
+    : '/dashboard/photo-editor';
+  return <Navigate to={to} replace />;
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -1707,7 +1749,7 @@ function DescriptionTab() {
           <textarea className="input min-h-[200px]" value={description} onChange={e => setDescription(e.target.value)} />
           <div className="flex flex-wrap gap-3">
             <button
-              onClick={() => { queueVideoRender({ images, script: description }); navigate('/studio?tab=video'); }}
+              onClick={() => { queueVideoRender({ images, script: description }); navigate('/dashboard/video'); }}
               className="btn btn-primary"
               title="Auto-format these photos into a video render with this description as the voiceover"
             >
@@ -2299,7 +2341,7 @@ function SocialTab() {
 
 const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 
-function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, initialImages = [], profileImage, onProfileImageChange, language, onLanguageChange }: { sharedScript: string; onScriptChange: (s: string) => void; langCheck: VoiceoverLanguageCheck; onNavigateTab: (t: string) => void; initialImages?: string[]; profileImage: string | null; onProfileImageChange: (img: string | null) => void; language: string; onLanguageChange: (l: string) => void }) {
+function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [], profileImage, profileImageReady = true, onProfileImageChange, language, onLanguageChange }: { sharedScript: string; onScriptChange: (s: string) => void; langCheck: VoiceoverLanguageCheck; initialImages?: string[]; profileImage: string | null; profileImageReady?: boolean; onProfileImageChange: (img: string | null) => void; language: string; onLanguageChange: (l: string) => void }) {
   const { user, refundCredits, refresh } = useCredit();
   const toast = useToast();
   const uploadWait = useUploadWait();
@@ -2321,7 +2363,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
   // render THIS reel silent — the worker skips synthesis entirely when
   // voiceover_text is empty, so no TTS cost and no freeze-extension.
   const [noNarration, setNoNarration] = useState(false);
-  // Script lives in StudioPage state so the FlashHead tab speaks the same text
+  // Script lives in page state so the AI Avatar Video step speaks the same text
   const script = sharedScript;
   const setScript = onScriptChange;
   // Property Description SOURCE for AI Write: an independent slot inside this
@@ -2330,6 +2372,16 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
   // OUTPUT (and what the Description tab hands over); this one is the RAW
   // listing description the narration should speak from.
   const [propertyDescription, setPropertyDescription] = useStudioDraft<string>(studioDraftKey(user?.id, 'video:property-description'), '');
+  // Structured listing facts (Step 1) — persisted like the description above,
+  // and auto-folded into the AI Write grounding so the voiceover speaks the
+  // real price/beds/features without the agent retyping them.
+  const [fields, setFields] = useStudioDraft<Record<string, string>>(studioDraftKey(user?.id, 'video:listing-details'), {
+    address: '', price: '', propertyType: 'House', province: '', bedrooms: '', bathrooms: '', garages: '', erf: '', floor: '', extraFeatures: '',
+  });
+  const setField = (k: string) => (e: any) => setFields(f => ({ ...f, [k]: e.target.value }));
+  const [selectedFeatures, setSelectedFeatures] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'video:listing-features'), []);
+  const toggleFeature = (f: string) =>
+    setSelectedFeatures(prev => (prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]));
   const [branding, setBranding] = useState(true);
   // The default Agent Branding profile drives the initial toggle state
   useEffect(() => {
@@ -2422,7 +2474,30 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
   // in them refines the narration (finishes, light, garden, views).
   const localDescription = propertyDescription.trim();
   const sharedDescription = sharedScript.trim();
-  const hasDescription = !!(localDescription || sharedDescription);
+  // Structured Step-1 facts as one compact block. Only non-empty fields are
+  // included, so an untouched form adds nothing to the grounding. The raw
+  // price is formatted to ZAR the same way DescriptionTab does it.
+  const listingSummary = (() => {
+    const rawPrice = (fields.price || '').trim();
+    const price = !rawPrice ? ''
+      : /^\d[\d\s,]*$/.test(rawPrice) && Number(rawPrice.replace(/[^\d]/g, '')) > 0
+        ? formatZar(Number(rawPrice.replace(/[^\d]/g, '')))
+        : rawPrice;
+    const facts: string[] = [];
+    if ((fields.address || '').trim()) facts.push(`Address: ${fields.address.trim()}`);
+    if (price) facts.push(`Price: ${price}`);
+    if ((fields.propertyType || '').trim()) facts.push(`Property type: ${fields.propertyType}`);
+    if ((fields.province || '').trim()) facts.push(`Province: ${fields.province}`);
+    if ((fields.bedrooms || '').trim()) facts.push(`Bedrooms: ${fields.bedrooms}`);
+    if ((fields.bathrooms || '').trim()) facts.push(`Bathrooms: ${fields.bathrooms}`);
+    if ((fields.garages || '').trim()) facts.push(`Garages: ${fields.garages}`);
+    if ((fields.erf || '').trim()) facts.push(`Erf size: ${fields.erf} m²`);
+    if ((fields.floor || '').trim()) facts.push(`Floor size: ${fields.floor} m²`);
+    if (selectedFeatures.length) facts.push(`Key features: ${selectedFeatures.join(', ')}`);
+    if ((fields.extraFeatures || '').trim()) facts.push(`Extra features: ${fields.extraFeatures.trim()}`);
+    return facts.join(' · ');
+  })();
+  const hasDescription = !!(localDescription || sharedDescription || listingSummary);
   const primarySource: 'description' | 'photo_list' = hasDescription ? 'description' : 'photo_list';
 
   // Photo upload: presigned browser → S3, keeps the public URLs the render
@@ -2472,7 +2547,10 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
   // photos. The old call sent NEITHER — the script was invented with zero
   // grounding in the listing, so agents retyped it every time.
   const generateScript = async () => {
-    const source = localDescription || sharedDescription;
+    const descriptionPart = localDescription || sharedDescription;
+    // The structured Step-1 facts ride along with whichever description
+    // exists (or stand alone as the grounding when only the form is filled).
+    const source = [descriptionPart, listingSummary].filter(Boolean).join('\n\n');
     if (primarySource === 'photo_list') {
       toast.info(
         'No Property Description yet — the script will be written from your uploaded photos instead.',
@@ -2719,11 +2797,122 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
 
   const totalCredits = selectedConfig.credits;
 
+  // ── 8-step wizard (same numbered-step UX as New Listing) ─────────────
+  // Steps 1–4 are the core setup; 5–8 are optional add-ons the agent can
+  // skip past. All form state lives in this component, so stepping back and
+  // forth never loses an edit — and the AI Avatar Video panel stays mounted
+  // (hidden) once enabled, so an in-flight avatar render keeps polling.
+  const WIZARD_STEPS = [
+    { id: 'description', label: 'Description' },
+    { id: 'tier', label: 'Tier & Config' },
+    { id: 'photos', label: 'Photos' },
+    { id: 'orientation', label: 'Orientation' },
+    { id: 'voiceover', label: 'Voiceover' },
+    { id: 'avatar', label: 'AI Avatar' },
+    { id: 'extras', label: 'Music & Branding' },
+    { id: 'render', label: 'Render' },
+  ];
+  const [step, setStep] = useState(0);
+  // Photos are the one hard gate — a reel without images can't render.
+  const canNext = step !== 2 || uploadedImages.length > 0;
+  const nextStep = () => { if (step < WIZARD_STEPS.length - 1 && canNext) setStep(step + 1); };
+  const prevStep = () => setStep(s => Math.max(0, s - 1));
+
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-bold text-white flex items-center gap-2"><Video className="w-5 h-5 text-purple-400" /> AI Video Generator</h2>
-      
-      {/* 1. Video Tier */}
+
+      {/* Wizard steps — same numbered layout as the New Listing flow */}
+      <div className="flex items-center">
+        {WIZARD_STEPS.map((s, i) => (
+          <div key={s.id} className={`flex items-center ${i > 0 ? 'flex-1' : ''}`}>
+            {i > 0 && <div className={`h-0.5 flex-1 mx-2 ${i <= step ? 'bg-purple-600' : 'bg-white/10'}`} />}
+            <div className="flex flex-col items-center gap-1">
+              <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                i < step ? 'bg-purple-700 text-white' : i === step ? 'bg-purple-700/30 border border-purple-500 text-white' : 'bg-white/10 text-ink-400'
+              }`}>
+                {i < step ? <Check className="w-4 h-4" /> : i + 1}
+              </span>
+              <span className={`text-[11px] hidden sm:block ${i === step ? 'text-white' : 'text-ink-500'}`}>{s.label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Step 1 — Property Description (source for AI Write) */}
+      {step === 0 && (
+      <div>
+        <div className="flex items-center justify-between">
+          <label className="label">Property Description</label>
+          {propertyDescription.trim() && (
+            <button onClick={() => setPropertyDescription('')} className="text-xs text-ink-400 hover:text-red-400">Clear</button>
+          )}
+        </div>
+        <textarea
+          className="input min-h-[140px]"
+          value={propertyDescription}
+          onChange={e => setPropertyDescription(e.target.value)}
+          placeholder={"Bedrooms, bathrooms, stand size, finishes, view, garden, location highlights...\n\nAI Write turns this into a voiceover script that fills the selected video length — your uploaded photos sharpen what it describes."}
+          aria-label="Property Description source for the AI voiceover script"
+        />
+        <p className="text-xs text-ink-500 mt-1">
+          {/* Keep the phrase in sync with generateScript's toast */}
+          {propertyDescription.trim()
+            ? 'AI Write will base the voiceover on this description' + (uploadedImages.length ? ` and what it sees in your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}` : '') + (listingSummary ? ' — the listing details below are folded in too' : '')
+            : listingSummary
+              ? 'AI Write will speak from the listing details below' + (uploadedImages.length ? ` and what it sees in your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}` : '')
+              : uploadedImages.length
+                ? `No description yet — AI Write will write purely from your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}`
+                : 'Add a description, listing details below, or photos for AI Write to work from'}
+        </p>
+
+        {/* Structured listing facts — auto-folded into the AI Write
+            grounding (generateScript appends listingSummary), so the
+            voiceover speaks the real price/beds/features. Same field set
+            as the Property Description page. */}
+        <div className="mt-6 pt-4 border-t border-white/5 space-y-4">
+          <p className="text-xs text-purple-300">Listing details — auto-added to AI Write in the Voiceover Script step</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2"><label className="label">Address</label><input className="input" value={fields.address} onChange={setField('address')} placeholder="Street, suburb, city" aria-label="Address" /></div>
+            <div><label className="label">Price (ZAR)</label><CurrencyInput className="input" value={fields.price} onChange={v => setFields(f => ({ ...f, price: v }))} placeholder="12,500,000" aria-label="Price in rand" /></div>
+            <div>
+              <label className="label">Property Type</label>
+              <select className="input" value={fields.propertyType} onChange={setField('propertyType')} aria-label="Property Type">
+                {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Province</label>
+              <select className="input" value={fields.province} onChange={setField('province')} aria-label="Province">
+                <option value="">Select province…</option>
+                {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div><label className="label">Bedrooms</label><input className="input" type="number" value={fields.bedrooms} onChange={setField('bedrooms')} placeholder="5" /></div>
+            <div><label className="label">Bathrooms</label><input className="input" type="number" value={fields.bathrooms} onChange={setField('bathrooms')} placeholder="4" /></div>
+            <div><label className="label">Garages</label><input className="input" type="number" value={fields.garages} onChange={setField('garages')} placeholder="3" /></div>
+            <div><label className="label">Erf Size (m²)</label><input className="input" type="number" value={fields.erf} onChange={setField('erf')} placeholder="600" /></div>
+            <div><label className="label">Floor Size (m²)</label><input className="input" type="number" value={fields.floor} onChange={setField('floor')} placeholder="280" /></div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="label mb-0">Key Features <span className="text-ink-500 font-normal">({selectedFeatures.length} selected)</span></label>
+              {selectedFeatures.length > 0 && (
+                <button onClick={() => setSelectedFeatures([])} className="text-xs text-ink-400 hover:text-red-400">Clear</button>
+              )}
+            </div>
+            <FeatureChips selected={selectedFeatures} onToggle={toggleFeature} />
+          </div>
+          <div>
+            <label className="label">Extra features (optional)</label>
+            <input className="input" value={fields.extraFeatures} onChange={setField('extraFeatures')} placeholder="gas stove, walk-in pantry, skyline views" />
+          </div>
+        </div>
+      </div>
+      )}
+
+      {/* Step 2 — Video Tier / Configuration */}
+      {step === 1 && (<>
       <div>
         <label className="label">Video Tier</label>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -2745,7 +2934,6 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         </div>
       </div>
 
-      {/* 1.5 Configuration Selection */}
       <div>
         <label className="label">Configuration</label>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -2765,7 +2953,10 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         </div>
       </div>
 
-      {/* 2. Property Photos */}
+      </>)}
+
+      {/* Step 3 — Property Photos */}
+      {step === 2 && (
       <div>
         <div className="flex items-center justify-between">
           <label className="label">Property Photos ({uploadedImages.length} / {selectedConfig.images})</label>
@@ -2817,7 +3008,10 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         )}
       </div>
 
-      {/* 3. Orientation */}
+      )}
+
+      {/* Step 4 — Orientation */}
+      {step === 3 && (
       <div>
         <label className="label">Orientation</label>
         <div className="flex gap-3">
@@ -2833,7 +3027,10 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         </div>
       </div>
 
-      {/* 4. Voiceover Script */}
+      )}
+
+      {/* Step 5 — Voiceover Script / Language / Narrator Voice (optional) */}
+      {step === 4 && (<>
       <div>
         <label className="label">Voiceover Language</label>
         <select
@@ -2864,32 +3061,6 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         <p className="text-xs text-ink-500 mt-1">
           Target word count: {targetWords} words (based on {selectedConfig.duration}s duration at 2.4 words/second)
         </p>
-      {/* 4.5 Property Description (source) + Voiceover Script (output) —
-          AI Write narrates the completed description here, with the
-          uploaded photos refining what the model says it sees. */}
-      <div>
-        <div className="flex items-center justify-between">
-          <label className="label">Property Description (source)</label>
-          {propertyDescription.trim() && (
-            <button onClick={() => setPropertyDescription('')} className="text-xs text-ink-400 hover:text-red-400">Clear</button>
-          )}
-        </div>
-        <textarea
-          className="input min-h-[110px]"
-          value={propertyDescription}
-          onChange={e => setPropertyDescription(e.target.value)}
-          placeholder={"Bedrooms, bathrooms, stand size, finishes, view, garden, location highlights...\n\nAI Write turns this into a voiceover script that fills the selected video length — your uploaded photos sharpen what it describes."}
-          aria-label="Property Description source for the AI voiceover script"
-        />
-        <p className="text-xs text-ink-500 mt-1">
-          {/* Keep the phrase in sync with generateScript's toast */}
-          {propertyDescription.trim()
-            ? 'AI Write will base the voiceover on this description' + (uploadedImages.length ? ` and what it sees in your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}` : '')
-            : uploadedImages.length
-              ? `No description yet — AI Write will write purely from your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}`
-              : 'Add a description or photos for AI Write to work from'}</p>
-      </div>
-
       <textarea 
         className="input min-h-[120px]" 
         value={script} 
@@ -2908,8 +3079,8 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         )}
       </div>
 
-      {/* 5. Narrator Voice — only voices that natively speak the selected
-          language; the choice below lets agents skip narration entirely */}
+      {/* Narrator Voice — only voices that natively speak the selected
+          language; the toggle below lets agents skip narration entirely */}
       <div>
         <div className="flex items-center justify-between">
           <label className="label">Narrator Voice</label>
@@ -2957,41 +3128,37 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         )}
         {!noNarration && voicePreview.error && <p className="text-xs text-red-400 mt-1">{voicePreview.error}</p>}
       </div>
+      </>)}
 
-      {/* 6. AI Avatar Video add-on → dedicated Talking Head tab */}
-      <AITalkingProfile
-        enabled={aiTalkingProfile}
-        onToggle={setAiTalkingProfile}
-        profileImage={profileImage}
-        onProfileImageChange={setProfileImage}
-        voiceoverScript={script}
-      />
-      {aiTalkingProfile && (
-        <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-white flex items-center gap-2">
-                <Mic className="w-4 h-4 text-purple-400" /> AI Avatar Video lip-sync add-on
-              </p>
-              <p className="text-xs text-ink-400 mt-1">
-                Your script ({script.trim() ? `${script.trim().split(/\s+/).length} words` : 'not generated yet'}) travels with you —
-                finish setup on the AI Avatar Video tab: upload your headshot, pick a voice, render (+8 credits).
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                onNavigateTab('flashhead');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="btn btn-primary whitespace-nowrap text-sm"
-            >
-              Continue to AI Avatar Video <ArrowRight className="w-4 h-4" />
-            </button>
+      {/* Step 6 — AI Avatar Video (optional, +8 credits). The panel stays
+          mounted once enabled (hidden off-step) so an in-flight avatar
+          render keeps polling while the agent works on later steps. */}
+      <div className={step === 5 ? undefined : 'hidden'}>
+        <AITalkingProfile
+          enabled={aiTalkingProfile}
+          onToggle={setAiTalkingProfile}
+          profileImage={profileImage}
+          onProfileImageChange={setProfileImage}
+          voiceoverScript={script}
+        />
+        {aiTalkingProfile && (
+          <div className="mt-4">
+            <FlashHeadVideo
+              initialScript={script}
+              onScriptChange={setScript}
+              langCheck={langCheck}
+              profileImage={profileImage}
+              profileImageReady={profileImageReady}
+              onProfileImageChange={setProfileImage}
+              language={language}
+              onLanguageChange={onLanguageChange}
+            />
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* 7. Background Music */}
+      {/* Step 7 — Background Music / Agent Profile Branding (optional) */}
+      {step === 6 && (<>
       <div>
         <label className="label flex items-center gap-2">
           <Music className="w-4 h-4 text-purple-400" />
@@ -3033,7 +3200,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         </div>
       </div>
 
-      {/* 8. Branding & Music — tap-to-include toggles */}
+      {/* Branding & Music — tap-to-include toggles */}
       <div className="space-y-3">
         <label className="label">Enhancements</label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3079,8 +3246,33 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
           </div>
         )}
       </div>
+      </>)}
 
-      {/* Generate Button */}
+      {/* Wizard nav — Back / Next (render lives on the last step) */}
+      <div className="flex items-center justify-between pt-2 border-t border-white/5">
+        <button
+          type="button"
+          onClick={prevStep}
+          disabled={step === 0}
+          className="btn btn-secondary text-sm"
+        >
+          <ChevronLeft className="w-4 h-4" /> Back
+        </button>
+        <span className="text-xs text-ink-500">Step {step + 1} of {WIZARD_STEPS.length} · {WIZARD_STEPS[step].label}</span>
+        {step < WIZARD_STEPS.length - 1 ? (
+          <button type="button" onClick={nextStep} disabled={!canNext} className="btn btn-primary text-sm">
+            Next <ChevronRight className="w-4 h-4" />
+          </button>
+        ) : (
+          <span className="w-[88px]" />
+        )}
+      </div>
+      {step === 2 && !canNext && (
+        <p className="text-xs text-amber-400/90 text-center">Add at least one property photo to continue — a reel needs images to render.</p>
+      )}
+
+      {/* Step 8 — Render / Video Player */}
+      {step === 7 && (
       <div className="space-y-3">
         <button 
           onClick={() => guardAIRender(generateReel)} 
@@ -3102,7 +3294,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
         )}
         {aiTalkingProfile && (
           <p className="text-xs text-ink-400 text-center">
-            Video: {selectedConfig.credits} credits here — the AI Avatar Video lip-sync (+8 credits) renders on its own tab with your script.
+            Reel: {selectedConfig.credits} credits here — the AI Avatar Video lip-sync (+8 credits) renders separately on Step 6 with your script.
           </p>
         )}
         {!generating && lastRenderUrl && (
@@ -3125,6 +3317,30 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, onNavigateTab, init
             <Share2 className="w-4 h-4" /> Share to social media
           </button>
         )}
+      </div>
+      )}
+      {/* Wizard nav — Back / Next (the photos gate on step 3 blocks Next) */}
+      <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
+        <button
+          type="button"
+          onClick={prevStep}
+          disabled={step === 0}
+          className="btn btn-ghost min-h-[44px] px-4 disabled:opacity-40"
+        >
+          ← Back
+        </button>
+        <span className="text-xs text-ink-500">Step {step + 1} of {WIZARD_STEPS.length} — {WIZARD_STEPS[step].label}</span>
+        {step < WIZARD_STEPS.length - 1 ? (
+          <button
+            type="button"
+            onClick={nextStep}
+            disabled={!canNext}
+            className="btn btn-primary min-h-[44px] px-6 disabled:opacity-40"
+            title={canNext ? undefined : 'Add at least one property photo to continue'}
+          >
+            Next →
+          </button>
+        ) : <div className="w-24" />}
       </div>
       {shareOpen && lastRenderUrl && (
         <ShareSheet
@@ -4143,10 +4359,10 @@ function useKeyboardShortcuts() {
         return;
       }
 
-      // N - Open Studio
+      // N - Open the AI Video Generator
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
-        navigate('/studio');
+        navigate('/dashboard/video');
       }
       
       // R - Open Recent Projects
@@ -4292,14 +4508,19 @@ function AppRoutes() {
       <Route path="/dashboard/projects" element={<RequireAuth><DashboardLayout><DashboardMyProjects /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/branding" element={<RequireAuth><DashboardLayout><DashboardBranding /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/analytics" element={<RequireAuth><DashboardLayout><DashboardAnalytics /></DashboardLayout></RequireAuth>} />
-      <Route path="/dashboard/billing" element={<RequireAuth><DashboardLayout><DashboardBilling /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/photo-editor" element={<RequireAuth><DashboardLayout><PhotoEditorPage /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/description" element={<RequireAuth><DashboardLayout><DescriptionPage /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/video" element={<RequireAuth><DashboardLayout><VideoGeneratorPage /></DashboardLayout></RequireAuth>} />
+      {/* Billing moved into Credits; Notifications moved into Settings */}
+      <Route path="/dashboard/billing" element={<Navigate to="/dashboard/credits?tab=billing" replace />} />
       <Route path="/dashboard/agency" element={<RequireAuth><DashboardLayout><DashboardAgency /></DashboardLayout></RequireAuth>} />
       <Route path="/agency/signup" element={<RequireAuth><AgencySignup /></RequireAuth>} />
       <Route path="/dashboard/settings" element={<RequireAuth><DashboardLayout><DashboardSettings /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/cancel-subscription" element={<RequireAuth><CancelSubscriptionPage /></RequireAuth>} />
       <Route path="/dashboard/delete-account" element={<RequireAuth><DeleteAccountPage /></RequireAuth>} />
-      <Route path="/dashboard/notifications" element={<RequireAuth><DashboardLayout><NotificationCenter /></DashboardLayout></RequireAuth>} />
-      <Route path="/studio" element={<RequireAuth><DashboardLayout><StudioPage /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/notifications" element={<Navigate to="/dashboard/settings?tab=notifications" replace />} />
+      {/* Legacy /studio links redirect to the matching tool route */}
+      <Route path="/studio" element={<StudioRedirect />} />
       <Route path="/admin" element={<RequireAdmin><DashboardLayout><AdminPage /></DashboardLayout></RequireAdmin>} />
       <Route path="/admin/integrations" element={<RequireAdmin><DashboardLayout><AdminIntegrations /></DashboardLayout></RequireAdmin>} />
       <Route path="*" element={<NotFoundPage />} />

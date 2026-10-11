@@ -4,7 +4,7 @@ import { Play, Home, Search, ArrowLeft } from 'lucide-react';
 const popularPages = [
   { to: '/', label: 'Home' },
   { to: '/pricing', label: 'Pricing' },
-  { to: '/studio', label: 'Studio' },
+  { to: '/dashboard/video', label: 'Video Generator' },
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/reviews', label: 'Reviews' },
   { to: '/contact', label: 'Contact' },

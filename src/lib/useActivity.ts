@@ -63,7 +63,7 @@ export function useActivity(userId: string | undefined) {
               title: 'Video Render Started',
               message: `${Math.abs(t.amount)} credits reserved for a video render.`,
               timestamp: when, read: false,
-              actionUrl: '/studio?tab=video',
+              actionUrl: '/dashboard/video',
             });
           } else if (t.amount < 0 && reason.includes('image')) {
             feed.push({
@@ -72,7 +72,7 @@ export function useActivity(userId: string | undefined) {
               title: 'AI Photo Edit',
               message: `${Math.abs(t.amount)} credits used for an AI photo edit.`,
               timestamp: when, read: false,
-              actionUrl: '/studio?tab=photo',
+              actionUrl: '/dashboard/photo-editor',
             });
           } else if (t.amount < 0 && (reason.includes('flashhead') || reason.includes('talking head') || reason.includes('lip-sync'))) {
             feed.push({
@@ -81,7 +81,7 @@ export function useActivity(userId: string | undefined) {
               title: 'AI Avatar Video',
               message: `${Math.abs(t.amount)} credits used for an AI Avatar Video render.`,
               timestamp: when, read: false,
-              actionUrl: '/studio?tab=flashhead',
+              actionUrl: '/dashboard/video',
             });
           } else if (t.amount < 0 && reason.includes('refund')) {
             // A negative row whose description says refund is unusual — show it honestly
@@ -150,7 +150,7 @@ export function useActivity(userId: string | undefined) {
                 ? `Your AI Avatar Video ("${p.title.replace(/^(AI Avatar Video|Talking Head) — /, '')}") is ready to download or share.`
                 : `"${p.title}" finished rendering and is ready to download or share.`,
               timestamp: p.updatedAt || p.createdAt, read: false,
-              actionUrl: isTalkingHead ? '/studio?tab=flashhead' : '/dashboard/listings',
+              actionUrl: isTalkingHead ? '/dashboard/video' : '/dashboard/listings',
             });
           } else if (p.status === 'FAILED') {
             feed.push({
@@ -159,7 +159,7 @@ export function useActivity(userId: string | undefined) {
               title: isTalkingHead ? 'AI Avatar Video Render Failed' : 'Render Failed',
               message: `"${p.title}" failed to render.`,
               timestamp: p.updatedAt || p.createdAt, read: false,
-              actionUrl: isTalkingHead ? '/studio?tab=flashhead' : '/studio?tab=video',
+              actionUrl: '/dashboard/video',
             });
           }
         }

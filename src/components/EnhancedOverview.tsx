@@ -241,7 +241,7 @@ export default function EnhancedOverview() {
           </h3>
           {statusData.length === 0 ? (
             <div className="h-[160px] flex items-center justify-center text-ink-500 text-sm text-center">
-              No projects yet.<br />Create your first one in the Studio.
+              No projects yet.<br />Create your first one in the Video Generator.
             </div>
           ) : (
             <>
@@ -331,7 +331,7 @@ export default function EnhancedOverview() {
                   <span className="text-white font-medium">{formatZar(sub.nextChargeAmount)}</span>
                 </div>
               ) : null}
-              <Link to="/dashboard/billing" className="btn btn-primary text-xs py-2 w-full mt-2 block text-center">Manage Billing</Link>
+              <Link to="/dashboard/credits?tab=billing" className="btn btn-primary text-xs py-2 w-full mt-2 block text-center">Manage Billing</Link>
             </div>
           </div>
 
@@ -356,8 +356,8 @@ export default function EnhancedOverview() {
         ) : projects.length === 0 ? (
           <div className="card-dark p-10 text-center">
             <p className="text-white font-medium">No projects yet</p>
-            <p className="text-ink-400 text-sm mt-1 mb-4">Head to the Studio to create your first property video.</p>
-            <button onClick={() => navigate('/studio')} className="btn btn-primary text-sm">Open Studio</button>
+            <p className="text-ink-400 text-sm mt-1 mb-4">Head to the Video Generator to create your first property video.</p>
+            <button onClick={() => navigate('/dashboard/video')} className="btn btn-primary text-sm">Open Video Generator</button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

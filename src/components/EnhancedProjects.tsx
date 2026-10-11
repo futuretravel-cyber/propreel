@@ -65,7 +65,7 @@ export default function EnhancedProjects() {
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [moveTarget, setMoveTarget] = useState<string[] | null>(null);
-  // Finished reels open in an inline media player; drafts jump to the Studio.
+  // Finished reels open in an inline media player; drafts jump to the Video Generator.
   const [player, setPlayer] = useState<Project | null>(null);
   const openProject = (p: Project) => {
     if (p.videoUrl && p.status === 'READY') setPlayer(p);
@@ -75,7 +75,7 @@ export default function EnhancedProjects() {
         () => toast.success('Caption copied to clipboard'),
         () => toast.error('Could not copy the caption'),
       );
-    } else navigate('/studio');
+    } else navigate('/dashboard/video');
   };
 
   // ── Real data: load projects + folders from backend ────────────────────
@@ -260,7 +260,7 @@ export default function EnhancedProjects() {
         <div className="flex items-center gap-2">
           <button onClick={reload} className="btn btn-secondary text-sm" title="Reload projects"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
           <button onClick={() => setShowTemplates(!showTemplates)} className="btn btn-secondary text-sm"><FileText className="w-4 h-4" /> Templates</button>
-          <button onClick={() => navigate('/studio')} className="btn btn-primary text-sm"><Plus className="w-4 h-4" /> New Project</button>
+          <button onClick={() => navigate('/dashboard/video')} className="btn btn-primary text-sm"><Plus className="w-4 h-4" /> New Project</button>
         </div>
       </div>
 
@@ -435,7 +435,7 @@ export default function EnhancedProjects() {
               <FolderOpen className="w-10 h-10 text-ink-500 mx-auto mb-3" />
               <p className="text-white font-medium">No projects yet</p>
               <p className="text-ink-400 text-sm mt-1 mb-4">Photo edits, virtual staging, furniture removal, twilight renders, social posts, video reels and AI Avatar Video clips all land here.</p>
-              <button onClick={() => navigate('/studio')} className="btn btn-primary text-sm"><Plus className="w-4 h-4" /> Create in Studio</button>
+              <button onClick={() => navigate('/dashboard/video')} className="btn btn-primary text-sm"><Plus className="w-4 h-4" /> Create in Video Generator</button>
             </div>
           )}
 
@@ -518,7 +518,7 @@ export default function EnhancedProjects() {
                       )}
                       {(p.kind === 'REEL' || !p.kind || p.kind === 'FLASHHEAD') && (!p.videoUrl || p.status !== 'READY') && (
                         <button
-                          onClick={() => { queueVideoRender({ images: p.photos || [], script: p.description || '', title: p.title }); navigate('/studio?tab=video'); }}
+                          onClick={() => { queueVideoRender({ images: p.photos || [], script: p.description || '', title: p.title }); navigate('/dashboard/video'); }}
                           className="flex-1 btn btn-ghost text-xs py-1.5 text-purple-300 hover:text-purple-200"
                           title="Auto-format this project's photos into a video render, using its description as the voiceover"
                         >

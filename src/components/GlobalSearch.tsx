@@ -92,7 +92,7 @@ export default function GlobalSearch() {
           title: project.title,
           subtitle: (isTalkingHead ? 'AI Avatar Video • ' : '') + [project.suburb, project.city].filter(Boolean).join(', ') + (project.price ? ` • ${formatZar(project.price)}` : ''),
           icon: isTalkingHead ? Mic : Video,
-          url: isTalkingHead ? '/studio?tab=flashhead' : '/dashboard/listings',
+          url: isTalkingHead ? '/dashboard/video' : '/dashboard/listings',
           category: 'Projects'
         });
       }
@@ -100,17 +100,20 @@ export default function GlobalSearch() {
 
     // Quick actions
     const actions = [
-      { id: 'new-project', title: 'Create New Project', icon: Video, url: '/studio', category: 'Actions' },
-      { id: 'edit-photo', title: 'Edit Photo with AI', icon: Image, url: '/studio?tab=photo', category: 'Actions' },
-      { id: 'generate-video', title: 'Generate Video', icon: Video, url: '/studio?tab=video', category: 'Actions' },
-      { id: 'avatar-video', title: 'AI Avatar Video', icon: Mic, url: '/studio?tab=flashhead', category: 'Actions' },
+      { id: 'new-project', title: 'Create New Project', icon: Video, url: '/dashboard/video', category: 'Actions' },
+      { id: 'edit-photo', title: 'Edit Photo with AI', icon: Image, url: '/dashboard/photo-editor', category: 'Actions' },
+      { id: 'staging', title: 'Virtual Staging', icon: Image, url: '/dashboard/photo-editor?tab=staging', category: 'Actions' },
+      { id: 'generate-video', title: 'Generate Video', icon: Video, url: '/dashboard/video', category: 'Actions' },
+      { id: 'avatar-video', title: 'AI Avatar Video', icon: Mic, url: '/dashboard/video', category: 'Actions' },
+      { id: 'description', title: 'AI Property Description', icon: FileText, url: '/dashboard/description', category: 'Actions' },
+      { id: 'social', title: 'AI Social Media Post', icon: FileText, url: '/dashboard/description?tab=social', category: 'Actions' },
       { id: 'buy-credits', title: 'Buy Credits', icon: CreditCard, url: '/dashboard/credits', category: 'Actions' },
       { id: 'listings', title: 'Property Listings', icon: FileText, url: '/dashboard/listings', category: 'Pages' },
       { id: 'projects', title: 'My Projects', icon: Video, url: '/dashboard/projects', category: 'Pages' },
-      { id: 'billing', title: 'Billing & Credits', icon: CreditCard, url: '/dashboard/billing', category: 'Pages' },
+      { id: 'billing', title: 'Billing & Credits', icon: CreditCard, url: '/dashboard/credits?tab=billing', category: 'Pages' },
       { id: 'analytics', title: 'Analytics', icon: TrendingUp, url: '/dashboard/analytics', category: 'Pages' },
       { id: 'branding', title: 'Agent Branding', icon: Star, url: '/dashboard/branding', category: 'Pages' },
-      { id: 'notifications', title: 'Notifications', icon: Clock, url: '/dashboard/notifications', category: 'Pages' },
+      { id: 'notifications', title: 'Notifications', icon: Clock, url: '/dashboard/settings?tab=notifications', category: 'Pages' },
       { id: 'settings', title: 'Account Settings', icon: Settings, url: '/dashboard/settings', category: 'Pages' }
     ];
 

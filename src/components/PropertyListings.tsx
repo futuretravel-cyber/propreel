@@ -1094,7 +1094,7 @@ export default function PropertyListings() {
                   onReel={() => {
                     if (p.videoUrl) { navigate('/dashboard/projects'); return; }
                     queueVideoRender({ images: p.photos || [], script: p.description || '', title: p.title });
-                    navigate('/studio?tab=video');
+                    navigate('/dashboard/video');
                   }}
                   onStatus={s => setStatus(p, s)}
                   onDelete={() => remove(p)}

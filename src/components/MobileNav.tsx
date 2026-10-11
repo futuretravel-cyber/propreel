@@ -21,14 +21,14 @@ export default function MobileNav() {
         </NavLink>
 
         <NavLink
-          to="/studio"
-          aria-label="Studio"
+          to="/dashboard/video"
+          aria-label="AI tools"
           className={({ isActive }) =>
             `flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition ${isActive ? 'text-purple-400' : 'text-ink-500'}`
           }
         >
           <Video className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Studio</span>
+          <span className="text-[10px] font-medium">Create</span>
         </NavLink>
 
         <NavLink
