@@ -71,6 +71,7 @@ const ShareSheetBase = lazy(() => import('./components/ShareSheet'));
 const ImageWorkbenchBase = lazy(() => import('./components/ImageWorkbench'));
 const CreditSystemDashboard = lazy(() => import('./components/CreditSystemDashboard'));
 const AdminIntegrations = lazy(() => import('./components/AdminIntegrations'));
+const AdminApiKeysBase = lazy(() => import('./components/AdminApiKeys'));
 const NotificationCenter = lazy(() => import('./components/NotificationCenter'));
 const OnboardingTutorialBase = lazy(() => import('./components/OnboardingTutorial'));
 const HelpModalBase = lazy(() => import('./components/HelpModal'));
@@ -123,6 +124,10 @@ function AITalkingProfile(props: ComponentProps<typeof AITalkingProfileBase>) {
 }
 function AdminMusicLibrary() {
   return <Suspense fallback={<DashboardSkeleton />}><AdminMusicLibraryBase /></Suspense>;
+}
+
+function AdminApiKeys() {
+  return <Suspense fallback={<DashboardSkeleton />}><AdminApiKeysBase /></Suspense>;
 }
 function FlashHeadVideo(props: ComponentProps<typeof FlashHeadVideoBase>) {
   return <Suspense fallback={<DashboardSkeleton />}><FlashHeadVideoBase {...props} /></Suspense>;
@@ -3362,9 +3367,9 @@ function AdminPage() {
         <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {['overview', 'pnl', 'ops', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music'].map(t => (
+        {['overview', 'pnl', 'ops', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music', 'api-keys'].map(t => (
           <button key={t} onClick={() => setTab(t)} className={`tab-pill ${tab === t ? 'tab-pill-active' : ''}`}>
-            {t === 'music' ? 'Music Library' : t === 'pnl' ? 'P&L' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'music' ? 'Music Library' : t === 'pnl' ? 'P&L' : t === 'api-keys' ? 'API Keys' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -3378,6 +3383,7 @@ function AdminPage() {
         {tab === 'settings' && <AdminSettings />}
         {tab === 'prompts' && <AdminPrompts />}
         {tab === 'music' && <AdminMusicLibrary />}
+        {tab === 'api-keys' && <AdminApiKeys />}
       </div>
     </div>
   );

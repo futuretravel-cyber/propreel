@@ -48,7 +48,9 @@ web_app.add_middleware(
 # If the secret is not configured the check is SKIPPED (loud warning) so a
 # deploy without the secret can never take renders down.
 _token_header = "X-PropReel-Token"
-_token_allow_paths = {"/health", "/probe", "/docs", "/openapi.json", "/favicon.ico"}
+# /admin/secret carries its own stronger gate (ADMIN_API_KEY bearer,
+# constant-time compared, allow-listed secret names) — exempt it here.
+_token_allow_paths = {"/health", "/probe", "/docs", "/openapi.json", "/favicon.ico", "/admin/secret"}
 _warned_no_secret = False
 
 
@@ -3336,8 +3338,65 @@ async def api_get_image_presets():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ── Admin: upsert a named Modal secret in place ───────────────────────────
+# The Admin dashboard's API Keys tab POSTs here so a key typed there lands
+# in Modal Secrets without anyone opening the Modal UI. Bearer-gated by
+# ADMIN_API_KEY (secret "admin-api"); only allow-listed secret names are
+# accepted; values are never logged. SDK auth tries the ambient worker
+# client first (it can touch the secrets this app mounts), then falls back
+# to the account token from secret "modal-admin-creds" — which the same
+# request may (re)supply once, to bootstrap a fresh or rotated token.
+_ADMIN_SECRET_ALLOWLIST = {"fal-credentials", "aws-credentials", "narakeet", "render-auth"}
+
+
+@web_app.post("/admin/secret")
+async def admin_secret(request: Request) -> dict:
+    import hmac as _hmac
+    expected = os.environ.get("ADMIN_API_KEY", "")
+    auth = request.headers.get("authorization", "")
+    token = auth[7:] if auth.lower().startswith("bearer ") else ""
+    if not expected or not _hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    body = await request.json()
+    name = str(body.get("name", ""))
+    env_dict = body.get("env_dict") or {}
+    if name not in _ADMIN_SECRET_ALLOWLIST:
+        raise HTTPException(status_code=400, detail=f"name not allow-listed: {name!r}")
+    if not isinstance(env_dict, dict) or not env_dict or not all(
+        isinstance(k, str) and isinstance(v, str) and k and v for k, v in env_dict.items()
+    ):
+        raise HTTPException(status_code=400, detail="env_dict must be a non-empty {str: str}")
+
+    # SDK auth: the account token from secret "modal-admin-creds" (mounted
+    # as env) — or supplied once by the request to bootstrap a fresh or
+    # rotated token, which is then persisted back into that secret.
+    import modal as _modal
+    tok_id = str(body.get("modal_token_id") or os.environ.get("MODAL_TOKEN_ID", ""))
+    tok_sec = str(body.get("modal_token_secret") or os.environ.get("MODAL_TOKEN_SECRET", ""))
+    if not tok_id or not tok_sec:
+        raise HTTPException(status_code=502, detail=(
+            "MODAL_TOKEN_ID/SECRET not available — paste the Modal token once "
+            "in the admin tab (Advanced) or create the modal-admin-creds secret"))
+    try:
+        # NOTE: from_credentials() opens its own stub — SDK 1.5.5 asserts if
+        # it is also used as a context manager, so call it plainly.
+        client = _modal.client.Client.from_credentials(tok_id, tok_sec)
+        sec = _modal.Secret.from_name(name, client=client)
+        sec.update(env_dict)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"secret update failed for {name!r}: {e}")
+    try:
+        client = _modal.client.Client.from_credentials(tok_id, tok_sec)
+        _modal.Secret.from_name("modal-admin-creds", client=client).update(
+            {"MODAL_TOKEN_ID": tok_id, "MODAL_TOKEN_SECRET": tok_sec})
+    except Exception as persist_err:
+        print(f"modal-admin-creds persist skipped: {persist_err}")
+    print(f"admin/secret: updated {name}")
+    return {"ok": True, "name": name, "via": "token"}
+
+
 # Mount the FastAPI app to Modal
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("render-auth"), modal.Secret.from_name("narakeet")])
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("render-auth"), modal.Secret.from_name("narakeet"), modal.Secret.from_name("admin-api"), modal.Secret.from_name("modal-admin-creds")])
 @modal.asgi_app()
 def web():
     """Mount FastAPI app as Modal web endpoint"""

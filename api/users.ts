@@ -52,6 +52,166 @@ async function requireAgencyRole(user_id: string): Promise<{ ok: true; user: any
   return { ok: true, user } as any;
 }
 
+import { SERVICE_KEYS, ALL_FIELD_NAMES } from '../lib/serviceKeys';
+
+// ── Admin → API Keys propagation (consolidated into this function: the
+// Hobby plan caps a deployment at 12 serverless functions). GET returns
+// per-var configuration status (existence only, never values); POST
+// upserts the Vercel project env (+ production redeploy) and the matching
+// Modal secret via the worker's bearer-gated /admin/secret route.
+// Values are pass-through only — never persisted, logged, or re-returned.
+const VERCEL_API = 'https://api.vercel.com';
+const WORKER_URL = () =>
+  (process.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run').replace(/\/$/, '');
+
+async function vercelFetch(path: string, init?: RequestInit): Promise<Response> {
+  const token = process.env.VERCEL_TOKEN;
+  if (!token) throw new Error('VERCEL_TOKEN is not configured');
+  const team = process.env.VERCEL_TEAM_ID ? `teamId=${process.env.VERCEL_TEAM_ID}` : '';
+  return fetch(`${VERCEL_API}${path}${path.includes('?') ? '&' : '?'}${team}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+}
+
+async function upsertVercelEnv(key: string, value: string): Promise<'created' | 'updated'> {
+  const listRes = await vercelFetch(`/v9/projects/${process.env.VERCEL_PROJECT_ID}/env`);
+  if (!listRes.ok) throw new Error(`Vercel env list failed: ${listRes.status} ${(await listRes.text()).slice(0, 200)}`);
+  const { envs } = (await listRes.json()) as { envs: Array<{ id: string; key: string; target?: string[] }> };
+  const existing = envs.find(e => e.key === key);
+  if (existing) {
+    const patch = await vercelFetch(`/v9/projects/${process.env.VERCEL_PROJECT_ID}/env/${existing.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value }),
+    });
+    if (!patch.ok) throw new Error(`Vercel env patch failed: ${patch.status} ${(await patch.text()).slice(0, 200)}`);
+    return 'updated';
+  }
+  const create = await vercelFetch(`/v9/projects/${process.env.VERCEL_PROJECT_ID}/env`, {
+    method: 'POST',
+    body: JSON.stringify({ key, value, target: ['production', 'preview', 'development'] }),
+  });
+  if (!create.ok) throw new Error(`Vercel env create failed: ${create.status} ${(await create.text()).slice(0, 200)}`);
+  return 'created';
+}
+
+async function updateModalSecret(name: string, envDict: Record<string, string>): Promise<{ ok: boolean; via?: string; error?: string }> {
+  const adminKey = process.env.ADMIN_API_KEY;
+  if (!adminKey) return { ok: false, error: 'ADMIN_API_KEY not configured' };
+  try {
+    const res = await fetch(`${WORKER_URL()}/admin/secret`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, env_dict: envDict }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: (data as any)?.detail || `worker ${res.status}` };
+    return { ok: true, via: (data as any)?.via };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'worker unreachable' };
+  }
+}
+
+async function triggerProductionRedeploy(): Promise<{ ok: boolean; url?: string; error?: string }> {
+  const id = process.env.VERCEL_PROJECT_ID;
+  const projRes = await vercelFetch(`/v9/projects/${id}`);
+  if (!projRes.ok) return { ok: false, error: `project lookup failed: ${projRes.status}` };
+  const { name } = (await projRes.json()) as { name: string };
+  const res = await vercelFetch('/v13/deployments', {
+    method: 'POST',
+    body: JSON.stringify({ name, target: ['production'] }),
+  });
+  if (!res.ok) return { ok: false, error: `redeploy failed: ${res.status} ${(await res.text()).slice(0, 200)}` };
+  const data = (await res.json()) as { url?: string; id?: string };
+  return { ok: true, url: data.url || data.id };
+}
+
+async function adminApiKeysRoute(req: VercelRequest, res: VercelResponse) {
+  const gate = await requireAdminSession(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+
+  if (req.method === 'GET') {
+    const envPresence: Record<string, boolean> = {};
+    for (const f of ALL_FIELD_NAMES) envPresence[f] = !!process.env[f];
+    return res.status(200).json({
+      success: true,
+      services: SERVICE_KEYS.map(s => ({ id: s.id, label: s.label, blurb: s.blurb, fields: s.fields.map(f => ({ name: f.name, label: f.label })) })),
+      configured: envPresence,
+      plumbing: {
+        vercelToken: !!process.env.VERCEL_TOKEN,
+        projectId: !!process.env.VERCEL_PROJECT_ID,
+        adminApiKey: !!process.env.ADMIN_API_KEY,
+      },
+    });
+  }
+
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { service_id, values, redeploy } = (req.body || {}) as {
+    service_id?: string; values?: Record<string, string>; redeploy?: boolean;
+  };
+  const spec = SERVICE_KEYS.find(s => s.id === service_id);
+  if (!spec) return res.status(400).json({ error: `Unknown service: ${service_id}` });
+  const clean: Record<string, string> = {};
+  for (const f of spec.fields) {
+    const v = values?.[f.name];
+    if (typeof v === 'string' && v.trim()) clean[f.name] = v.trim();
+  }
+  if (!Object.keys(clean).length) return res.status(400).json({ error: 'No values supplied' });
+  for (const k of Object.keys(clean)) {
+    if (!spec.fields.some(f => f.name === k && ALL_FIELD_NAMES.includes(k))) {
+      return res.status(400).json({ error: `Field not allowed for this service: ${k}` });
+    }
+  }
+
+  const vercel: Array<{ key: string; result?: string; error?: string }> = [];
+  const vercelFields = spec.fields.filter(f => f.vercelEnv && clean[f.name]);
+  if (vercelFields.length && !process.env.VERCEL_TOKEN) {
+    for (const f of vercelFields) vercel.push({ key: f.name, error: 'VERCEL_TOKEN not configured' });
+  } else {
+    for (const f of vercelFields) {
+      try {
+        vercel.push({ key: f.name, result: await upsertVercelEnv(f.name, clean[f.name]) });
+      } catch (e: any) {
+        vercel.push({ key: f.name, error: e?.message || 'failed' });
+      }
+    }
+  }
+
+  const modal: Array<{ secret: string; ok: boolean; via?: string; error?: string }> = [];
+  const groups = new Map<string, Record<string, string>>();
+  for (const f of spec.fields) {
+    if (f.modalSecret && clean[f.name]) {
+      const g = groups.get(f.modalSecret) || {};
+      g[f.name] = clean[f.name];
+      groups.set(f.modalSecret, g);
+    }
+  }
+  for (const [secretName, envDict] of groups) {
+    modal.push({ secret: secretName, ...(await updateModalSecret(secretName, envDict)) });
+  }
+
+  let redeployResult: { ok: boolean; url?: string; error?: string } | null = null;
+  const vercelOk = vercel.some(v => v.result);
+  if (redeploy !== false && vercelOk) {
+    redeployResult = await triggerProductionRedeploy().catch((e: any) => ({ ok: false, error: e?.message || 'redeploy failed' }));
+  }
+
+  const envLines = Object.entries(clean).map(([k, v]) => `${k}=${v}`).join('\n');
+
+  return res.status(200).json({
+    success: vercel.every(v => !v.error) && modal.every(m => m.ok),
+    vercel,
+    modal,
+    redeploy: redeployResult,
+    envLines,
+  });
+}
+
 async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: string) {
   const {
     createAgency, getAgency, updateAgency, listMembers, addMemberToAgency,
@@ -2456,6 +2616,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.query.action === 'audit_log' && req.method === 'GET') {
     return auditLog(req, res);
+  }
+  if (req.query.action === 'admin_api_keys') {
+    return adminApiKeysRoute(req, res);
   }
   // ── GET ?action=media_sign&url=… ────────────────────────────────────
   // Studio drafts persist their photo URLs in IndexedDB (studioDrafts):
