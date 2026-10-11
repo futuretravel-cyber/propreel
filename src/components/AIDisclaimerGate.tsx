@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import {
   AI_DISCLAIMER_SENTENCES,
@@ -112,7 +113,8 @@ export default function AIDisclaimerGate() {
         </div>
 
         <p className="text-xs text-ink-500 mt-3">
-          Acknowledged once and stored on your account with the date — every render after this, on any device you sign in on, starts without the prompt.
+          Acknowledged once and stored on your account with the date — every render after this, on any device you sign in on, starts without the prompt.{' '}
+          <Link to="/ai-notice" onClick={dismiss} className="underline hover:text-ink-300">Read the full AI notice</Link>
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 mt-5">

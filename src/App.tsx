@@ -16,7 +16,7 @@ import { TIERS, ORIENTATIONS, SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLan
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI, useUploadWait } from './lib/api';
 import { drainBacklog, enqueueImagesForAI, uploadStatusText, useUploadQueue } from './lib/uploadQueue';
-import { AI_DISCLAIMER_TEXT, guardAIRender, openAIDisclaimer } from './lib/aiDisclaimer';
+import { AI_DISCLAIMER_TEXT, guardAIRender } from './lib/aiDisclaimer';
 import FeatureChips from './components/FeatureChips';
 import CurrencyInput from './components/CurrencyInput';
 import { geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
@@ -87,6 +87,7 @@ const TutorialVideoPage = lazy(() => import('./pages/TutorialVideoPage'));
 const BlogIndexPage = lazy(() => import('./pages/BlogIndexPage'));
 const BlogPostPage = lazy(() => import('./pages/BlogPostPage'));
 const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
+const AiNoticePage = lazy(() => import('./pages/AiNoticePage'));
 const TermsOfServicePage = lazy(() => import('./pages/TermsOfServicePage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
 const CookiePolicyPage = lazy(() => import('./pages/CookiePolicyPage'));
@@ -1300,7 +1301,7 @@ function ToolPageHeader({ title, subtitle }: { title: string; subtitle: string }
         <h1 className="text-2xl font-bold text-white">{title}</h1>
         <p className="text-ink-400 mt-1">{subtitle}</p>
         <p className="text-xs text-ink-500 mt-1 flex items-center gap-1"><Clock className="w-3 h-3 shrink-0" /> {RETENTION_NOTICE}</p>
-        <p className="text-xs text-amber-400/90 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3 shrink-0" /> Every tool here renders with AI — outputs can be wrong, and credits spent on unsatisfactory results are non-refundable. <button type="button" onClick={openAIDisclaimer} className="underline hover:text-amber-300 font-medium">Read the full AI notice</button></p>
+        <p className="text-xs text-amber-400/90 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3 shrink-0" /> Every tool here renders with AI — outputs can be wrong, and credits spent on unsatisfactory results are non-refundable. <Link to="/ai-notice" className="underline hover:text-amber-300 font-medium">Read the full AI notice</Link></p>
       </div>
       <Link
         to="/dashboard/credits"
@@ -1899,7 +1900,7 @@ function RemovalTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Furniture Removal costs 4 credits per render
+          Furniture Removal costs 2 credits per render
         </p>
       </div>
       {/* Upload first — the drop zone sits at the top of the workflow */}
@@ -1908,7 +1909,7 @@ function RemovalTab() {
         draftSlot="removal"
         strength={selectedPreset?.strength.default}
         guidanceScale={selectedPreset?.guidanceScale.default}
-        ctaLabel="Remove (4 credits)"
+        ctaLabel="Remove (2 credits)"
         emptyHint="Upload a photo with furniture or clutter to remove"
       />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2817,6 +2818,19 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   const canNext = step !== 2 || uploadedImages.length > 0;
   const nextStep = () => { if (step < WIZARD_STEPS.length - 1 && canNext) setStep(step + 1); };
   const prevStep = () => setStep(s => Math.max(0, s - 1));
+  // Property Description → Voiceover Script: arriving at the Voiceover step
+  // with an empty script box pre-fills it from the Step-1 description, so
+  // the agent starts from the listing copy (then edits or AI-Writes over it)
+  // instead of a blank textarea. Fires on ARRIVAL only — a script the agent
+  // clears while staying on the step is never resurrected.
+  const lastWizardStepRef = useRef(step);
+  useEffect(() => {
+    if (step === 4 && lastWizardStepRef.current !== 4 && !script.trim() && propertyDescription.trim()) {
+      setScript(propertyDescription.trim());
+    }
+    lastWizardStepRef.current = step;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   return (
     <div className="space-y-6">
@@ -3248,25 +3262,6 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       </div>
       </>)}
 
-      {/* Wizard nav — Back / Next (render lives on the last step) */}
-      <div className="flex items-center justify-between pt-2 border-t border-white/5">
-        <button
-          type="button"
-          onClick={prevStep}
-          disabled={step === 0}
-          className="btn btn-secondary text-sm"
-        >
-          <ChevronLeft className="w-4 h-4" /> Back
-        </button>
-        <span className="text-xs text-ink-500">Step {step + 1} of {WIZARD_STEPS.length} · {WIZARD_STEPS[step].label}</span>
-        {step < WIZARD_STEPS.length - 1 ? (
-          <button type="button" onClick={nextStep} disabled={!canNext} className="btn btn-primary text-sm">
-            Next <ChevronRight className="w-4 h-4" />
-          </button>
-        ) : (
-          <span className="w-[88px]" />
-        )}
-      </div>
       {step === 2 && !canNext && (
         <p className="text-xs text-amber-400/90 text-center">Add at least one property photo to continue — a reel needs images to render.</p>
       )}
@@ -4482,6 +4477,7 @@ function AppRoutes() {
       <Route path="/about" element={<AboutPage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/refund-policy" element={<RefundPolicyPage />} />
+      <Route path="/ai-notice" element={<AiNoticePage />} />
       <Route path="/terms" element={<TermsOfServicePage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/cookies" element={<CookiePolicyPage />} />

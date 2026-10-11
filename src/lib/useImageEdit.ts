@@ -21,8 +21,9 @@ export function useImageEdit() {
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  /** Price for this render: staging/removal presets run Fill Pro (4 credits),
-   *  everything else is the base 2-credit edit. Mirrors jobCredits(). */
+  /** Price for this render: brush-masked staging presets run Fill Pro
+   *  (4 credits); removal and every other preset are the base 2-credit
+   *  edit. Mirrors jobCredits(). */
   const costFor = (presetId?: string) =>
     isStagingPreset(presetId) ? STAGING_EDIT_CREDITS : IMAGE_EDIT_COST;
 

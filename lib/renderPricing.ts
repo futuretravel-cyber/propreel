@@ -71,14 +71,14 @@ export const IMAGE_EDIT_CREDITS = 2;
  *  (R4 at R1/credit vs ~R1.65 fal cost ~$0.10). Routed through the same
  *  'edit' scope; the mint decides by presetId. */
 export const STAGING_EDIT_CREDITS = 4;
-/** Preset ids priced at the 4-credit brush-render rate. Staging renders run
- *  the masked Fill [pro] path; removal presets render via the plain Kontext
- *  path with their full preset prompts (kept in sync with
- *  modal/image_prompts.py categories). */
+/** Preset ids priced at the 4-credit brush-render rate. Only the staging
+ *  presets belong here — they run the masked Fill [pro] path. Removal
+ *  presets render via the plain Kontext path with their full preset prompts
+ *  (kept in sync with modal/image_prompts.py categories), so they price at
+ *  the base 2-credit edit like every other Kontext preset. */
 export const STAGING_PRESET_IDS = [
   'luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
   'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft',
-  'remove_all_furniture', 'remove_clutter', 'remove_personal_items',
 ];
 
 export function isStagingPreset(presetId: string | undefined | null): boolean {
@@ -98,9 +98,9 @@ export function jobCredits(
 ): number | null {
   if (scope === 'flashhead') return FLASHHEAD_CREDITS;
   if (scope === 'edit') {
-    // Brush-mask staging/removal runs Fill Pro (~2x Kontext's fal cost) and
-    // is the tool agents actually pay for — price it at 4 credits. Plain
-    // preset edits (twilight, sky fix, HDR tone-map…) stay at 2 credits.
+    // Brush-mask staging runs Fill Pro (~2x Kontext's fal cost) and is the
+    // tool agents actually pay for — price it at 4 credits. Plain preset
+    // edits (removal, twilight, sky fix, HDR tone-map…) stay at 2 credits.
     return isStagingPreset(args.presetId) ? STAGING_EDIT_CREDITS : IMAGE_EDIT_CREDITS;
   }
   if (scope === 'render') {

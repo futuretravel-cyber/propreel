@@ -78,6 +78,7 @@ const ROUTES: Record<string, SeoEntry> = {
   '/cookies': { title: `Cookie Policy | ${SUFFIX}`, description: 'Cookies used by PropReel and how to manage them.' },
   '/paia': { title: `PAIA Manual | ${SUFFIX}`, description: 'Promotion of Access to Information Act manual for PropReel.' },
   '/refund-policy': { title: `Refund Policy | ${SUFFIX}`, description: 'Refund policy for PropReel credits and purchases.' },
+  '/ai-notice': { title: `Full AI Notice | ${SUFFIX}`, description: 'Where and how PropReel uses AI to generate videos, photos and text, what AI mistakes can look like, and how credits for AI renders are priced and refunded.' },
   '/dpa': { title: `Data Processing Agreement | ${SUFFIX}`, description: 'Data processing agreement for PropReel customers.' },
   '/forgot-password': { title: `Forgot password | ${SUFFIX}`, description: 'Request a secure link to reset your PropReel password.' },
   '/reset-password': { title: `Reset password | ${SUFFIX}`, description: 'Set a new password for your PropReel account.' },
