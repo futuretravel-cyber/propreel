@@ -64,6 +64,8 @@ export const TIERS = [
 
 /** AI Avatar (FlashHead lip-sync) — fixed price. */
 export const FLASHHEAD_CREDITS = 8;
+/** AI Writer voiceover script (Grok) — fixed price, matches DescriptionTab. */
+export const SCRIPT_CREDITS = 1;
 /** Preset image edit (Kontext / local HDR tone-map) — fixed price. */
 export const IMAGE_EDIT_CREDITS = 2;
 /** Staging/brush-mask presets: Fill Pro costs ~2x Kontext per fal call and
@@ -85,8 +87,11 @@ export function isStagingPreset(presetId: string | undefined | null): boolean {
   return !!presetId && STAGING_PRESET_IDS.includes(presetId);
 }
 
-/** Job scopes the worker accepts a paid single-use token for. */
-export type JobScope = 'render' | 'flashhead' | 'edit';
+/** Job scopes the worker accepts a paid single-use token for. Script
+ *  (AI Writer voiceover) tokens are charged by job_token but never verify a
+ *  worker job — the text generation calls the same worker's /generate_text
+ *  with the free short-lived worker token. */
+export type JobScope = 'render' | 'flashhead' | 'edit' | 'script';
 
 /**
  * Price one job server-side. Returns null for an unknown tier/config —
@@ -97,6 +102,7 @@ export function jobCredits(
   args: { tier?: string; configIndex?: number; presetId?: string } = {}
 ): number | null {
   if (scope === 'flashhead') return FLASHHEAD_CREDITS;
+  if (scope === 'script') return SCRIPT_CREDITS;
   if (scope === 'edit') {
     // Brush-mask staging runs Fill Pro (~2x Kontext's fal cost) and is the
     // tool agents actually pay for — price it at 4 credits. Plain preset

@@ -81,7 +81,7 @@ def _parse_token(value: Optional[str]):
         version, scope = 1, None
     elif len(parts) == 5 and parts[0] == "v2":
         _, exp_s, uid, scope, sig = parts
-        if scope not in ("render", "flashhead", "edit"):
+        if scope not in ("render", "flashhead", "edit", "script"):
             return None, "unknown job scope"
         msg = f"v2.{exp_s}.{uid}.{scope}"
         version = 2
@@ -143,12 +143,20 @@ def _claim_job_token(request: Request) -> None:
     use answers 409 instead of spending our AI credits twice. Claims are tiny
     (~150 bytes) and only meaningful while the token itself is valid (10 min);
     they accumulate under jobs/claims/ like the job status files.
+
+    Script tokens (AI Writer voiceover, scope='script') are charge-proven but
+    NOT single-use: /generate_text costs fractions of a cent, holds no job,
+    and a failed first call must be retryable without a second 1-credit
+    charge (the client refunds on failure; a burn here would make the
+    retry re-charge). Every monster-cost endpoint stays single-use.
     """
     import hashlib as _hashlib
     token = request.headers.get(_token_header) or ""
     info, err = _parse_token(token)
     if err or not info:
         raise HTTPException(status_code=401, detail=err or "invalid token")
+    if info["scope"] == "script":
+        return  # paid at mint; no job to double-spend
     digest = _hashlib.sha256(token.encode()).hexdigest()
     body = json.dumps({
         "scope": info["scope"],
@@ -1053,9 +1061,15 @@ def _branding_card_png(
 
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
-    photo_url = (branding or {}).get("use_avatar_url") if use_avatar else (branding or {}).get("photo_url")
-    if not photo_url:
-        photo_url = (branding or {}).get("photo_url")
+    # The AI avatar's VIDEO owns this corner when the add-on is on — it is
+    # burned in separately by _apply_avatar_overlay, so drawing the static
+    # photo circle in the same spot would sit right on top of it.
+    if str((branding or {}).get("avatar_video_url") or "").strip():
+        photo_url = None
+    else:
+        photo_url = (branding or {}).get("use_avatar_url") if use_avatar else (branding or {}).get("photo_url")
+        if not photo_url:
+            photo_url = (branding or {}).get("photo_url")
 
     # 1) Agent / avatar photo — top-left, white-ringed circle.
     photo_fetched = False
@@ -1469,7 +1483,181 @@ def _mix_narration(video_path: str, narration_path: str, out_path: str,
     return target
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("narakeet")], timeout=720, retries=2)
+def _apply_avatar_overlay(
+    video_path: str,
+    avatar_video_url: str,
+    out_path: str,
+    width: int,
+    height: int,
+    music_url: str | None = None,
+    music_volume: float = 0.22,
+) -> float:
+    """Burn the AI-avatar clip into the TOP-LEFT corner and use ITS audio as
+    the reel's voiceover.
+
+    The avatar add-on replaces the reel's own narration: the FlashHead clip
+    was rendered first (Narakeet script → lip-sync) and carries the voiceover,
+    so this pass composites it and skips a second TTS synthesis entirely.
+
+    Shape & size — matched to the Agent Branding card so the avatar reads as
+    "the profile photo, live": the branding photo burns as a WHITE-RINGED
+    CIRCLE of 110/1080-canvas-height diameter at a 36/1080 margin; the avatar
+    is the same circle, just a bit bigger (~1.3x), so it stays visible
+    without dominating the frame or covering the property. Both land
+    correctly in either orientation because they scale from the canvas
+    height. A circular alpha mask is merged into every avatar frame
+    (alphamerge against a static disc), and the ring is a static RGBA
+    overlay on top — the talking head moves INSIDE the circle.
+
+    The avatar's last frame repeats for the rest of the reel, its audio is
+    padded with silence, and a selected music bed loops underneath with the
+    standard 2-second fade. A narration that outruns the reel freeze-extends
+    the video exactly like the TTS path does.
+
+    Raises on failure: the agent paid for the avatar, so silently shipping an
+    avatar-less, unvoiced reel would be the very bug this replaces.
+    """
+    import subprocess as _sp
+    import tempfile as _tf
+    import os as _os
+
+    avatar_bytes = fetch_media(avatar_video_url, timeout=300)
+    with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as _f:
+        _f.write(avatar_bytes)
+        avatar_path = _f.name
+    music_path = None
+    mask_path = ring_path = None
+    try:
+        video_dur = _media_duration(video_path)
+        avatar_dur = _media_duration(avatar_path)
+        target = video_dur
+        if avatar_dur + 0.3 > target:
+            target = avatar_dur + 0.3
+
+        # ── Geometry: the branding card's conventions scale from HEIGHT/1080
+        # (110px photo, 36px margin, 5px ring at 1080p) — reuse them so the
+        # avatar reads as the same element, just a bit bigger.
+        scale_ref = height / 1080.0
+        ring_w = max(3, int(5 * scale_ref))
+        # Disc diameter ~1.3x the branding photo. EVEN, always: yuv420p
+        # encoding cannot carry odd dims, and the alphamerge mask must match
+        # the scaled avatar frame EXACTLY (scale rounds to even internally).
+        side = max(64, int(110 * scale_ref * 1.3) & ~1)
+        outer = side + 2 * ring_w                      # ring outer diameter
+        margin = max(8, int(36 * scale_ref))
+        av_ext = max(0.0, target - avatar_dur)
+
+        # Static artwork: black-background white disc (becomes the alpha
+        # mask) and a transparent white ring. Pillow is already a dependency
+        # (branding card) and both PNGs are tiny.
+        from PIL import Image, ImageDraw
+        mask_img = Image.new("RGB", (side, side), (0, 0, 0))
+        ImageDraw.Draw(mask_img).ellipse((0, 0, side - 1, side - 1), fill=(255, 255, 255))
+        _mf = _tf.NamedTemporaryFile(suffix=".png", delete=False)
+        mask_img.save(_mf, format="PNG")
+        _mf.close()
+        mask_path = _mf.name
+        ring_img = Image.new("RGBA", (outer, outer), (0, 0, 0, 0))
+        ImageDraw.Draw(ring_img).ellipse(
+            (0, 0, outer - 1, outer - 1), outline=(255, 255, 255, 255), width=ring_w,
+        )
+        _rf = _tf.NamedTemporaryFile(suffix=".png", delete=False)
+        ring_img.save(_rf, format="PNG")
+        _rf.close()
+        ring_path = _rf.name
+
+        # A silent avatar clip must not break the graph — fall back to a
+        # generated silent track (the music bed, if any, still mixes in).
+        probe = _sp.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=index", "-of", "csv=p=0", avatar_path],
+            capture_output=True, text=True, timeout=30,
+        )
+        has_audio = bool((probe.stdout or "").strip())
+
+        if music_url:
+            try:
+                music_bytes = fetch_media(music_url, timeout=120)
+                ext = ".mp3" if ".mp3" in music_url.lower() else ".wav" if ".wav" in music_url.lower() else ".m4a"
+                with _tf.NamedTemporaryFile(suffix=ext, delete=False) as _mf2:
+                    _mf2.write(music_bytes)
+                    music_path = _mf2.name
+            except Exception as me:
+                print(f"Music fetch failed — avatar voiceover only: {me}")
+                music_path = None
+
+        inputs = ["-y", "-i", video_path, "-i", avatar_path,
+                  "-loop", "1", "-i", mask_path, "-loop", "1", "-i", ring_path]
+        chains = []
+        if target > video_dur + 0.05:
+            chains.append(
+                f"[0:v]tpad=stop_mode=clone:stop_duration={target - video_dur:.3f},"
+                f"format=yuv420p[base]"
+            )
+        else:
+            chains.append("[0:v]format=yuv420p[base]")
+        # Avatar: cover-crop to the disc's square, hold the LAST frame for the
+        # rest of the reel (tpad), then round it with the static disc mask.
+        av_chain = (
+            f"[1:v]scale={side}:{side}:force_original_aspect_ratio=increase,"
+            f"crop={side}:{side},format=yuv420p"
+        )
+        if av_ext > 0.05:
+            av_chain += f",tpad=stop_mode=clone:stop_duration={av_ext:.3f}"
+        chains.append(av_chain + "[av0]")
+        chains.append("[2:v]format=gray[m0]")
+        chains.append("[av0][m0]alphamerge[av]")
+        chains.append(f"[base][av]overlay=x={margin}:y={margin}:eof_action=repeat[v0]")
+        # White ring, drawn as one element so the edge stays crisp even while
+        # the underlying head compresses.
+        chains.append("[3:v]format=rgba[m1]")
+        chains.append(
+            f"[v0][m1]overlay=x={margin - ring_w}:y={margin - ring_w}:eof_action=repeat[v]"
+        )
+        # Voice track: the avatar's own narration, padded with silence to the
+        # full length so a shorter clip never truncates the music bed.
+        if has_audio:
+            chains.append(
+                f"[1:a]aresample=44100,apad,atrim=0:{target:.3f},asetpts=PTS-STARTPTS[vo]"
+            )
+        else:
+            chains.append(f"anullsrc=r=44100:cl=stereo,atrim=0:{target:.3f}[vo]")
+        if music_path:
+            inputs += ["-stream_loop", "-1", "-i", music_path]
+            fade_start = max(target - 2.0, 0.0)
+            chains.append(
+                f"[4:a]volume={music_volume},aresample=44100,apad,atrim=0:{target:.3f},"
+                f"asetpts=PTS-STARTPTS,afade=t=out:st={fade_start:.3f}:d=2[bg]"
+            )
+            chains.append(
+                "[vo][bg]amix=inputs=2:duration=first:dropout_transition=0:"
+                "normalize=0,alimiter=limit=0.98[a]"
+            )
+            audio_map = "[a]"
+        else:
+            audio_map = "[vo]"
+        proc = _sp.run(
+            ["ffmpeg", *inputs,
+             "-filter_complex", ";".join(chains),
+             "-map", "[v]", "-map", audio_map,
+             "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
+             "-c:a", "aac", "-b:a", "160k",
+             "-t", f"{target:.3f}", out_path],
+            capture_output=True, timeout=900,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg avatar overlay failed: {(proc.stderr or b'')[-400:]}")
+        return target
+    finally:
+        for _p in (avatar_path, music_path, mask_path, ring_path):
+            if _p:
+                try:
+                    _os.unlink(_p)
+                except Exception:
+                    pass
+
+
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("narakeet")], timeout=1200, retries=2)
 def render_video_local(
     record_id: str,
     images: list[str],
@@ -1582,11 +1770,25 @@ def render_video_local(
         if concat.returncode != 0:
             raise RuntimeError(f"ffmpeg concat failed: {(concat.stderr or b'')[-300:]}")
 
-    # Narration first (the promise the user paid for — a TTS failure raises
-    # and the job refunds), with the music bed mixed in the same pass.
-    # Without narration, the music bed keeps its old standalone path.
+    # Voiceover — three mutually exclusive paths:
+    #   1. AI Avatar add-on: the FlashHead clip (rendered BEFORE this job)
+    #      IS the voiceover — composite it top-left and use its audio; its
+    #      narration replaced the reel's TTS, so no second synthesis runs.
+    #   2. Narration first (the promise the user paid for — a TTS failure
+    #      raises and the job refunds), with the music bed mixed in the same
+    #      pass.
+    #   3. Without narration, the music bed keeps its old standalone path.
     narakeet_seconds = 0.0
-    if (voiceover_text or "").strip():
+    avatar_video_url = str((branding or {}).get("avatar_video_url") or "").strip()
+    if avatar_video_url:
+        print(f"Compositing AI avatar top-left from {avatar_video_url[:90]}…")
+        mixed_path = os.path.join(work, "output_avatar.mp4")
+        final_dur = _apply_avatar_overlay(
+            output_path, avatar_video_url, mixed_path, width, height, music_url=music_url,
+        )
+        _os.replace(mixed_path, output_path)
+        print(f"AI avatar composited ({final_dur:.1f}s final duration)")
+    elif (voiceover_text or "").strip():
         lang, nar_voice = _resolve_narakeet_voice(voice_id, language)
         print(f"Synthesizing narration ({lang} / {nar_voice}): {len(voiceover_text)} chars")
         narr_bytes, tts_seconds = narakeet_tts(voiceover_text, nar_voice)
@@ -1633,7 +1835,7 @@ def render_video_local(
     return video_url, narakeet_seconds
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("narakeet")], timeout=900, retries=2, min_containers=0, max_containers=100, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("narakeet")], timeout=1800, retries=2, min_containers=0, max_containers=100, scaledown_window=300)
 def render_video(
     record_id: str,
     tier: str,
@@ -1762,13 +1964,53 @@ def render_video(
                 target_resolution="1080p"
             )
 
+        # Render canvas for the corner overlays — tier resolution, computed
+        # ONCE so the avatar overlay and the branding burn-in below land on
+        # exactly the same pixels.
+        if orientation == "PORTRAIT":
+            bw, bh = 1080, 1920
+        else:
+            bw, bh = 1920, 1080
+        if tier in ("SOCIAL",):
+            bw, bh = (1920, 1080) if orientation != "PORTRAIT" else (1080, 1920)
+
+        # AI Avatar add-on: the lip-sync clip rendered FIRST (before this
+        # job, as part of the client's Generate Video action) and its
+        # narration IS the voiceover — composite it top-left and use its
+        # audio instead of a second TTS pass. Runs regardless of the
+        # branding toggle: the agent paid for the avatar either way.
+        avatar_video_url = str((branding or {}).get("avatar_video_url") or "").strip()
+        if avatar_video_url:
+            import tempfile as _tf
+            import os as _os
+            workdir = _tf.mkdtemp(prefix=f"avatar_{record_id}_")
+            try:
+                src = os.path.join(workdir, "src.mp4")
+                dst = os.path.join(workdir, "out.mp4")
+                with open(src, "wb") as vf:
+                    vf.write(fetch_media(video_url, timeout=300))
+                final_dur = _apply_avatar_overlay(src, avatar_video_url, dst, bw, bh, music_url=music_url)
+                s3 = boto3.client('s3', region_name=S3_REGION)
+                s3_key = f"renders/{record_id}/video.mp4"
+                s3.upload_file(dst, S3_BUCKET, s3_key,
+                               ExtraArgs={'ContentType': 'video/mp4'})
+                video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+                actual_duration = round(final_dur, 1)
+                print(f"AI avatar composited ({final_dur:.1f}s): {video_url}")
+            finally:
+                try:
+                    import shutil as _shutil
+                    _shutil.rmtree(workdir, ignore_errors=True)
+                except Exception:
+                    pass
+
         # Voiceover + music for AI tiers: fal clips arrive silent (and only
         # ~6 s while scripts target 30 s+), so synthesize the narration in
         # the selected language, freeze the last frame if it overruns the
         # clip, mix the music bed in the same pass, and publish to OUR S3
         # (fal media URLs are not covered by the 30-day retention purge).
         # The ESSENTIAL tier already mixed narration inside render_video_local.
-        if (voiceover_text or "").strip():
+        elif (voiceover_text or "").strip():
             import tempfile as _tf
             import os as _os
             lang, nar_voice = _resolve_narakeet_voice(voice_id, language)
@@ -1814,13 +2056,8 @@ def render_video(
                 branded = os.path.join(_work, "branded.mp4")
                 with open(src, "wb") as bvf:
                     bvf.write(fetch_media(video_url, timeout=300))
-                # Render dimensions: tier resolution (1920 landscape default)
-                if orientation == "PORTRAIT":
-                    bw, bh = 1080, 1920
-                else:
-                    bw, bh = 1920, 1080
-                if tier in ("SOCIAL",):
-                    bw, bh = (1920, 1080) if orientation != "PORTRAIT" else (1080, 1920)
+                # Render dimensions: bw/bh computed with the avatar overlay
+                # above — both passes share one canvas.
                 branded_path = _apply_branding_overlay(src, branding, use_avatar, bw, bh, _work)
                 if os.path.exists(branded_path) and branded_path != src:
                     import os as _os2
@@ -2078,7 +2315,10 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
         ),
         "video_script": (
             "You are a real estate video scriptwriter. Write a spoken voiceover script for a property "
-            "tour video. {SOURCE_RULE} {LANGUAGE_RULE} no "
+            "tour video, grounded in the LISTING DETAILS and the ATTACHED PHOTOS the agent uploaded "
+            "— use what the details say and what you can see in the photos (rooms, finishes, light, "
+            "garden, views); do not narrate rooms the photos do not show. {SOURCE_RULE} "
+            "{LANGUAGE_RULE} {WORD_RULE} — no "
             "stage directions, no scene labels, no markdown. End with a call "
             "to action to book a viewing. Never invent facts."
         ),
@@ -2118,10 +2358,24 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
             )
         else:
             language_rule = "Plain spoken English only —"
+        # HARD CAP, not just a target: browsers/agents expect the narration to
+        # fit the video length — an over-length LLM response froze the last
+        # frame past the tier duration (a 30s video running ~38s). Ask for
+        # slightly under the target so natural reading never overruns, and
+        # name the absolute ceiling explicitly.
         if target_words and duration_s:
-            word_rule = f"The script must fill {int(duration_s)} seconds of narration: roughly {int(target_words)} words"
+            words = int(target_words)
+            word_rule = (
+                f"HARD LIMIT: {words} words or fewer — the script must fill {int(duration_s)} seconds of "
+                f"narration and MUST NOT exceed {words} words. Aim for about 90% of that length "
+                f"(short, punchy sentences). If the listing content is too much, summarize it — "
+                f"never run over {words} words. Count your words before answering."
+            )
         else:
-            word_rule = "The script must fill about 60 seconds of narration: roughly 140 words"
+            word_rule = (
+                "HARD LIMIT: 130 words or fewer — the script must fill about 60 seconds of "
+                "narration and MUST NOT exceed 130 words. Aim for about 120 words."
+            )
         # Source rule: agents complete the Property Description on the Video
         # tab (with photos uploaded alongside) — the description is PRIMARY
         # and the attached photos REFINE it (what the model sees: room
@@ -2153,6 +2407,7 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
         system = (system
                   .replace("{SOURCE_RULE}", source_rule)
                   .replace("{LANGUAGE_RULE}", language_rule)
+                  .replace("{WORD_RULE}", word_rule)
                   .replace("{WORD_RULE}", word_rule))
     facts = "\n".join(f"{k}: {v}" for k, v in fields.items() if v not in (None, "", []))
     if kind in ("language_check", "translate"):
@@ -2498,8 +2753,9 @@ def edit_image(
     # the model edits THIS room. Best-effort: an LLM hiccup must not fail a
     # paid render. Masked staging skips the anchor entirely: Fill Pro
     # physically locks the unmasked pixels, so the caption adds nothing.
-    # remove_vehicles deliberately gets NO anchor — it must run exactly the
-    # same path as the photo-editor remove_cars preset that works.
+    # remove_cars (the AI Photo Editor's only vehicle-removal preset — the
+    # old remove_vehicles clone was deleted) deliberately gets NO anchor —
+    # it must run exactly the path that already worked.
     _anchor = ""
     _anchor_ids = ("remove_all_furniture", "remove_clutter", "remove_personal_items")
     if (preset.get("category") == "staging" or preset_id in _anchor_ids) and not custom_prompt and not mask_url:
@@ -2532,7 +2788,7 @@ def edit_image(
     # alias does not exist; verified 2026-10-11). White mask pixels are
     # regenerated as seamless continuation of what surrounds them; the mask
     # is the hard structure constraint, and the preset prompt is passed
-    # verbatim. remove_vehicles / remove_cars keep the plain Kontext path,
+    # verbatim. remove_cars (photo editor) keeps the plain Kontext path,
     # and a removal preset WITHOUT a mask (stale client) falls through to
     # the same Kontext path as before.
     if preset_id in ("remove_all_furniture", "remove_clutter", "remove_personal_items") and not custom_prompt and mask_url:
@@ -2603,7 +2859,10 @@ def edit_image(
             # mask here is what made fal reject "Image and mask sizes do not
             # match" on photos wider than 16:9 (Fill center-cropped Call 1's
             # output to the 16:9 frame) and silently fall back to whole-frame
-            # Kontext, which re-rendered the entire room. Re-fit from the            # ORIGINAL user mask to the emptied frame's true pixel size so            # Call 2 regenerates exactly the furniture regions of Call 1's            # output — the staircase/kitchen outside the paint never moves.
+            # Kontext, which re-rendered the entire room. Re-fit from the
+            # ORIGINAL user mask to the emptied frame's true pixel size so
+            # Call 2 regenerates exactly the furniture regions of Call 1's
+            # output — the staircase/kitchen outside the paint never moves.
             removed_img = Image.open(_io2.BytesIO(_fit_image_bytes(removed)))
             mask_for_b = _mask_png_bytes(mask_bytes, removed_img.width, removed_img.height)
             mask_b_key = f"edited/_masks/{preset_id}_b_{os.path.basename(_ulp(image_url).path)}.png"
@@ -3321,6 +3580,11 @@ async def api_generate_text(request: GenerateTextRequest):
     and video voiceover scripts (optional attached photos)."""
     try:
         text = await generate_text_fn.remote.aio(kind=request.kind, fields=request.fields, images=request.images)
+        # An empty 200 settles silently in the browser (the caller writes ""
+        # or does nothing and the agent sees no error at all) — fail loudly
+        # with a retryable reason instead.
+        if not (text or "").strip():
+            raise HTTPException(status_code=502, detail="The AI returned an empty response — please try again")
         return {"success": True, "kind": request.kind, "text": text}
     except Exception as e:
         raise HTTPException(status_code=502, detail=_friendly_fal_error(e))

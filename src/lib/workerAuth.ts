@@ -52,7 +52,7 @@ export async function workerHeaders(): Promise<Record<string, string>> {
   }
 }
 
-export type JobScope = 'render' | 'flashhead' | 'edit';
+export type JobScope = 'render' | 'flashhead' | 'edit' | 'script';
 
 export interface JobMintOptions {
   tier?: string;

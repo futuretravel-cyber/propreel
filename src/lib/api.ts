@@ -326,20 +326,36 @@ export const PropReelAPI = {
   async generateText(
     kind: 'description' | 'social_caption' | 'video_script' | 'language_check' | 'translate',
     fields: Record<string, any>,
-    images: string[] = []
+    images: string[] = [],
+    /** Optional extra auth headers — the paid video_script path sends the
+     *  ONE job token the 1-credit AI Writer charge minted, so the worker
+     *  can prove the script was paid for. Other kinds use the free
+     *  short-lived worker token as before. */
+    extraHeaders: Record<string, string> = {}
   ): Promise<string> {
     const { workerHeaders } = await import('./workerAuth');
     const res = await fetch(`${MODAL_ENDPOINT}/generate_text`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+      headers: { 'Content-Type': 'application/json', ...(await workerHeaders()), ...extraHeaders },
       body: JSON.stringify({ kind, fields, images }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({} as any));
-      throw new Error(err.detail || 'AI generation failed');
+      // The worker sends its reason as `detail` (HTTPException) but auth
+      // middleware answers `error` — read both so failures never collapse
+      // into a generic message the agent can't act on.
+      const msg = err.detail || err.error || (res.status === 401
+        ? 'Your sign-in session expired — refresh the page, sign in again, then retry'
+        : `AI generation failed (${res.status})`);
+      throw new Error(msg);
     }
     const data = await res.json();
-    return data.text || '';
+    // A 200 with an empty body used to settle silently (the caller wrote ""
+    // into its box, or did nothing) — the classic "it spun and nothing
+    // happened". Fail loudly so the UI can show why.
+    const text = typeof data.text === 'string' ? data.text.trim() : '';
+    if (!text) throw new Error('The AI returned an empty response — press the button again to retry');
+    return text;
   },
 
   // ── Narrator voice preview (Narakeet sample, S3-cached per pair) ───

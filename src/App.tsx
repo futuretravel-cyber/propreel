@@ -20,7 +20,7 @@ import { AI_DISCLAIMER_TEXT, guardAIRender } from './lib/aiDisclaimer';
 import FeatureChips from './components/FeatureChips';
 import CurrencyInput from './components/CurrencyInput';
 import { geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
-import { useStudioDraft, studioDraftKey } from './lib/studioDrafts';
+import { useStudioDraft, studioDraftKey, dataUrlToFile } from './lib/studioDrafts';
 import { useRepairDraftPhotos } from './lib/repairDraftPhotos';
 import { useReorderable } from './lib/reorder';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
@@ -28,6 +28,8 @@ import { playRenderComplete } from './lib/renderSound';
 import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
+import { useFlashHead } from './lib/useFlashHead';
+import { FLASHHEAD_CREDITS, SCRIPT_CREDITS } from '../lib/renderPricing';
 import { useVoicePreview } from './lib/useVoicePreview';
 import { useVoiceoverLanguageCheck, type VoiceoverLanguageCheck } from './lib/useVoiceoverLanguageCheck';
 import LanguageMismatchBanner from './components/LanguageMismatchBanner';
@@ -66,7 +68,6 @@ const AgentBrandingBase = lazy(() => import('./components/AgentBranding'));
 const SecuritySettingsBase = lazy(() => import('./components/SecuritySettings'));
 const AITalkingProfileBase = lazy(() => import('./components/AITalkingProfile'));
 const AdminMusicLibraryBase = lazy(() => import('./components/AdminMusicLibrary'));
-const FlashHeadVideoBase = lazy(() => import('./components/FlashHeadVideo'));
 const ShareSheetBase = lazy(() => import('./components/ShareSheet'));
 const ImageWorkbenchBase = lazy(() => import('./components/ImageWorkbench'));
 const CreditSystemDashboard = lazy(() => import('./components/CreditSystemDashboard'));
@@ -128,9 +129,6 @@ function AdminMusicLibrary() {
 
 function AdminApiKeys() {
   return <Suspense fallback={<DashboardSkeleton />}><AdminApiKeysBase /></Suspense>;
-}
-function FlashHeadVideo(props: ComponentProps<typeof FlashHeadVideoBase>) {
-  return <Suspense fallback={<DashboardSkeleton />}><FlashHeadVideoBase {...props} /></Suspense>;
 }
 function ShareSheet(props: ComponentProps<typeof ShareSheetBase>) {
   return <Suspense fallback={null}><ShareSheetBase {...props} /></Suspense>;
@@ -886,7 +884,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <div className="p-3 border-t border-white/5">
-            {user?.subscription?.planId !== 'PREMIUM' && user?.subscription?.planId !== 'AGENCY' && user?.role !== 'ADMIN' && (
+            {user?.subscription?.planId !== 'PREMIUM' && user?.subscription?.planId !== 'AGENCY' && user?.role !== 'ADMIN' && !user?.agencyId && !user?.trialExpiresAt && (
               <Link to="/payment?plan=PREMIUM&cycle=MONTHLY&price=1270" className="block mb-3 p-3 rounded-xl bg-gradient-to-r from-purple-700/20 to-purple-900/20 border border-purple-500/20 hover:border-purple-500/40 transition">
                 <div className="flex items-center gap-2">
                   <Crown className="w-4 h-4 text-yellow-400" />
@@ -1333,14 +1331,14 @@ function useToolTab(valid: string[], fallback: string): [string, (t: string) => 
 }
 
 // ── Photo Editor: AI Photo Editor 2⚡ / Virtual Staging 4⚡ /
-//    Furniture Removal 4⚡ / Twilight 2⚡ ──────────────────────────────────
+//    Furniture Removal 2⚡ / Twilight 2⚡ ──────────────────────────────────
 function PhotoEditorPage() {
   const loading = useSimulatedLoading(300);
   const [tab, setTab] = useToolTab(['photo', 'staging', 'removal', 'twilight'], 'photo');
   const tabs = [
     { id: 'photo', label: 'AI Photo Editor', icon: <Camera className="w-4 h-4" />, cost: 2 },
     { id: 'staging', label: 'Virtual Staging', icon: <Sofa className="w-4 h-4" />, cost: 4 },
-    { id: 'removal', label: 'Furniture Removal', icon: <Trash2 className="w-4 h-4" />, cost: 4 },
+    { id: 'removal', label: 'Furniture Removal', icon: <Trash2 className="w-4 h-4" />, cost: 2 },
     { id: 'twilight', label: 'Twilight', icon: <MoonIcon className="w-4 h-4" />, cost: 2 },
   ];
   if (loading) return <DashboardSkeleton />;
@@ -1917,7 +1915,7 @@ function RemovalTab() {
         ctaLabel="Remove (2 credits)"
         emptyHint="Upload a photo with furniture or clutter to remove"
       />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {removalPresets.map(m => (
           <button key={m.id} onClick={() => setMode(m.id)} className={`p-6 rounded-xl text-center transition ${mode === m.id ? 'bg-purple-700/20 border border-purple-500/30 text-purple-300' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
             <span className="text-3xl">{m.emoji}</span>
@@ -2372,15 +2370,10 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   // Script lives in page state so the AI Avatar Video step speaks the same text
   const script = sharedScript;
   const setScript = onScriptChange;
-  // Property Description SOURCE for AI Write: an independent slot inside this
-  // tab (persisted), so the agent can complete the listing copy HERE and the
-  // voiceover is grounded in it. The sharedScript above is the voiceover
-  // OUTPUT (and what the Description tab hands over); this one is the RAW
-  // listing description the narration should speak from.
-  const [propertyDescription, setPropertyDescription] = useStudioDraft<string>(studioDraftKey(user?.id, 'video:property-description'), '');
-  // Structured listing facts (Step 1) — persisted like the description above,
-  // and auto-folded into the AI Write grounding so the voiceover speaks the
-  // real price/beds/features without the agent retyping them.
+  // Structured listing facts (Step 1) — persisted and auto-folded into the
+  // AI Write grounding so the voiceover speaks the real price/beds/features
+  // without the agent retyping them. (The free-text Property Description
+  // slot was removed — the Listing details form IS the description source.)
   const [fields, setFields] = useStudioDraft<Record<string, string>>(studioDraftKey(user?.id, 'video:listing-details'), {
     address: '', price: '', propertyType: 'House', province: '', bedrooms: '', bathrooms: '', garages: '', erf: '', floor: '', extraFeatures: '',
   });
@@ -2396,12 +2389,27 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.agentProfiles]);
   const [aiTalkingProfile, setAiTalkingProfile] = useState(false);
+  // Step 6 renders no video of its own: the avatar clip is produced inside
+  // Generate Video (Step 8) — FIRST — then burned into the top-left corner
+  // by the worker, whose narration also replaces the reel's voiceover.
+  const flashHead = useFlashHead();
+  // Finished avatar clip for this wizard session. Reused on retry so the
+  // 8-credit add-on is charged once, and invalidated the moment any input
+  // it was rendered from (script / voice / language / photo) changes.
+  const [avatarVideoUrl, setAvatarVideoUrl] = useState<string | null>(null);
+  const [renderPhase, setRenderPhase] = useState<'avatar' | 'video'>('video');
+  useEffect(() => { setAvatarVideoUrl(null); }, [script, voice, language, profileImage]);
   // profileImage is Studio-level state so the Talking Head tab inherits it
   const setProfileImage = onProfileImageChange;
   const [selectedMusic, setSelectedMusic] = useState<string | null>(null);
   const [musicTracks, setMusicTracks] = useState<Array<{ id: string; name: string; genre: string; url: string }>>([]);
   const [generating, setGenerating] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
+  // AI Write failures used to surface ONLY as a 5-second toast in the
+  // corner while the agent watched the button — a missed toast reads as
+  // "it spun and nothing happened". This error stays inline under the
+  // button (with the real reason) until the next attempt.
+  const [scriptError, setScriptError] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'video:images'), []);
   // Reload the Studio after an hour and every draft photo's 1h presign has
   // died — the grid shows a few broken tiles and users read that as "it
@@ -2448,6 +2456,8 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   // script outlasts the render, the worker freezes the final frame to fit it.
   // Flag overruns ≥20% of the tier duration before the agent spends credits.
   const estimatedNarrationSec = Math.round(wordCount(script) / 2.4);
+  // Live word budget for the input box (same count as the header label).
+  const scriptWords = wordCount(script);
   const freezeOverrunSec = estimatedNarrationSec - selectedConfig.duration;
   const narrationTooLong = freezeOverrunSec >= Math.round(selectedConfig.duration * 0.2);
 
@@ -2473,12 +2483,11 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConfig.duration]);
 
-  // Where the script content should come from: a Property Description the
-  // agent completed here (this tab's own slot), or the Description tab's
-  // shared copy, or — with neither — the uploaded photos via vision. Photos
-  // ALWAYS ride along when present: even with a description, what Grok sees
-  // in them refines the narration (finishes, light, garden, views).
-  const localDescription = propertyDescription.trim();
+  // Where the script content should come from: the Listing details below
+  // (auto-folded), a description handed over from the Description tab, or —
+  // with neither — the uploaded photos via vision. Photos ALWAYS ride along
+  // when present: what Grok sees in them refines the narration (finishes,
+  // light, garden, views).
   const sharedDescription = sharedScript.trim();
   // Structured Step-1 facts as one compact block. Only non-empty fields are
   // included, so an untouched form adds nothing to the grounding. The raw
@@ -2503,7 +2512,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
     if ((fields.extraFeatures || '').trim()) facts.push(`Extra features: ${fields.extraFeatures.trim()}`);
     return facts.join(' · ');
   })();
-  const hasDescription = !!(localDescription || sharedDescription || listingSummary);
+  const hasDescription = !!(sharedDescription || listingSummary);
   const primarySource: 'description' | 'photo_list' = hasDescription ? 'description' : 'photo_list';
 
   // Photo upload: presigned browser → S3, keeps the public URLs the render
@@ -2552,19 +2561,39 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   // generated (shared with this tab), (2) Grok VISION over the uploaded
   // photos. The old call sent NEITHER — the script was invented with zero
   // grounding in the listing, so agents retyped it every time.
+  //
+  // Paid action: AI Writer costs 1 credit (script scope — priced server-side
+  // by lib/renderPricing via job_token), confirmed by a popup BEFORE it runs,
+  // and auto-refunded when generation fails. The returned script is trimmed
+  // to the target word count for the selected duration so the narration can
+  // never outlast the video (frozen-tail fix).
   const generateScript = async () => {
-    const descriptionPart = localDescription || sharedDescription;
-    // The structured Step-1 facts ride along with whichever description
-    // exists (or stand alone as the grounding when only the form is filled).
+    if (!user) { toast.error('Sign in to use AI Write'); return; }
+    if ((user.credits ?? 0) < SCRIPT_CREDITS) {
+      toast.error(`Not enough credits — AI Write costs ${SCRIPT_CREDITS} credit. Top up in Billing.`, 'Insufficient credits');
+      return;
+    }
+    const descriptionPart = sharedDescription;
+    // The structured Step-1 Listing details ride along with whatever
+    // description exists (or stand alone as the grounding when only the
+    // form is filled — the normal case since the free-text slot is gone).
     const source = [descriptionPart, listingSummary].filter(Boolean).join('\n\n');
     if (primarySource === 'photo_list') {
       toast.info(
-        'No Property Description yet — the script will be written from your uploaded photos instead.',
+        'No listing details yet — the script will be written from your uploaded photos instead.',
         'Writing from photos'
       );
     }
     setGeneratingScript(true);
+    setScriptError(null);
     try {
+      // The charge: the mint prices the script server-side (1 credit),
+      // deducts it, and returns a token the worker refuses to generate
+      // without — so a modified client can't get free scripts.
+      const authHeaders = await jobHeaders('script', {
+        metadata: { kind: 'VIDEO_SCRIPT', duration: selectedConfig.duration },
+      });
+      void refresh(); // the balance display — the charge landed server-side
       const text = await PropReelAPI.generateText('video_script', {
         tier,
         duration_seconds: selectedConfig.duration,
@@ -2579,11 +2608,25 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         ...(source
           ? { property_description: source, photos_supplement: uploadedImages.length > 0 }
           : { describe_photos: true }),
-      }, uploadedImages);
-      setScript(text.trim());
+      }, uploadedImages, authHeaders);
+      // Enforce the target word count for the selected duration — always
+      // slightly LESS than the video length is fine, never more. LLMs drift
+      // past the requested count (~30s scripts landing at 100+ words made
+      // the 30s video run 38s on a frozen last frame).
+      const raw = text.replace(/\s+/g, ' ').trim();
+      const words = raw.split(' ');
+      const trimmed = words.length > targetWords ? words.slice(0, targetWords).join(' ') : raw;
+      setScript(trimmed);
       scriptWrittenForSec.current = selectedConfig.duration; // regenerated for THIS length
+      if (words.length > targetWords) {
+        toast.info(`The script ran long — trimmed to the ${targetWords}-word target for a ${selectedConfig.duration}s read.`, 'Script sized to duration');
+      }
     } catch (e: any) {
-      toast.error(e.message || 'Script generation failed');
+      // A failed generation refunds the script charge (server-verified once).
+      await refundCredits('script').catch(() => {});
+      const msg = e?.message || 'Script generation failed — your 1 credit was refunded';
+      setScriptError(msg);
+      toast.error(msg);
     } finally {
       setGeneratingScript(false);
     }
@@ -2596,6 +2639,12 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
     if (cancelRequestedRef.current) return;
     cancelRequestedRef.current = true;
     setCancelling(true);
+    // Avatar phase: useFlashHead owns that job — cancel there (it posts its
+    // own worker cancel and refunds the 8 credits).
+    if (renderPhase === 'avatar') {
+      flashHead.cancel();
+      return;
+    }
     const id = recordIdRef.current;
     if (!id) return;
     try {
@@ -2609,6 +2658,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
 
   const generateReel = async () => {
     setGenerating(true);
+    setRenderPhase('video');
     reelProgress.start();
     const recordId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     recordIdRef.current = recordId;
@@ -2649,12 +2699,61 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         } catch { /* non-fatal — render can still proceed */ }
       }
 
-      // 2) Pay for the job at mint time: ?action=job_token charges the credits
+      // 2) AI Avatar add-on (Step 6): render the lip-sync clip FIRST — the
+      //    finished clip rides into the video render below, where the worker
+      //    burns it into the top-left corner and uses its narration INSTEAD
+      //    of the reel's own voiceover. FlashHead mints its own 8-credit job
+      //    token (the render token below still covers the tier price only),
+      //    and a clip already rendered this session is reused, so a retry
+      //    never pays the 8 twice.
+      let avatarUrl: string | null = avatarVideoUrl;
+      if (aiTalkingProfile && !avatarUrl) {
+        if ((user?.credits ?? 0) < FLASHHEAD_CREDITS) {
+          throw new Error(`Not enough credits — the AI Avatar add-on costs ${FLASHHEAD_CREDITS} extra credits. Top up, or switch the AI Avatar off on Step 6.`);
+        }
+        setRenderPhase('avatar');
+        const avatarOpts: Parameters<typeof flashHead.generate>[0] = {
+          voiceoverText: script,
+          voice,
+          language,
+        };
+        if (profileImage?.startsWith('data:')) {
+          try {
+            avatarOpts.file = await dataUrlToFile(profileImage);
+          } catch {
+            throw new Error('Could not reuse your avatar photo — please pick it again on Step 6');
+          }
+        } else if (profileImage) {
+          avatarOpts.imageUrl = profileImage;
+        } else {
+          throw new Error('Choose your avatar picture on Step 6 (or switch the AI Avatar off)');
+        }
+        const avatarRes = await flashHead.generate(avatarOpts);
+        if (!avatarRes) {
+          // useFlashHead refunded its own 8 credits already (or the agent
+          // cancelled mid-avatar) — surface the right verdict here.
+          if (cancelRequestedRef.current) {
+            wasCancelled = true;
+            throw new Error('Render cancelled');
+          }
+          throw new Error('AI Avatar render failed — its 8 credits were refunded. Check the photo on Step 6 and the script on Step 5, then try again.');
+        }
+        avatarUrl = avatarRes.videoUrl;
+        setAvatarVideoUrl(avatarUrl);
+      }
+      if (cancelRequestedRef.current) {
+        wasCancelled = true;
+        throw new Error('Render cancelled');
+      }
+      setRenderPhase('video');
+
+      // 3) Pay for the job at mint time: ?action=job_token charges the credits
       //    server-side at the price in lib/renderPricing and returns a
       //    single-use token the worker will not render without (and will not
       //    accept twice). Same charge, same ledger reasons as the old
       //    client-side deduct — but the browser no longer decides the price
-      //    or whether to pay at all.
+      //    or whether to pay at all. Minted AFTER the avatar step so a slow
+      //    avatar render can never outlive the token's acceptance window.
       const usePool = (user?.agencyPoolCredits ?? 0) > 0;
       const jobToken = await jobHeaders('render', {
         tier,
@@ -2665,26 +2764,31 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       charged = true;
       void refresh(); // the balance display — the charge landed server-side
 
-      // Agent branding artwork for the worker's burn-in: the toggle alone
-      // used to reach the worker with nothing to draw. This is the DEFAULT
-      // profile's photo + logo + a contact line; the AI-avatar headshot
-      // replaces the agent photo in the top-left corner when the add-on is
-      // on (the avatar itself lip-syncs in its own FlashHead render — see
-      // the AI Avatar Video tab).
+      // Branding + avatar artwork for the worker's burn-in. The DEFAULT
+      // profile's photo/logo/contact ride along only when Agent Profile
+      // Branding is on; with the AI Avatar add-on on, its finished clip
+      // (rendered in step 2 above) rides along as avatar_video_url — the
+      // worker composites it top-left and uses its narration INSTEAD of the
+      // reel's TTS. The static corner photo is skipped there (the avatar
+      // owns that corner); with branding off, only avatar params travel.
       const brandProfile = user?.agentProfiles?.find(p => p.isDefault) || user?.agentProfiles?.[0];
       const contactLine = brandProfile
         ? [brandProfile.fullName, brandProfile.phone, brandProfile.email]
             .filter(Boolean).join(' · ')
         : '';
-      const brandingPayload = branding ? {
-        photo_url: brandProfile?.photoUrl || undefined,
-        logo_url: brandProfile?.logoUrl || undefined,
-        contact_line: contactLine || undefined,
+      const hostedPhoto = brandProfile?.photoUrl && !brandProfile.photoUrl.startsWith('data:') ? brandProfile.photoUrl : undefined;
+      const brandingPayload = (branding || aiTalkingProfile) ? {
+        ...(branding ? {
+          photo_url: hostedPhoto,
+          logo_url: brandProfile?.logoUrl || undefined,
+          contact_line: contactLine || undefined,
+        } : {}),
         use_avatar: !!aiTalkingProfile,
-        use_avatar_url: aiTalkingProfile ? (profileImage || undefined) : undefined,
+        use_avatar_url: aiTalkingProfile && profileImage && !profileImage.startsWith('data:') ? profileImage : undefined,
+        avatar_video_url: avatarUrl || undefined,
       } : undefined;
 
-      // 3) Start the async render job
+      // 4) Start the async render job
       if (cancelRequestedRef.current) { wasCancelled = true; throw new Error('Render cancelled'); }
       const response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
         method: 'POST',
@@ -2695,7 +2799,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           config_index: configIndex,
           orientation,
           images: uploadedImages,
-          voiceover_text: noNarration ? '' : script,
+          voiceover_text: avatarUrl ? '' : (noNarration ? '' : script),
           voice_id: voice,
           language,
           include_agent_branding: branding,
@@ -2713,7 +2817,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       const result = await response.json();
       track('render_started', { tier, orientation });
 
-      // 4) Poll /render_status until terminal (ESSENTIAL renders synchronously
+      // 5) Poll /render_status until terminal (ESSENTIAL renders synchronously
       // and return video_url immediately)
       let finalUrl: string | null = result?.video_url || null;
       let measuredDuration: number | undefined;
@@ -2750,15 +2854,6 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         throw new Error('The render did not finish within 25 minutes — your credits were refunded. Please try again from the Studio.');
       }
       setLastRenderUrl(finalUrl);
-
-      // 5) Talking Head add-on: render it on the dedicated tab (script carries
-      // over; FlashHead's own 8-credit charge happens there — no double billing)
-      if (aiTalkingProfile) {
-        toast.info(
-          'AI Avatar Video add-on: finish on the AI Avatar Video tab — your script is ready and waiting.',
-          'One step left'
-        );
-      }
 
       // 6) Finalize the project record
       if (user && projectId && finalUrl) {
@@ -2801,13 +2896,14 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
     }
   };
 
-  const totalCredits = selectedConfig.credits;
+  const totalCredits = selectedConfig.credits + (aiTalkingProfile ? FLASHHEAD_CREDITS : 0);
 
   // ── 8-step wizard (same numbered-step UX as New Listing) ─────────────
   // Steps 1–4 are the core setup; 5–8 are optional add-ons the agent can
   // skip past. All form state lives in this component, so stepping back and
-  // forth never loses an edit — and the AI Avatar Video panel stays mounted
-  // (hidden) once enabled, so an in-flight avatar render keeps polling.
+  // forth never loses an edit. The voiceover is chosen ONLY on Step 5;
+  // Step 6 picks the AI Avatar picture + toggle; Step 8 renders the avatar
+  // FIRST, then the video with the avatar burned into the top-left corner.
   const WIZARD_STEPS = [
     { id: 'description', label: 'Description' },
     { id: 'tier', label: 'Tier & Config' },
@@ -2823,15 +2919,16 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   const canNext = step !== 2 || uploadedImages.length > 0;
   const nextStep = () => { if (step < WIZARD_STEPS.length - 1 && canNext) setStep(step + 1); };
   const prevStep = () => setStep(s => Math.max(0, s - 1));
-  // Property Description → Voiceover Script: arriving at the Voiceover step
-  // with an empty script box pre-fills it from the Step-1 description, so
-  // the agent starts from the listing copy (then edits or AI-Writes over it)
-  // instead of a blank textarea. Fires on ARRIVAL only — a script the agent
-  // clears while staying on the step is never resurrected.
+  // Listing details → Voiceover Script: arriving at the Voiceover step
+  // with an empty script box pre-fills it from the Step-1 Listing details
+  // (listingSummary), so the agent starts from the real facts (then edits
+  // or AI-Writes over it) instead of a blank textarea. Fires on ARRIVAL
+  // only — a script the agent clears while staying on the step is never
+  // resurrected.
   const lastWizardStepRef = useRef(step);
   useEffect(() => {
-    if (step === 4 && lastWizardStepRef.current !== 4 && !script.trim() && propertyDescription.trim()) {
-      setScript(propertyDescription.trim());
+    if (step === 4 && lastWizardStepRef.current !== 4 && !script.trim() && listingSummary) {
+      setScript(listingSummary);
     }
     lastWizardStepRef.current = step;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2858,38 +2955,14 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         ))}
       </div>
 
-      {/* Step 1 — Property Description (source for AI Write) */}
+      {/* Step 1 — Listing details (auto-added to AI Write) */}
       {step === 0 && (
       <div>
-        <div className="flex items-center justify-between">
-          <label className="label">Property Description</label>
-          {propertyDescription.trim() && (
-            <button onClick={() => setPropertyDescription('')} className="text-xs text-ink-400 hover:text-red-400">Clear</button>
-          )}
-        </div>
-        <textarea
-          className="input min-h-[140px]"
-          value={propertyDescription}
-          onChange={e => setPropertyDescription(e.target.value)}
-          placeholder={"Bedrooms, bathrooms, stand size, finishes, view, garden, location highlights...\n\nAI Write turns this into a voiceover script that fills the selected video length — your uploaded photos sharpen what it describes."}
-          aria-label="Property Description source for the AI voiceover script"
-        />
-        <p className="text-xs text-ink-500 mt-1">
-          {/* Keep the phrase in sync with generateScript's toast */}
-          {propertyDescription.trim()
-            ? 'AI Write will base the voiceover on this description' + (uploadedImages.length ? ` and what it sees in your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}` : '') + (listingSummary ? ' — the listing details below are folded in too' : '')
-            : listingSummary
-              ? 'AI Write will speak from the listing details below' + (uploadedImages.length ? ` and what it sees in your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}` : '')
-              : uploadedImages.length
-                ? `No description yet — AI Write will write purely from your ${uploadedImages.length} photo${uploadedImages.length === 1 ? '' : 's'}`
-                : 'Add a description, listing details below, or photos for AI Write to work from'}
-        </p>
-
         {/* Structured listing facts — auto-folded into the AI Write
             grounding (generateScript appends listingSummary), so the
             voiceover speaks the real price/beds/features. Same field set
             as the Property Description page. */}
-        <div className="mt-6 pt-4 border-t border-white/5 space-y-4">
+        <div className="space-y-4">
           <p className="text-xs text-purple-300">Listing details — auto-added to AI Write in the Voiceover Script step</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2"><label className="label">Address</label><input className="input" value={fields.address} onChange={setField('address')} placeholder="Street, suburb, city" aria-label="Address" /></div>
@@ -3069,23 +3142,64 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
               ({wordCount(script)} / {targetWords} words, ~{estimatedNarrationSec}s)
             </span>
           </label>
+          {/* Paid action: AI Write costs 1 credit — say so BEFORE it runs.
+              window.confirm keeps the guarantee (nothing is charged unless
+              the agent explicitly accepts) with zero render-path state. */}
           <button 
-            onClick={generateScript} 
+            onClick={() => {
+              if (window.confirm(`AI Writer costs 1 credit per script.\n\nIt writes the voiceover from your Listing details and uploaded photos, sized to the ${selectedConfig.duration}s duration (${targetWords} words).\n\nGenerate now?`)) {
+                generateScript();
+              }
+            }} 
             disabled={generatingScript} 
+            title="Costs 1 credit — confirmed before running"
             className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1"
           >
-            {generatingScript ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI Write
+            {generatingScript ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI Write {generatingScript ? '' : '· 1⚡'}
           </button>
         </div>
         <p className="text-xs text-ink-500 mt-1">
-          Target word count: {targetWords} words (based on {selectedConfig.duration}s duration at 2.4 words/second)
+          {generatingScript
+            ? uploadedImages.length
+              ? 'Writing from your listing details and photos — this can take up to a minute…'
+              : 'Writing your script — a few seconds…'
+            : <>Target word count: {targetWords} words (based on {selectedConfig.duration}s duration at 2.4 words/second)</>}
         </p>
+        {scriptError && (
+          <div className="mb-2 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-950/40 p-3" role="alert">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-300 mt-0.5" />
+            <p className="text-xs text-red-300">{scriptError}</p>
+          </div>
+        )}
+      {/* Live word budget: remaining words left in the duration target, updating
+          as the agent types, with a warning the moment the script exceeds it —
+          the frozen-tail problem, surfaced before any credits are spent. */}
+      <div className="flex items-center justify-between text-xs">
+        <span className={scriptWords > targetWords ? 'text-red-400 font-semibold' : scriptWords > targetWords - 12 ? 'text-amber-400' : 'text-ink-500'}>
+          {Math.max(0, targetWords - scriptWords)} words left of {targetWords}
+        </span>
+        {scriptWords > targetWords && (
+          <span className="text-red-400 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" /> {scriptWords - targetWords} over target — trim to ~{Math.round(estimatedNarrationSec - (scriptWords - targetWords) / 2.4)}s narration
+          </span>
+        )}
+      </div>
       <textarea 
-        className="input min-h-[120px]" 
+        className={`input min-h-[120px] ${scriptWords > targetWords ? 'border-red-500/50' : ''}`} 
         value={script} 
-        onChange={e => setScript(e.target.value)} 
+        onChange={e => { setScript(e.target.value); if (scriptError) setScriptError(null); }} 
         placeholder={`Write your voiceover script or use AI to generate one...\n\nTarget: ${targetWords} words for ${selectedConfig.duration}s video`}
       />
+        {/* Script-vs-language mismatch (restored — commit 0445013 dropped it
+            while restructuring this step): the check re-arms on every language
+            change or script edit; the LLM verdict takes a few seconds, so show
+            the in-flight state instead of silence. */}
+        {langCheck.status === 'checking' && (
+          <p className="text-xs text-ink-500 mt-2 flex items-center gap-1">
+            <RefreshCw className="w-3 h-3 animate-spin" /> Checking the script language…
+          </p>
+        )}
+        <LanguageMismatchBanner check={langCheck} />
         {narrationTooLong && !noNarration && (
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
@@ -3149,9 +3263,10 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       </div>
       </>)}
 
-      {/* Step 6 — AI Avatar Video (optional, +8 credits). The panel stays
-          mounted once enabled (hidden off-step) so an in-flight avatar
-          render keeps polling while the agent works on later steps. */}
+      {/* Step 6 — AI Avatar add-on (optional, +8 credits): pick the picture
+          (or the branding profile image) and flip the toggle — that's all.
+          The clip itself renders FIRST, inside Generate Video on Step 8;
+          the voiceover stays on Step 5, the only place it is chosen. */}
       <div className={step === 5 ? undefined : 'hidden'}>
         <AITalkingProfile
           enabled={aiTalkingProfile}
@@ -3160,20 +3275,6 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           onProfileImageChange={setProfileImage}
           voiceoverScript={script}
         />
-        {aiTalkingProfile && (
-          <div className="mt-4">
-            <FlashHeadVideo
-              initialScript={script}
-              onScriptChange={setScript}
-              langCheck={langCheck}
-              profileImage={profileImage}
-              profileImageReady={profileImageReady}
-              onProfileImageChange={setProfileImage}
-              language={language}
-              onLanguageChange={onLanguageChange}
-            />
-          </div>
-        )}
       </div>
 
       {/* Step 7 — Background Music / Agent Profile Branding (optional) */}
@@ -3288,13 +3389,19 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         {generating && (
           <RenderProgressBar
             progress={reelProgress}
-            stage={renderStatus === 'processing' ? 'processing' : renderStatus === 'queued' ? 'queued' : ''}
-            label="Rendering your video reel"
+            stage={renderPhase === 'avatar'
+              ? (flashHead.jobStatus === 'processing' ? 'processing' : 'queued')
+              : (renderStatus === 'processing' ? 'processing' : renderStatus === 'queued' ? 'queued' : '')}
+            label={renderPhase === 'avatar'
+              ? 'Step 1 of 2 — rendering your AI avatar'
+              : aiTalkingProfile
+                ? 'Step 2 of 2 — rendering your video with the avatar'
+                : 'Rendering your video reel'}
           />
         )}
-        {aiTalkingProfile && (
+        {aiTalkingProfile && !generating && (
           <p className="text-xs text-ink-400 text-center">
-            Reel: {selectedConfig.credits} credits here — the AI Avatar Video lip-sync (+8 credits) renders separately on Step 6 with your script.
+            Includes the AI Avatar add-on (+{FLASHHEAD_CREDITS} credits): the avatar renders first, then the video with the avatar in the top-left corner — its voiceover replaces the reel's narration.
           </p>
         )}
         {!generating && lastRenderUrl && (

@@ -506,6 +506,7 @@ const REFUND_MATCHERS: Record<string, (t: CreditTransaction) => boolean> = {
   edit: t => t.metadata?.scope === 'edit' || t.metadata?.kind === 'IMAGE_EDIT' || t.description.startsWith('Image edit'),
   description: t => t.metadata?.kind === 'PROPERTY_DESCRIPTION' || t.description === 'Property description',
   social_post: t => t.metadata?.kind === 'SOCIAL_POST' || t.description === 'Social media post',
+  script: t => t.metadata?.scope === 'script' || t.description === 'AI Writer voiceover script',
 };
 
 export const REFUND_SCOPES = Object.keys(REFUND_MATCHERS);
