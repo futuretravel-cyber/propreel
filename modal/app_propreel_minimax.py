@@ -89,13 +89,20 @@ def _parse_token(value: Optional[str]):
         version, scope = 1, None
     elif len(parts) == 5 and parts[0] == "v2":
         _, exp_s, uid, scope, sig = parts
-        if scope not in ("render", "flashhead", "edit", "script"):
+        # 'description' / 'social_post' ride v2 tokens to /generate_text: the
+        # API server-prices those scopes from lib/renderPricing exactly like
+        # the others, and a renderer / endpoint that never prices a scope
+        # doesn't care what the token says — get_scope is advisory. Keeping
+        # the enum closed here used to 401 every Property Description call
+        # (agent-visible symptom: "unknown job scope — your credit was
+        # refunded") even though the credit was charged and the run was paid.
+        if not scope or not scope.isalnum() or len(scope) > 32:
             return None, "unknown job scope"
         msg = f"v2.{exp_s}.{uid}.{scope}"
         version = 2
     elif len(parts) == 6 and parts[0] == "v3":
         _, exp_s, uid, scope, script_hash, sig = parts
-        if scope not in ("render", "flashhead", "edit", "script"):
+        if not scope or not scope.isalnum() or len(scope) > 32:
             return None, "unknown job scope"
         if len(script_hash) != 16 or any(c not in "0123456789abcdef" for c in script_hash):
             return None, "malformed token script hash"
@@ -234,7 +241,11 @@ def _claim_job_token(request: Request) -> None:
 
 # Define the image with required dependencies
 image = modal.Image.debian_slim().apt_install(
-    "ffmpeg"
+    "ffmpeg",
+    # A real TTF for the branding contact bar: the container ships no fonts,
+    # PIL's bitmap default is so small that portrait renders (1080-wide,
+    # 96px-tall bar) showed illegible contact details / nothing at all.
+    "fonts-dejavu-core"
 ).pip_install(
     "boto3",
     "moviepy",
@@ -1024,6 +1035,7 @@ def upscale_video(input_video_url: str, target_resolution: str = "1080p") -> str
         "-c:v", "libx264",
         "-preset", "slow",
         "-crf", "18",
+        "-movflags", "+faststart",  # publish path — Premium upscale ships direct
         "-c:a", "copy",
         "-y",
         output_path
@@ -1198,25 +1210,35 @@ def _branding_card_png(
             print(f"branding logo fetch failed (skipped): {le}")
 
     # 3) Contact bar — bottom, full width, translucent dark with white text.
+    #    Legibility scale: fonts-dejavu-core is baked into the Modal image
+    #    (formerly there was NO ttf on the box, so Pillow fell back to its
+    #    ~11px bitmap default and portrait renders unreadable / blank —
+    #    the "can't see the contact details" report).
     contact = str((branding or {}).get("contact_line") or "").strip()
     if contact:
         draw = ImageDraw.Draw(canvas)
         bar_top = height - bar_h
         draw.rectangle((0, bar_top, width, height), fill=(8, 6, 18, 190))
         try:
-            # DejaVu ships with matplotlib at root; the Modal container
-            # otherwise has no bundled fonts — fall back to Pillow's default.
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
         except Exception:
-            font = ImageFont.load_default()
-        bbox = draw.textbbox((0, 0), contact, font=font)
+            font = None
+        bbox = draw.textbbox((0, 0), contact, font=font or ImageFont.load_default())
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         max_w = width - 2 * margin
-        if tw > max_w:  # never spill: shrink font until it fits
-            font = ImageFont.load_default()
+        # Too long for one line → shrink the REAL font progressively,
+        # floor 0.55×design; the old fallback jumped to an illegible bitmap
+        # font — the unreadable-render root cause.
+        MIN_SCALE = 0.55
+        while font is not None and tw > max_w and font_size > int(24 * scale):
+            font_size = max(int(font_size * 0.9), int(24 * scale))
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
             bbox = draw.textbbox((0, 0), contact, font=font)
-            tw = bbox[2] - bbox[0]
-        draw.text(((width - tw) // 2, bar_top + (bar_h - th) // 2 - bbox[1], ), contact,
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        font = font or ImageFont.load_default()
+        draw.text(((width - tw) // 2, bar_top + (bar_h - th) // 2 - bbox[1]), contact,
                   font=font, fill=(255, 255, 255, 245))
 
     if not (photo_fetched or logo_fetched or contact):
@@ -1248,7 +1270,10 @@ def _apply_branding_overlay(video_path: str, branding: dict | None, use_avatar: 
          "-filter_complex", "[0:v][1:v]overlay=0:0:format=auto[v]",
          "-map", "[v]", "-map", "0:a?",
          "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
-         "-c:a", "copy", out_path],
+         # faststart: moov first — browsers can start playback while the file
+         # downloads (a trailing moov makes video elements spin forever on
+         # progressively-fetched MP4s, incl. every shared producted link).
+         "-movflags", "+faststart", "-c:a", "copy", out_path],
         capture_output=True, timeout=600,
     )
     if proc.returncode != 0:
@@ -1257,7 +1282,7 @@ def _apply_branding_overlay(video_path: str, branding: dict | None, use_avatar: 
             ["ffmpeg", "-y", "-i", video_path, "-i", card,
              "-filter_complex", "[0:v][1:v]overlay=0:0:format=auto",
              "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
-             out_path],
+             "-movflags", "+faststart", out_path],
             capture_output=True, timeout=600,
         )
         if proc.returncode != 0:
@@ -1302,6 +1327,9 @@ def _mix_music_bed(
              f"[1:a]volume={music_volume},afade=t=out:st={fade_start:.2f}:d=2[a]",
              "-map", "0:v", "-map", "[a]",
              "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+             # faststart: the muxed container is a publish candidate when no
+             # narration followed (video stream copy still rewrite the container).
+             "-movflags", "+faststart",
              "-shortest", out_path],
             capture_output=True, timeout=600,
         )
@@ -1557,6 +1585,9 @@ def _mix_narration(video_path: str, narration_path: str, out_path: str,
              "-filter_complex", ";".join(chains),
              "-map", video_map, "-map", audio_map,
              *video_args, "-c:a", "aac", "-b:a", "160k",
+             # faststart (publish path — Essential tier + AI-tier voiceover mix:
+             # a trailing moov stops browsers starting playback progressively).
+             "-movflags", "+faststart",
              "-t", f"{target:.3f}", out_path],
             capture_output=True, timeout=600,
         )
@@ -1728,9 +1759,12 @@ def _apply_avatar_overlay(
             ["ffmpeg", *inputs,
              "-filter_complex", ";".join(chains),
              "-map", "[v]", "-map", audio_map,
-             "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
-             "-c:a", "aac", "-b:a", "160k",
-             "-t", f"{target:.3f}", out_path],
+         "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-b:a", "160k",
+         # faststart (see _apply_branding_overlay) — this mux is one of the
+         # publish paths when no branding (final upload follows directly).
+         "-movflags", "+faststart",
+         "-t", f"{target:.3f}", out_path],
             capture_output=True, timeout=900,
         )
         if proc.returncode != 0:
@@ -1844,7 +1878,7 @@ def render_video_local(
     output_path = os.path.join(work, "output.mp4")
     concat = _sp.run(
         ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
-         "-c", "copy", output_path],
+         "-c", "copy", "-movflags", "+faststart", output_path],  # faststart: publish path when no narration follows — moov header first, players start before the download finishes
         capture_output=True, timeout=300,
     )
     if concat.returncode != 0:
@@ -1852,7 +1886,7 @@ def render_video_local(
         concat = _sp.run(
             ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
              "-c:v", "libx264", "-preset", "medium", "-crf", "19",
-             "-pix_fmt", "yuv420p", output_path],
+             "-pix_fmt", "yuv420p", "-movflags", "+faststart", output_path],
             capture_output=True, timeout=600,
         )
         if concat.returncode != 0:
@@ -3990,3 +4024,67 @@ def media_selftest(object_key: str = "renders/pr_1791056980364_fgxj/video.mp4") 
     # Print as well as return — `modal run` doesn't surface return values.
     print("SELFTEST " + json.dumps(results))
     return results
+
+
+# ── One-off ops: faststart-repack published renders ─────────══════════════
+# Runs on Modal (ffmpeg + aws creds are already here); `modal run` a single
+# key or a renders/ prefix to fix stranded non-faststart MP4s whose share
+# links won't play progressively. Idempotent: a faststart object is skipped.
+@app.function(image=image, secrets=[modal.Secret.from_name("aws-credentials")], timeout=600)
+def faststart_repack(*keys: str) -> list[str]:
+    import shutil as _shutil
+    import tempfile as _tf
+    s3 = _s3()
+    out = []
+    for key in keys:
+        try:
+            body = s3.get_object(Bucket=S3_BUCKET, Key=key)["Body"].read()
+            # Walk the top-level atoms; moov already in the first MB → skip.
+            off, found = 0, len(body)
+            while off + 8 <= len(body):
+                size = int.from_bytes(body[off:off + 4], "big")
+                if body[off + 4:off + 8] == b"moov":
+                    found = off
+                    break
+                if size < 8:
+                    break
+                off += size
+            if found < 1024 * 1024:
+                out.append(f"{key}: skip (moov at {found}, already faststart)")
+                continue
+            with _tf.TemporaryDirectory(prefix="faststart_") as tmp:
+                src, dst = os.path.join(tmp, "src.mp4"), os.path.join(tmp, "dst.mp4")
+                with open(src, "wb") as f:
+                    f.write(body)
+                proc = _sp_run_ffmpeg_faststart(src, dst)
+                if proc.returncode != 0:
+                    out.append(f"{key}: FAIL {(proc.stderr or b'')[-160:]!r}")
+                    continue
+                with open(dst, "rb") as f:
+                    fixed = f.read()
+            # Republish in place — same key, same path; presign URLs cover host+path
+            # only, so existing share links stay valid over the rewritten object.
+            s3.put_object(Bucket=S3_BUCKET, Key=key, Body=fixed, ContentType="video/mp4")
+            _off, new_found = 0, len(fixed)
+            while _off + 8 <= len(fixed):
+                size = int.from_bytes(fixed[_off:_off + 4], "big")
+                if fixed[_off + 4:_off + 8] == b"moov":
+                    new_found = _off
+                    break
+                if size < 8:
+                    break
+                _off += size
+            out.append(f"{key}: repacked {len(body)//1024}KiB → {len(fixed)//1024}KiB, moov {found} → {new_found}")
+        except Exception as e:
+            out.append(f"{key}: ERROR {e}")
+    for line in out:
+        print(line)
+    return out
+
+
+def _sp_run_ffmpeg_faststart(src: str, dst: str):
+    import subprocess as _sp
+    return _sp.run(
+        ["ffmpeg", "-y", "-i", src, "-c", "copy", "-movflags", "+faststart", dst],
+        capture_output=True, timeout=500,
+    )

@@ -2988,7 +2988,20 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
             voiceover speaks the real price/beds/features. Same field set
             as the Property Description page. */}
         <div className="space-y-4">
-          <p className="text-xs text-purple-300">Listing details — auto-added to AI Write in the Voiceover Script step</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-purple-300">Listing details — auto-added to AI Write in the Voiceover Script step</p>
+            <button
+              type="button"
+              onClick={() => {
+                setFields({ address: '', price: '', propertyType: 'House', province: '', bedrooms: '', bathrooms: '', garages: '', erf: '', floor: '', extraFeatures: '' });
+                setSelectedFeatures([]);
+                toast.info('Listing details cleared', 'Step 1');
+              }}
+              className="text-xs text-ink-400 hover:text-red-400 shrink-0"
+            >
+              Clear
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2"><label className="label">Address</label><input className="input" value={fields.address} onChange={setField('address')} placeholder="Street, suburb, city" aria-label="Address" /></div>
             <div><label className="label">Price (ZAR)</label><CurrencyInput className="input" value={fields.price} onChange={v => setFields(f => ({ ...f, price: v }))} placeholder="12,500,000" aria-label="Price in rand" /></div>
@@ -3031,7 +3044,16 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       {/* Step 2 — Video Tier / Configuration */}
       {step === 1 && (<>
       <div>
-        <label className="label">Video Tier</label>
+        <div className="flex items-center justify-between">
+          <label className="label">Video Tier</label>
+          <button
+            type="button"
+            onClick={() => { setTier('SOCIAL'); setConfigIndex(0); toast.info('Tier & configuration reset', 'Step 2'); }}
+            className="text-xs text-ink-400 hover:text-red-400"
+          >
+            Clear
+          </button>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {TIERS.map(t => {
             const minCredits = Math.min(...t.configurations.map(c => c.credits));
@@ -3130,7 +3152,16 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       {/* Step 4 — Orientation */}
       {step === 3 && (
       <div>
-        <label className="label">Orientation</label>
+        <div className="flex items-center justify-between">
+          <label className="label">Orientation</label>
+          <button
+            type="button"
+            onClick={() => { setOrientation('LANDSCAPE'); toast.info('Orientation reset to Landscape', 'Step 4'); }}
+            className="text-xs text-ink-400 hover:text-red-400"
+          >
+            Clear
+          </button>
+        </div>
         <div className="flex gap-3">
           {ORIENTATIONS.map(o => (
             <button key={o.id} onClick={() => setOrientation(o.id)} className={`flex items-center gap-3 px-6 py-3 rounded-xl transition ${orientation === o.id ? 'bg-purple-700/20 border border-purple-500/30 text-purple-300' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
@@ -3167,6 +3198,17 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
               ({wordCount(script)} / {targetWords} words, ~{estimatedNarrationSec}s)
             </span>
           </label>
+          <div className="flex items-center gap-3">
+            {script && (
+              <button
+                type="button"
+                onClick={() => { setScript(''); scriptWrittenForSec.current = null; if (scriptError) setScriptError(null); toast.info('Voiceover script cleared', 'Step 5'); }}
+                disabled={generatingScript}
+                className="text-xs text-ink-400 hover:text-red-400 disabled:opacity-40"
+              >
+                Clear
+              </button>
+            )}
           {/* Paid action: AI Write is priced by duration (ceil(duration/30)
               ⚡, server-priced at the mint) — say so BEFORE it runs.
               window.confirm keeps the guarantee (nothing is charged unless
@@ -3184,6 +3226,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           >
             {generatingScript ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI Write {generatingScript ? '' : `· ${scriptPrice}⚡`}
           </button>
+          </div>
         </div>
         <p className="text-xs text-ink-500 mt-1">
           {generatingScript
@@ -3295,6 +3338,18 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           The clip itself renders FIRST, inside Generate Video on Step 8;
           the voiceover stays on Step 5, the only place it is chosen. */}
       <div className={step === 5 ? undefined : 'hidden'}>
+        <div className="flex items-center justify-between">
+          <label className="label">AI Avatar Video (optional add-on)</label>
+          {(profileImage || aiTalkingProfile) && (
+            <button
+              type="button"
+              onClick={() => { onProfileImageChange(null); setAiTalkingProfile(false); toast.info('AI Avatar cleared', 'Step 6'); }}
+              className="text-xs text-ink-400 hover:text-red-400"
+            >
+              Clear
+            </button>
+          )}
+        </div>
         <AITalkingProfile
           enabled={aiTalkingProfile}
           onToggle={setAiTalkingProfile}
@@ -3349,7 +3404,18 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
 
       {/* Branding & Music — tap-to-include toggles */}
       <div className="space-y-3">
-        <label className="label">Enhancements</label>
+        <div className="flex items-center justify-between">
+          <label className="label">Enhancements</label>
+          {(branding || selectedMusic) && (
+            <button
+              type="button"
+              onClick={() => { setBranding(false); setSelectedMusic(null); toast.info('Enhancements cleared — branding & music off', 'Step 7'); }}
+              className="text-xs text-ink-400 hover:text-red-400"
+            >
+              Clear
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             type="button"
@@ -3435,6 +3501,17 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
             ⚠ The voiceover script is over the {FLASHHEAD_MAX_SECONDS}s AI Avatar cap (~{Math.floor(FLASHHEAD_MAX_SECONDS * NARRATION_WORDS_PER_SEC)} words) — shorten it on Step 5 or switch the avatar off on Step 6.
           </p>
         ))}
+        {!generating && lastRenderUrl && (
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => { setLastRenderUrl(null); setShareOpen(false); toast.info('Finished video cleared from this page — it stays in Projects', 'Step 8'); }}
+              className="text-xs text-ink-400 hover:text-red-400"
+            >
+              Clear video
+            </button>
+          </div>
+        )}
         {!generating && lastRenderUrl && (
           <div className="rounded-xl overflow-hidden border border-white/10 bg-black">
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
