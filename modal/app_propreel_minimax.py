@@ -2796,6 +2796,39 @@ def _llm_chat(messages: list) -> str:
     raise last_err or RuntimeError("LLM call failed")
 
 
+def _trim_to_sentences_within(text: str, word_cap: int) -> str | None:
+    """Trim a script to complete sentences within `word_cap` words.
+
+    Splits on terminal punctuation (. ! ? …) including the quotes they may
+    close, drops any dangling unfinished head (the 'this is the perfect'
+    tail), and walks sentence-by-sentence until adding the next would exceed
+    the cap. Returns None when the result would be empty (no complete
+    sentence fits – caller keeps the raw text, the degenerate-cap case).
+    """
+    import re as _re
+
+    src = (text or "").strip()
+    if not src:
+        return None
+    # Sentences = text up to each terminal punct (. ! ? …) + any closing
+    # quote/brace it carries, keeping the punctuation.
+    parts = _re.findall(r"([\s\S]*?[.!?…]+[\"'”’)]*\s*|$)", src)
+    sentences = [p.strip() for p in parts if p.strip()]
+    if len(sentences) < 2:
+        return None            # whole text is one sentence or no terminator
+    kept: list[str] = []
+    count = 0
+    for s in sentences:
+        n = len(_re.findall(r"\S+", s))
+        if count + n > word_cap:
+            break
+        kept.append(s)
+        count += n
+    if not kept:
+        return None
+    return " ".join(kept)
+
+
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300)
 def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str:
     """Grok AI text generation for property descriptions, social captions and
@@ -2878,11 +2911,19 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
         # name the absolute ceiling explicitly.
         if target_words and duration_s:
             words = int(target_words)
+            # Above the cap a HALF-FINISHED sentence is the worst outcome: the
+            # narration ends mid-thought ("this is the perfect"). The rule now
+            # prioritizes COMPLETE sentences — the model must plan the count
+            # and finish the thought, trimming facts instead of truncation.
             word_rule = (
                 f"HARD LIMIT: {words} words or fewer — the script must fill {int(duration_s)} seconds of "
                 f"narration and MUST NOT exceed {words} words. Aim for about 90% of that length "
-                f"(short, punchy sentences). If the listing content is too much, summarize it — "
-                f"never run over {words} words. Count your words before answering."
+                f"using short, complete sentences. THE SCRIPT MUST END ON A FINISHED SENTENCE: "
+                f"never stop mid-sentence, never end on a comma or a half-thought — if your draft "
+                f"is over {words} words, delete whole sentences or summarize longer, so every "
+                f"sentence still ends with its punctuation. The closing call to action must be a "
+                f"complete sentence too. Count your words BEFORE answering and drop content, "
+                f"never cut a sentence short."
             )
         else:
             word_rule = (
@@ -2941,6 +2982,22 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
         {"role": "system", "content": system},
         {"role": "user", "content": user_content},
     ])
+    # Sentence-safe final trim (deterministic, second layer behind the prompt
+    # rule): an LLM that still exceeds the word budget must come back ending
+    # on a COMPLETE sentence — narration ends mid-thought otherwise ("…this
+    # is the perfect"). Falls back to the untrimmed text when no cap is
+    # known, when the draft is already within it, or when no complete
+    # sentence fits (degenerate tiny cap — ship the raw text rather than
+    # nothing).
+    try:
+        if kind == "video_script":
+            cap = fields.get("target_words")
+            if cap and int(cap) > 0:
+                trimmed = _trim_to_sentences_within(text, int(cap))
+                if trimmed:
+                    text = trimmed
+    except Exception as te:
+        print(f"sentence trim skipped: {te}")
     return text
 
 

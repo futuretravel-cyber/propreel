@@ -2630,13 +2630,25 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       // slightly LESS than the video length is fine, never more. LLMs drift
       // past the requested count (~30s scripts landing at 100+ words made
       // the 30s video run 38s on a frozen last frame).
+      // TRIM ON SENTENCE BOUNDARIES: the old mid-word slice cut the last
+      // sentence in half ("this is the perfect") — narration then ended
+      // mid-thought. Split on terminal punctuation and keep only whole
+      // sentences that fit; facts are dropped, never a half-thought.
       const raw = text.replace(/\s+/g, ' ').trim();
-      const words = raw.split(' ');
-      const trimmed = words.length > targetWords ? words.slice(0, targetWords).join(' ') : raw;
+      const sentences = raw.match(/[^.!?…]+[.!?…]+["'”’)]*\s*|[^.!?…]+$/g) || [raw];
+      let count = 0, keptCount = 0;
+      const kept: string[] = [];
+      for (const s of sentences) {
+        const n = s.trim().split(/\s+/).filter(Boolean).length;
+        if (count + n > targetWords && keptCount >= 1) break;
+        if (count + n > targetWords) break; // degenerate: first sentence already over
+        kept.push(s.trim()); count += n; keptCount++;
+      }
+      const trimmed = kept.length ? kept.join(' ') : raw;
       setScript(trimmed);
       scriptWrittenForSec.current = selectedConfig.duration; // regenerated for THIS length
-      if (words.length > targetWords) {
-        toast.info(`The script ran long — trimmed to the ${targetWords}-word target for a ${selectedConfig.duration}s read.`, 'Script sized to duration');
+      if (count < sentences.filter(s => s.trim()).length) {
+        toast.info(`The script ran long — trimmed to complete sentences within the ${targetWords}-word target for a ${selectedConfig.duration}s read.`, 'Script sized to duration');
       }
     } catch (e: any) {
       // A failed generation refunds the script charge (server-verified once).
