@@ -3805,23 +3805,34 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
             # so hand it a long-lived presigned link, never the raw object.
             return presign_urls(result)
 
-        # Async path: write initial job status to S3, then spawn
-        _write_job_status(request.record_id, "queued", {"tier": request.tier})
-        await render_video_job.spawn.aio(
-            record_id=request.record_id,
-            tier=request.tier,
-            config_index=request.config_index,
-            orientation=request.orientation,
-            images=request.images,
-            voiceover_text=request.voiceover_text,
-            voice_id=request.voice_id,
-            language=request.language,
-            include_agent_branding=request.include_agent_branding,
-            music_url=request.music_url,
-            image_prompts=request.image_prompts,
-            branding=request.branding,
-            use_avatar=bool((request.branding or {}).get("use_avatar")),
-        )
+        # Async path: write initial job status to S3, then spawn.
+        # Fail-CLOSED: the token is already burnt by the claim above, so if
+        # this setup itself throws (S3 outage, spawn rejection), a silent
+        # return 200 would strand a paid, unstartable job — the client would
+        # poll a record that never exists until its 25-min deadline and the
+        # refund would never run. Any failure here marks the job `failed`
+        # (client refunds on terminal failed — the documented contract) AND
+        # the endpoint returns 502 so the browser gets a real verdict now.
+        try:
+            _write_job_status(request.record_id, "queued", {"tier": request.tier})
+            await render_video_job.spawn.aio(
+                record_id=request.record_id,
+                tier=request.tier,
+                config_index=request.config_index,
+                orientation=request.orientation,
+                images=request.images,
+                voiceover_text=request.voiceover_text,
+                voice_id=request.voice_id,
+                language=request.language,
+                include_agent_branding=request.include_agent_branding,
+                music_url=request.music_url,
+                image_prompts=request.image_prompts,
+                branding=request.branding,
+                use_avatar=bool((request.branding or {}).get("use_avatar")),
+            )
+        except Exception as spawn_err:
+            render_video_failed(request.record_id, f"spawn failed: {type(spawn_err).__name__}: {str(spawn_err)[:300]}")
+            raise HTTPException(status_code=502, detail=f"Render could not be started after payment — the job is marked failed so the charge auto-refunds. ({type(spawn_err).__name__})")
         return {
             "record_id": request.record_id,
             "status": "queued",

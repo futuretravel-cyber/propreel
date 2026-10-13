@@ -2824,24 +2824,37 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
 
       // 4) Start the async render job
       if (cancelRequestedRef.current) { wasCancelled = true; throw new Error('Render cancelled'); }
-      const response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...jobToken },
-        body: JSON.stringify({
-          record_id: recordId,
-          tier,
-          config_index: configIndex,
-          orientation,
-          images: uploadedImages,
-          voiceover_text: avatarUrl ? '' : (noNarration ? '' : script),
-          voice_id: voice,
-          language,
-          include_agent_branding: branding,
-          audio: false,
-          music_url: selectedMusic || undefined,
-          branding: brandingPayload,
-        }),
-      });
+      // Bounded: a hung POST (Modal cold container, mobile drop) used to
+      // leave the spinner dead-air for the whole 25-minute deadline. 45s is
+      // far above the endpoint's real latency (claim + S3 write + spawn).
+      const START_TIMEOUT_MS = 45_000;
+      let response: Response;
+      try {
+        response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...jobToken },
+          body: JSON.stringify({
+            record_id: recordId,
+            tier,
+            config_index: configIndex,
+            orientation,
+            images: uploadedImages,
+            voiceover_text: avatarUrl ? '' : (noNarration ? '' : script),
+            voice_id: voice,
+            language,
+            include_agent_branding: branding,
+            audio: false,
+            music_url: selectedMusic || undefined,
+            branding: brandingPayload,
+          }),
+          signal: AbortSignal.timeout(START_TIMEOUT_MS),
+        });
+      } catch (e: any) {
+        if (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+          throw new Error('The render service did not respond while starting — your charge is being refunded; try again in a minute.');
+        }
+        throw e;
+      }
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
@@ -2861,11 +2874,30 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         // assembly); the old 12-minute deadline expired first and fell through
         // to the success toast with no video URL.
         const deadline = Date.now() + 25 * 60 * 1000;
+        // A worker restart mid-job can leave the status object missing (404).
+        // Tolerate those: keep polling across a bounded outage window instead
+        // of letting a single 404 end the wait.
+        let unknownSince = 0;
+        const UNKNOWN_GRACE_MS = 120_000;
         while (Date.now() < deadline) {
           if (cancelRequestedRef.current) { wasCancelled = true; break; }
           await new Promise(r => setTimeout(r, 5000));
           try {
-            const s = await fetch(`${RENDER_ENDPOINT}/render_status?record_id=${encodeURIComponent(result.record_id)}`, { headers: await workerHeaders() }).then(r => r.json());
+            const pollRes = await fetch(`${RENDER_ENDPOINT}/render_status?record_id=${encodeURIComponent(result.record_id)}`, {
+              headers: await workerHeaders(),
+              signal: AbortSignal.timeout(30_000),
+            });
+            if (pollRes.status === 404) {
+              // Unknown record: could be cold pre-spawn lag or post-restart
+              // loss — grace-window it, then treat as failed so a refund runs.
+              if (!unknownSince) unknownSince = Date.now();
+              else if (Date.now() - unknownSince > UNKNOWN_GRACE_MS) {
+                throw new Error('The render service lost this job before it started — your charge is being refunded. Please try again.');
+              }
+              continue;
+            }
+            unknownSince = 0;
+            const s = await pollRes.json();
             setRenderStatus(String(s.status || '').toLowerCase());
             if (s.status === 'completed' && s.video_url) {
               finalUrl = s.video_url;

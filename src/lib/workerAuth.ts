@@ -67,6 +67,8 @@ export interface JobMintOptions {
   pool?: 'personal' | 'agency';
 }
 
+const MINT_TIMEOUT_MS = 45_000;
+
 /**
  * Headers for ONE paid job start (POST ?action=job_token).
  *
@@ -77,22 +79,35 @@ export interface JobMintOptions {
  *
  * Throws on failure (not enough credits, rate limit, signed out) so every
  * caller keeps its existing "job never started, nothing to refund" path.
+ *
+ * Bounded by AbortSignal.timeout: a hung mint (cold serverless container,
+ * dropped mobile connection) used to leave the render spinner spinning for
+ * its full 25-minute deadline with no verdict at all.
  */
 export async function jobHeaders(scope: JobScope, opts: JobMintOptions = {}): Promise<Record<string, string>> {
-  const res = await fetch(`${API_BASE}/api/users?action=job_token`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      scope,
-      tier: opts.tier,
-      config_index: opts.configIndex,
-      preset_id: opts.presetId,
-      voiceover_text: opts.voiceoverText,
-      metadata: opts.metadata,
-      pool: opts.pool,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/users?action=job_token`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope,
+        tier: opts.tier,
+        config_index: opts.configIndex,
+        preset_id: opts.presetId,
+        voiceover_text: opts.voiceoverText,
+        metadata: opts.metadata,
+        pool: opts.pool,
+      }),
+      signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
+    });
+  } catch (e: any) {
+    if (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+      throw new Error('The server did not respond while starting this job — check your connection and try again (nothing was charged).');
+    }
+    throw e;
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.token) {
     throw new Error(data?.error || `Could not start the job (${res.status})`);
