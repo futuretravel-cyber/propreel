@@ -260,8 +260,39 @@ def _friendly_fal_error(e: Exception, context: str = "Image edit") -> str:
     if "Could not deserialize remote exception" in msg or "remote traceback" in msg.lower():
         lines = [l.strip() for l in msg.splitlines() if l.strip()]
         msg = lines[-1] if lines else msg
+    lowered = msg.lower()
     if "Exhausted balance" in msg or "User is locked" in msg:
         return f"{context} failed: the fal.ai account is out of balance (user locked). Top up at fal.ai/dashboard/billing."
+    # ── Media-fetch failures BEFORE any status-code branch ────────────────
+    # When a provider failed to fetch OUR media (an input image the vendor
+    # downloads itself), its error text often carries the HTTP status of that
+    # download ("failed to download image ... 401", "Error fetching image: 403")
+    # — which the generic 401 branch below used to blame on FAL_KEY, sending
+    # the agent to rotate a perfectly-valid key while the real problem is the
+    # media URL (expired/unsigned presign, deleted object, host 403 on a
+    # private bucket). Detection: a download/fetch/load verb over an image/
+    # media/URL token. This precedence is intentional.
+    media_fetch_failure = (
+        ("download" in lowered or "fetch" in lowered or "load" in lowered or "retrieve" in lowered)
+        and ("image" in lowered or "media" in lowered or "url" in lowered or "https://" in lowered)
+    )
+    if media_fetch_failure:
+        return (
+            f"{context} failed: the provider could not fetch the attached image/media "
+            f"({msg[:220]}). This is about the media URL, not the API key — "
+            "usually an expired/unreachable image link. Retry the request; if it "
+            "persists the source image needs re-uploading."
+        )
+    # Worker-side S3 credentials missing (presign_media historically raised
+    # this when the aws-credentials Modal secret was not mounted on the
+    # function) — distinct from fal auth and actionable on OUR side.
+    if "unable to locate credentials" in lowered:
+        return (
+            f"{context} failed: this worker is missing its S3 credentials "
+            "(aws-credentials Modal secret not mounted on the function) — "
+            "vendor media could not be presigned. Ops: attach the "
+            "aws-credentials secret and redeploy."
+        )
     if "401" in msg or "Unauthorized" in msg:
         return "fal.ai rejected the API key (401 Unauthorized) - check FAL_KEY in the fal-credentials Modal secret."
     if "403" in msg or "Forbidden" in msg:
