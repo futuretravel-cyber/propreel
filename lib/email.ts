@@ -284,3 +284,76 @@ export function pnlReportTemplate(
 
   return { subject, html, text };
 }
+
+/**
+ * Upcoming subscription billing notice — sent a few days before Paystack
+ * charges the subscriber's saved card for a new cycle. The money line stays
+ * short: a free/active agent only needs WHAT and WHEN (amount, date, plan),
+ * not a ledger dump. Managed subscriptions use the sub code reference so
+ * support can tie it to a Paystack subscription.
+ */
+export function upcomingBillingTemplate(rows: {
+  fullName: string;
+  planLabel: string;
+  amountZar: number;
+  chargeDateLabel: string;
+  cycleLabel: string;
+  manageUrl: string;
+}): { subject: string; html: string; text: string } {
+  const first = rows.fullName.split(' ')[0] || 'there';
+  const money = `R${rows.amountZar.toLocaleString('en-ZA')}`;
+  const subject = `PropReel billing reminder — ${money} on ${rows.chargeDateLabel}`;
+
+  const html = layout(
+    'Your monthly billing reminder',
+    `<p>Hi ${first} — a friendly heads-up before your plan renews.</p>
+     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;background:#0f0f1e;border:1px solid #262643;border-radius:10px;padding:6px 16px">
+       <tr><td style="padding:7px 0;color:#9a9ab8">Plan</td><td align="right" style="padding:7px 0;color:#fff;font-weight:bold">${rows.planLabel} (${rows.cycleLabel})</td></tr>
+       <tr><td style="padding:7px 0;color:#9a9ab8">Amount</td><td align="right" style="padding:7px 0;color:#fff;font-weight:bold">${money}</td></tr>
+       <tr><td style="padding:7px 0;color:#9a9ab8">Card charged on</td><td align="right" style="padding:7px 0;color:#fff;font-weight:bold">${rows.chargeDateLabel}</td></tr>
+     </table>
+     <p style="color:#9a9ab8">Your saved card is charged automatically by Paystack — no action needed if you're happy. Your credits renew with the cycle and expire 30 days after they're granted, FIFO.</p>`,
+    { url: rows.manageUrl, label: 'Manage your subscription' }
+  );
+
+  const text = [
+    `Hi ${first} — your PropReel plan renews soon.`,
+    `Plan: ${rows.planLabel} (${rows.cycleLabel})`,
+    `Amount: ${money}`,
+    `Card charged on: ${rows.chargeDateLabel}`,
+    `Your saved card is charged automatically by Paystack — no action needed.`,
+    `Manage: ${rows.manageUrl}`,
+  ].join('\n');
+
+  return { subject, html, text };
+}
+
+/**
+ * Payment-failed notice — fired by the dunning sweep when a month's charge
+ * could not be collected. Offers the one-click fix (add a card) that dunning
+ * already retries automatically on day 1/3/7/14.
+ */
+export function paymentFailedTemplate(rows: {
+  fullName: string;
+  planLabel: string;
+  amountZar: number;
+  daysUnpaid: number;
+  manageUrl: string;
+}): { subject: string; html: string; text: string } {
+  const first = rows.fullName.split(' ')[0] || 'there';
+  const money = `R${rows.amountZar.toLocaleString('en-ZA')}`;
+  const day = Math.max(1, Math.round(rows.daysUnpaid));
+  const subject = `PropReel payment failed — R${money.slice(1)} needs a card update (day ${day})`;
+  const html = layout(
+    'Payment failed — update your card',
+    `<p>Hi ${first} — your ${rows.planLabel} renewal of <b>${money}</b> could not be collected (attempt day ${day}).</p>
+     <p>We retry automatically on day 1, 3, 7, 14 and 21. Add or swap a card before then to keep your plan and credits active — no action means the plan is cancelled after day 21.</p>`,
+    { url: rows.manageUrl, label: 'Update my card' }
+  );
+  const text = [
+    `Hi ${first} — your PropReel ${rows.planLabel} renewal of ${money} could not be collected (day ${day}).`,
+    `We retry automatically on days 1/3/7/14/21; after day 21 the plan is cancelled.`,
+    `Update your card: ${rows.manageUrl}`,
+  ].join('\n');
+  return { subject, html, text };
+}

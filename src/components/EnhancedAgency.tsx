@@ -83,7 +83,7 @@ interface AgencyProject {
 const onboardingSteps = [
   { title: 'Welcome to Your Agency Dashboard', description: 'Manage your team, track credits, and keep everyone productive.', icon: '👋' },
   { title: 'Invite Your Team', description: 'Add agents by email. Existing PropReel users join instantly; new users join when they sign up with that email.', icon: '📧' },
-  { title: 'Share Credits', description: 'Gift credits to team members — transfers are instant and tracked in both ledgers.', icon: '⚡' },
+  { title: 'Share Credits', description: 'Transfer credits to team members — transfers are instant and tracked in both ledgers.', icon: '⚡' },
   { title: "You're All Set!", description: 'Your agency is ready. Every member creates stunning property videos together.', icon: '🚀' },
 ];
 
@@ -185,6 +185,30 @@ export default function EnhancedAgency() {
     }
   };
 
+  // ── Delete member ACCOUNT (owner control — cannot be undone) ────────
+  // Wipes the account, projects and sessions. For accounts the agency
+  // created via invite (the agent never paid a subscription themselves),
+  // the agency admin is the natural person to also take that away.
+  const deleteMember = async (m: AgencyMember) => {
+    if (!window.confirm(`Permanently DELETE ${m.fullName}'s account (${m.email})?
+
+This removes their account, projects and sign-ins — it cannot be undone. The email address can only be used again by creating a brand-new account. Use "Remove" instead if you only want to detach them from the agency.`)) return;
+    try {
+      const res = await fetch('/api/users?action=agency_delete_member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user?.id, target_user_id: m.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not delete the account');
+      toast.success(`${m.fullName}'s account was permanently deleted`, 'Account Deleted');
+      load();
+      refresh();
+    } catch (e: any) {
+      toast.error(e.message || 'Could not delete the account');
+    }
+  };
+
   // Real invite via the backend (adds existing users instantly, stores pending
   // invites, enforces the 10-agent cap server-side)
   const sendInvite = async () => {
@@ -213,22 +237,23 @@ export default function EnhancedAgency() {
     }
   };
 
-  // Real credit gift
-  const giftCredits = async () => {
+  // Real credit transfer (ledger type stays 'gift' server-side)
+  const transferCredits = async () => {
     if (!giftTarget) return;
+
     try {
       await fetch('/api/credits?action=gift_email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ from_user_id: user?.id, to_email: giftTarget.email, amount: giftAmount, reason: `Agency gift from ${user?.email}` }),
       });
-      toast.success(`Gifted ${giftAmount} credits to ${giftTarget.fullName}`, 'Gift Sent');
+      toast.success(`Transferred ${giftAmount} credits to ${giftTarget.fullName}`, 'Transfer Sent');
       setGiftTarget(null);
       refresh();
       load();
     } catch (e: any) {
       const msg = await e.message;
-      toast.error(msg || 'Gift failed');
+      toast.error(msg || 'Transfer failed');
     }
   };
 
@@ -360,13 +385,13 @@ export default function EnhancedAgency() {
       {/* Gift panel */}
       {giftTarget && (
         <div className="card-dark p-6 border border-purple-500/30 animate-fade-in">
-          <h3 className="font-semibold text-white flex items-center gap-2 mb-4"><Gift className="w-4 h-4 text-purple-400" /> Gift credits to {giftTarget.fullName}</h3>
+          <h3 className="font-semibold text-white flex items-center gap-2 mb-4"><Gift className="w-4 h-4 text-purple-400" /> Transfer credits to {giftTarget.fullName}</h3>
           <div className="flex items-end gap-4">
             <div className="flex-1 max-w-xs">
               <label className="label">Amount (you have {user?.credits ?? 0})</label>
               <input type="number" className="input" min={1} max={user?.credits ?? 0} value={giftAmount} onChange={e => setGiftAmount(Number(e.target.value))} />
             </div>
-            <button onClick={giftCredits} className="btn btn-primary" disabled={(user?.credits ?? 0) < 1}><Zap className="w-4 h-4" /> Send Gift</button>
+            <button onClick={transferCredits} className="btn btn-primary" disabled={(user?.credits ?? 0) < 1}><Zap className="w-4 h-4" /> Send Transfer</button>
             <button onClick={() => setGiftTarget(null)} className="btn btn-ghost">Cancel</button>
           </div>
         </div>
@@ -410,7 +435,7 @@ export default function EnhancedAgency() {
             <div className="card-dark p-5">
               <p className="text-sm text-ink-400">Your Credits</p>
               <p className="text-3xl font-bold text-purple-400 mt-1">{user?.credits ?? 0}</p>
-              <p className="text-xs text-ink-400 mt-2 flex items-center gap-1"><TrendingUp className="w-3 h-3" /> gift from your balance</p>
+              <p className="text-xs text-ink-400 mt-2 flex items-center gap-1"><TrendingUp className="w-3 h-3" /> transfer from your balance</p>
             </div>
           </div>
 
@@ -514,13 +539,14 @@ export default function EnhancedAgency() {
                     <td className="px-4 py-3 text-sm text-white text-right">{m.credits}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setGiftTarget(m)} className="btn btn-ghost text-xs py-1"><Gift className="w-3 h-3" /> Gift</button>
+                        <button onClick={() => setGiftTarget(m)} className="btn btn-ghost text-xs py-1"><Gift className="w-3 h-3" /> Transfer</button>
                         {isOwner && m.role !== 'AGENCY_OWNER' && (
                           <>
                             <button onClick={() => { setLimitEditing(m); setLimitValue(m.monthlyLimit ?? 200); }} className="btn btn-ghost text-xs py-1" title="Set monthly credit limit">
                               <TrendingUp className="w-3 h-3" /> {m.monthlyLimit != null ? `Limit: ${m.monthlyLimit}` : 'Limit'}
                             </button>
-                            <button onClick={() => removeMember(m)} className="btn btn-ghost text-xs py-1 text-red-400" title="Remove from agency">✕</button>
+                            <button onClick={() => removeMember(m)} className="btn btn-ghost text-xs py-1 text-red-400" title="Remove from agency">✕ Remove</button>
+                            <button onClick={() => deleteMember(m)} className="btn btn-ghost text-xs py-1 text-red-500" title="Permanently delete this agent's account">🗑 Delete account</button>
                           </>
                         )}
                       </div>
@@ -590,7 +616,7 @@ export default function EnhancedAgency() {
                     <td className="px-4 py-3 text-sm text-white">{m.credits}</td>
                     <td className="px-4 py-3 text-sm text-ink-400">{m.createdAt ? formatDate(m.createdAt) : '—'}</td>
                     <td className="px-4 py-3">
-                      <button onClick={() => setGiftTarget(m)} className="btn btn-ghost text-xs py-1"><Gift className="w-3 h-3" /> Gift</button>
+                      <button onClick={() => setGiftTarget(m)} className="btn btn-ghost text-xs py-1"><Gift className="w-3 h-3" /> Transfer</button>
                     </td>
                   </tr>
                 ))}

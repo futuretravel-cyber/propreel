@@ -110,11 +110,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       trialSummary = `trialError=${String((trialErr as any)?.message || trialErr).slice(0, 120)}`;
     }
 
+    // Same nightly slot: upcoming-billing notices — ACTIVE subscribers whose
+    // next Paystack cycle charge is ≤3 days away are emailed once per cycle.
+    let billingSummary = 'billingNoticeError';
+    let billing: Awaited<ReturnType<typeof import('../../lib/billingNotice').runBillingNoticeSweep>> | null = null;
+    try {
+      const { runBillingNoticeSweep } = await import('../../lib/billingNotice');
+      billing = await runBillingNoticeSweep();
+      billingSummary = `billingEmailed=${billing.filter(o => o.action === 'emailed').length} billingSkipped=${billing.filter(o => o.action !== 'emailed').length}`;
+    } catch (billingErr) {
+      console.error('Billing-notice sweep failed (non-fatal):', billingErr);
+      billingSummary = `billingNoticeError=${String((billingErr as any)?.message || billingErr).slice(0, 120)}`;
+    }
+
     await recordCronRun(
       'process-expired-credits',
       'success',
       Date.now() - started,
-      `processed=${result.processed} expiredCredits=${result.expiredAmount} ${reapSummary} ${topupSummary} ${dunningSummary} ${mediaSummary} ${trialSummary}`
+      `processed=${result.processed} expiredCredits=${result.expiredAmount} ${reapSummary} ${topupSummary} ${dunningSummary} ${mediaSummary} ${trialSummary} ${billingSummary}`
     );
 
     console.log(`Expired credits processing complete: ${result.processed} users, ${result.expiredAmount} credits expired; reaper: ${reapSummary}; topup: ${topupSummary}; dunning: ${dunningSummary}`);
@@ -126,6 +139,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     for (const d of dunning) {
       if (d.action !== 'ok') console.log(`  dunning: ${d.email} ${d.action}${d.detail ? ` — ${d.detail}` : ''}`);
+    }
+    for (const b of billing ?? []) {
+      if (b.action !== 'skipped_recent') console.log(`  billing-notice: ${b.email} ${b.action}${b.detail ? ` — ${b.detail}` : ''}`);
     }
 
     return res.status(200).json({

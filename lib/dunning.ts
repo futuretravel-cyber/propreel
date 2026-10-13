@@ -102,7 +102,22 @@ export async function runDunningSweep(): Promise<DunningOutcome[]> {
           });
           outcomes.push({ userId: u.id, email: u.email, action: authCode ? 'failed' : 'reminder', detail: authCode ? `retry failed (day ${days.toFixed(0)})` : `no saved card — reminder logged (day ${days.toFixed(0)})` });
         }
-        console.log(`[dunning-email] to=${u.email} subject="Your PropReel payment failed — please update your card" day=${days.toFixed(0)}`);
+        // Real failure email now (Resend) — was a console.log placeholder.
+        // Send failure only logs; dunning itself must never break on it.
+        try {
+          const { sendEmail, paymentFailedTemplate } = await import('./email');
+          const tpl = paymentFailedTemplate({
+            fullName: u.fullName || 'there',
+            planLabel: String(u.subscription?.planId || 'PropReel plan'),
+            amountZar: Math.max(50, Math.round(u.subscription?.nextChargeAmount || 50)),
+            daysUnpaid: days,
+            manageUrl: `${process.env.APP_URL || 'https://www.propreel.co.za'}/dashboard/billing`,
+          });
+          const sent = await sendEmail({ to: u.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+          console.log(`[dunning-email] to=${u.email} sent=${sent.ok ? 'yes' : `no (${sent.error})`} subject="${tpl.subject}"`);
+        } catch (mailErr: any) {
+          console.error(`[dunning-email] send failed for ${u.email}:`, mailErr?.message || mailErr);
+        }
       } else {
         outcomes.push({ userId: u.id, email: u.email, action: 'ok', detail: `day ${days.toFixed(0)} — next step not due` });
       }
