@@ -823,11 +823,11 @@ class EditImageRequest(BaseModel):
 
 # Video prompts (rotating A, B, C)
 VIDEO_PROMPTS = {
-    'A': """Cinematic UE5 visualization of a luxury interior. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal digital crop-shift and bounded perspective adjustment—absolutely zero spatial expansion beyond the original frame. Execute a dynamic right-to-left internal lateral sweep combined with a dramatic focal push-in, contained entirely within the source pixels. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, intense depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, and high-production-value. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
+    'A': """Cinematic first-person property walkthrough, smooth gimbal dolly FORWARD through the space at a slow, constant walking pace. The camera glides deeper into the room as if the viewer is walking inside, with a very gentle forward parallax: nearer furniture drifts subtly wider in frame while walls, windows and far corners stay pinned to their true positions. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal bounded perspective shift — a slow constant-speed forward dolly contained entirely within the source pixels, never faster than a person strolling. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, shallow depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
     
-    'B': """Cinematic UE5 visualization of a luxury interior. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal digital crop-shift and bounded perspective adjustment—absolutely zero spatial expansion beyond the original frame. Execute a dynamic left-to-right cinematic tracking arc with a sharp focal zoom, strictly maintaining original edges. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, intense depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, and high-production-value. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
+    'B': """Cinematic first-person property walkthrough, ultra-smooth gimbal drift slowly LEFT at a constant unhurried walking pace, with a whisper of simultaneous forward glide so the view reads as a person ambling past the room while taking it in — steady, dreamy, continuous. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal bounded lateral dolly with the smallest accompanying forward shift — contained entirely within the source pixels, never faster than a person strolling. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, shallow depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
     
-    'C': """Cinematic UE5 visualization of a luxury interior. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal digital crop-shift and bounded perspective adjustment—absolutely zero spatial expansion beyond the original frame. Execute a high-impact, dramatic center push-in with a tight inward zoom, locked to the central focal point. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, intense depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, and high-production-value. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces."""
+    'C': """Cinematic first-person property walkthrough, slow gimbal glide gently drifting RIGHT at a constant unhurried walking pace with a subtle forward lean, the room revealing itself sideways at an ambient stroll — steady, elegant, continuous. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal bounded lateral dolly with the smallest accompanying forward shift — contained entirely within the source pixels, never faster than a person strolling. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, shallow depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces."""
 }
 
 def get_prompt_for_image(image_index: int, image_url: str | None = None) -> str:
@@ -1247,6 +1247,122 @@ def _branding_card_png(
     return out
 
 
+def _branding_end_card_path(
+    branding: dict,
+    width: int,
+    height: int,
+    work_dir: str,
+) -> str | None:
+    """Full-frame branding END CARD (the conclusion page agents asked for).
+
+    Layout (like the reference submit): dark gradient backdrop, agent photo
+    LARGE and centered, agency logo beneath, agent name + contact line on a
+    solid bottom bar. Composed with Pillow from the SAME branding payload the
+    overlay card already uses — no new client fields, no extra round-trip.
+    Returns the PNG path; the caller turns it into a video segment timed like
+    any other clip and prepends/appends it in the assembly chain.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    scale = height / 1080.0
+    margin = int(36 * scale)
+    photo_d = int(360 * scale)   # big centered headshot
+    ring = max(4, int(9 * scale))
+    logo_h = int(120 * scale)
+    bar_h = int(200 * scale)
+    name_size = int(64 * scale)
+    font_size = int(48 * scale)
+
+    photo_url = str((branding or {}).get("photo_url") or "").strip() or None
+    logo_url = str((branding or {}).get("logo_url") or "").strip() or None
+    contact = str((branding or {}).get("contact_line") or "").strip()
+    name = contact.split(' \u00b7 ')[0].strip() if contact else None
+    contact2 = ' \u00b7 '.join(contact.split(' \u00b7 ')[1:]) if contact and ' \u00b7 ' in contact else contact
+    if not (photo_url or logo_url or name or contact2):
+        return None
+
+    # Vertical gradient backdrop: deep ink → near-black, subtle vignette feel
+    top_c, bottom_c = (16, 10, 34, 255), (6, 4, 14, 255)
+    canvas = Image.new("RGBA", (width, height), top_c)
+    draw = ImageDraw.Draw(canvas)
+    steps = 64
+    for i in range(steps):
+        t = i / (steps - 1)
+        c = tuple(int(top_c[k] + (bottom_c[k] - top_c[k]) * t) for k in range(3)) + (255,)
+        y0 = int(height * 0.52 * i / steps)
+        y1 = int(height * 0.52 * (i + 1) / steps)
+        draw.rectangle((0, y0, width, y1), fill=c)
+
+    def _ttf(px):
+        try:
+            return ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", px)
+        except Exception:
+            return ImageFont.load_default()
+
+    y = int(height * 0.22)
+    # Photo — centered in a white ring
+    if photo_url:
+        try:
+            from io import BytesIO
+            img = Image.open(BytesIO(fetch_media(photo_url, timeout=60))).convert("RGBA")
+            side = max(img.width, img.height)
+            left, top = (img.width - side) // 2, (img.height - side) // 2
+            img = img.crop((left, top, left + side, top + side)).resize((photo_d, photo_d), Image.LANCZOS)
+            mask = Image.new("L", (photo_d, photo_d), 0)
+            ImageDraw.Draw(mask).ellipse((0, 0, photo_d - 1, photo_d - 1), fill=255)
+            ring_img = Image.new("RGBA", (photo_d + 2 * ring, photo_d + 2 * ring), (0, 0, 0, 0))
+            ImageDraw.Draw(ring_img).ellipse((0, 0, photo_d + 2 * ring - 1, photo_d + 2 * ring - 1), fill=(255, 255, 255, 240))
+            cx = (width - ring_img.width) // 2
+            canvas.alpha_composite(ring_img, (cx, y))
+            canvas.paste(img, (cx + ring, y + ring), mask)
+            y += ring_img.height
+        except Exception as pe:
+            print(f"end-card photo fetch failed (skipped): {pe}")
+
+    # Logo — centered beneath the photo
+    if logo_url:
+        try:
+            from io import BytesIO
+            logo = Image.open(BytesIO(fetch_media(logo_url, timeout=60))).convert("RGBA")
+            w = max(1, int(logo.width * logo_h / max(logo.height, 1)))
+            logo = logo.resize((min(w, int(width * 0.6)), logo_h), Image.LANCZOS)
+            canvas.alpha_composite(logo, ((width - logo.width) // 2, y + int(24 * scale)))
+            y += logo_h + int(24 * scale)
+        except Exception as le:
+            print(f"end-card logo fetch failed (skipped): {le}")
+
+    # Name + contact — one line each, centered, above the solid bottom bar
+    def _fit(text, px):
+        f = _ttf(px)
+        b = draw.textbbox((0, 0), text, font=f)
+        while b[2] - b[0] > width - 2 * margin and px > int(24 * scale):
+            px = int(px * 0.92)
+            f = _ttf(px)
+            b = draw.textbbox((0, 0), text, font=f)
+        return f, b
+    line_y = y + int(40 * scale)
+    if name:
+        f, b = _fit(name, name_size)
+        draw.text(((width - (b[2] - b[0])) // 2, line_y), name, font=f, fill=(255, 255, 255, 250))
+        line_y += (b[3] - b[1]) + int(20 * scale)
+    if contact2:
+        f, b = _fit(contact2, font_size)
+        draw.text(((width - (b[2] - b[0])) // 2, line_y), contact2, font=f, fill=(196, 190, 220, 235))
+
+    # Solid bottom bar (like the runtime overlay card, but thicker on the card)
+    if contact:
+        draw.rectangle((0, height - bar_h, width, height), fill=(8, 6, 18, 210))
+        f, b = _fit(contact, font_size)
+        th = b[3] - b[1]
+        draw.text(((width - (b[2] - b[0])) // 2, height - bar_h + (bar_h - th) // 2 - b[1]),
+                  contact, font=f, fill=(255, 255, 255, 245))
+
+    out = os.path.join(work_dir, f"endcard_{width}x{height}.png")
+    canvas.save(out)
+    return out
+
+
 def _apply_branding_overlay(video_path: str, branding: dict | None, use_avatar: bool,
                             width: int, height: int, work_dir: str) -> str:
     """Burn the branding strip onto the finished video (stream copy if the
@@ -1374,6 +1490,70 @@ def _concat_ai_clips(
             pass
     print(f"AI clips assembled: {n} × {seg_dur:.1f}s = {_media_duration(out_path):.1f}s on {width}x{height}")
     return out_path
+
+
+def _append_branding_endcard(
+    assembled_path: str,
+    branding: dict | None,
+    width: int,
+    height: int,
+    work: str,
+    card_seconds: float = 3.0,
+) -> str:
+    """Append a full-frame branding END CARD as the final segment.
+
+    The agent-facing ask (Oct-13): end every AI-tier reel like the reference
+    video — a closing page with the agent's photo/logo/contact. The card is
+    composed from the SAME branding payload (no new client fields), scaled
+    to the tier canvas, and stream-copy concatenated behind the assembled
+    reel. Cosmetic: any failure returns the input UNCHANGED — a render must
+    never fail because its outro card could not be drawn.
+    """
+    if not branding:
+        return assembled_path
+    try:
+        card_png = _branding_end_card_path(branding, width, height, work)
+        if not card_png:
+            return assembled_path
+        import subprocess as _sp
+        card_seg = os.path.join(work, "endcard.mp4")
+        proc = _sp.run(
+            ["ffmpeg", "-y", "-loop", "1", "-i", card_png,
+             "-t", f"{card_seconds:.3f}", "-an",
+             "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+             "-pix_fmt", "yuv420p", "-r", "24", card_seg],
+            capture_output=True, timeout=120,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"endcard segment failed: {(proc.stderr or b'')[-200:]}")
+        with_outro = os.path.join(work, "with_outro.mp4")
+        concat_list = os.path.join(work, "outro_list.txt")
+        with open(concat_list, "w") as f:
+            f.write(f"file '{assembled_path}'\nfile '{card_seg}'\n")
+        proc = _sp.run(
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
+             "-c", "copy", "-movflags", "+faststart", with_outro],
+            capture_output=True, timeout=300,
+        )
+        if proc.returncode != 0:
+            # any codec drift between segments → re-encode concat
+            proc = _sp.run(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
+                 "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+                 "-pix_fmt", "yuv420p", "-movflags", "+faststart", with_outro],
+                capture_output=True, timeout=600,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(f"outro concat failed: {(proc.stderr or b'')[-200:]}")
+        print(f"Branding end card appended (+{card_seconds:.1f}s)")
+        try:
+            os.unlink(card_png)
+        except Exception:
+            pass
+        return with_outro
+    except Exception as oe:
+        print(f"end card skipped (shipping without outro): {oe}")
+        return assembled_path
 
 
 def _mix_music_bed(
@@ -2022,6 +2202,12 @@ def render_video_local(
         output_path, branding, use_avatar, width, height, work,
     )
 
+    # Closing branding page (the reference-style outro) — Essential ends on
+    # the agent's card too. Skipped with the AI-avatar add-on (its clip owns
+    # the closing frames) so the two never fight for the last frame.
+    if branding and not use_avatar:
+        output_path = _append_branding_endcard(output_path, branding, width, height, work, card_seconds=3.0)
+
     # Upload to S3
     s3 = boto3.client('s3', region_name=S3_REGION)
     s3_key = f"renders/{record_id}/video.mp4"
@@ -2304,6 +2490,29 @@ def render_video(
                     print(f"Branding burned in (AI tier): {video_url}")
         except Exception as be:
             print(f"AI-tier branding burn-in failed — shipping unbranded: {be}")
+
+    # Closing branding page — the reference-style outro, the LAST thing on
+    # the reel. Runs after every avatar/overlay/voiceover pass so the card's
+    # frames get exactly one burn and no double-drawn artwork. Cosmetic:
+    # failure ships without the outro rather than failing a paid job.
+    if include_agent_branding and branding and processing_type != "local":
+        try:
+            import tempfile as _tf
+            with _tf.TemporaryDirectory(prefix=f"outro_{record_id}_") as _ow:
+                src = os.path.join(_ow, "src.mp4")
+                with open(src, "wb") as ovf:
+                    ovf.write(fetch_media(video_url, timeout=300))
+                with_outro = _append_branding_endcard(
+                    src, branding, bw, bh, _ow, card_seconds=3.0)
+                if with_outro != src and os.path.exists(with_outro):
+                    s3o = boto3.client('s3', region_name=S3_REGION)
+                    s3_key = f"renders/{record_id}/video.mp4"
+                    s3o.upload_file(with_outro, S3_BUCKET, s3_key,
+                                    ExtraArgs={'ContentType': 'video/mp4'})
+                    video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+                    print(f"Branding end card appended (AI tier): {video_url}")
+        except Exception as oe:
+            print(f"AI-tier end card skipped — shipping without outro: {oe}")
 
     # Thumbnail for Listings cards: grab a frame from the finished video
     # (best-effort — never fails the render)
