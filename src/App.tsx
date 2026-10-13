@@ -3536,6 +3536,25 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
                 : 'Rendering your video reel'}
           />
         )}
+        {/* Cancel — visible only while a render runs. cancelRender aborts the
+            in-flight job with the worker (render or avatar phase), refunds the
+            applicable charge, and unlocks the Generate button. disabled during
+            the 5s window the click itself takes so double-taps don't double-
+            send the worker cancel. */}
+        {generating && (
+          <button
+            type="button"
+            onClick={cancelRender}
+            disabled={cancelling}
+            className="btn btn-secondary w-full min-h-[48px] text-red-300 hover:text-red-200 border border-red-500/30"
+          >
+            {cancelling ? (
+              <><RefreshCw className="w-4 h-4 animate-spin" /> Cancelling… saving your credits</>
+            ) : (
+              <><X className="w-4 h-4" /> Cancel render — unused credits come back</>
+            )}
+          </button>
+        )}
         {aiTalkingProfile && !generating && (avatarAddonCredits != null ? (
           <p className="text-xs text-ink-400 text-center">
             Includes the AI Avatar add-on (+{avatarAddonCredits} credits for ≈{Math.round(narrationSecondsForText(script))}s of narration): the avatar renders first, then the video with the avatar in the top-left corner — its voiceover replaces the reel's narration.
@@ -3546,7 +3565,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           </p>
         ))}
         {!generating && lastRenderUrl && (
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-4">
             <button
               type="button"
               onClick={() => { setLastRenderUrl(null); setShareOpen(false); toast.info('Finished video cleared from this page — it stays in Projects', 'Step 8'); }}
