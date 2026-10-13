@@ -2381,7 +2381,21 @@ def _fal_run_queued(endpoint: str, arguments: dict, max_wait: float = 180, conte
 def _llm_chat(messages: list) -> str:
     """Call fal's OpenRouter LLM integration with endpoint fallbacks.
     Grok (x-ai) is the primary model for property copy; OpenRouter model
-    catalogs drift, so keep fallbacks behind it."""
+    catalogs drift, so keep fallbacks behind it.
+
+    Two hard constraints shape this call path:
+     • Modal's web proxy enforces a 150 s HTTP timeout, and for CORS browsers
+       (all our clients) there is NO redirect fallback — the response dies
+       without CORS headers and the browser reports a raw "Failed to fetch".
+       So the WHOLE fallback chain must finish inside that wall: the budget
+       is split evenly across attempts and each poll stops before it.
+     • xAI's Grok reasons by default — one 12-image video_script call burned
+       ~11k completion tokens (mostly internal word-counting loops) and
+       ~$0.12 for a 130-word script, pushing the call past the wall. For
+       short marketing copy reasoning is pure waste: request it OFF and
+       excluded from the response (models that cannot disable it simply
+       ignore this param, where the per-attempt cap keeps the chain inside
+       the wall anyway)."""
     attempts = [
         # (endpoint, extra args) — first success wins.
         # (the bare openrouter/router/google/gemini-… path 404s now; the
@@ -2392,9 +2406,27 @@ def _llm_chat(messages: list) -> str:
         ("openrouter/router/openai/v1/chat/completions", {"model": "openai/gpt-4o-mini"}),
     ]
     last_err = None
+    # Stay under Modal's 150 s CORS wall: budget the chain evenly, leaving
+    # headroom for the ~3 s poll cadence (each attempt can overshoot its
+    # window by one poll tick before the check runs).
+    CHAIN_BUDGET_S = 125.0
+    per_attempt_s = max(15.0, CHAIN_BUDGET_S / max(1, len(attempts)))
     for endpoint, extra in attempts:
         try:
-            result = _fal_run_queued(endpoint, arguments={**extra, "messages": messages})
+            result = _fal_run_queued(
+                endpoint,
+                arguments={
+                    **extra,
+                    "messages": messages,
+                    # OpenRouter unified reasoning control: marketing copy is a
+                    # short, fact-bound task — internal CoT added minutes of
+                    # latency and real cost ($0.12 for one script) while the
+                    # browser sat on a request Modal's CORS proxy kills at 150 s.
+                    "reasoning": {"enabled": False, "exclude": True},
+                },
+                max_wait=per_attempt_s,
+                context="AI text",
+            )
             if isinstance(result, dict):
                 choices = result.get("choices") or []
                 if choices:
@@ -2414,9 +2446,11 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
     video voiceover scripts (via fal's OpenRouter integration), with optional
     photo URLs for vision-described copy.
 
-    Timeout 300s (> the old 120s) so a few queued LLM attempts still fit;
-    each attempt itself is server-capped at 110s so a hard-hang endpoint
-    falls through to the next model path."""
+    Chain budget: the whole fallback chain is capped at 125 s (+ one poll
+    tick per attempt) because Modal's web proxy kills CORS-browser responses
+    at 150 s with no redirect fallback — see _llm_chat. Each poll window is
+    capped per attempt inside _fal_run_queued so a hard-hang endpoint falls
+    through to the next model path within the budget."""
     system_prompts = {
         "description": (
             "You are a professional South African property copywriter for Property24 and "

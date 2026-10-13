@@ -502,8 +502,13 @@ export default function EnhancedBilling() {
           <div className="card-dark p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-white">Current Plan</h3>
+              {!user?.subscription?.planId && user?.agencyId && (
+                <span className="badge badge-brand">Agency member</span>
+              )}
               {plan ? (
                 <span className="badge badge-brand">{plan.name}</span>
+              ) : user?.agencyId ? (
+                <span className="badge badge-brand">Covered by agency</span>
               ) : (
                 <span className="badge badge-muted">No active plan</span>
               )}
@@ -515,7 +520,9 @@ export default function EnhancedBilling() {
               <div><p className="text-ink-400">Status</p><p className="text-white font-semibold">{user?.subscription?.status || 'NONE'}</p></div>
             </div>
             <div className="pt-4 border-t border-white/5 flex gap-3">
-              <button onClick={() => navigate('/pricing')} className="btn btn-primary flex-1">{plan ? 'Change Plan' : 'Choose a Plan'}</button>
+              {!user?.agencyId && (
+                <button onClick={() => navigate('/pricing')} className="btn btn-primary flex-1">{plan ? 'Change Plan' : 'Choose a Plan'}</button>
+              )}
               {plan && (
                 <button onClick={() => navigate('/dashboard/cancel-subscription')} className="btn btn-secondary flex-1">
                   <XCircle className="w-4 h-4" /> Cancel Subscription

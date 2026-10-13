@@ -196,14 +196,6 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     strength: { min: 0.4, max: 0.5, default: 0.45 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
   },
-  {
-    id: 'remove_vehicles',
-    label: 'Remove Vehicles',
-    emoji: '🚙',
-    category: 'removal',
-    strength: { min: 0.4, max: 0.5, default: 0.45 },
-    guidanceScale: { min: 4, max: 5, default: 4.5 }
-  },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // TWILIGHT PHOTOGRAPHY

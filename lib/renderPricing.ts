@@ -110,8 +110,30 @@ export function flashheadCreditsForText(text: string): number | null {
  * New clients always send voiceover_text and are priced per 10s narration.
  */
 export const FLASHHEAD_CREDITS = 8;
-/** AI Writer voiceover script (Grok) — fixed price, matches DescriptionTab. */
+/** AI Writer voiceover script (Grok, vision over the uploaded photos).
+ *
+ *  Cost is driven by the photo count the call attaches (~2k input tokens per
+ *  image on fal's OpenRouter Grok route, $2/M in / $6/M out — verified Nov
+ *  2026 against a billed 12-image call), so the price scales with the
+ *  selected duration: the script rides the tier configs' image allotment.
+ *  At R1/credit the flat legacy 1⚡ was breakeven at 60s and a LOSS at 90s
+ *  (15 images ⇒ ~R1.08 provider cost). `ceil(duration/30)` restores ≥56%
+ *  margin on every length the catalog sells: 30s→1, 50s→2, 60s→2, 90s→3.
+ */
+export const SCRIPT_CREDITS_PER_30S = 1;
+/** @deprecated Legacy flat script price — job_token's fallback when a mint
+ *  arrives with no duration at all (stale clients). New clients always send
+ *  duration and are priced by scriptCreditsForDuration. */
 export const SCRIPT_CREDITS = 1;
+/** Number of vision images a tier attaches per duration, by catalog rule of
+ *  thumb — used only for legacy mints that carry no duration. */
+export function scriptCreditsForDuration(duration: number | null | undefined): number {
+  const s = Number(duration);
+  if (!Number.isFinite(s) || s <= 0) return SCRIPT_CREDITS; // legacy: flat 1
+  // 1 ⚡ per 30 seconds (rounded up), capped at 6⚡ so no script can approach
+  // the cost of an Essential 30s render without a deliberate pricing bump.
+  return Math.min(6, Math.ceil(s / 30) * SCRIPT_CREDITS_PER_30S);
+}
 /** Preset image edit (Kontext / local HDR tone-map) — fixed price. */
 export const IMAGE_EDIT_CREDITS = 2;
 /** Staging/brush-mask presets: Fill Pro costs ~2x Kontext per fal call and
@@ -134,10 +156,18 @@ export function isStagingPreset(presetId: string | undefined | null): boolean {
 }
 
 /** Job scopes the worker accepts a paid single-use token for. Script
- *  (AI Writer voiceover) tokens are charged by job_token but never verify a
- *  worker job — the text generation calls the same worker's /generate_text
- *  with the free short-lived worker token. */
-export type JobScope = 'render' | 'flashhead' | 'edit' | 'script';
+ *  (AI Writer voiceover) and now ALSO the text tools (description /
+ *  social_post) tokens are charged by job_token but never verify a worker
+ *  job — those text generations call the same worker's /generate_text with
+ *  the paid token in X-PropReel-Token: the CHARGE is the enforcement point,
+ *  priced server-side below, so a modified client cannot choose what it
+ *  pays (the old client-sent ?action=deduct amount is gone).
+ */
+export type JobScope = 'render' | 'flashhead' | 'edit' | 'script' | 'description' | 'social_post';
+/** AI text tools — fixed prices, previously client constants sent as the
+ *  deduct amount; now dollar-priced here so server and UI share one source. */
+export const DESCRIPTION_CREDITS = 1;
+export const SOCIAL_POST_CREDITS = 2;
 
 /**
  * Price one job server-side. Returns null for an unknown tier/config —
@@ -145,7 +175,7 @@ export type JobScope = 'render' | 'flashhead' | 'edit' | 'script';
  */
 export function jobCredits(
   scope: string,
-  args: { tier?: string; configIndex?: number; presetId?: string; voiceoverText?: string; voiceover_text?: string; wordCount?: number } = {}
+  args: { tier?: string; configIndex?: number; presetId?: string; voiceoverText?: string; voiceover_text?: string; wordCount?: number; duration?: number } = {}
 ): number | null {
   if (scope === 'flashhead') {
     // Preferred: price from the narration script the client already has.
@@ -157,7 +187,9 @@ export function jobCredits(
     if (typeof args.wordCount === 'number') return flashheadCreditsForWords(args.wordCount);
     return FLASHHEAD_CREDITS;
   }
-  if (scope === 'script') return SCRIPT_CREDITS;
+  if (scope === 'script') return scriptCreditsForDuration(args.duration);
+  if (scope === 'description') return DESCRIPTION_CREDITS;
+  if (scope === 'social_post') return SOCIAL_POST_CREDITS;
   if (scope === 'edit') {
     // Brush-mask staging runs Fill Pro (~2x Kontext's fal cost) and is the
     // tool agents actually pay for — price it at 4 credits. Plain preset

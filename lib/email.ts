@@ -141,6 +141,27 @@ export function confirmEmailTemplate(name: string, confirmUrl: string): { subjec
   };
 }
 
+/**
+ * Agency agent invitation — sent by ?action=agency_invite when the invited
+ * email has no account yet (existing users are added instantly instead).
+ * Explains how acceptance works so the agent isn't waiting on a button that
+ * doesn't exist: signing up with THIS address is what joins the agency.
+ */
+export function agencyInviteTemplate(agencyName: string, inviterName: string, signupUrl: string, role: string): { subject: string; html: string; text: string } {
+  const inviter = (inviterName || '').trim() || 'An agency owner';
+  return {
+    subject: `${inviter} invited you to join ${agencyName} on PropReel`,
+    html: layout(
+      `You've been invited to ${agencyName}`,
+      `<p>${inviter} has invited you to join their real-estate video agency <strong>${agencyName}</strong> as an agent${role && role !== 'AGENT' ? ` (${role.replace('_', ' ').toLowerCase()})` : ''}.</p>
+       <p><strong>How to accept:</strong> sign up to PropReel with this email address. The moment your account is created, you'll be attached to ${agencyName} automatically — no code or link to enter.</p>
+       <p>Already have a PropReel account under a different email? Just sign in with the address this invitation was sent to.</p>`,
+      { url: signupUrl, label: 'Sign up & join the agency' }
+    ),
+    text: `${inviter} invited you to join ${agencyName} on PropReel as an agent. Accept by signing up at ${signupUrl} with this email address — you'll be added to the agency automatically.`,
+  };
+}
+
 export function resetPasswordTemplate(resetUrl: string): { subject: string; html: string; text: string } {
   return {
     subject: 'Reset your PropReel password',

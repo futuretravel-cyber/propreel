@@ -5,6 +5,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
+    "e2e:pricing": "tsx scripts/pricing_paths_e2e.ts",
     "deploy": "vercel",
     "create-tables": "tsx scripts/create-dynamodb-tables.ts"
   },

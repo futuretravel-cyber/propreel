@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail, transferCredits, refundDeduction, REFUND_SCOPES } from '../lib/userService';
+import { jobCredits } from '../lib/renderPricing';
 import { requireOwner, requireAdminSession } from '../lib/auth';
 
 /**
@@ -108,6 +109,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const gate = await requireOwner(req, user_id);
       if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+
+      // ── Server-priced kinds: the client cannot choose the amount ─────
+      // Product calls are minted (job_token, renderPricing-priced). This
+      // endpoint keeps working for them ONLY at the server's own price — a
+      // modified client deducting differently gets a 400, never a ledger
+      // row (the renderPricing import is the same table UI shows).
+      const kind = String(metadata?.kind || '');
+      if (kind === 'PROPERTY_DESCRIPTION' || kind === 'SOCIAL_POST') {
+        const expected = jobCredits(kind === 'PROPERTY_DESCRIPTION' ? 'description' : 'social_post');
+        if (expected == null || amount !== expected) {
+          return res.status(400).json({
+            error: `This charge is priced server-side — the client cannot choose the amount`,
+            expected,
+          });
+        }
+      }
 
       // pool='agency' spends the shared agency pool instead of the personal
       // balance (the client sends this for preset-tier render features).

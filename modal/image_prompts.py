@@ -227,16 +227,7 @@ IMAGE_PRESETS = [
         "strength": {"min": 0.4, "max": 0.5, "default": 0.45},
         "guidanceScale": {"min": 4, "max": 5, "default": 4.5}
     },
-    {
-        "id": "remove_vehicles",
-        "label": "Remove Vehicles",
-        "emoji": "🚙",
-        "category": "removal",
-        "prompt": """Professional real estate exterior photograph of this exact property, with any parked or visible cars, trucks, or vehicles removed from the driveway, street, or curb. Fill the space where each vehicle was with the appropriate natural continuation of the driveway, road, lawn, or pavement, matching its existing texture, color, and lighting seamlessly. Keep the property itself — every wall, window, door, roofline, tree, and landscape feature — in its exact original position, shape, and proportion. Natural daylight throughout. Apply natural, high-end real estate color grading. Hyper-realistic, magazine-quality architectural photography, ultra-high resolution, clean and polished finish, empty of people.""",
-        "negative_prompt": """visible cars, trucks, vehicles, vehicle shadows or reflections, altered building structure, moved architectural elements, warped walls, distorted proportions, mismatched pavement texture, patchy or discolored driveway, visible editing seams, overexposure, harsh shadows, low resolution, grain, noise, people, animals, text, watermark, logo, clutter""",
-        "strength": {"min": 0.4, "max": 0.5, "default": 0.45},
-        "guidanceScale": {"min": 4, "max": 5, "default": 4.5}
-    },
+
 
     # ═══════════════════════════════════════════════════════════════════════════
     # TWILIGHT PHOTOGRAPHY
@@ -299,9 +290,10 @@ IMAGE_PRESETS = [
 # Furniture Removal presets are NEVER suffixed: all four run their exact
 # specified text so "Do not include:" reaches the model byte-for-byte as
 # written — the three FLUX Erase [pro] prompts above (painted-mask erase,
-# verbatim as the erase call's prompt), plus remove_vehicles as a clone of
-# the photo-editor remove_cars preset. For the erase presets the mask is
-# the hard structure constraint, so no structure-lock language is needed.
+# verbatim as the erase call's prompt). Vehicle removal lives ONLY in the
+# AI Photo Editor (remove_cars) — it was never a brush-mask preset. For the
+# erase presets the mask is the hard structure constraint, so no
+# structure-lock language is needed.
 _STRUCTURE_NEGATIVE_LOCK = (
     "changed wall material or finish, exposed brick replaced with painted drywall, "
     "repainted or retextured walls, removed staircase, removed mezzanine or loft, "

@@ -11,7 +11,7 @@ import {
   consumePasswordResetToken,
   requireOwner, requireAdminSession, sessionUser, isAdminActor,
 } from '../lib/auth';
-import { sendEmail, confirmEmailTemplate, resetPasswordTemplate, accountExistsTemplate } from '../lib/email';
+import { sendEmail, confirmEmailTemplate, resetPasswordTemplate, accountExistsTemplate, agencyInviteTemplate } from '../lib/email';
 import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/totp';
 import { workerTokenHeaders } from '../lib/workerToken';
 import { jobCredits, flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../lib/renderPricing';
@@ -332,8 +332,9 @@ async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: str
         await addMemberToAgency(agencyId, invitee.id, role || 'AGENT');
         return res.status(200).json({ success: true, addedExisting: true, member: invitee.email });
       }
+      const inviteId = `inv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       await putItem(TABLES.SETTINGS, {
-        id: `inv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: inviteId,
         type: 'agency_invite',
         inviterUserId: inviter_user_id,
         inviterEmail: inviter.email,
@@ -344,7 +345,55 @@ async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: str
         status: 'pending',
         createdAt: new Date().toISOString(),
       });
-      return res.status(201).json({ success: true, pending: true, message: 'Invite stored — they will join your agency when they sign up with this email.' });
+      // The invitation EMAIL — the bug: the row was stored but no mail ever
+      // went out, so agents never learned they'd been invited. Best-effort
+      // delivery: a mail failure must not lose the stored invite (the
+      // signup-time accept path still works), but the owner needs to know
+      // the notification didn't reach the agent's inbox.
+      try {
+        const origin = siteOrigin(req);
+        // The CTA deep-links into the INVITE signup mode (no plan/payment
+        // step — name + password only, credits from the agency).
+        const tpl = agencyInviteTemplate(
+          agency.name || 'your agency',
+          inviter.fullName || inviter.email,
+          `${origin}/signup?invite=${encodeURIComponent(String(invite_email).toLowerCase())}`,
+          role || 'AGENT',
+        );
+        const inviteSent = await sendEmail({
+          to: String(invite_email).toLowerCase(),
+          subject: tpl.subject,
+          html: tpl.html,
+          text: tpl.text,
+          replyTo: inviter.email || undefined,
+        });
+        if (!inviteSent.ok) {
+          console.error(`Agency invite email failed (invite ${inviteId}):`, inviteSent.error);
+          return res.status(201).json({
+            success: true,
+            pending: true,
+            email_sent: false,
+            email_error: inviteSent.error || 'email provider rejected the invitation',
+            message: 'Invite stored, but the email could not be sent — share the signup link directly.',
+          });
+        }
+        return res.status(201).json({
+          success: true,
+          pending: true,
+          email_sent: true,
+          ...(inviteSent.usedFallback ? { email_sender: 'resend-onboarding' } : {}),
+          message: `Invite sent to ${String(invite_email).toLowerCase()} — they will join your agency when they sign up with this email.`,
+        });
+      } catch (mailErr: any) {
+        console.error(`Agency invite email threw (invite ${inviteId}):`, mailErr?.message || mailErr);
+        return res.status(201).json({
+          success: true,
+          pending: true,
+          email_sent: false,
+          email_error: String(mailErr?.message || mailErr),
+          message: 'Invite stored, but the email could not be sent — share the signup link directly.',
+        });
+      }
     }
 
     // ── POST ?action=agency_set_limit — per-agent monthly cap ────────
@@ -365,8 +414,7 @@ async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: str
     }
 
     // ── POST ?action=agency_remove_member ────────────────────────────
-    if (action === 'agency_remove_member') {
-      const { user_id, target_user_id } = body;
+    if (action === 'agency_remove_member') {      const { user_id, target_user_id } = body;
       const owner = await getUser(user_id);
       if (!owner?.agencyId) return res.status(400).json({ error: 'You are not part of an agency' });
       const agency = await getAgency(owner.agencyId);
@@ -378,6 +426,44 @@ async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: str
       if (!target || target.agencyId !== owner.agencyId) return res.status(404).json({ error: 'Agent not found in your agency' });
       await removeMember(owner.agencyId, target_user_id);
       return res.status(200).json({ success: true });
+    }
+
+    // ── POST ?action=agency_delete_member — DELETE the account ────────
+    // Owner-side hard delete of an invited agent's account (they were given
+    // access without paying, so the agency admin can also take it away).
+    // Wipes the user row, their projects and sessions — the same physical
+    // deletion the self-service ?action=delete performs. Only the owning
+    // agency's owner/admin may call it, and never on themselves or a fellow
+    // AGENCY_OWNER (that stays with the account holder / platform admin).
+    if (action === 'agency_delete_member') {
+      const { user_id, target_user_id } = body;
+      if (!target_user_id) return res.status(400).json({ error: 'target_user_id is required' });
+      const owner = await getUser(user_id);
+      if (!owner?.agencyId) return res.status(400).json({ error: 'You are not part of an agency' });
+      const agency = await getAgency(owner.agencyId);
+      if (!agency || (owner.role !== 'AGENCY_OWNER' && owner.role !== 'ADMIN' && agency.ownerId !== owner.id)) {
+        return res.status(403).json({ error: 'Agency admins only' });
+      }
+      const target = await getUser(target_user_id);
+      if (!target || target.agencyId !== owner.agencyId) return res.status(404).json({ error: 'Agent not found in your agency' });
+      if (target_user_id === owner.id) return res.status(400).json({ error: 'Use the account settings page to delete your own account' });
+      if (target.role === 'AGENCY_OWNER' || target.role === 'ADMIN') {
+        return res.status(403).json({ error: 'Agency admins cannot be deleted here — contact platform support' });
+      }
+      // Same physical deletion as the self-service delete path: projects,
+      // the user row, then every session so the email cannot sign in again.
+      try {
+        const projects = await queryItems(TABLES.PROJECTS, { expression: 'userId = :u', values: { ':u': target_user_id } });
+        for (const p of projects) {
+          await deleteItem(TABLES.PROJECTS, { userId: target_user_id, id: (p as any).id });
+        }
+      } catch (e) {
+        console.error('Project deletion error during agency_delete_member:', e);
+      }
+      await deleteUser(target_user_id);
+      await deleteSessionsForUser(target_user_id).catch(() => {});
+      console.log(`Agency member deleted by owner: ${target_user_id} (${target.email}) via ${owner.agencyId}`);
+      return res.status(200).json({ success: true, deleted: target.email });
     }
 
     // ── POST ?action=agency_settings — company details / branding / webhook ─
@@ -507,6 +593,26 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   billingAlerts: true,
   marketingEmails: false,
 };
+
+/**
+ * Agency-invited signup: does the REGISTERING email have a pending agency
+ * invite? Used by auth_register (credits come from the agency — no plan,
+ * no trial) and by the signup page to pre-fetch the agency banner. A user
+ * is eligible only when the invite is pending AND they have no confirmed
+ * account yet (existing members join via the normal accept path).
+ */
+async function findPendingAgencyInvite(email: string): Promise<any | null> {
+  const normalized = String(email || '').toLowerCase();
+  if (!normalized) return null;
+  try {
+    const { scanItems, TABLES } = await import('../lib/db');
+    const all = await scanItems<any>(TABLES.SETTINGS, { limit: 300 });
+    return all.find(i => i.type === 'agency_invite' && i.status === 'pending' && i.inviteEmail === normalized) || null;
+  } catch (e) {
+    console.error('findPendingAgencyInvite failed:', e);
+    return null;
+  }
+}
 
 /**
  * Nested route: POST /api/users?action=delete — real account deletion.
@@ -1689,7 +1795,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
             `(~${Math.ceil(FLASHHEAD_MAX_SECONDS * NARRATION_WORDS_PER_SEC)} words). Shorten the voiceover and try again.`;
         }
       }
-      credits = priceError ? null : jobCredits(scope, { tier: b.tier, configIndex: b.config_index, presetId: b.preset_id ?? b.metadata?.presetId, voiceover_text: b.voiceover_text, voiceoverText: b.metadata?.voiceover_text });
+      credits = priceError ? null : jobCredits(scope, { tier: b.tier, configIndex: b.config_index, presetId: b.preset_id ?? b.metadata?.presetId, voiceover_text: b.voiceover_text, voiceoverText: b.metadata?.voiceover_text, duration: b.duration ?? b.metadata?.duration });
       if (credits == null) {
         return res.status(400).json({ error: priceError || 'Unknown job scope or tier' });
       }
@@ -1709,8 +1815,14 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
         scope === 'render' ? 'Video generation'
         : scope === 'flashhead' ? 'FlashHead lip-sync video'
         : scope === 'script' ? 'AI Writer voiceover script'
+        : scope === 'description' ? 'Property description'
+        : scope === 'social_post' ? 'Social media post'
         : `Image edit — ${b.preset_id || b.metadata?.presetId || 'custom'}`;
-      const metadata = { ...(b.metadata || {}), scope, ...(b.tier ? { tier: b.tier } : {}), ...(scope === 'flashhead' && voiceoverText.trim() ? { narration_words: voiceoverText.split(/\s+/).filter(Boolean).length } : {}) };
+      // Ledger continuity: the description/social refund matchers (and the
+      // analytics that read these rows) keyed on metadata.kind — keep writing
+      // it even if a caller forgets to send it.
+      const ledgerKind = scope === 'description' ? 'PROPERTY_DESCRIPTION' : scope === 'social_post' ? 'SOCIAL_POST' : null;
+      const metadata = { ...(ledgerKind ? { kind: ledgerKind } : {}), ...(b.metadata || {}), scope, ...(b.tier ? { tier: b.tier } : {}), ...(scope === 'flashhead' && voiceoverText.trim() ? { narration_words: voiceoverText.split(/\s+/).filter(Boolean).length } : {}) };
 
       const { createHmac } = await import('crypto');
       const exp = Math.floor(Date.now() / 1000) + 600; // 10 minutes
@@ -1771,6 +1883,14 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
 
       const normalized = String(email).toLowerCase();
       const existing = await getUserByEmail(normalized);
+      // Agency-invited signup (SERVER-side accept, not just the client call):
+      // a pending invite for this email — and no confirmed account — means
+      // this is an invited agent joining their agency. Their credits come
+      // from the agency, so plan/trial/referral/agency-name fields are
+      // ignored: no subscription prompts, no trial clock, no self-created
+      // agency. The invite is accepted right here; the client-side
+      // agency_accept_pending call stays as a no-op fallback (idempotent).
+      const pendingInvite = existing?.emailVerified ? null : await findPendingAgencyInvite(normalized);
       if (existing?.emailVerified) {
         // Anti-enumeration (L-2): the response is byte-identical to a fresh
         // signup, so probing the register endpoint can never reveal which
@@ -1796,7 +1916,29 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
 
       // Provision (creates the row + signup bonus + admin grant) or reuse the
       // still-unconfirmed row (re-register with a corrected password).
-      const { user } = await provisionUser({ email: normalized, fullName, phone, agencyName, planId, cycle });
+      // Invited agents: planId/agencyName stay null at creation — no plan row,
+      // no self-created agency — and the invite ACCEPT runs next.
+      const { user } = await provisionUser({
+        email: normalized,
+        fullName,
+        phone,
+        agencyName: pendingInvite ? null : agencyName,
+        planId: pendingInvite ? null : planId,
+        cycle,
+      });
+      if (pendingInvite) {
+        try {
+          const { addMemberToAgency } = await import('../lib/agency');
+          await addMemberToAgency(pendingInvite.agencyId, user.id, pendingInvite.role || 'AGENT');
+          const { updateItem, TABLES } = await import('../lib/db');
+          await updateItem(TABLES.SETTINGS, { id: pendingInvite.id }, { status: 'accepted', acceptedBy: user.id });
+          console.log(`Agency invite accepted at signup: ${normalized} → ${pendingInvite.agencyId}`);
+        } catch (acceptErr: any) {
+          // The invite STAYS pending — the client-side agency_accept_pending
+          // fallback (and every later sign-in) retries until it succeeds.
+          console.error('Signup-time invite accept failed (invite stays pending):', acceptErr?.message || acceptErr);
+        }
+      }
       // Signup consent, content-versioned: the client hashes the exact Terms
       // text its checkbox was shown (same self-versioning trick as the AI
       // notice — the server never needs a copy of the Terms). Recorded only
@@ -1856,6 +1998,25 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       }
       await holdAuthFloor(AUTH_FLOOR_REGISTER_MS);
       return res.status(201).json({ success: true, needsConfirmation: true, email: user.email });
+    }
+
+    // ── GET auth_signup_invite&email= ───────────────────────────────
+    // For the signup page: does this email have a PENDING agency invite (and
+    // no confirmed account yet)? Returns just what the invite-mode UI needs —
+    // agency name, inviter, role, plan. No user data beyond that.
+    if (action === 'auth_signup_invite') {
+      const email = String(req.query.email || '').toLowerCase();
+      if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
+      const existing = await getUserByEmail(email);
+      const invite = existing?.emailVerified ? null : await findPendingAgencyInvite(email);
+      if (!invite) return res.status(404).json({ error: 'No pending agency invite for this email' });
+      return res.status(200).json({
+        agencyId: invite.agencyId,
+        agencyName: invite.agencyName || null,
+        inviterName: invite.inviterEmail || null,
+        role: invite.role || 'AGENT',
+        signupUrl: `${siteOrigin(req)}/signup?invite=${encodeURIComponent(email)}`,
+      });
     }
 
     // ── GET auth_confirm&token= ───────────────────────────────────────

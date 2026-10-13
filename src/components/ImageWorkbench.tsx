@@ -42,8 +42,8 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
   const uploadWait = useUploadWait();
   // Brush mask presets: staging paints the furniture to REPLACE (Fill Pro);
   // the three furniture-removal presets paint what to ERASE (FLUX Erase
-  // [pro]) — the painted mask is required for both. remove_vehicles stays
-  // maskless on the Kontext path.
+  // [pro]) — the painted mask is required for both. Vehicle removal lives
+  // only in the AI Photo Editor (remove_cars, maskless Kontext path).
   const showBrush = ['luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
     'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft',
     'remove_all_furniture', 'remove_clutter', 'remove_personal_items'].includes(presetId);

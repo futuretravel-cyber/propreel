@@ -27,5 +27,14 @@ jobs:
     - name: Typecheck
       run: npx tsc --noEmit
 
+    # Pricing guard: verifies lib/renderPricing's whole table (render tiers ×
+    # durations, edit presets, flashhead per-10s blocks + 90s cap, script 1⚡)
+    # with no credentials and no network. Any pricing edit that breaks the
+    # shared engine (or drifts it from the docs) fails the build here.
+    - name: Pricing engine dry run
+      run: npx tsx scripts/pricing_paths_e2e.ts
+      env:
+        PRICING_E2E_ENGINE_ONLY: '1'
+
     - name: Build project
       run: npm run build

@@ -9,9 +9,43 @@ import { Check, ArrowRight, ArrowLeft, Sparkles, Building2, User, CreditCard, Sh
 
 type Step = 'plan' | 'details' | 'payment' | 'confirm';
 
+// Shape of GET /api/users?action=signup_invite&email=… — what the invited
+// signup banner shows about the agency they're joining.
+interface AgencyInviteInfo {
+  agencyId: string;
+  agencyName: string | null;
+  inviterName: string | null;
+  role: string;
+}
+
 export default function SignupPage() {
   const [searchParams] = useSearchParams();
-  const [step, setStep] = useState<Step>('plan');
+  // ── Agency-invite deep link (?invite=<email>) ────────────────────────
+  // An agent invited by an agency needs NO subscription: credits come from
+  // the agency pool, so the whole plan → payment flow is skipped. This
+  // branch shows only name / email / password (plus the pre-filled locked
+  // email), and the backend attaches them to the agency at registration.
+  const inviteEmailParam = (searchParams.get('invite') || '').trim().toLowerCase();
+  const invited = !!inviteEmailParam;
+  const [inviteInfo, setInviteInfo] = useState<AgencyInviteInfo | null>(null);
+  const [inviteLoadError, setInviteLoadError] = useState('');
+  useEffect(() => {
+    if (!inviteEmailParam) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/users?action=auth_signup_invite&email=${encodeURIComponent(inviteEmailParam)}`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data.error || 'This invitation could not be found');
+        setInviteInfo(data);
+      } catch (e: any) {
+        if (!cancelled) setInviteLoadError(e.message || 'This invitation could not be found');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [inviteEmailParam]);
+  const [step, setStep] = useState<Step>(invited ? 'details' : 'plan');
   const [selectedPlan, setSelectedPlan] = useState(() => {
     const p = searchParams.get('plan')?.toUpperCase();
     return p && PLANS.some(plan => plan.id === p) ? p : 'PROFESSIONAL';
@@ -31,7 +65,7 @@ export default function SignupPage() {
   const [startTrial, setStartTrial] = useState(true);
   const [dial, setDial] = useState('+27');
   const [formData, setFormData] = useState({
-    fullName: '', email: '', password: '', phone: '',
+    fullName: '', email: inviteEmailParam, password: '', phone: '',
     agencyName: '', companyName: '', companyReg: '', companyVat: '', companyAddress: '',
     agreed: false,
     twoStep: false,
@@ -83,8 +117,10 @@ export default function SignupPage() {
   const paymentUrl = `/payment?plan=${selectedPlan}&cycle=${cycle}&price=${price}`;
   // Trial accounts skip checkout entirely — post-auth lands on the dashboard
   // (they can subscribe later from the in-app banner or Billing).
-  const trialSelected = !isAgency && startTrial;
-  const postAuthUrl = trialSelected ? '/dashboard' : paymentUrl;
+  // Agency-invited agents NEVER see a trial or payment page: no subscription,
+  // the confirmation link goes straight to their (agency-linked) dashboard.
+  const trialSelected = !isAgency && !invited && startTrial;
+  const postAuthUrl = invited || trialSelected ? '/dashboard' : paymentUrl;
   // Combine the selected dial code with the number; if the user typed an
   // international number (+…) themselves, strip that prefix so it isn't
   // double-dialled.
@@ -101,6 +137,7 @@ export default function SignupPage() {
     try {
       // Where the confirmation-email link should land: straight on this
       // plan's payment page, already signed in — or the dashboard for a trial.
+      // (Agency-invited agents always land on the dashboard — no payment.)
       const emailRedirectTo = `${window.location.origin}${postAuthUrl}`;
       import('../lib/postAuth').then(m => m.setPostAuthRedirect(postAuthUrl));
       const result = await register({
@@ -110,7 +147,7 @@ export default function SignupPage() {
         phone: fullPhone,
         emailRedirectTo,
         agencyName: isAgency ? formData.companyName : formData.agencyName,
-        planId: selectedPlan as any,
+        planId: invited ? 'STARTER' : selectedPlan as any,
         cycle,
         aiAcknowledged: formData.agreed,
         companyName: formData.companyName,
@@ -121,7 +158,7 @@ export default function SignupPage() {
         enableTwoFactor: formData.twoStep,
         startTrial: trialSelected || undefined,
       });
-      track('signup_completed', { plan: selectedPlan, cycle, trial: trialSelected });
+      track('signup_completed', invited ? { plan: 'agency_invite' } : { plan: selectedPlan, cycle, trial: trialSelected });
       if (result.needsConfirmation) {
         // Email confirmation required (mailer_autoconfirm=false): there is no
         // session yet, so we can't go to the payment page — show the
@@ -185,8 +222,8 @@ export default function SignupPage() {
           </Link>
         </div>
 
-        {/* Progress Steps */}
-        {step !== 'confirm' && (
+        {/* Progress Steps — hidden in invite mode (no plan/payment steps) */}
+        {step !== 'confirm' && !invited && !inviteLoadError && (
         <div className="flex items-center justify-center gap-4 mb-8">
           {(['plan', 'details', 'payment'] as const).map((s, i) => (
             <div key={s} className="flex items-center gap-2">
@@ -284,16 +321,44 @@ export default function SignupPage() {
         {step === 'details' && (
           <div className="card-dark p-8 animate-fade-in">
             <h2 className="text-2xl font-bold text-white text-center mb-2">
-              {isAgency ? 'Agency Details' : 'Your Details'}
+              {invited ? 'Join Your Agency' : isAgency ? 'Agency Details' : 'Your Details'}
             </h2>
             <p className="text-ink-400 text-center mb-6">
-              {isAgency ? 'Register your agency and become the admin.' : 'Create your account to get started.'}
+              {invited
+                ? `Set up your account to join ${inviteInfo?.agencyName || 'your agency'} — credits are provided by the agency.`
+                : isAgency ? 'Register your agency and become the admin.' : 'Create your account to get started.'}
             </p>
+
+            {/* Invited-agent banner: which agency, who invited, what happens */}
+            {invited && inviteLoadError && (
+              <div className="mb-4 p-4 rounded-lg bg-amber-950/40 border border-amber-500/30">
+                <p className="text-xs text-amber-300 mb-2">{inviteLoadError}</p>
+                <p className="text-xs text-ink-400">
+                  If your agency already invited you, use the signup link exactly as it was sent. Otherwise you can <Link to="/signup" className="text-purple-400 hover:text-purple-300">sign up normally</Link>.
+                </p>
+              </div>
+            )}
+            {invited && inviteInfo && (
+              <div className="mb-4 p-4 rounded-lg bg-purple-950/30 border border-purple-500/20">
+                <p className="text-sm text-white font-semibold flex items-center gap-2"><Building2 className="w-4 h-4 text-purple-400" /> {inviteInfo.agencyName || 'An agency'}</p>
+                <ul className="mt-2 space-y-1 text-xs text-ink-300">
+                  <li className="flex items-center gap-2"><Check className="w-3 h-3 text-green-400" /> No subscription needed — the agency pays</li>
+                  <li className="flex items-center gap-2"><Check className="w-3 h-3 text-green-400" /> Credits come from your agency's shared pool</li>
+                  {inviteInfo.inviterName && <li className="flex items-center gap-2"><Check className="w-3 h-3 text-green-400" /> Invited by {inviteInfo.inviterName}</li>}
+                </ul>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><label className="label">Full Name *</label><input className="input" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} placeholder="John Smith" required /></div>
-                <div><label className="label">Email *</label><input type="email" className="input" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="you@example.com" required /></div>
+                <div>
+                  <label className="label">Email *</label>
+                  {/* Invite mode: the email IS the invite — locked in place so
+                      the signup can only ever attach the invited agency. */}
+                  <input type="email" className="input" value={formData.email} onChange={invited ? undefined : e => setFormData({...formData, email: e.target.value})} placeholder="you@example.com" required readOnly={invited} disabled={invited} />
+                  {invited && <p className="text-xs text-ink-500 mt-1">Your invite email — sign in with this address</p>}
+                </div>
                 <div><label className="label">Password *</label><input type="password" className="input" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="Min. 8 characters" required minLength={8} /></div>
                 <div>
                   <label className="label">Phone</label>
@@ -335,7 +400,7 @@ export default function SignupPage() {
                 </div>
               )}
 
-              {!isAgency && (
+              {!isAgency && !invited && (
                 <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-purple-950/30 border border-purple-500/20">
                   <input type="checkbox" checked={startTrial} onChange={e => setStartTrial(e.target.checked)} className="mt-1 w-4 h-4 rounded" />
                   <span className="text-xs text-ink-300">
@@ -360,7 +425,7 @@ export default function SignupPage() {
 
               <div className="flex gap-3">
                 <button type="button" onClick={() => setStep('plan')} className="btn btn-secondary"><ArrowLeft className="w-4 h-4" /> Back</button>
-                <button type="submit" disabled={loading} className="btn btn-primary flex-1">{loading ? 'Creating account...' : trialSelected ? 'Start my free trial' : 'Continue to Payment'}</button>
+                <button type="submit" disabled={loading || (invited && !!inviteLoadError)} className="btn btn-primary flex-1">{loading ? 'Creating account...' : invited ? 'Create account & join agency' : trialSelected ? 'Start my free trial' : 'Continue to Payment'}</button>
               </div>
             </form>
 
@@ -402,7 +467,12 @@ export default function SignupPage() {
             <div className="bg-ink-800/50 rounded-xl p-4 mb-6 text-left">
               <ol className="space-y-2 text-sm text-ink-300 list-decimal list-inside">
                 <li>Click the link in the email to confirm your address</li>
-                {trialSelected ? (
+                {invited ? (
+                  <>
+                    <li>You'll land on your dashboard, already linked to {inviteInfo?.agencyName || 'your agency'}</li>
+                    <li>Credits come from the agency's shared pool — no payment page, no trial</li>
+                  </>
+                ) : trialSelected ? (
                   <>
                     <li>You'll land on your dashboard with {SIGNUP_BONUS} free trial credits</li>
                     <li>Upgrade any time from the trial banner — everything carries over</li>

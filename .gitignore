@@ -74,3 +74,13 @@ modal/__pycache__/
 scripts/tmp-media/
 .tuid.txt
 .purl.txt
+
+# Generated admin key (NEVER commit - rotate after use)
+scripts/_admin_api_key.txt
+
+# Scratch probes, A/B renders, test media, and pycache
+scripts/_*
+scripts/__pycache__/
+
+# Build artifacts
+tsconfig.tsbuildinfo

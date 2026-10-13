@@ -29,7 +29,7 @@ import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
 import { useFlashHead } from './lib/useFlashHead';
-import { SCRIPT_CREDITS, flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../lib/renderPricing';
+import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC, DESCRIPTION_CREDITS as DESCRIPTION_RENDER_COST, SOCIAL_POST_CREDITS as SOCIAL_POST_COST, scriptCreditsForDuration } from '../lib/renderPricing';
 import { useVoicePreview } from './lib/useVoicePreview';
 import { useVoiceoverLanguageCheck, type VoiceoverLanguageCheck } from './lib/useVoiceoverLanguageCheck';
 import LanguageMismatchBanner from './components/LanguageMismatchBanner';
@@ -1452,8 +1452,9 @@ function StudioRedirect() {
 // SHARED AI GENERATION HELPERS (Description + Social tabs)
 // ═════════════════════════════════════════════════════════════════════════
 
-const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (Grok AI)
-const SOCIAL_POST_COST = 2; // ⚡ per social media post render (Grok AI)
+ // Priced server-side in lib/renderPricing (the job_token mint is the
+ // charge) — these are imported re-exports so the UI badge shows exactly
+ // what the API prices. Replace any local re-litigation of the amounts.
 
 // Key-feature chips moved to src/components/FeatureChips.tsx and the upload /
 // geocoding helpers below moved to src/lib/propertyListing.ts — both shared
@@ -1471,7 +1472,9 @@ function DescriptionTab() {
   const navigate = useNavigate();
   const uploadWait = useUploadWait();
   const uploadQueue = useUploadQueue('description');
-  const { user, deductCredits, refundCredits } = useCredit();
+  // deductCredits is gone from here — the charge is the job_token mint now
+  // (server-priced; see generate below). Only refunds and the balance refresh.
+  const { user, refundCredits, refresh } = useCredit();
   const [tone, setTone] = useState('Professional');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1552,7 +1555,12 @@ function DescriptionTab() {
     });
   };
 
-  // Grok AI generation — 1 credit per render, refunded on failure
+  // ── Grok AI generation — priced server-side via the job_token mint ────
+  // The mint (POST ?action=job_token, scope 'description') prices the charge
+  // from lib/renderPricing and pays into the single-use token the worker
+  // call carries — the client neither picks the amount nor can skip it.
+  // Refund on failure: same 'description' refund scope as before (the mint
+  // writes the ledger kind the matcher needs).
   const generate = async () => {
     if (!user) { toast.error('Sign in to generate a description'); return; }
     const cost = DESCRIPTION_RENDER_COST;
@@ -1570,8 +1578,11 @@ function DescriptionTab() {
     setLoading(true);
     let charged = false;
     try {
-      const ok = await deductCredits(cost, 'Property description', { kind: 'PROPERTY_DESCRIPTION' });
-      if (!ok) throw new Error('Could not deduct credits — check your balance');
+      // The mint IS the charge — server-priced, single-use, one-shot. Its
+      // token travels to the worker in X-PropReel-Token (same header the
+      // free worker token uses; the paid one replaces it for this call).
+      const authHeaders = await jobHeaders('description', { metadata: { kind: 'PROPERTY_DESCRIPTION' } });
+      void refresh(); // the balance display — the charge landed server-side
       charged = true;
       const text = await PropReelAPI.generateText(
         'description',
@@ -1593,7 +1604,8 @@ function DescriptionTab() {
           nearby_amenities: amenities.join('; '),
           currency: 'ZAR (South African Rand) — always write prices with the decimal system, e.g. R12 500 000,00',
         },
-        images
+        images,
+        authHeaders
       );
       setDescription(text.trim());
       toast.success('Description generated', 'AI');
@@ -1983,7 +1995,8 @@ function SocialTab() {
   const toast = useToast();
   const uploadWait = useUploadWait();
   const uploadQueue = useUploadQueue('social');
-  const { user, deductCredits, refundCredits } = useCredit();
+  // Same server-priced mint pattern as DescriptionTab — see its comment.
+  const { user, refundCredits, refresh } = useCredit();
   const [platform, setPlatform] = useState('instagram');
   const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(false);
@@ -2049,8 +2062,8 @@ function SocialTab() {
     setLoading(true);
     let charged = false;
     try {
-      const ok = await deductCredits(cost, 'Social media post', { kind: 'SOCIAL_POST' });
-      if (!ok) throw new Error('Could not deduct credits — check your balance');
+      const authHeaders = await jobHeaders('social_post', { metadata: { kind: 'SOCIAL_POST' } });
+      void refresh(); // the balance display — the charge landed server-side
       charged = true;
       const text = await PropReelAPI.generateText(
         'social_caption',
@@ -2067,7 +2080,8 @@ function SocialTab() {
           attached_photos: images.length ? `${images.length} photo(s) attached — mention what you see in them` : '',
           currency: 'ZAR (South African Rand) — write prices with the decimal system, e.g. R12 500 000,00',
         },
-        images
+        images,
+        authHeaders
       );
       setCaption(text.trim().replace(/^"|"$/g, ''));
       // Store every generated post in My Projects (kind: SOCIAL) — best-effort,
@@ -2451,6 +2465,9 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   };
 
   const targetWords = calculateTargetWords(selectedConfig.duration);
+  // AI Write price for THIS duration — server-priced at the mint by the
+  // same call (lib/renderPricing), so the badge can't drift from the charge.
+  const scriptPrice = scriptCreditsForDuration(selectedConfig.duration);
 
   // Narration runs at the same 2.4 words/sec the target uses; when the voiced
   // script outlasts the render, the worker freezes the final frame to fit it.
@@ -2569,8 +2586,8 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   // never outlast the video (frozen-tail fix).
   const generateScript = async () => {
     if (!user) { toast.error('Sign in to use AI Write'); return; }
-    if ((user.credits ?? 0) < SCRIPT_CREDITS) {
-      toast.error(`Not enough credits — AI Write costs ${SCRIPT_CREDITS} credit. Top up in Billing.`, 'Insufficient credits');
+    if ((user.credits ?? 0) < scriptPrice) {
+      toast.error(`Not enough credits — AI Write for a ${selectedConfig.duration}s script costs ${scriptPrice} credit${scriptPrice === 1 ? '' : 's'}. Top up in Billing.`, 'Insufficient credits');
       return;
     }
     const descriptionPart = sharedDescription;
@@ -2624,7 +2641,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
     } catch (e: any) {
       // A failed generation refunds the script charge (server-verified once).
       await refundCredits('script').catch(() => {});
-      const msg = e?.message || 'Script generation failed — your 1 credit was refunded';
+      const msg = e?.message || `Script generation failed — your ${scriptPrice} credit${scriptPrice === 1 ? '' : 's'} were refunded`;
       setScriptError(msg);
       toast.error(msg);
     } finally {
@@ -3150,20 +3167,22 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
               ({wordCount(script)} / {targetWords} words, ~{estimatedNarrationSec}s)
             </span>
           </label>
-          {/* Paid action: AI Write costs 1 credit — say so BEFORE it runs.
+          {/* Paid action: AI Write is priced by duration (ceil(duration/30)
+              ⚡, server-priced at the mint) — say so BEFORE it runs.
               window.confirm keeps the guarantee (nothing is charged unless
               the agent explicitly accepts) with zero render-path state. */}
           <button 
             onClick={() => {
-              if (window.confirm(`AI Writer costs 1 credit per script.\n\nIt writes the voiceover from your Listing details and uploaded photos, sized to the ${selectedConfig.duration}s duration (${targetWords} words).\n\nGenerate now?`)) {
+              const price = scriptCreditsForDuration(selectedConfig.duration);
+              if (window.confirm(`AI Write for a ${selectedConfig.duration}s script costs ${price} credit${price === 1 ? '' : 's'}.\n\nIt writes the voiceover from your Listing details and uploaded photos, sized to the ${selectedConfig.duration}s duration (${targetWords} words).\n\nGenerate now?`)) {
                 generateScript();
               }
             }} 
             disabled={generatingScript} 
-            title="Costs 1 credit — confirmed before running"
+            title={`Costs ${scriptPrice} credit${scriptPrice === 1 ? '' : 's'} at ${selectedConfig.duration}s — confirmed before running`}
             className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1"
           >
-            {generatingScript ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI Write {generatingScript ? '' : '· 1⚡'}
+            {generatingScript ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI Write {generatingScript ? '' : `· ${scriptPrice}⚡`}
           </button>
         </div>
         <p className="text-xs text-ink-500 mt-1">
@@ -4270,8 +4289,19 @@ function AdminUsers() {
                 <td className="px-3 py-3"><p className="text-sm text-white">{m.fullName}</p><p className="text-xs text-ink-400">{m.email}</p></td>
                 <td className="px-3 py-3"><span className="badge badge-muted">{(m.role || 'AGENT').toUpperCase()}</span></td>
                 <td className="px-3 py-3">
-                  <p className="text-sm text-white">{m.subscription?.planId || m.planId || '—'}</p>
-                  {m.subscription ? (
+                  {/* Plan names a REAL subscription only. The top-level planId
+                      is a checkout/trial-era residual that survives a
+                      de-subscription — showing it here made de-subscribed
+                      accounts look like they still own a plan.  A status
+                      always rides a real subscription object, so a missing
+                      status ⇒ no plan; CANCELLED/PAST_DUE/DOWNGRADE_PENDING
+                      stay named (access keeps running to period end). */}
+                  {(() => {
+                    const st = m.subscription?.status;
+                    const hasPlan = st === 'ACTIVE' || st === 'PAST_DUE' || st === 'CANCELLED' || st === 'DOWNGRADE_PENDING';
+                    return <p className="text-sm text-white">{hasPlan ? (m.subscription!.planId || '—') : '—'}</p>;
+                  })()}
+                  {m.subscription?.status ? (
                     <span className={`badge mt-1 ${m.subscription.status === 'ACTIVE' ? 'badge-success' : m.subscription.status === 'PAST_DUE' ? 'badge-warning' : m.subscription.status === 'CANCELLED' ? 'badge-danger' : 'badge-brand'}`}>{m.subscription.status}</span>
                   ) : m.trialExpiresAt ? (
                     <span className="badge badge-muted mt-1">Trial</span>

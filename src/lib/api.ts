@@ -331,31 +331,65 @@ export const PropReelAPI = {
      *  ONE job token the 1-credit AI Writer charge minted, so the worker
      *  can prove the script was paid for. Other kinds use the free
      *  short-lived worker token as before. */
-    extraHeaders: Record<string, string> = {}
+    extraHeaders: Record<string, string> = {},
+    /** Per-call timeout override (ms). Callers don't need this normally —
+     *  the kind-based default below covers the worker's own worst case. */
+    timeoutMs?: number
   ): Promise<string> {
+    // The AI-Writer wedge fix: when a Modal response hung, the client await
+    // never settled — spinner stuck, button disabled forever, no error, and
+    // the credit refund only fired because the pending fetch happened to be
+    // torn down with the page reload. AbortSignal.timeout guarantees the
+    // promise settles, so the caller's catch refunds the mint and re-enables
+    // the button with an actionable message.
+    // Caps chosen against the REAL transport wall, not the worker's budget:
+    // Modal's web proxy kills any response at 150 s, and a CORS fetch (the
+    // browser → Modal case) gets NO 303-redirect recovery — the connection
+    // just drops and the raw error is "Failed to fetch". Aborting slightly
+    // under the wall guarantees every long call settles with our actionable
+    // timeout message instead of that opaque browser error.
+    const limit = timeoutMs ?? (
+      kind === 'description' || kind === 'video_script' || kind === 'social_caption' ? 145_000
+      : 75_000 // language_check / translate are one-shot LLM calls
+    );
     const { workerHeaders } = await import('./workerAuth');
-    const res = await fetch(`${MODAL_ENDPOINT}/generate_text`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(await workerHeaders()), ...extraHeaders },
-      body: JSON.stringify({ kind, fields, images }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({} as any));
-      // The worker sends its reason as `detail` (HTTPException) but auth
-      // middleware answers `error` — read both so failures never collapse
-      // into a generic message the agent can't act on.
-      const msg = err.detail || err.error || (res.status === 401
-        ? 'Your sign-in session expired — refresh the page, sign in again, then retry'
-        : `AI generation failed (${res.status})`);
-      throw new Error(msg);
+    try {
+      const res = await fetch(`${MODAL_ENDPOINT}/generate_text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()), ...extraHeaders },
+        body: JSON.stringify({ kind, fields, images }),
+        signal: AbortSignal.timeout(limit),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as any));
+        // The worker sends its reason as `detail` (HTTPException) but auth
+        // middleware answers `error` — read both so failures never collapse
+        // into a generic message the agent can't act on.
+        const msg = err.detail || err.error || (res.status === 401
+          ? 'Your sign-in session expired — refresh the page, sign in again, then retry'
+          : `AI generation failed (${res.status})`);
+        throw new Error(msg);
+      }
+      const data = await res.json();
+      // A 200 with an empty body used to settle silently (the caller wrote ""
+      // into its box, or did nothing) — the classic "it spun and nothing
+      // happened". Fail loudly so the UI can show why.
+      const text = typeof data.text === 'string' ? data.text.trim() : '';
+      if (!text) throw new Error('The AI returned an empty response — press the button again to retry');
+      return text;
+    } catch (e: any) {
+      // TimeoutError comes from AbortSignal.timeout(); fall through real
+      // network/auth errors to their own messages untouched.
+      if (e instanceof DOMException && e.name === 'TimeoutError' && `${e.message}`.includes('timed out')) {
+        throw new Error(`AI generation took longer than ${Math.round(limit / 1000)}s and was stopped — press the button again to retry`);
+      }
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        // The page tore this request down (route change mid-generation) —
+        // same actionable shape rather than a raw "The user aborted a request".
+        throw new Error('Generation was interrupted by navigation — press the button again to retry');
+      }
+      throw e;
     }
-    const data = await res.json();
-    // A 200 with an empty body used to settle silently (the caller wrote ""
-    // into its box, or did nothing) — the classic "it spun and nothing
-    // happened". Fail loudly so the UI can show why.
-    const text = typeof data.text === 'string' ? data.text.trim() : '';
-    if (!text) throw new Error('The AI returned an empty response — press the button again to retry');
-    return text;
   },
 
   // ── Narrator voice preview (Narakeet sample, S3-cached per pair) ───

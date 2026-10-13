@@ -1,0 +1,23 @@
+# Upload hygiene — when .vercelignore exists it replaces .gitignore for
+# deploy filtering, so the essentials are restated here.
+
+# Dependencies & build output (Vercel installs and builds itself)
+node_modules/
+dist/
+build/
+.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Secrets & local env
+.env
+.env.*
+.vercel/
+
+# Local-only material: staging test scripts/artifacts, docs, CI config
+scripts/
+docs/
+.github/
+.vscode/
+.idea/
+coverage/
+*.log

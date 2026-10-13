@@ -31,8 +31,8 @@ import { geocodeAddress, findNearbyAmenities } from '../lib/propertyListing';
 import { drainBacklog, enqueueImagesForAI, uploadStatusText, useUploadQueue } from '../lib/uploadQueue';
 import { guardAIRender } from '../lib/aiDisclaimer';
 import { useReorderable } from '../lib/reorder';
-
-const DESCRIPTION_RENDER_COST = 1; // ⚡ per description render (AI) — parity with the Studio
+import { jobHeaders } from '../lib/workerAuth';
+import { DESCRIPTION_CREDITS as DESCRIPTION_RENDER_COST } from '../../lib/renderPricing'; // server-priced (mint is the charge)
 const NEW_LISTING_COST = 2; // ⚡ charged server-side when a listing is saved
 
 export { PROVINCES, PROPERTY_TYPES };
@@ -230,7 +230,9 @@ const emptyDraft: DraftDetails = {
 const STEPS = ['Property Details', 'Photos', 'Description', 'Export'];
 
 export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => void; onSaved: () => void; initial?: Project }) {
-  const { user, deductCredits, refundCredits, refresh } = useCredit();
+  // deductCredits removed — the description charge is the server-priced
+  // job_token mint now (same pattern as the Studio Description tab).
+  const { user, refundCredits, refresh } = useCredit();
   const toast = useToast();
 
   const [step, setStep] = useState(0);
@@ -342,8 +344,10 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
     setGenerating(true);
     let charged = false;
     try {
-      const ok = await deductCredits(cost, 'Property description', { kind: 'PROPERTY_DESCRIPTION' });
-      if (!ok) throw new Error('Could not charge your credits');
+      // The mint IS the charge — server-priced (renderPricing), single-use;
+      // the paid token rides to the worker in X-PropReel-Token for this call.
+      const authHeaders = await jobHeaders('description', { metadata: { kind: 'PROPERTY_DESCRIPTION' } });
+      void refresh(); // balance display — the charge landed server-side
       charged = true;
       const text = await PropReelAPI.generateText(
         'description',
@@ -360,7 +364,8 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
           nearby_amenities: amenities.join('; '),
           currency: 'ZAR (South African Rand) — always write prices with the decimal system, e.g. R12 500 000,00',
         },
-        photos.slice(0, 4)
+        photos.slice(0, 4),
+        authHeaders
       );
       setDescription(text.trim());
       toast.success('Description generated', 'AI');

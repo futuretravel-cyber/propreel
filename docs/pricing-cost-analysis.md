@@ -76,7 +76,20 @@ The billing is flat but cost is per-second (fal $0.005/s + Narakeet $0.0033/s). 
 | Property Description (no photos) | 1 | 0.17 | 0.83 | 83% |
 | Property Description (photos) | 1 | ~0.42 | 0.58 | 58% |
 | Social Media Post | 2 | ~0.3 | 1.7 | 85% |
-| AI Writer voiceover script | 1 | 0.10–0.25 | 0.75–0.90 | 75–90% |
+| AI Writer voiceover script — priced per duration since 2026-10-13: `ceil(duration/30)` ⚡ (flat 1⚡ was a LOSS at 90s) | see below | see below | — | ≥56% |
+
+#### AI Writer per duration (repriced 2026-10-13)
+
+Cost per call = Grok 4.6 vision: ~1.6k base prompt tokens + ~2k/image + ~1.36 tok/word of script, at $2/M in / $6/M out (both rates verified against a billed 12-image response: 25,590×$2/M + 11,381×$6/M = $0.1195 ≈ the $0.119274 billed — that call had ~11k reasoning tokens; reasoning is now requested OFF, trimming each call to seconds and ~2¢ of output tokens). Words ≈ 2.4/s × duration. FX $1=R16.55.
+
+| Duration | Images (tier max) | Cost (R) | Old price | Old margin | New price `ceil(duration/30)` | New margin |
+|---|---:|---:|---:|---:|---:|---:|
+| 30s | 5–6 | ~0.46 | 1 ⚡ | 54% | **1 ⚡** | 54% |
+| 50s | 10 | ~0.73 | 1 ⚡ | 27% | **2 ⚡** | 63% |
+| 60s | 10–12 | ~0.87 | 1 ⚡ | **13%** | **2 ⚡** | 56% |
+| 90s | 15 | ~1.08 | 1 ⚡ | **−8% LOSS** | **3 ⚡** | 64% |
+
+Caveat retained: fal may add an unlisted markup on OpenRouter token prices (treat ±50%); at +50% cost the 2⚡ rungs sit at ~32–42% and the 90s rung at 46% — still above the 40% blended floor at catalog maxima, and rounding up per 30s keeps headroom if image counts grow.
 
 ### Fixed infra (not per-unit, but real)
 
