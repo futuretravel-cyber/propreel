@@ -55,15 +55,23 @@ _warned_no_secret = False
 
 
 def _parse_token(value: Optional[str]):
-    """Verify X-PropReel-Token. Returns ({version, uid, scope, exp}, None) on
-    success or (None, error) on failure.
+    """Verify X-PropReel-Token. Returns ({version, uid, scope, exp, scriptHash?}, None)
+    on success or (None, error) on failure.
 
     v1.<exp>.<uid>.<sig>              — generic token: status polls, cancels,
                                         cheap text generation. Free to mint.
-    v2.<exp>.<uid>.<scope>.<sig>      — PAID job token (scope: render|flashhead|edit),
+    v2.<exp>.<uid>.<scope>.<sig>      — PAID job token (scope: render|flashhead|edit|script),
                                         minted by the API only after it charges
                                         credits at the price in
                                         lib/renderPricing. Required to START a job.
+    v3.<exp>.<uid>.<scope>.<hash>.<sig> — PAID job token bound to the exact
+                                        narration script (FlashHead is priced
+                                        per 10s of narration): <hash> is a
+                                        16-hex sha256 prefix of the normed
+                                        voiceover_text the API priced. The
+                                        worker refuses a body whose script
+                                        hash differs, so a cheaper script
+                                        cannot fund a longer one.
     """
     global _warned_no_secret
     secret = os.environ.get("RENDER_API_TOKEN", "")
@@ -85,6 +93,14 @@ def _parse_token(value: Optional[str]):
             return None, "unknown job scope"
         msg = f"v2.{exp_s}.{uid}.{scope}"
         version = 2
+    elif len(parts) == 6 and parts[0] == "v3":
+        _, exp_s, uid, scope, script_hash, sig = parts
+        if scope not in ("render", "flashhead", "edit", "script"):
+            return None, "unknown job scope"
+        if len(script_hash) != 16 or any(c not in "0123456789abcdef" for c in script_hash):
+            return None, "malformed token script hash"
+        msg = f"v3.{exp_s}.{uid}.{scope}.{script_hash}"
+        version = 3
     else:
         return None, "malformed token"
     try:
@@ -103,7 +119,41 @@ def _parse_token(value: Optional[str]):
         return None, "bad token signature"
     if not hmac.compare_digest(got, expected):
         return None, "bad token signature"
-    return {"version": version, "uid": uid, "scope": scope, "exp": exp}, None
+    return {
+        "version": version,
+        "uid": uid,
+        "scope": scope,
+        "exp": exp,
+        # v3 only — the 16-hex sha256 prefix of the normed narration script
+        **({"scriptHash": script_hash} if version == 3 else {}),
+    }, None
+
+
+def _verify_paid_script_hash(info: Optional[dict], voiceover_text: str) -> None:
+    """Scope flashhead binds its paid token to the EXACT narration script.
+
+    v3 tokens embed a 16-hex sha256 prefix of the whitespace-normed
+    voiceover_text (the same normalization the API minted it from). The body's
+    script must hash to the same value — otherwise a tampered client could
+    mint a cheap 10-word token and render a 1,000-word clip. The only honest
+    route is a fresh mint, which is a fresh charge. v1/v2 tokens carry no
+    hash (pre-pricing legacy) and skip this check.
+
+    MUST run before _claim_job_token: claim burns the token, and a mismatch
+    must be refundable (the client refunds unreversed charges) — a burnt-but-
+    mismatched token would strand the credits without a failed render to
+    reverse. Parse errors are ignored here; the middleware / claim still
+    enforce authentication.
+    """
+    if not info or not info.get("scriptHash"):
+        return
+    normed = " ".join(str(voiceover_text or "").split())
+    prefix = hashlib.sha256(normed.encode()).hexdigest()[:16]
+    if prefix != info["scriptHash"]:
+        raise HTTPException(
+            status_code=409,
+            detail="This payment was made for a different voiceover script — the render was not started and the charge will be refunded. Re-request the avatar video to pay for the current script.",
+        )
 
 
 # Endpoints that spend real money on fal.ai / MiniMax — each requires a PAID
@@ -195,8 +245,13 @@ image = modal.Image.debian_slim().apt_install(
 ).add_local_file(str(Path(__file__).parent / "image_prompts.py"), remote_path="/root/image_prompts.py")
 
 
-def _friendly_fal_error(e: Exception) -> str:
-    """Map fal.ai/provider failures to clear client-facing messages."""
+def _friendly_fal_error(e: Exception, context: str = "Image edit") -> str:
+    """Map fal.ai/provider failures to clear client-facing messages.
+
+    `context` names the failing feature ("Image edit", "Description", "AI
+    writer", ...) — the text-generation endpoints previously inherited the
+    "Image edit failed" prefix for their LLM timeouts, which sent agents to
+    debug the wrong tool."""
     import fal_client  # noqa: F401  (ensure module present for error classes)
     msg = str(e) or e.__class__.__name__
     # Remote tracebacks bury the real cause in the last lines.
@@ -204,7 +259,7 @@ def _friendly_fal_error(e: Exception) -> str:
         lines = [l.strip() for l in msg.splitlines() if l.strip()]
         msg = lines[-1] if lines else msg
     if "Exhausted balance" in msg or "User is locked" in msg:
-        return "Image render failed: the fal.ai account is out of balance (user locked). Top up at fal.ai/dashboard/billing."
+        return f"{context} failed: the fal.ai account is out of balance (user locked). Top up at fal.ai/dashboard/billing."
     if "401" in msg or "Unauthorized" in msg:
         return "fal.ai rejected the API key (401 Unauthorized) - check FAL_KEY in the fal-credentials Modal secret."
     if "403" in msg or "Forbidden" in msg:
@@ -213,7 +268,7 @@ def _friendly_fal_error(e: Exception) -> str:
         return f"fal.ai rejected the request payload (422): {msg[:300]}"
     if "429" in msg or "rate limit" in msg.lower():
         return "fal.ai rate limit reached - please retry in a moment."
-    return f"Image edit failed: {msg[:400]}"
+    return f"{context} failed: {msg[:400]}"
 
 
 # S3 configuration
@@ -2259,6 +2314,37 @@ def probe_fal_health():
     return record
 
 
+def _fal_run_queued(endpoint: str, arguments: dict, max_wait: float = 180, context: str = "AI text"):
+    """Run one fal request via queue submit + poll instead of fal_client.run.
+
+    fal's SYNC path is server-killed after 120s with
+    'Task's current input <request_id> hit its timeout of 120s'. Multi-photo
+    Grok descriptions (vision calls on the OpenRouter route) regularly run
+    longer than that, so the text pipeline must not use sync mode. The queue
+    protocol has no such cap — same pattern as _run_kontext above."""
+    import fal_client
+    import time
+    try:
+        handler = fal_client.submit(endpoint, arguments=arguments)
+    except Exception as e:
+        # Convert provider errors to a plain exception so they deserialize
+        # cleanly on the caller side (same reason _run_kontext does this).
+        raise RuntimeError(_friendly_fal_error(e, context=context)) from None
+    start_time = time.time()
+    while True:
+        if time.time() - start_time > max_wait:
+            raise TimeoutError(f"fal.ai {endpoint} did not complete within {int(max_wait)}s")
+        status = handler.status()
+        status_type = type(status).__name__
+        if status_type == "Completed":
+            return handler.get()
+        if status_type == "Failed":
+            raise RuntimeError(_friendly_fal_error(Exception(str(status.error)), context=context))
+        if status_type not in ("Queued", "InProgress"):
+            raise RuntimeError(f"Unknown fal.ai status: {status_type}")
+        time.sleep(3)
+
+
 def _llm_chat(messages: list) -> str:
     """Call fal's OpenRouter LLM integration with endpoint fallbacks.
     Grok (x-ai) is the primary model for property copy; OpenRouter model
@@ -2275,7 +2361,7 @@ def _llm_chat(messages: list) -> str:
     last_err = None
     for endpoint, extra in attempts:
         try:
-            result = fal_client.run(endpoint, arguments={**extra, "messages": messages})
+            result = _fal_run_queued(endpoint, arguments={**extra, "messages": messages})
             if isinstance(result, dict):
                 choices = result.get("choices") or []
                 if choices:
@@ -2289,11 +2375,15 @@ def _llm_chat(messages: list) -> str:
     raise last_err or RuntimeError("LLM call failed")
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("fal-credentials")], timeout=120)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("fal-credentials")], timeout=300)
 def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str:
     """Grok AI text generation for property descriptions, social captions and
     video voiceover scripts (via fal's OpenRouter integration), with optional
-    photo URLs for vision-described copy."""
+    photo URLs for vision-described copy.
+
+    Timeout 300s (> the old 120s) so a few queued LLM attempts still fit;
+    each attempt itself is server-capped at 110s so a hard-hang endpoint
+    falls through to the next model path."""
     system_prompts = {
         "description": (
             "You are a professional South African property copywriter for Property24 and "
@@ -2579,7 +2669,14 @@ def _fill_pro(image_url: str, mask_url: str, prompt: str) -> bytes:
                 "image_url": presign_media(image_url),
                 "mask_url": presign_media(mask_url),
                 "prompt": prompt,
-                "image_size": {"width": 1920, "height": 1080},
+                # Fill bills per OUTPUT megapixel, rounded UP ($0.05/MP).
+                # The old 1920x1080 request (2.07MP) billed as 3MP = $0.15;
+                # 1280x720 (0.92MP) bills as 1MP = $0.05 — a 3x cut on every
+                # masked call (2-call staging: $0.30 -> $0.10). Same 16:9
+                # frame, same aspect constraints, and the pipeline still
+                # stores a 1920x1080 image: every masked-path output goes
+                # through _fit_image_bytes before storage.
+                "image_size": {"width": 1280, "height": 720},
             },
         )
     except Exception as e:
@@ -3292,6 +3389,12 @@ async def api_render_status(record_id: str):
 @web_app.post("/generate_flashhead_video")
 async def api_generate_flashhead_video(request: FlashHeadRequest, raw_request: Request):
     """API endpoint to generate FlashHead lip-sync video"""
+    # Script-hash binding BEFORE the claim: a mismatch must leave the paid
+    # token un-burnt so the client's refund path can reverse the charge.
+    _verify_paid_script_hash(
+        _parse_token(raw_request.headers.get(_token_header))[0],
+        request.voiceover_text,
+    )
     _claim_job_token(raw_request)  # paid + single-use before any work starts
     try:
         # Call the Modal function asynchronously
@@ -3525,7 +3628,7 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
             **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
         })
     except Exception as e:
-        _write_job_status(job_id, "failed", {"error": _friendly_fal_error(e)})
+        _write_job_status(job_id, "failed", {"error": _friendly_fal_error(e, context="AI Avatar")})
 
 
 class FlashHeadJobRequest(BaseModel):
@@ -3545,6 +3648,11 @@ class GenerateTextRequest(BaseModel):
 @web_app.post("/flashhead")
 async def api_flashhead(request: FlashHeadJobRequest, raw_request: Request):
     """Start an async FlashHead lip-sync job. Poll /flashhead_status."""
+    # Script-hash binding BEFORE the claim (same contract as /generate_flashhead_video).
+    _verify_paid_script_hash(
+        _parse_token(raw_request.headers.get(_token_header))[0],
+        request.voiceover_text,
+    )
     _claim_job_token(raw_request)  # paid + single-use before any work starts
     try:
         import time as _time, uuid as _uuid
@@ -3565,7 +3673,7 @@ async def api_flashhead(request: FlashHeadJobRequest, raw_request: Request):
             "poll_url": f"/flashhead_status?job_id={job_id}",
         }
     except Exception as e:
-        raise HTTPException(status_code=502, detail=_friendly_fal_error(e))
+        raise HTTPException(status_code=502, detail=_friendly_fal_error(e, context="AI Avatar"))
 
 @web_app.get("/flashhead_status")
 async def api_flashhead_status(job_id: str):
@@ -3586,8 +3694,7 @@ async def api_generate_text(request: GenerateTextRequest):
         if not (text or "").strip():
             raise HTTPException(status_code=502, detail="The AI returned an empty response — please try again")
         return {"success": True, "kind": request.kind, "text": text}
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=_friendly_fal_error(e))
+    except Exception as e:            raise HTTPException(status_code=502, detail=_friendly_fal_error(e, context="AI text"))
 
 
 class VoicePreviewRequest(BaseModel):

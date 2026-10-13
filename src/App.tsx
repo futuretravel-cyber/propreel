@@ -29,7 +29,7 @@ import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
 import { useFlashHead } from './lib/useFlashHead';
-import { FLASHHEAD_CREDITS, SCRIPT_CREDITS } from '../lib/renderPricing';
+import { SCRIPT_CREDITS, flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../lib/renderPricing';
 import { useVoicePreview } from './lib/useVoicePreview';
 import { useVoiceoverLanguageCheck, type VoiceoverLanguageCheck } from './lib/useVoiceoverLanguageCheck';
 import LanguageMismatchBanner from './components/LanguageMismatchBanner';
@@ -2702,14 +2702,19 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       // 2) AI Avatar add-on (Step 6): render the lip-sync clip FIRST — the
       //    finished clip rides into the video render below, where the worker
       //    burns it into the top-left corner and uses its narration INSTEAD
-      //    of the reel's own voiceover. FlashHead mints its own 8-credit job
-      //    token (the render token below still covers the tier price only),
-      //    and a clip already rendered this session is reused, so a retry
-      //    never pays the 8 twice.
+      //    of the reel's own voiceover. FlashHead mints its own job token
+      //    priced per 10s of narration (the render token below still covers
+      //    the tier price only), and a clip already rendered this session is
+      //    reused, so a retry never pays twice.
       let avatarUrl: string | null = avatarVideoUrl;
       if (aiTalkingProfile && !avatarUrl) {
-        if ((user?.credits ?? 0) < FLASHHEAD_CREDITS) {
-          throw new Error(`Not enough credits — the AI Avatar add-on costs ${FLASHHEAD_CREDITS} extra credits. Top up, or switch the AI Avatar off on Step 6.`);
+        // Same pricing the server will apply — computed from THIS script.
+        const avatarAddonCredits = flashheadCreditsForText(script);
+        if (avatarAddonCredits == null) {
+          throw new Error(`The voiceover script is too long for the AI Avatar — narration is capped at ${FLASHHEAD_MAX_SECONDS}s (~${Math.floor(FLASHHEAD_MAX_SECONDS * NARRATION_WORDS_PER_SEC)} words). Shorten it on Step 5, or switch the AI Avatar off on Step 6.`);
+        }
+        if ((user?.credits ?? 0) < avatarAddonCredits) {
+          throw new Error(`Not enough credits — the AI Avatar add-on costs ${avatarAddonCredits} credits for this script (~${Math.round(narrationSecondsForText(script))}s of narration). Top up, or switch the AI Avatar off on Step 6.`);
         }
         setRenderPhase('avatar');
         const avatarOpts: Parameters<typeof flashHead.generate>[0] = {
@@ -2730,13 +2735,13 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         }
         const avatarRes = await flashHead.generate(avatarOpts);
         if (!avatarRes) {
-          // useFlashHead refunded its own 8 credits already (or the agent
+          // useFlashHead refunded its actual charge already (or the agent
           // cancelled mid-avatar) — surface the right verdict here.
           if (cancelRequestedRef.current) {
             wasCancelled = true;
             throw new Error('Render cancelled');
           }
-          throw new Error('AI Avatar render failed — its 8 credits were refunded. Check the photo on Step 6 and the script on Step 5, then try again.');
+          throw new Error('AI Avatar render failed — its credits were refunded. Check the photo on Step 6 and the script on Step 5, then try again.');
         }
         avatarUrl = avatarRes.videoUrl;
         setAvatarVideoUrl(avatarUrl);
@@ -2896,7 +2901,10 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
     }
   };
 
-  const totalCredits = selectedConfig.credits + (aiTalkingProfile ? FLASHHEAD_CREDITS : 0);
+  // Avatar add-on is priced per 10s of narration from the CURRENT script —
+  // null ⇒ over the 90s cap (the Render step blocks until it is shortened).
+  const avatarAddonCredits = aiTalkingProfile ? flashheadCreditsForText(script) : null;
+  const totalCredits = selectedConfig.credits + (avatarAddonCredits ?? 0);
 
   // ── 8-step wizard (same numbered-step UX as New Listing) ─────────────
   // Steps 1–4 are the core setup; 5–8 are optional add-ons the agent can
@@ -3399,11 +3407,15 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
                 : 'Rendering your video reel'}
           />
         )}
-        {aiTalkingProfile && !generating && (
+        {aiTalkingProfile && !generating && (avatarAddonCredits != null ? (
           <p className="text-xs text-ink-400 text-center">
-            Includes the AI Avatar add-on (+{FLASHHEAD_CREDITS} credits): the avatar renders first, then the video with the avatar in the top-left corner — its voiceover replaces the reel's narration.
+            Includes the AI Avatar add-on (+{avatarAddonCredits} credits for ≈{Math.round(narrationSecondsForText(script))}s of narration): the avatar renders first, then the video with the avatar in the top-left corner — its voiceover replaces the reel's narration.
           </p>
-        )}
+        ) : (
+          <p className="text-xs text-red-300 text-center">
+            ⚠ The voiceover script is over the {FLASHHEAD_MAX_SECONDS}s AI Avatar cap (~{Math.floor(FLASHHEAD_MAX_SECONDS * NARRATION_WORDS_PER_SEC)} words) — shorten it on Step 5 or switch the avatar off on Step 6.
+          </p>
+        ))}
         {!generating && lastRenderUrl && (
           <div className="rounded-xl overflow-hidden border border-white/10 bg-black">
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}

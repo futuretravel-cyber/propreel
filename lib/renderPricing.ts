@@ -42,10 +42,13 @@ export const TIERS = [
     description: 'AI Motion at 720p',
     processingType: 'ai',
     resolution: '720p',
+    // 768p fal cost is $0.045/s (~R0.74/s): 60s costs R44.7, 90s R67 — the
+    // old 70/90 prices left margins of 36% and 26%. 75/105 restores ≥36% on
+    // every length (30s stays at 40 = 44%).
     configurations: [
       { duration: 30, images: 5, credits: 40 },
-      { duration: 60, images: 10, credits: 70 },
-      { duration: 90, images: 15, credits: 90 }
+      { duration: 60, images: 10, credits: 75 },
+      { duration: 90, images: 15, credits: 105 }
     ]
   },
   {
@@ -62,7 +65,50 @@ export const TIERS = [
   },
 ];
 
-/** AI Avatar (FlashHead lip-sync) — fixed price. */
+/** AI Avatar (FlashHead lip-sync) is billed per 10 seconds of narration —
+ *  cost scales linearly with fal + Narakeet per the audio length, so a flat
+ *  price bakes in a loss past ~58s. 2 credits per 10s keeps every narration
+ *  length ≥ ~31% margin against the ~R0.137/s unit cost. */
+export const FLASHHEAD_CREDITS_PER_10S = 2;
+/** Hard cap: no avatar video may bill past 90 seconds of narration. */
+export const FLASHHEAD_MAX_SECONDS = 90;
+/** Narakeet default reading pace ≈ 145 wpm ≈ 2.4 words/sec. Estimates only
+ *  — the actual narakeet_seconds land in the job status after TTS. */
+export const NARRATION_WORDS_PER_SEC = 2.4;
+
+export function narrationWordCount(text: string): number {
+  return (text || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+export function narrationSecondsForWords(words: number): number {
+  return words / NARRATION_WORDS_PER_SEC;
+}
+
+export function narrationSecondsForText(text: string): number {
+  return narrationSecondsForWords(narrationWordCount(text));
+}
+
+/**
+ * Price one FlashHead job from its narration length in words. Returns null
+ * when the script exceeds the 90-second cap — callers must answer 400 with a
+ * clear "shorten the script" message rather than silently truncating.
+ */
+export function flashheadCreditsForWords(words: number): number | null {
+  const seconds = narrationSecondsForWords(words);
+  if (seconds > FLASHHEAD_MAX_SECONDS) return null;
+  const blocks = Math.max(1, Math.ceil(seconds / 10)); // ≥1 block, i.e. min 2 credits
+  return blocks * FLASHHEAD_CREDITS_PER_10S;
+}
+
+export function flashheadCreditsForText(text: string): number | null {
+  return flashheadCreditsForWords(narrationWordCount(text));
+}
+
+/**
+ * @deprecated Legacy flat avatar price. Only the job_token mint still reads
+ * it — as a fallback for legacy clients that never send their script text.
+ * New clients always send voiceover_text and are priced per 10s narration.
+ */
 export const FLASHHEAD_CREDITS = 8;
 /** AI Writer voiceover script (Grok) — fixed price, matches DescriptionTab. */
 export const SCRIPT_CREDITS = 1;
@@ -99,9 +145,18 @@ export type JobScope = 'render' | 'flashhead' | 'edit' | 'script';
  */
 export function jobCredits(
   scope: string,
-  args: { tier?: string; configIndex?: number; presetId?: string } = {}
+  args: { tier?: string; configIndex?: number; presetId?: string; voiceoverText?: string; voiceover_text?: string; wordCount?: number } = {}
 ): number | null {
-  if (scope === 'flashhead') return FLASHHEAD_CREDITS;
+  if (scope === 'flashhead') {
+    // Preferred: price from the narration script the client already has.
+    // Only when NO script travels with the mint at all (a legacy client) do
+    // we fall back to the deprecated flat rate — that fallback delivers no
+    // less billing than the pre-change behavior.
+    const text = args.voiceoverText ?? args.voiceover_text;
+    if (text != null && text.trim()) return flashheadCreditsForText(text);
+    if (typeof args.wordCount === 'number') return flashheadCreditsForWords(args.wordCount);
+    return FLASHHEAD_CREDITS;
+  }
   if (scope === 'script') return SCRIPT_CREDITS;
   if (scope === 'edit') {
     // Brush-mask staging runs Fill Pro (~2x Kontext's fal cost) and is the

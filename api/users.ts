@@ -14,7 +14,8 @@ import {
 import { sendEmail, confirmEmailTemplate, resetPasswordTemplate, accountExistsTemplate } from '../lib/email';
 import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/totp';
 import { workerTokenHeaders } from '../lib/workerToken';
-import { jobCredits } from '../lib/renderPricing';
+import { jobCredits, flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../lib/renderPricing';
+import { createHash } from 'crypto';
 import { consumeRateLimit } from '../lib/rateLimit';
 import { recordCronRun } from '../lib/cronRuns';
 import { rawS3Url, signS3Url, toEdgeUrl } from '../lib/s3Urls';
@@ -1673,19 +1674,46 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
 
       const b = (req.body || {}) as any;
       const scope = String(b.scope || '');
-      const credits = jobCredits(scope, { tier: b.tier, configIndex: b.config_index, presetId: b.preset_id ?? b.metadata?.presetId });
-      if (credits == null) {
-        return res.status(400).json({ error: 'Unknown job scope or tier' });
+      const voiceoverText = typeof b.voiceover_text === 'string' ? b.voiceover_text : String(b.metadata?.voiceover_text ?? '');
+
+      // FlashHead is priced per 10s of narration (per lib/renderPricing), so
+      // the script must travel with the mint: no text → legacy flat rate
+      // fallback; text beyond the 90-second cap → a clear client error.
+      let credits: number | null;
+      let priceError: string | null = null;
+      if (scope === 'flashhead' && voiceoverText.trim()) {
+        const seconds = narrationSecondsForText(voiceoverText);
+        if (seconds > FLASHHEAD_MAX_SECONDS) {
+          priceError =
+            `This script is ~${Math.round(seconds)}s of narration — the cap is ${FLASHHEAD_MAX_SECONDS}s ` +
+            `(~${Math.ceil(FLASHHEAD_MAX_SECONDS * NARRATION_WORDS_PER_SEC)} words). Shorten the voiceover and try again.`;
+        }
       }
+      credits = priceError ? null : jobCredits(scope, { tier: b.tier, configIndex: b.config_index, presetId: b.preset_id ?? b.metadata?.presetId, voiceover_text: b.voiceover_text, voiceoverText: b.metadata?.voiceover_text });
+      if (credits == null) {
+        return res.status(400).json({ error: priceError || 'Unknown job scope or tier' });
+      }
+
+      // Bind the token to the exact script it paid for (scope flashhead):
+      // a tampered client must not mint a token for a 10-word script and then
+      // POST a 1,000-word one to the worker. The worker re-hashes the body's
+      // voiceover_text and rejects a mismatch — the only honest route to a
+      // new price is a fresh mint (a fresh charge).
+      const scriptHash = scope === 'flashhead' && voiceoverText.trim()
+        ? createHash('sha256').update(voiceoverText.split(/\s+/).filter(Boolean).join(' ')).digest('hex').slice(0, 16)
+        : undefined;
 
       // Same reasons/metadata the client-side deduct used to write, so the
       // ledger and the analytics that read it keep their shape.
       const reason =
         scope === 'render' ? 'Video generation'
         : scope === 'flashhead' ? 'FlashHead lip-sync video'
+        : scope === 'script' ? 'AI Writer voiceover script'
         : `Image edit — ${b.preset_id || b.metadata?.presetId || 'custom'}`;
-      const metadata = { ...(b.metadata || {}), scope, ...(b.tier ? { tier: b.tier } : {}) };
+      const metadata = { ...(b.metadata || {}), scope, ...(b.tier ? { tier: b.tier } : {}), ...(scope === 'flashhead' && voiceoverText.trim() ? { narration_words: voiceoverText.split(/\s+/).filter(Boolean).length } : {}) };
 
+      const { createHmac } = await import('crypto');
+      const exp = Math.floor(Date.now() / 1000) + 600; // 10 minutes
       const result = await deductCredits(
         payer.id,
         credits,
@@ -1701,10 +1729,10 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
           ...(isLimit ? { limit_reached: true } : {}),
         });
       }
-
-      const { createHmac } = await import('crypto');
-      const exp = Math.floor(Date.now() / 1000) + 600; // 10 minutes
-      const msg = `v2.${exp}.${payer.id}.${scope}`;
+      // v3 tokens carry the paid script's hash: msg = v3.<exp>.<uid>.<scope>.<hash>
+      const msg = scriptHash
+        ? `v3.${exp}.${payer.id}.${scope}.${scriptHash}`
+        : `v2.${exp}.${payer.id}.${scope}`;
       const sig = createHmac('sha256', secret).update(msg).digest('base64url');
       return res.status(200).json({
         token: `${msg}.${sig}`,

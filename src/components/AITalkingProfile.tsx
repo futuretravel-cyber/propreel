@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { User, Upload, Sparkles, Zap, Info, Video, AlertCircle } from 'lucide-react';
+import { User, Upload, Sparkles, Zap, Info, Video, AlertCircle, AlertTriangle } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { useCredit } from '../context/AuthContext';
 import { useAvatarPhotoIssue } from '../lib/useAvatarPhotoIssue';
+import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../../lib/renderPricing';
 
 interface AITalkingProfileProps {
   enabled: boolean;
@@ -22,6 +23,9 @@ export default function AITalkingProfile({
   const toast = useToast();
   const { user } = useCredit();
   const [uploading, setUploading] = useState(false);
+  // The +8-credit warning pops BEFORE the toggle flips on: selecting this
+  // option adds 8 credits to the final render on Step 8 (Generate Video).
+  const [confirmOpen, setConfirmOpen] = useState(false);
   // Warn straight away when the photo is landscape / too small — this photo
   // feeds the AI Avatar Video tab, where a bad crop renders a broken avatar.
   const photoIssue = useAvatarPhotoIssue(profileImage);
@@ -35,7 +39,13 @@ export default function AITalkingProfile({
     (user as any)?.avatarUrl ||
     null;
 
-  const CREDIT_COST = 8;
+  // Per-second pricing, mirrored live from the Step 5 script (same formula
+  // the server charges by — lib/renderPricing). A script past the 90s cap
+  // cannot start an avatar render at all.
+  const narrationSecs = narrationSecondsForText(voiceoverScript);
+  const creditCost = flashheadCreditsForText(voiceoverScript);
+  const scriptOverCap = !!voiceoverScript.trim() && creditCost == null;
+  const CREDIT_COST = creditCost;
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -66,35 +76,73 @@ export default function AITalkingProfile({
   };
 
   const handleToggle = () => {
-    if (!enabled && !profileImage) {
-      toast.error('Please upload a profile image first');
-      return;
-    }
-    
-    if (!enabled && !voiceoverScript) {
-      toast.error('Please generate or write a voiceover script first');
+    if (enabled) {
+      onToggle(false);
+      toast.info('AI Avatar Video disabled');
       return;
     }
 
-    const newEnabled = !enabled;
-    onToggle(newEnabled);
-    
-    if (newEnabled) {
-      toast.success(`AI Avatar Video enabled (${CREDIT_COST} credits)`);
-    } else {
-      toast.info('AI Avatar Video disabled');
+    if (!profileImage) {
+      toast.error('Please upload a profile image first (or use your branding profile image)');
+      return;
     }
+
+    // The voiceover lives on Step 5 only — the avatar simply speaks it.
+    if (!voiceoverScript) {
+      toast.error('Please add your voiceover script on Step 5 first — the AI Avatar speaks it');
+      return;
+    }
+    if (scriptOverCap) {
+      toast.error(`Your voiceover is ≈${Math.round(narrationSecs)}s of narration — the avatar cap is ${FLASHHEAD_MAX_SECONDS}s (~${Math.floor(FLASHHEAD_MAX_SECONDS * NARRATION_WORDS_PER_SEC)} words). Shorten the script.`);
+      return;
+    }
+    if (CREDIT_COST == null) return;
+
+    // Warning first: opting in adds 8 credits to the final render.
+    setConfirmOpen(true);
   };
 
+  const confirmEnable = () => {
+    setConfirmOpen(false);
+    onToggle(true);
+    toast.success(`AI Avatar Video enabled — ${CREDIT_COST} credits will be added to your final render`);
+  };
   return (
     <div className="space-y-4">
+      {confirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="avatar-credit-warning-title">
+          <div className="bg-ink-900 border border-amber-500/40 rounded-2xl p-5 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <h3 id="avatar-credit-warning-title" className="text-lg font-bold text-white">AI Avatar adds {CREDIT_COST ?? '—'} credits</h3>
+            </div>
+            <p className="text-sm text-ink-300 mb-3">
+              Billed by length: <strong className="text-amber-300">2 credits per 10 seconds of narration</strong> — this script is ≈{Math.round(narrationSecs)}s, so <strong className="text-amber-300">{CREDIT_COST ?? '—'} credits will be added to the final render</strong>. Step 8's Generate Video button shows the combined total before you pay.
+            </p>
+            <p className="text-xs text-ink-400 mb-4">
+              When you press Generate Video, your avatar renders first, then the video with the avatar in the top-left corner. The avatar's voiceover replaces the reel's narration — pick the script and voice on Step 5.
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setConfirmOpen(false)} className="btn btn-secondary flex-1 min-h-[44px]">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmEnable} className="btn btn-primary flex-1 min-h-[44px]">
+                Add AI Avatar (+{CREDIT_COST ?? '—'} credits)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <User className="w-5 h-5 text-purple-400" />
           <label className="label mb-0">AI Avatar Video</label>
           <span className="badge badge-brand text-xs">
-            <Zap className="w-3 h-3" /> {CREDIT_COST} credits
+            <Zap className="w-3 h-3" /> {CREDIT_COST != null ? `${CREDIT_COST} credits (≈${Math.round(narrationSecs)}s)` : 'script needed'}
           </span>
+          {scriptOverCap && (
+            <span className="text-xs text-red-300">⚠ script over the {FLASHHEAD_MAX_SECONDS}s cap — shorten it</span>
+          )}
         </div>
         <button
           onClick={handleToggle}

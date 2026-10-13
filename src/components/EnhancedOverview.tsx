@@ -184,7 +184,7 @@ export default function EnhancedOverview() {
             { label: 'AI Property Description', cost: '⚡1 / render' },
             { label: 'Social Media Post', cost: '⚡2 / post' },
             { label: 'Photo Edit / Staging', cost: '⚡2 / render' },
-            { label: 'AI Avatar Video', cost: '⚡8 / render' },
+            { label: 'AI Avatar Video', cost: '⚡2 per 10s narration (90s cap)' },
             { label: 'Property Video', cost: '⚡ by tier' },
           ].map(c => (
             <div key={c.label} className="bg-ink-800/50 rounded-xl p-3">

@@ -3,7 +3,7 @@ import { useCredit } from '../context/AuthContext';
 import { track } from './analytics';
 import { PropReelAPI } from './api';
 
-import { FLASHHEAD_CREDITS as FLASHHEAD_COST } from '../../lib/renderPricing';
+import { flashheadCreditsForText, narrationWordCount, narrationSecondsForWords, FLASHHEAD_MAX_SECONDS } from '../../lib/renderPricing';
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
 import { workerHeaders, jobHeaders } from './workerAuth';
 import { playRenderComplete } from './renderSound';
@@ -16,10 +16,11 @@ type Stage = 'idle' | 'uploading' | 'deducting' | 'rendering' | 'done';
 /**
  * FlashHead lip-sync pipeline (fal-ai/flashhead):
  *   1. Presigned S3 upload of the agent's profile picture
- *   2. 8-credit atomic deduction (server-side conditional decrement)
+ *   2. Per-10s-of-narration deduction (server-side pricing from the script;
+ *      a script past the 90s cap is refused and needs no charge)
  *   3. Async Modal job (POST /flashhead → job_id, poll /flashhead_status)
  *   4. Result stored in AWS S3 by the worker; URL returned here
- *   5. Failed renders auto-refund the 8 credits
+ *   5. Failed renders auto-refund the actual charged amount
  */
 export function useFlashHead() {
   const { refundCredits, user, refresh } = useCredit() as any;
@@ -80,8 +81,17 @@ export function useFlashHead() {
       setError('Generate or write a voiceover script first');
       return null;
     }
-    if (((user as any).credits ?? 0) < FLASHHEAD_COST) {
-      setError(`Not enough credits — FlashHead costs ${FLASHHEAD_COST} credits. Recharge from your dashboard.`);
+    // Priced per 10s of narration server-side; the client estimate mirrors
+    // lib/renderPricing exactly so the badge and the charge can never drift.
+    const narrationWords = narrationWordCount(opts.voiceoverText);
+    const narrationSecs = narrationSecondsForWords(narrationWords);
+    const cost = flashheadCreditsForText(opts.voiceoverText);
+    if (cost == null) {
+      setError(`Your script is about ${Math.round(narrationSecs)}s of narration — the cap is ${FLASHHEAD_MAX_SECONDS}s per avatar video. Shorten the script and try again.`);
+      return null;
+    }
+    if (((user as any).credits ?? 0) < cost) {
+      setError(`Not enough credits — this script (~${Math.round(narrationSecs)}s of narration) costs ${cost} credits. Recharge from your dashboard.`);
       return null;
     }
 
@@ -110,6 +120,9 @@ export function useFlashHead() {
     let jobToken: Record<string, string>;
     try {
       jobToken = await jobHeaders('flashhead', {
+        // The script rides along so the API prices per 10s of narration and
+        // hash-binds the token to it (worker rejects a mismatched script).
+        voiceoverText: opts.voiceoverText,
         metadata: { kind: 'FLASHHEAD', voice: opts.voice || 'aletta', language: opts.language || 'en-ZA' },
       });
       void refresh();
@@ -160,7 +173,7 @@ export function useFlashHead() {
           language: opts.language || 'en-ZA',
           status: 'PROCESSING',
           jobId,
-          creditsSpent: FLASHHEAD_COST,
+          creditsSpent: cost,
         } as any);
         projectId = project.id;
       } catch { /* non-fatal — render proceeds without the record */ }
@@ -199,7 +212,7 @@ export function useFlashHead() {
         PropReelAPI.updateProject(user.id, projectId, { status: 'FAILED' }).catch(() => {});
       }
       await refundCredits('flashhead').catch(() => {});
-      setError(wasCancelled ? 'Render cancelled — your 8 credits were refunded.' : (e.message || 'Render failed — your 8 credits were refunded'));
+      setError(wasCancelled ? 'Render cancelled — your credits were refunded.' : (e.message || 'Render failed — your credits were refunded'));
       setStage('idle');
       return null;
     }
@@ -214,6 +227,7 @@ export function useFlashHead() {
     cancel,
     cancelling,
     busy: stage === 'uploading' || stage === 'deducting' || stage === 'rendering',
-    cost: FLASHHEAD_COST,
+    // Flat-cost consumers must price per script: lib/renderPricing exposes
+    // flashheadCreditsForText / narrationSecondsForText for exactly that.
   };
 }

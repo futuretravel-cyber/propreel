@@ -58,6 +58,11 @@ export interface JobMintOptions {
   tier?: string;
   configIndex?: number;
   presetId?: string;
+  /** FlashHead only: the narration script. Sent with the mint so the API
+   *  prices the job per 10s of narration server-side, and embeds a hash of
+   *  it into the paid token, which the worker verifies against the body —
+   *  a cheap-script payment can never fund a longer render. */
+  voiceoverText?: string;
   metadata?: Record<string, unknown>;
   pool?: 'personal' | 'agency';
 }
@@ -83,6 +88,7 @@ export async function jobHeaders(scope: JobScope, opts: JobMintOptions = {}): Pr
       tier: opts.tier,
       config_index: opts.configIndex,
       preset_id: opts.presetId,
+      voiceover_text: opts.voiceoverText,
       metadata: opts.metadata,
       pool: opts.pool,
     }),

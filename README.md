@@ -268,7 +268,7 @@ Attributes:
 |------|------------|------------|---------|
 | Essential | Local FFmpeg | 1080p | 5-10 |
 | Social | AI (512p) | 512p | 30-80 |
-| Cinematic | AI (720p) | 720p | 40-90 |
+| Cinematic | AI (720p) | 720p | 40-105 |
 | Premium | AI + Upscale | 1080p | 60-150 |
 
 ## Environment Variables Summary

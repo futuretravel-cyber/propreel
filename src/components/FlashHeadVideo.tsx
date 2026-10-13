@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, AlertCircle, Sparkles, Play, Square } from 'lucide-react';
 import { useFlashHead } from '../lib/useFlashHead';
+import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../../lib/renderPricing';
 import { useCredit } from '../context/AuthContext';
 import { useRenderProgress, typicalFlashheadSeconds } from '../lib/useRenderProgress';
 import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
@@ -37,11 +38,13 @@ interface FlashHeadVideoProps {
 
 /**
  * FlashHead Studio tab: lip-synced talking-head video from the agent's
- * profile picture + the AI-generated voiceover script. 8 credits.
+ * profile picture + the AI-generated voiceover script. Billed per 10 seconds
+ * of narration (2 credits each); a script past the 90-second cap is refused
+ * before any charge.
  */
 export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, profileImageReady = true, onProfileImageChange, language = DEFAULT_VOICE_LANGUAGE, onLanguageChange, langCheck }: FlashHeadVideoProps) {
   const { user } = useCredit() as any;
-  const { generate, busy, stage, error, setError, jobStatus, cost, cancel, cancelling } = useFlashHead();
+  const { generate, busy, stage, error, setError, jobStatus, cancel, cancelling } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
   // The picked headshot and its branding/hosted source survive full page
   // reloads; `file` is rebuilt from the restored data URL when rendering.
@@ -83,6 +86,11 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
   // Elapsed-vs-typical progress: typical scales with the script length
   const scriptWords = script.trim() ? script.trim().split(/\s+/).length : 0;
   const progress = useRenderProgress(typicalFlashheadSeconds(scriptWords));
+  // Per-second pricing mirrors the server exactly (lib/renderPricing):
+  // 2 credits per 10s of narration, hard-capped at 90s (≈216 words).
+  const narrationSecs = narrationSecondsForText(script);
+  const avatarCost = script.trim() ? flashheadCreditsForText(script) : null;
+  const overCap = !!script.trim() && avatarCost == null;
 
   // Whichever photo is active (upload, branding, carried from the Video tab)
   // gets measured — landscape/low-res shots render a broken avatar.
@@ -217,7 +225,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     : stage === 'rendering' ? 'AI is generating your lip-sync video…'
     : '';
 
-  const canRun = (!!file || !!sourceUrl || !!preview) && !!script.trim() && !busy && (user?.credits ?? 0) >= cost;
+  const canRun = (!!file || !!sourceUrl || !!preview) && !!script.trim() && !overCap && !busy && (user?.credits ?? 0) >= (avatarCost ?? Infinity);
 
   return (
     <div className="space-y-6">
@@ -225,8 +233,14 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          Each AI Avatar Video render costs {cost} credits
+          Billed by length: 2 credits per 10 seconds of narration (90s cap)
+          {script.trim() && avatarCost != null && ` — this script ≈ ${Math.round(narrationSecs)}s ⇒ ${avatarCost} credits`}
         </p>
+        {overCap && (
+          <p className="text-xs text-red-300 mt-1">
+            ⚠ This script is ≈{Math.round(narrationSecs)}s of narration — over the {FLASHHEAD_MAX_SECONDS}s cap (~{Math.floor(FLASHHEAD_MAX_SECONDS * NARRATION_WORDS_PER_SEC)} words). Shorten the script to render.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -343,9 +357,9 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
           {busy ? (
             <><Loader2 className="w-5 h-5 animate-spin" /> {stageLabel || 'Working…'}</>
           ) : resultUrl ? (
-            <><RefreshCw className="w-5 h-5" /> Regenerate ({cost} credits)</>
+            <><RefreshCw className="w-5 h-5" /> Regenerate ({avatarCost ?? '—'} credits)</>
           ) : (
-            <><Sparkles className="w-5 h-5" /> Generate AI Avatar Video ({cost} credits)</>
+            <><Sparkles className="w-5 h-5" /> Generate AI Avatar Video ({avatarCost ?? '—'} credits)</>
           )}
         </button>
         <RenderProgressBar
@@ -372,7 +386,8 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
           <p className="text-xs text-ink-500 text-center">
             {!file && !sourceUrl && 'Upload your profile picture • '}
             {!script.trim() && 'Add a voiceover script • '}
-            {(user?.credits ?? 0) < cost && `Need ${cost} credits (you have ${user?.credits ?? 0})`}
+            {overCap && `Script over the ${FLASHHEAD_MAX_SECONDS}s cap • `}
+            {!overCap && (user?.credits ?? 0) < (avatarCost ?? 0) && `Need ${avatarCost} credits for this script (you have ${user?.credits ?? 0}) • `}
           </p>
         )}
         {error && (
