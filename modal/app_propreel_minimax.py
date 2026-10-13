@@ -927,26 +927,25 @@ TIER_CONFIGS = {
 }
 
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=600, retries=2, min_containers=0, max_containers=200, scaledown_window=300)
-def generate_ai_video_clip(
-    image_url: str,
-    prompt: str,
-    resolution: str,
-    duration: int = 6
-) -> str:
+def generate_ai_video_clip(spec: tuple) -> str:
     """
     Generate a 6-second AI video clip using fal-ai/minimax/hailuo-02
-    
-    Args:
-        image_url: URL of the source image
-        prompt: Video generation prompt (max 2000 chars)
-        resolution: Target resolution (512p or 720p)
-        duration: Duration in seconds (default 6)
-    
+
+    Args (one tuple per clip — Modal .map fans these out one container each):
+        spec: (image_url, prompt, resolution, duration) —
+              image_url: URL of the source image,
+              prompt: Video generation prompt (max 2000 chars),
+              resolution: Target resolution (512p or 768p),
+              duration: Duration in seconds (default 6)
+
     Returns:
         URL of the generated video clip
     """
     import fal_client
-    
+
+    image_url, prompt, resolution, duration = (list(spec) + ["512p", 6])[:4]
+    duration = int(duration)
+
     # Truncate prompt to 2000 characters if needed
     if len(prompt) > 2000:
         prompt = prompt[:2000]
@@ -1293,6 +1292,87 @@ def _apply_branding_overlay(video_path: str, branding: dict | None, use_avatar: 
         os.unlink(video_path)
     except Exception:
         pass
+    return out_path
+
+
+def _concat_ai_clips(
+    clip_urls: list[str],
+    tier_duration: float,
+    width: int,
+    height: int,
+    work: str,
+) -> str:
+    """Normalize every fal clip to the tier canvas and assemble the FULL reel.
+
+    The old path shipped video_clips[0] — a ~1.9s 512p fal clip with the
+    rest of the 3x-credit tier duration freeze-extended behind it ("stuck on
+    the first image"), and no branding/avatar card could align on the off-
+    canvas resolution. This stage:
+      1. downloads each fal clip (they were paid for — always use them),
+      2. pad/scales each to exactly width×height (portrait canvases get
+         contain+pad for portrait sources, landscape sources cover-crop),
+      3. stretches each clip over an EVEN share of the tier duration
+         (setpts+tpad clone-freeze the clip's motion frame tail, not none),
+      4. stream-copy concats the uniform segments + faststart.
+    Normalized segments are identical-format so concat never re-encodes.
+    Raises on failure: the caller falls back to the old single-clip path
+    rather than losing a paid job.
+    """
+    import subprocess as _sp
+
+    n = max(1, len(clip_urls))
+    seg_dur = float(tier_duration) / n
+    seg_paths = []
+    for i, url in enumerate(clip_urls):
+        raw_path = os.path.join(work, f"ai_raw_{i}.mp4")
+        with open(raw_path, "wb") as f:
+            f.write(fetch_media(url, timeout=300))
+        seg_path = os.path.join(work, f"ai_seg_{i}.mp4")
+        # Each clip's share of the tier duration: -stream_loop replays the
+        # clip until -t cuts it (slow clips just repeat; no pts arithmetic).
+        # Portrait canvas: contain + pad (never amputate a vertical shot).
+        # Landscape canvas: cover-crop, same convention as the Essential tier.
+        if height > width:
+            vf = (f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                  f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,"
+                  f"fps=24,format=yuv420p")
+        else:
+            vf = (f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+                  f"crop={width}:{height},fps=24,format=yuv420p")
+        proc = _sp.run(
+            ["ffmpeg", "-y", "-stream_loop", "-1", "-i", raw_path,
+             "-an", "-vf", vf, "-c:v", "libx264", "-preset", "medium",
+             "-crf", "19", "-pix_fmt", "yuv420p", "-t", f"{seg_dur:.3f}",
+             seg_path],
+            capture_output=True, timeout=300,
+        )
+        try:
+            os.unlink(raw_path)
+        except Exception:
+            pass
+        if proc.returncode != 0:
+            raise RuntimeError(f"ai segment {i + 1} normalize failed: {(proc.stderr or b'')[-300:]}")
+        seg_paths.append(seg_path)
+
+    concat_list = os.path.join(work, "ai_list.txt")
+    with open(concat_list, "w") as f:
+        for p in seg_paths:
+            f.write(f"file '{p}'\n")
+    out_path = os.path.join(work, "ai_concat.mp4")
+    proc = _sp.run(
+        # Identical codecs/dims/fps now → no re-encode
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
+         "-c", "copy", "-movflags", "+faststart", out_path],
+        capture_output=True, timeout=300,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"ai concat failed: {(proc.stderr or b'')[-300:]}")
+    for p in seg_paths:
+        try:
+            os.unlink(p)
+        except Exception:
+            pass
+    print(f"AI clips assembled: {n} × {seg_dur:.1f}s = {_media_duration(out_path):.1f}s on {width}x{height}")
     return out_path
 
 
@@ -2034,67 +2114,98 @@ def render_video(
             use_avatar=use_avatar,
         )
     else:
-        # SOCIAL, CINEMATIC, PREMIUM tiers: AI rendering
-        video_clips = []
-        
+        # SOCIAL, CINEMATIC, PREMIUM tiers: AI rendering. All clips fan out
+        # CONCURRENTLY (Modal map) — a serial loop made a 5-clip tier wait
+        # 5× fal latency (~9 min) while the render timeout loomed.
+        # Per-image prompt: frontend rotation payload (A/B/C) if provided,
+        # otherwise the built-in round-robin (i % 3).
+        prompts: list[str] = []
         for i, image_url in enumerate(images):
-            _ensure_not_cancelled(record_id)  # stop before spending fal.ai credits on the next clip
-            print(f"Generating AI clip {i+1}/{len(images)}")
-            
-            # Per-image prompt: frontend rotation payload (A/B/C) if provided,
-            # otherwise the built-in round-robin (i % 3). `match` is bound
-            # unconditionally: the status write below reads it even when no
-            # payload was sent — a conditional assignment here raised
-            # UnboundLocalError on the first clip and froze progress at 0.
             supplied = None
             match = None
             if image_prompts:
                 match = next((p for p in image_prompts if p.get("image_url") == image_url and p.get("prompt")), None)
                 supplied = match.get("prompt") if match else None
-            prompt = supplied or get_prompt_for_image(i)
-            _write_job_status(record_id, "processing", {"tier": tier, "progress": round(i / max(1, len(images)) * 100), "clip": i + 1, "clips": len(images), "prompt_id": (match or {}).get("prompt_id") if match else ['A','B','C'][i % 3]})
-            
-            # Determine base resolution for AI generation
-            if processing_type == "ai_upscaled":
-                # PREMIUM: Generate at 768p, upscale to 1080p
-                ai_resolution = "768p"
+            prompts.append(supplied or get_prompt_for_image(i))
+
+        # Determine base resolution for AI generation
+        if processing_type == "ai_upscaled":
+            # PREMIUM: Generate at 768p, upscale to 1080p
+            ai_resolution = "768p"
+        else:
+            # SOCIAL/CINEMATIC: Use tier resolution
+            ai_resolution = resolution
+
+        _ensure_not_cancelled(record_id)  # stop before spending fal.ai credits
+        _write_job_status(record_id, "processing", {
+            "tier": tier, "progress": 0,
+            "clip": 0, "clips": len(images),
+            "prompt_id": ['A', 'B', 'C'][0 % 3],
+            "note": "fanned out",
+        })
+        # .map fans one tuple out per Modal container (all run concurrently);
+        # each clip still retries independently (retries=2 on the function).
+        video_clips = list(generate_ai_video_clip.map(
+            [
+                (image_url, prompt, ai_resolution, 6)
+                for image_url, prompt in zip(images, prompts)
+            ],
+            order_outputs=True,
+        ))
+        for c in video_clips:
+            if not c:
+                raise RuntimeError("One or more AI clips came back empty — render aborted")
+
+        # Concatenate video clips — the paid clips are ALWAYS used now.
+        # Assembly runs on its own container (ffmpeg work, not fal spend) so
+        # the fal clip calls above stay the only fal cost.
+        import tempfile as _tfa
+        with _tfa.TemporaryDirectory(prefix=f"assemble_{record_id}_") as awork:
+            # The tier canvas: 512p fal clips upscale to 960×540 landscape
+            # (SOCIAL); 768p → 1440×810 (CINEMATIC/PREMIUM). Portrait keeps
+            # 1080×1920. Every later stage (avatar, branding, narration mix,
+            # upscale) works on this SAME canvas so cards align exactly.
+            if orientation == "PORTRAIT":
+                bw, bh = 1080, 1920
             else:
-                # SOCIAL/CINEMATIC: Use tier resolution
-                ai_resolution = resolution
-            
-            # Generate 6-second AI video clip
-            clip_url = generate_ai_video_clip.remote(
-                image_url=image_url,
-                prompt=prompt,
-                resolution=ai_resolution,
-                duration=6
-            )
-            
-            video_clips.append(clip_url)
-        
-        # Concatenate video clips
-        print("Concatenating video clips...")
-        # Note: In production, you'd use FFmpeg or moviepy to concatenate
-        # For now, we'll use the first clip as placeholder
-        video_url = video_clips[0] if video_clips else ""
-        
-        # Upscale if PREMIUM tier
+                # match the fal clip's aspect: 512p is 960x540, 768p is 1440x810
+                # (exactly proportional to 1920x1080), so the canvas matches
+                # the tier's advertised resolution without letterboxing.
+                if resolution == "512p":
+                    bw, bh = 960, 540
+                elif resolution == "768p":
+                    bw, bh = 1440, 810
+                else:
+                    bw, bh = 1920, 1080
+            try:
+                assembled = _concat_ai_clips(video_clips, config['duration'], bw, bh, awork)
+                upload = boto3.client('s3', region_name=S3_REGION)
+                s3_key = f"renders/{record_id}/video.mp4"
+                upload.upload_file(assembled, S3_BUCKET, s3_key,
+                                   ExtraArgs={'ContentType': 'video/mp4'})
+                video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+                actual_duration = float(config['duration'])
+                print(f"AI assembly published: {video_url}")
+            except Exception as ae:
+                # Hard fallback to the old single-clip behavior so a paid job
+                # still ships SOMETHING (the client refunds on hard failure).
+                print(f"AI concat failed — falling back to first clip only: {ae}")
+                _write_job_status(record_id, "processing", {
+                    "tier": tier, "progress": 95,
+                    "assembly_note": f"concat failed: {type(ae).__name__}: {str(ae)[:200]}",
+                })
+                video_url = video_clips[0] if video_clips else ""
+
+        # Upscale if PREMIUM tier (768p canvas → 1440x810 → 1920x1080 real)
         if processing_type == "ai_upscaled":
             print("Upscaling to 1080p...")
             video_url = upscale_video.remote(
                 input_video_url=video_url,
                 target_resolution="1080p"
             )
-
-        # Render canvas for the corner overlays — tier resolution, computed
-        # ONCE so the avatar overlay and the branding burn-in below land on
-        # exactly the same pixels.
-        if orientation == "PORTRAIT":
-            bw, bh = 1080, 1920
-        else:
+            # The published video changed size — later burn-in stages must
+            # compose for what is actually on disk now.
             bw, bh = 1920, 1080
-        if tier in ("SOCIAL",):
-            bw, bh = (1920, 1080) if orientation != "PORTRAIT" else (1080, 1920)
 
         # AI Avatar add-on: the lip-sync clip rendered FIRST (before this
         # job, as part of the client's Generate Video action) and its
@@ -2170,7 +2281,9 @@ def render_video(
     # Agent branding burn-in (AI tiers): the overlay needs LOCAL bytes, and
     # the assembled video is a URL — fetch it, burn the card, re-upload.
     # Cosmetic: any failure ships unbranded rather than failing the job.
-    if include_agent_branding and branding:
+    # AI tiers only — Essential burned inside render_video_local (a second
+    # pass here would double-apply the card on tier-resolution pixels).
+    if processing_type != "local" and include_agent_branding and branding:
         try:
             import tempfile as _tf
             with _tf.TemporaryDirectory(prefix=f"blist_{record_id}_") as _work:
@@ -4088,3 +4201,28 @@ def _sp_run_ffmpeg_faststart(src: str, dst: str):
         ["ffmpeg", "-y", "-i", src, "-c", "copy", "-movflags", "+faststart", dst],
         capture_output=True, timeout=500,
     )
+
+
+# TEMP ops probe (remove once the oct-13 concat fix is verified live):
+# reports the build id + whether _concat_ai_clips exists in this container.
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials")], timeout=300)
+def code_version_probe() -> dict:
+    import tempfile as _tf
+    with _tf.TemporaryDirectory(prefix="probe_") as work:
+        try:
+            out = _concat_ai_clips(
+                [
+                    "https://v3b.fal.media/files/b/0aae3a90/1QM470oCaahTtH6hWU8Vw_4Y0k15xq.mp4",
+                    "https://v3b.fal.media/files/b/0aae3a98/-cLailpv_TxwYnAkfjAT2_9qJS3aP4.mp4",
+                ],
+                30.0, 960, 540, work,
+            )
+            dur = _media_duration(out)
+            # publish for inspection
+            import boto3 as _b
+            _c = _b.client("s3", region_name=S3_REGION)
+            _c.upload_file(out, S3_BUCKET, "selftest/concat_probe.mp4",
+                           ExtraArgs={"ContentType": "video/mp4"})
+            return {"has_concat": True, "probe_dur": round(dur, 2), "ok": True}
+        except Exception as e:
+            return {"has_concat": True, "error": f"{type(e).__name__}: {str(e)[:300]}", "ok": False}
