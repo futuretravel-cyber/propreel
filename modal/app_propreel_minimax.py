@@ -2377,7 +2377,7 @@ def _llm_chat(messages: list) -> str:
     raise last_err or RuntimeError("LLM call failed")
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("fal-credentials")], timeout=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300)
 def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str:
     """Grok AI text generation for property descriptions, social captions and
     video voiceover scripts (via fal's OpenRouter integration), with optional
