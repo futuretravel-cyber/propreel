@@ -134,8 +134,13 @@ export async function verifyPayment(reference: string) {
  * Create Paystack subscription
  * Ensures the customer exists first — POST /subscription needs a customer
  * record (code), which first-time subscribers won't have.
+ *
+ * startDate: ISO 8601 date for the customer's FIRST debit on this recurrence
+ * (Paystack's `start_date`). Pass the *end of the period the customer already
+ * paid for at checkout* — otherwise Paystack generates and charges the first
+ * invoice immediately, double-billing month 1.
  */
-export async function createSubscription(email: string, planCode: string) {
+export async function createSubscription(email: string, planCode: string, startDate?: string) {
   const secretKey = process.env.PAYSTACK_SECRET_KEY;
 
   if (!secretKey) {
@@ -177,6 +182,7 @@ export async function createSubscription(email: string, planCode: string) {
     body: JSON.stringify({
       customer: customerCode,
       plan: planCode,
+      ...(startDate ? { start_date: startDate } : {}),
     }),
   });
 

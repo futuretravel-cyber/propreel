@@ -63,13 +63,18 @@ export async function activateSubscriptionFromPayment(opts: {
     if (!user) throw new Error(`User ${userId} vanished mid-activation`);
 
     // Recurring billing: the hosted first payment has saved the card, so
-    // Paystack can now create the subscription (first invoice on the next
-    // billing day). Failure here leaves month 1 active but unbilled after —
-    // log loudly rather than block the paid activation.
+    // Paystack can now create the subscription. The customer just PAID the
+    // first period at checkout, so the recurrence's first debit must land on
+    // that period's END (the same 30/365d window createDbSubscription grants)
+    // — without start_date Paystack charges the first invoice immediately
+    // and double-bills the paid month. Future start_date also satisfies
+    // Paystack's "date for the first debit" contract exactly.
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + (cycle === 'ANNUAL' ? 365 : 30));
     let paystackSubCode: string | undefined;
     let paystackCustomerCode: string | undefined;
     try {
-      const ps = await createPaystackSub(user.email, details.planCode);
+      const ps = await createPaystackSub(user.email, details.planCode, startDate.toISOString());
       paystackSubCode = ps.data?.subscription_code;
       paystackCustomerCode = ps.data?.customer_code;
     } catch (recErr) {
