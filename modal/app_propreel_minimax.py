@@ -176,7 +176,9 @@ async def require_worker_token(request: Request, call_next):
         # This middleware wraps CORS, so mirror the CORS header ourselves.
         return JSONResponse(status_code=401, content={"error": err}, headers={"Access-Control-Allow-Origin": "*"})
     need = JOB_ENDPOINT_SCOPE.get(request.url.path)
-    if need and (info["version"] != 2 or info["scope"] != need):
+    # v3 tokens are v2 plus the bound script hash (per-10s narration pricing)
+    # — same single-use claim, so paid-job endpoints accept both versions.
+    if need and (info["version"] not in (2, 3) or info["scope"] != need):
         return JSONResponse(
             status_code=403,
             content={"error": f"paid job token required for this endpoint (scope={need})"},
