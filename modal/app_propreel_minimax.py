@@ -3038,6 +3038,99 @@ def scheduled_fal_probe():
     probe_fal_health.remote()
 
 
+# ── Render watchdog ────────────────────────────────────────────────────────
+# A render that dies without writing a terminal status (container evicted,
+# Modal node loss, a fal poll loop wedged forever) sits at `processing` /
+# `queued` in the jobs/ store forever: the live client polls to its own
+# 25-minute deadline and refunds itself, but a tab that was closed mid-render
+# has NO poller left — the project row would wait for the nightly reaper and
+# no video ever lands. This cron sweeps the jobs/ store and flips any job
+# that has gone silent past the safe horizon to `failed`, so whichever
+# poller or reaper still touches it names the real cause and refunds.
+#
+# Safe horizon: a living render's worst silent stretch is ~10 min (one
+# 6-second clip's 9-minute fal poll plus assembly before its next progress
+# write) and the whole pipeline is capped at a 1800 s render inside a 3600 s
+# wrapper that DOES write failure on exit — so 45 minutes without ANY status
+# write is impossible for a living job and is treated as dead.
+WATCHDOG_STALL_SECONDS = 45 * 60
+WATCHDOG_MAX_KEYS = 2000  # sweep cap on the jobs/ store
+WATCHDOG_MAX_FAILURES = 50  # safety cap per sweep
+
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, schedule=modal.Cron("*/10 * * * *"))
+def scheduled_render_watchdog():
+    """Every 10 minutes: fail job records silent for 45+ minutes.
+
+    Renders (video, avatar/flashhead) and image edits all share the
+    jobs/{id}.json store, so all three stall-modes get covered here. No fal
+    calls — this only reads S3 timestamps and writes terminal failure
+    statuses that clients/refunds already understand."""
+    import boto3
+    import json as _json
+    from datetime import datetime as _dt
+
+    s3 = boto3.client('s3', region_name=S3_REGION)
+    swept = failed = 0
+    token = None
+    while True:
+        kwargs = {"Bucket": S3_BUCKET, "Prefix": "jobs/", "MaxKeys": 1000}
+        if token:
+            kwargs["ContinuationToken"] = token
+        try:
+            resp = s3.list_objects_v2(**kwargs)
+        except Exception as e:
+            print(f"Watchdog: jobs listing failed: {e}")
+            return
+        for item in resp.get("Contents", []):
+            key = item["Key"]
+            if not key.endswith(".json"):
+                continue
+            record_id = key[len("jobs/"):-len(".json")]
+            if not record_id or "/" in record_id:
+                # jobs/health/… and other subfolders are not job records
+                continue
+            swept += 1
+            if swept > WATCHDOG_MAX_KEYS:
+                break
+            try:
+                job = _json.loads(s3.get_object(Bucket=S3_BUCKET, Key=key)['Body'].read())
+            except Exception:
+                continue
+            if job.get("status") not in ("queued", "processing"):
+                continue  # terminal or cancelled — not ours to touch
+            try:
+                updated = _dt.fromisoformat(job.get("updatedAt"))
+            except Exception:
+                continue
+            silent_s = (_dt.utcnow() - updated).total_seconds()
+            if silent_s <= WATCHDOG_STALL_SECONDS:
+                continue
+            # One re-read right before flipping: a finisher that landed while
+            # we read must not be failed by us — that would refund a delivered
+            # video. (completed-overwrites-failed only lands for a render that
+            # finishes AFTER our write; the reverse race is this check.)
+            try:
+                fresh = _json.loads(s3.get_object(Bucket=S3_BUCKET, Key=key)['Body'].read())
+                if fresh.get("status") not in ("queued", "processing"):
+                    continue
+            except Exception:
+                pass  # unreadable → the timestamp read above was our best signal
+            silent_min = int(silent_s // 60)
+            render_video_failed(
+                record_id,
+                f"Watchdog: the render went silent for {silent_min} minutes with no progress "
+                "and was stopped as stalled — your credits are refunded. Please retry.",
+            )
+            failed += 1
+            print(f"Watchdog: job {record_id} marked failed (silent {int(silent_s)}s, was {job.get('status')})")
+            if failed >= WATCHDOG_MAX_FAILURES:
+                print(f"Watchdog: per-sweep failure cap ({WATCHDOG_MAX_FAILURES}) reached — finishing")
+                return
+        token = resp.get("NextContinuationToken")
+        if not token or swept >= WATCHDOG_MAX_KEYS:
+            return
+
+
 
 # # IMAGE EDITING FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════
