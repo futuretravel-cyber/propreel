@@ -35,6 +35,7 @@ import { useVoiceoverLanguageCheck, type VoiceoverLanguageCheck } from './lib/us
 import LanguageMismatchBanner from './components/LanguageMismatchBanner';
 import RenderProgressBar from './components/RenderProgressBar';
 import { queueVideoRender, takeVideoRender } from './lib/videoPrefill';
+import { ORIENTATION_PHOTO_TIP } from './lib/constants';
 import {
   Home as HomeIcon, Video, Image, Wand2, Sofa, Trash2, Moon, Share2, Play, Square,
   LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield,
@@ -3217,6 +3218,11 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
             </button>
           ))}
         </div>
+        {ORIENTATION_PHOTO_TIP[orientation] && (
+          <p className="text-xs text-ink-400 mt-3 leading-relaxed">
+            {ORIENTATION_PHOTO_TIP[orientation]}
+          </p>
+        )}
       </div>
 
       )}

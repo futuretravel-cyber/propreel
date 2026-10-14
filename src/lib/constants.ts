@@ -64,6 +64,21 @@ export const ORIENTATIONS = [
   { id: 'PORTRAIT', label: 'Portrait', ratio: '9:16', icon: '▯' },
 ];
 
+/**
+ * Photo-resolution guidance per orientation, shown on the Studio's
+ * Orientation step. Grounded in the renderer's actual crop math: the
+ * canvas fills by cover-crop, so a photo of the WRONG SHAPE loses more
+ * the more mismatched it is — 4:3 in 16:9 loses ~24% of the height, a
+ * landscape photo in 9:16 loses about 2/3 of its width. And since the
+ * reel canvas is Full-HD (with Ken Burns panning on top), sources under
+ * 1080 on their short side look soft. Match the shape, keep it ≥1800px
+ * on the short side, stay under the 25MB upload cap.
+ */
+export const ORIENTATION_PHOTO_TIP: Record<string, string> = {
+  LANDSCAPE: 'Best photos: landscape shots in 16:9, about 1920×1080 or larger (a phone photo at full size is ideal). Portrait photos get heavily cropped at the sides here.',
+  PORTRAIT: 'Best photos: portrait shots in 9:16, about 1080×1920 or larger. Landscape photos get heavily cropped at the sides here — a 4:3 shot loses only a little, 16:9 loses most of the frame.',
+};
+
 export interface StudioVoice {
   id: string;
   label: string;
