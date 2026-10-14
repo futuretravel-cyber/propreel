@@ -1139,6 +1139,51 @@ def _essential_kenburns_clip(
 # for the whole duration. Every element degrades independently: no logo →
 # just photo+bar; nothing fetched → no overlay flag ever fails a render.
 
+def _branding_geometry(width: int, height: int) -> dict:
+    """ONE scale source for every burned-in branding element.
+
+    Card (running overlay), end card and avatar overlay all derive their
+    geometry from this dict — a future design tweak edits it here and all
+    three stay in lockstep; nothing downstream may inline its own
+    ``… * scale`` formula again (that duplication is what let the portrait
+    canvas grow card text 1.78x and the avatar disc 78% oversized while
+    landscape looked perfect).
+
+    Scale derives from the SHORTER side against the 1080p reference design
+    (photo Ø110, ring 5, margin 36, bar 96 / headshot Ø360, ring 9, bar
+    200); the avatar reuses the card photo disc at ~1.3x, even-rounded
+    (yuv420p cannot carry odd dims, and the alphamerge mask must match the
+    scaled frame exactly). Returns every element's pixel size at scale.
+    """
+    scale = min(width, height) / 1080.0
+    avatar_side = max(64, int(110 * scale * 1.3) & ~1)
+    return {
+        "scale": scale,
+        "margin": int(36 * scale),
+        "card_photo_d": int(110 * scale),
+        "card_ring": max(3, int(5 * scale)),
+        "card_logo_h": int(72 * scale),
+        "card_bar_h": int(96 * scale),
+        "card_font": int(40 * scale),
+        # Longest contact lines must still fit a ~1080-wide portrait bar
+        # (the font-shrink loop floor — text fits before it clips).
+        "font_floor": max(10, int(14 * scale)),
+        "end_photo_d": int(360 * scale),
+        "end_ring": max(4, int(9 * scale)),
+        "end_logo_h": int(120 * scale),
+        "end_bar_h": int(200 * scale),
+        "end_name_size": int(64 * scale),
+        "end_font": int(48 * scale),
+        "logo_gap": int(24 * scale),          # logo/headshot spacing
+        "end_line_gap": int(40 * scale),      # headshot/logo -> name line
+        "end_line_step": int(20 * scale),     # name line -> contact line
+        "avatar_ring": max(3, int(5 * scale)),
+        "avatar_side": avatar_side,
+        "avatar_outer": avatar_side + 2 * max(3, int(5 * scale)),
+        "avatar_margin": max(8, int(36 * scale)),
+    }
+
+
 def _branding_card_png(
     branding: dict,
     use_avatar: bool,
@@ -1155,18 +1200,17 @@ def _branding_card_png(
     """
     from PIL import Image, ImageDraw, ImageFont
 
-    # 1080p reference design (relative to height): photo Ø96, margin 28.
-    # Scale from the SHORTER side, not height: on the portrait canvas
-    # (1080×1920) a height-derived scale grew every element 1.78×, which
-    # blew the contact line past the frame edges (clipped text on both
-    # sides in the render and on the end card).
-    scale = min(width, height) / 1080.0
-    margin = int(36 * scale)
-    photo_d = int(110 * scale)
-    ring = max(3, int(5 * scale))
-    logo_h = int(72 * scale)
-    bar_h = int(96 * scale)
-    font_size = int(40 * scale)
+    # Single geometry source shared with the end card and the avatar
+    # overlay (see _branding_geometry) — they can no longer drift apart.
+    g = _branding_geometry(width, height)
+    scale = g["scale"]
+    margin = g["margin"]
+    photo_d = g["card_photo_d"]
+    ring = g["card_ring"]
+    logo_h = g["card_logo_h"]
+    bar_h = g["card_bar_h"]
+    font_size = g["card_font"]
+    font_floor = g["font_floor"]
 
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
@@ -1242,7 +1286,7 @@ def _branding_card_png(
         # shrink LOWER (14pt at 1080): long contact lines must still fit
         # the ~1000px-wide portrait bar instead of clipping at the frame.
         MIN_SCALE = 0.55
-        floor_size = int(14 * scale)
+        floor_size = font_floor
         while font is not None and tw > max_w and font_size > floor_size:
             font_size = max(int(font_size * 0.9), floor_size)
             font = ImageFont.truetype(
@@ -1277,16 +1321,20 @@ def _branding_end_card_path(
     """
     from PIL import Image, ImageDraw, ImageFont
 
-    # Same short-side rule as the overlay card: a height-derived scale
-    # made portrait text 1.78× and clipped the contact line at the edges.
-    scale = min(width, height) / 1080.0
-    margin = int(36 * scale)
-    photo_d = int(360 * scale)   # big centered headshot
-    ring = max(4, int(9 * scale))
-    logo_h = int(120 * scale)
-    bar_h = int(200 * scale)
-    name_size = int(64 * scale)
-    font_size = int(48 * scale)
+    # Same single geometry source as the overlay card (portrait fix).
+    g = _branding_geometry(width, height)
+    scale = g["scale"]
+    margin = g["margin"]
+    photo_d = g["end_photo_d"]   # big centered headshot
+    ring = g["end_ring"]
+    logo_h = g["end_logo_h"]
+    bar_h = g["end_bar_h"]
+    name_size = g["end_name_size"]
+    font_size = g["end_font"]
+    font_floor = g["font_floor"]
+    logo_gap = g["logo_gap"]
+    line_y_gap = g["end_line_gap"]
+    line_y_step = g["end_line_step"]
 
     photo_url = str((branding or {}).get("photo_url") or "").strip() or None
     logo_url = str((branding or {}).get("logo_url") or "").strip() or None
@@ -1342,8 +1390,8 @@ def _branding_end_card_path(
             logo = Image.open(BytesIO(fetch_media(logo_url, timeout=60))).convert("RGBA")
             w = max(1, int(logo.width * logo_h / max(logo.height, 1)))
             logo = logo.resize((min(w, int(width * 0.6)), logo_h), Image.LANCZOS)
-            canvas.alpha_composite(logo, ((width - logo.width) // 2, y + int(24 * scale)))
-            y += logo_h + int(24 * scale)
+            canvas.alpha_composite(logo, ((width - logo.width) // 2, y + logo_gap))
+            y += logo_h + logo_gap
         except Exception as le:
             print(f"end-card logo fetch failed (skipped): {le}")
 
@@ -1353,16 +1401,16 @@ def _branding_end_card_path(
         b = draw.textbbox((0, 0), text, font=f)
         # Shrink further than the old 24pt floor — long contact lines must
         # stay inside the canvas on portrait (they clipped at both edges).
-        while b[2] - b[0] > width - 2 * margin and px > int(14 * scale):
+        while b[2] - b[0] > width - 2 * margin and px > font_floor:
             px = int(px * 0.92)
             f = _ttf(px)
             b = draw.textbbox((0, 0), text, font=f)
         return f, b
-    line_y = y + int(40 * scale)
+    line_y = y + line_y_gap
     if name:
         f, b = _fit(name, name_size)
         draw.text(((width - (b[2] - b[0])) // 2, line_y), name, font=f, fill=(255, 255, 255, 250))
-        line_y += (b[3] - b[1]) + int(20 * scale)
+        line_y += (b[3] - b[1]) + line_y_step
     if contact2:
         f, b = _fit(contact2, font_size)
         draw.text(((width - (b[2] - b[0])) // 2, line_y), contact2, font=f, fill=(196, 190, 220, 235))
@@ -1930,20 +1978,17 @@ def _apply_avatar_overlay(
         if avatar_dur + 0.3 > target:
             target = avatar_dur + 0.3
 
-        # ── Geometry: the branding card's conventions (110px photo, 36px
-        # margin, 5px ring at 1080) — reuse them so the avatar reads as the
-        # same element, just a bit bigger. Short-side scale like the cards
-        # (the Oct-14 portrait fix): height-derived scaling made the
-        # portrait avatar disc 78% oversized and pushed it past the safe
-        # top-left quadrant.
-        scale_ref = min(width, height) / 1080.0
-        ring_w = max(3, int(5 * scale_ref))
-        # Disc diameter ~1.3x the branding photo. EVEN, always: yuv420p
-        # encoding cannot carry odd dims, and the alphamerge mask must match
-        # the scaled avatar frame EXACTLY (scale rounds to even internally).
-        side = max(64, int(110 * scale_ref * 1.3) & ~1)
-        outer = side + 2 * ring_w                      # ring outer diameter
-        margin = max(8, int(36 * scale_ref))
+        # ── Geometry: the SAME single source the card and end card use
+        # (_branding_geometry), so the avatar can never drift from them
+        # again (short-side scale — the Oct-14 portrait fix). avatar_side
+        # is even-rounded and ≥64 from the helper: the alphamerge mask
+        # must match the scaled avatar frame exactly.
+        g = _branding_geometry(width, height)
+        scale_ref = g["scale"]
+        ring_w = g["avatar_ring"]
+        side = g["avatar_side"]
+        outer = g["avatar_outer"]                     # ring outer diameter
+        margin = g["avatar_margin"]
         av_ext = max(0.0, target - avatar_dur)
 
         # Static artwork: black-background white disc (becomes the alpha
