@@ -828,13 +828,20 @@ class EditImageRequest(BaseModel):
     mask_url: Optional[str] = None
 
 # Video prompts (rotating A, B, C)
+# Video prompts - one camera move per image, drawn from a shuffled deck so
+# every clip randomly gets ZOOM (A), LEFT (B) or RIGHT (C). Hailuo reads the
+# head of a prompt hardest, so the BOLD motion directive leads and the
+# asset-lock prose follows; the negative tail starting "Motion must be fluid"
+# is the proven part and stays byte-identical. FULL prompt must stay <= 2000
+# chars: fal silently truncates longer prompts, and the old 2200+ char
+# prompts lost the final ~200 chars of negative constraints
+# (flicker/blur/text/logos) on every clip.
 VIDEO_PROMPTS = {
-    'A': """Cinematic first-person property walkthrough, smooth gimbal dolly FORWARD through the space at a slow, constant walking pace. The camera glides deeper into the room as if the viewer is walking inside, with a very gentle forward parallax: nearer furniture drifts subtly wider in frame while walls, windows and far corners stay pinned to their true positions. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal bounded perspective shift — a slow constant-speed forward dolly contained entirely within the source pixels, never faster than a person strolling. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, shallow depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
-    
-    'B': """Cinematic first-person property walkthrough, ultra-smooth gimbal drift slowly LEFT at a constant unhurried walking pace, with a whisper of simultaneous forward glide so the view reads as a person ambling past the room while taking it in — steady, dreamy, continuous. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal bounded lateral dolly with the smallest accompanying forward shift — contained entirely within the source pixels, never faster than a person strolling. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, shallow depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
-    
-    'C': """Cinematic first-person property walkthrough, slow gimbal glide gently drifting RIGHT at a constant unhurried walking pace with a subtle forward lean, the room revealing itself sideways at an ambient stroll — steady, elegant, continuous. Source image acts as an unalterable, frozen 3D digital architectural asset and absolute spatial sandbox. Absolute coordinate lock: every pixel, object, fixture, wall, and texture from the source image must remain strictly stationary in its exact original placement. All animation is executed exclusively as an internal bounded lateral dolly with the smallest accompanying forward shift — contained entirely within the source pixels, never faster than a person strolling. Hyper-polished Unreal Engine 5.5 Path Traced render, global illumination, 8K resolution, glossy Architectural Digest aesthetic, shallow depth of field, cinematic real estate commercial style. Ultra-crisp architectural photography, perfect rectilinear perspective, perfectly straight vertical lines. Lighting features hyper-realistic Ray-Traced reflections, soft ambient occlusion, clean bounce light, and immaculate specular highlights on high-end materials. Absolute pixel-lock on all existing inventory. Zero hallucination, zero alteration, zero border-crossing. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces."""
+    'A': """Cinematic AI-generated real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera pushes IN, a smooth gimbal dolly advancing deep into the room at a confident stride: door frames and foreground furniture swell toward the viewer with strong real-space parallax as the far corner recedes. Each depth layer moves at its own rate - near walls glide wide, mid-ground objects part, distant corners ease subtly - a true 3D camera journey, never a flat photo zoom. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays locked exactly where it is; all animation is pure camera travel through the existing scene. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Hyper-polished Unreal Engine 5.5 path-traced look, global illumination, ray-traced reflections, glossy Architectural Digest style, shallow depth of field, perfect perspective. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
+    'B': """Cinematic AI-generated real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera sweeps decisively LEFT, a long smooth gimbal lateral dolly across the room at a confident stride with a hint of forward lean, like a person walking past taking it all in: near furniture glides fast across the locked background, far walls ease slowly, strong readable parallax - a true 3D camera journey, never a flat photo pan. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays locked exactly where it is; all animation is pure camera travel through the existing scene. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Hyper-polished Unreal Engine 5.5 path-traced look, global illumination, ray-traced reflections, glossy Architectural Digest style, shallow depth of field, perfect perspective. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
+    'C': """Cinematic AI-generated real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera sweeps decisively RIGHT, a long smooth gimbal lateral dolly across the room at a confident stride with a hint of forward lean, like a person walking past taking it all in: near furniture glides fast across the locked background, far walls ease slowly, strong readable parallax - a true 3D camera journey, never a flat photo pan. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays locked exactly where it is; all animation is pure camera travel through the existing scene. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Hyper-polished Unreal Engine 5.5 path-traced look, global illumination, ray-traced reflections, glossy Architectural Digest style, shallow depth of field, perfect perspective. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
 }
+
 
 def get_prompt_for_image(image_index: int, image_url: str | None = None) -> str:
     """Get the prompt for an image: frontend-supplied rotation override first,
@@ -849,6 +856,18 @@ def get_prompt_for_image(image_index: int, image_url: str | None = None) -> str:
 
 # Populated by /render_video from the request's image_prompts payload
 PROMPT_OVERRIDES: dict = {}
+
+
+def _camera_move_deck(record_id: str) -> list[str]:
+    """Per-render randomized camera-move deck over ZOOM (A) / LEFT (B) / RIGHT
+    (C). A fresh shuffle every render, seeded by record_id so Modal retries
+    replay the identical sequence; deck cycling guarantees all three moves
+    appear before any repeat, and no two consecutive images ever share the
+    same move — the fixed A,B,C round-robin this replaced made every render
+    feel like the same preset pattern, and one Hailuo slot (3rd image, prompt
+    C) regularly came back near-still."""
+    import random
+    return random.Random(record_id or "").sample(sorted(VIDEO_PROMPTS), 3)
 
 
 def _write_job_status(record_id: str, status: str, extra: dict | None = None):
@@ -2157,6 +2176,7 @@ def render_video_local(
     work = _tf.mkdtemp(prefix=f"essential_{record_id}_")
     segment_paths = []
     n = max(1, len(images))
+    deck = _camera_move_deck(record_id)
     seg_duration = duration / n
 
     for i, image_url in enumerate(images):
@@ -2166,7 +2186,7 @@ def render_video_local(
         if image_prompts:
             match = next((p for p in image_prompts if p.get("image_url") == image_url and p.get("prompt_id")), None)
             supplied = str(match.get("prompt_id", "")).upper() if match else None
-        style_id = supplied if supplied in ("A", "B", "C") else ESSENTIAL_MOTION_STYLES[i % 3]["id"]
+        style_id = supplied if supplied in ("A", "B", "C") else deck[i % 3]
         style = next(s for s in ESSENTIAL_MOTION_STYLES if s["id"] == style_id)
         _write_job_status(record_id, "processing", {
             "tier": "ESSENTIAL", "progress": round(i / n * 90),
@@ -2369,7 +2389,10 @@ def render_video(
         # CONCURRENTLY (Modal map) — a serial loop made a 5-clip tier wait
         # 5× fal latency (~9 min) while the render timeout loomed.
         # Per-image prompt: frontend rotation payload (A/B/C) if provided,
-        # otherwise the built-in round-robin (i % 3).
+        # otherwise the per-render randomized deck (below).
+        # Random camera moves: each image draws ZOOM / LEFT / RIGHT from a
+        # shuffled per-render deck — no preset pattern across images.
+        deck = _camera_move_deck(record_id)
         prompts: list[str] = []
         for i, image_url in enumerate(images):
             supplied = None
@@ -2377,7 +2400,7 @@ def render_video(
             if image_prompts:
                 match = next((p for p in image_prompts if p.get("image_url") == image_url and p.get("prompt")), None)
                 supplied = match.get("prompt") if match else None
-            prompts.append(supplied or get_prompt_for_image(i))
+            prompts.append(supplied or VIDEO_PROMPTS[deck[i % 3]])
 
         # Determine base resolution for AI generation
         if processing_type == "ai_upscaled":
@@ -2391,7 +2414,7 @@ def render_video(
         _write_job_status(record_id, "processing", {
             "tier": tier, "progress": 0,
             "clip": 0, "clips": len(images),
-            "prompt_id": ['A', 'B', 'C'][0 % 3],
+            "prompt_id": deck[0],
             "note": "fanned out",
         })
         # .map fans one tuple out per Modal container (all run concurrently);
