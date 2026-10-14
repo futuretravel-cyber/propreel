@@ -836,10 +836,19 @@ class EditImageRequest(BaseModel):
 # chars: fal silently truncates longer prompts, and the old 2200+ char
 # prompts lost the final ~200 chars of negative constraints
 # (flicker/blur/text/logos) on every clip.
+#
+# 2026-10-14 fix (Cinematic 30s regression): a Hailuo clip swept the camera
+# OUT of the image frame and invented a new kitchen. Correction: the
+# boundary negative now names new rooms/kitchens/bathrooms/hallways and
+# added furniture/appliances/cabinetry explicitly, and the lateral sweeps
+# (B/C) carry an edge-lock right at the head (Hailuo reads the head
+# strongest). Paid for by trimming persona/flavor; the proven tail from
+# "Motion must be fluid" stays byte-identical apart from the boundary
+# clause. Budget after the change: A=1952, B=1986, C=1987 chars.
 VIDEO_PROMPTS = {
-    'A': """Cinematic AI-generated real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera pushes IN, a smooth gimbal dolly advancing deep into the room at a confident stride: door frames and foreground furniture swell toward the viewer with strong real-space parallax as the far corner recedes. Each depth layer moves at its own rate - near walls glide wide, mid-ground objects part, distant corners ease subtly - a true 3D camera journey, never a flat photo zoom. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays locked exactly where it is; all animation is pure camera travel through the existing scene. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Hyper-polished Unreal Engine 5.5 path-traced look, global illumination, ray-traced reflections, glossy Architectural Digest style, shallow depth of field, perfect perspective. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
-    'B': """Cinematic AI-generated real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera sweeps decisively LEFT, a long smooth gimbal lateral dolly across the room at a confident stride with a hint of forward lean, like a person walking past taking it all in: near furniture glides fast across the locked background, far walls ease slowly, strong readable parallax - a true 3D camera journey, never a flat photo pan. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays locked exactly where it is; all animation is pure camera travel through the existing scene. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Hyper-polished Unreal Engine 5.5 path-traced look, global illumination, ray-traced reflections, glossy Architectural Digest style, shallow depth of field, perfect perspective. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
-    'C': """Cinematic AI-generated real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera sweeps decisively RIGHT, a long smooth gimbal lateral dolly across the room at a confident stride with a hint of forward lean, like a person walking past taking it all in: near furniture glides fast across the locked background, far walls ease slowly, strong readable parallax - a true 3D camera journey, never a flat photo pan. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays locked exactly where it is; all animation is pure camera travel through the existing scene. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Hyper-polished Unreal Engine 5.5 path-traced look, global illumination, ray-traced reflections, glossy Architectural Digest style, shallow depth of field, perfect perspective. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No sideway whip, no snap zoom, no sudden speed ramps, no stopping-starting, no jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms, exiting through walls, passing image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
+    'A': """Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera pushes IN, a smooth gimbal dolly advancing deep into the room at a confident stride: door frames and foreground furniture swell toward the viewer with strong real-space parallax as the far corner recedes. Each depth layer moves at its own rate - near walls glide wide, mid-ground objects part, distant corners ease subtly - a true 3D camera journey, never a flat photo zoom. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays locked exactly where it is; all animation is pure camera travel through the existing scene. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Hyper-polished Unreal Engine 5.5 path-traced look, glossy Architectural Digest style, shallow depth of field, perfect perspective. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No whip pans, snap zooms, speed ramps, or stop-start jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms or spaces — no added kitchen, bathroom, hallway or extension — no added furniture, appliances, counters or cabinetry of any kind; no exiting through walls, passing the image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
+    'B': """Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera sweeps decisively LEFT, a long smooth gimbal lateral dolly across the room at a confident stride with a hint of forward lean: near furniture glides fast across the locked background, far walls ease slowly, readable parallax - a true 3D camera journey, never a flat photo pan. The sweep stays strictly inside the space already visible in the frame — the image edges are hard walls the camera never approaches. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays locked exactly where it is; all animation is pure camera travel through the existing scene. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Hyper-polished Unreal Engine 5.5 path-traced look, glossy Architectural Digest style, shallow depth of field, perfect perspective. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No whip pans, snap zooms, speed ramps, or stop-start jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms or spaces — no added kitchen, bathroom, hallway or extension — no added furniture, appliances, counters or cabinetry of any kind; no exiting through walls, passing the image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
+    'C': """Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera sweeps decisively RIGHT, a long smooth gimbal lateral dolly across the room at a confident stride with a hint of forward lean: near furniture glides fast across the locked background, far walls ease slowly, readable parallax - a true 3D camera journey, never a flat photo pan. The sweep stays strictly inside the space already visible in the frame — the image edges are hard walls the camera never approaches. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays locked exactly where it is; all animation is pure camera travel through the existing scene. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Hyper-polished Unreal Engine 5.5 path-traced look, glossy Architectural Digest style, shallow depth of field, perfect perspective. Motion must be fluid, smooth, continuous, unbroken and unhurried — a single slow velvety camera move with no speed changes. No whip pans, snap zooms, speed ramps, or stop-start jitter. No adding, removing, replacing, or modifying a single object, wall, furniture piece, appliance, texture, decoration, or architectural element. No creating new rooms or spaces — no added kitchen, bathroom, hallway or extension — no added furniture, appliances, counters or cabinetry of any kind; no exiting through walls, passing the image boundaries, revealing exterior spaces, or border-crossing. No geometry morphing, mutating, warping, melting, bending, slanted walls, curved vertical lines, fisheye lens, or extreme lens distortion. No flickering, flashing, jittery/shaky camera, fast/stuttering motion, low resolution, blur, out-of-focus elements, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures, or unrealistic reflections. No text, watermarks, logos, people, humans, animals, clutter, or dirty surfaces.""",
 }
 
 
@@ -944,12 +953,32 @@ TIER_CONFIGS = {
         "processing_type": "ai_upscaled",
         "resolution": "768p",  # Changed from 720p to match fal.ai API (expects 512P or 768P)
         "configurations": [
-            {"duration": 30, "images": 5, "credits": 60},
-            {"duration": 60, "images": 10, "credits": 100},
-            {"duration": 90, "images": 15, "credits": 150}
+            {"duration": 30, "images": 5, "credits": 85},
+            {"duration": 60, "images": 10, "credits": 170},
+            {"duration": 90, "images": 15, "credits": 250}
         ]
     }
 }
+
+
+# ── Tier-engine map (2026-10-14): which fal engine ships each AI tier ──────
+# CINEMATIC stays on Hailuo-02 standard 768p (cheapest AI engine at
+# $0.045/s; the negative-prompt drift fix lives in VIDEO_PROMPTS above).
+# PREMIUM moves to Kling 2.6 Pro image-to-video — a different flagship
+# family that generates NATIVE 1080p, so the ai_upscaled ffmpeg stretch is
+# skipped for it entirely. Kling's schema only takes 5s or 10s clips (no
+# 6s), so Premium clips render at 5s and the assembler stretches each to
+# its even share of the reel (setpts slow-stretch — no stream-loop seam).
+# Every other tier keeps its exact existing fal spec.
+ENG_HAILUO = "hailuo-02-standard"
+ENG_KLING26 = "kling-26-pro"
+TIER_VIDEO_ENGINE = {
+    "SOCIAL": ENG_HAILUO,
+    "CINEMATIC": ENG_HAILUO,
+    "PREMIUM": ENG_KLING26,
+}
+KLING_MODEL = "fal-ai/kling-video/v2.6/pro/image-to-video"      # $0.07/s, native 1080p
+HAILUO_MODEL = "fal-ai/minimax/hailuo-02/standard/image-to-video"  # $0.045/s @ 768P
 
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=600, retries=2, min_containers=0, max_containers=200, scaledown_window=300)
 def generate_ai_video_clip(spec: tuple) -> str:
@@ -957,41 +986,60 @@ def generate_ai_video_clip(spec: tuple) -> str:
     Generate a 6-second AI video clip using fal-ai/minimax/hailuo-02
 
     Args (one tuple per clip — Modal .map fans these out one container each):
-        spec: (image_url, prompt, resolution, duration) —
+        spec: (image_url, prompt, resolution, duration, engine, kling_aspect) —
               image_url: URL of the source image,
               prompt: Video generation prompt (max 2000 chars),
-              resolution: Target resolution (512p or 768p),
-              duration: Duration in seconds (default 6)
+              resolution: Target resolution (512p/768p Hailuo; 1080p Kling native),
+              duration: Duration in seconds (default 6; Kling: 5 or 10),
+              engine: ENG_HAILUO (default) or ENG_KLING26 — picks the fal model,
+              kling_aspect: "16:9"/"9:16" (Kling's schema requires an explicit aspect)
 
     Returns:
         URL of the generated video clip
     """
     import fal_client
 
-    image_url, prompt, resolution, duration = (list(spec) + ["512p", 6])[:4]
+    image_url, prompt, resolution, duration, engine, kling_aspect = (
+        list(spec) + ["512p", 6, ENG_HAILUO, ""])[:6]
     duration = int(duration)
 
     # Truncate prompt to 2000 characters if needed
     if len(prompt) > 2000:
         prompt = prompt[:2000]
     
-    print(f"Generating AI video clip: {resolution}, {duration}s")
+    print(f"Generating AI video clip: {engine}, {resolution}, {duration}s")
     
-    # Convert resolution to uppercase (fal.ai expects "512P" or "768P")
-    resolution_upper = resolution.upper()
-    
-    # Use fal_client.submit() for long-running tasks with polling
-    handler = fal_client.submit(
-        "fal-ai/minimax/hailuo-02/standard/image-to-video",
-        arguments={
+    if engine == ENG_KLING26:
+        # Kling 2.6 Pro image-to-video (PREMIUM): native 1080p, 5s/10s clips
+        # only. Negative constraints ride INSIDE the prompt — the same
+        # convention as Hailuo, so the argument set stays exactly the five
+        # fields every Kling i2v endpoint accepts (no untested extras).
+        model = KLING_MODEL
+        fal_arguments = {
             # Private buckets: fal.ai downloads the frame itself, so it needs
             # a signature (raw object URLs now 403).
             "image_url": presign_media(image_url),
             "prompt": prompt,
+            "resolution": resolution.lower(),          # "1080p" (native)
+            "duration": "5" if duration <= 5 else "10",
+            "aspect_ratio": kling_aspect or "16:9",
+        }
+    else:
+        # Hailuo-02 standard (SOCIAL/CINEMATIC) — spec unchanged.
+        model = HAILUO_MODEL
+        fal_arguments = {
+            "image_url": presign_media(image_url),
+            "prompt": prompt,
             "num_frames": duration * 24,  # 24 fps
-            "resolution": resolution_upper,
+            # fal.ai expects "512P" or "768P"
+            "resolution": resolution.upper(),
             "audio": False  # Audio OFF as requested
         }
+    
+    # Use fal_client.submit() for long-running tasks with polling
+    handler = fal_client.submit(
+        model,
+        arguments=fal_arguments
     )
     
     # Poll for completion with timeout
@@ -1501,6 +1549,7 @@ def _concat_ai_clips(
     width: int,
     height: int,
     work: str,
+    stretch_short_clips: bool = False,
 ) -> str:
     """Normalize every fal clip to the tier canvas and assemble the FULL reel.
 
@@ -1514,6 +1563,13 @@ def _concat_ai_clips(
       3. stretches each clip over an EVEN share of the tier duration
          (setpts+tpad clone-freeze the clip's motion frame tail, not none),
       4. stream-copy concats the uniform segments + faststart.
+
+    stretch_short_clips (Premium/Kling): a 5s clip carrying a 6s share of
+    the reel must fill its slot WITHOUT the stream-loop replay seam.
+    When enabled, source clips SHORTER than their share are slow-stretched
+    (setpts) to exactly the share first — a slow cinematic pan re-timed to
+    ~0.83× reads as continuous motion; a mid-shot backwards loop does not.
+    Longer sources stay on the loop/cut path (no change).
     Normalized segments are identical-format so concat never re-encodes.
     Raises on failure: the caller falls back to the old single-clip path
     rather than losing a paid job.
@@ -1530,15 +1586,28 @@ def _concat_ai_clips(
         seg_path = os.path.join(work, f"ai_seg_{i}.mp4")
         # Each clip's share of the tier duration: -stream_loop replays the
         # clip until -t cuts it (slow clips just repeat; no pts arithmetic).
+        # stretch_short_clips: probe the source's real length first; when it
+        # SHORTER than its share, re-time it to exactly the share instead of
+        # loop-replaying (which pastes a mid-shot seam). Probe failure
+        # degrades to the historic loop path — never fatal.
+        stretch = 1.0
+        if stretch_short_clips:
+            try:
+                src_dur = _media_duration(raw_path)
+                if src_dur and 0 < src_dur < seg_dur - 0.05:
+                    stretch = seg_dur / src_dur
+            except Exception as pe:
+                print(f"segment {i + 1}: duration probe failed ({pe}) — loop path")
+        retime = f"setpts=PTS*{stretch:.6f}," if stretch != 1.0 else ""
         # Portrait canvas: contain + pad (never amputate a vertical shot).
         # Landscape canvas: cover-crop, same convention as the Essential tier.
         if height > width:
             vf = (f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
                   f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,"
-                  f"fps=24,format=yuv420p")
+                  f"{retime}fps=24,format=yuv420p")
         else:
             vf = (f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-                  f"crop={width}:{height},fps=24,format=yuv420p")
+                  f"crop={width}:{height},{retime}fps=24,format=yuv420p")
         proc = _sp.run(
             ["ffmpeg", "-y", "-stream_loop", "-1", "-i", raw_path,
              "-an", "-vf", vf, "-c:v", "libx264", "-preset", "medium",
@@ -2402,13 +2471,24 @@ def render_video(
                 supplied = match.get("prompt") if match else None
             prompts.append(supplied or VIDEO_PROMPTS[deck[i % 3]])
 
-        # Determine base resolution for AI generation
-        if processing_type == "ai_upscaled":
-            # PREMIUM: Generate at 768p, upscale to 1080p
+        # Determine engine + base resolution for AI generation (tier-engine map)
+        engine = TIER_VIDEO_ENGINE.get(tier, ENG_HAILUO)
+        kling_aspect = "9:16" if orientation == "PORTRAIT" else "16:9"
+        if engine == ENG_KLING26:
+            # PREMIUM: Kling 2.6 Pro generates native 1080p — no 768p source
+            # stage and no ffmpeg upscale. Kling only accepts 5s or 10s
+            # clips; 5s is the cheapest Premium clip and the assembler
+            # stretches each to its even share of the reel.
+            ai_resolution = "1080p"
+            clip_seconds = 5
+        elif processing_type == "ai_upscaled":
+            # PREMIUM on Hailuo (fallback): Generate at 768p, upscale to 1080p
             ai_resolution = "768p"
+            clip_seconds = 6
         else:
             # SOCIAL/CINEMATIC: Use tier resolution
             ai_resolution = resolution
+            clip_seconds = 6
 
         _ensure_not_cancelled(record_id)  # stop before spending fal.ai credits
         _write_job_status(record_id, "processing", {
@@ -2421,7 +2501,8 @@ def render_video(
         # each clip still retries independently (retries=2 on the function).
         video_clips = list(generate_ai_video_clip.map(
             [
-                (image_url, prompt, ai_resolution, 6)
+                (image_url, prompt, ai_resolution, clip_seconds, engine,
+                 kling_aspect)
                 for image_url, prompt in zip(images, prompts)
             ],
             order_outputs=True,
@@ -2442,17 +2523,27 @@ def render_video(
             if orientation == "PORTRAIT":
                 bw, bh = 1080, 1920
             else:
+                # PREMIUM on Kling: the clips are already native 1920x1080 —
+                # assemble on that canvas (downscaling to the tier's nominal
+                # 1440x810 would waste the resolution the client paid for).
+                if engine == ENG_KLING26:
+                    bw, bh = 1920, 1080
                 # match the fal clip's aspect: 512p is 960x540, 768p is 1440x810
                 # (exactly proportional to 1920x1080), so the canvas matches
                 # the tier's advertised resolution without letterboxing.
-                if resolution == "512p":
+                elif resolution == "512p":
                     bw, bh = 960, 540
                 elif resolution == "768p":
                     bw, bh = 1440, 810
                 else:
                     bw, bh = 1920, 1080
             try:
-                assembled = _concat_ai_clips(video_clips, config['duration'], bw, bh, awork)
+                # Kling clips arrive 5s against a 6s per-shot share — the
+                # assembler slow-stretches them instead of stream-looping
+                # (a replay seam mid-shot is unacceptable on the premium tier).
+                assembled = _concat_ai_clips(
+                    video_clips, config['duration'], bw, bh, awork,
+                    stretch_short_clips=(engine == ENG_KLING26))
                 upload = boto3.client('s3', region_name=S3_REGION)
                 s3_key = f"renders/{record_id}/video.mp4"
                 upload.upload_file(assembled, S3_BUCKET, s3_key,
@@ -2470,8 +2561,10 @@ def render_video(
                 })
                 video_url = video_clips[0] if video_clips else ""
 
-        # Upscale if PREMIUM tier (768p canvas → 1440x810 → 1920x1080 real)
-        if processing_type == "ai_upscaled":
+        # Upscale if PREMIUM tier (768p canvas → 1440x810 → 1920x1080 real).
+        # Kling Premium shipped native 1080p (canvas above already matches) —
+        # the upscale pass would only degrade it; skip for that engine.
+        if processing_type == "ai_upscaled" and engine != ENG_KLING26:
             print("Upscaling to 1080p...")
             video_url = upscale_video.remote(
                 input_video_url=video_url,

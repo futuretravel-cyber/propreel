@@ -54,13 +54,23 @@ export const TIERS = [
   {
     id: 'PREMIUM',
     label: 'Premium',
-    description: 'AI Motion 720p → 1080p upscaled',
+    // Switched 2026-10-14: engine is now Kling 2.6 Pro image-to-video —
+    // a different flagship family than the mid tiers' Hailuo, generating
+    // NATIVE 1080p (no ffmpeg upscale). Kling only accepts 5s/10s clips,
+    // so clips render at 5s ($0.07/s × 5 = $0.35 ≈ R5.7 each) and the
+    // assembler slow-stretches them to their 6s reel share.
+    description: 'Kling 2.6 Pro Motion at 1080p',
     processingType: 'ai_upscaled',
     resolution: '1080p',
+    // COGS: $0.35/clip → R28.6 / R57.2 / R85.8 at 5/10/15 clips (FX ~R16.3).
+    // 85/170/250 credits keep every length ≥ 53% margin against the R0.99
+    // pack-parity credit (40% floor met with room; old 60/100/150 would
+    // have been 9%/13%/15% on the previous Hailuo-upscale COGS basis and
+    // ~36% on Kling COGS — below floor).
     configurations: [
-      { duration: 30, images: 5, credits: 60 },
-      { duration: 60, images: 10, credits: 100 },
-      { duration: 90, images: 15, credits: 150 }
+      { duration: 30, images: 5, credits: 85 },
+      { duration: 60, images: 10, credits: 170 },
+      { duration: 90, images: 15, credits: 250 }
     ]
   },
 ];
