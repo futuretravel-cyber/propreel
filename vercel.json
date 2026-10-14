@@ -1,8 +1,19 @@
 {
   "functions": {
-    "api/**/*.ts": {
-      "maxDuration": 60,
+    "api/users.ts": {
       "includeFiles": "node_modules/pdfkit/**"
+    },
+    "api/cron/allocate-monthly-credits.ts": {
+      "includeFiles": "node_modules/pdfkit/**"
+    },
+    "api/paystack/webhook.ts": {
+      "includeFiles": "node_modules/pdfkit/**"
+    },
+    "api/paystack/verify.ts": {
+      "includeFiles": "node_modules/pdfkit/**"
+    },
+    "api/**/*.ts": {
+      "maxDuration": 60
     }
   },
   "buildCommand": "npm run build",
