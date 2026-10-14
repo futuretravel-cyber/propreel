@@ -12,7 +12,7 @@ import { PropReelAPI, CreditReportData } from '../lib/api';
 
 // ─── Real analytics: every number derives from the user's credit ledger ────
 
-const TIER_COSTS: Record<string, number> = { ESSENTIAL: 5, SOCIAL: 30, CINEMATIC: 40, PREMIUM: 60 };
+const TIER_COSTS: Record<string, number> =  { ESSENTIAL: 5, SOCIAL: 30, CINEMATIC: 40, PREMIUM: 85 };
 
 export default function EnhancedAnalytics() {
   const { user } = useAuth();

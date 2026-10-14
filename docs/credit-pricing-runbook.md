@@ -41,7 +41,18 @@ Plans can be switched in Admin → Users → Details → Change (remove = "— R
 | Essential | local FFmpeg zoom/pan, 1080p | 5 ⚡ | 10 ⚡ | — |
 | Social | AI Motion, 512p | 30 ⚡ | 50 ⚡ (50s) | 80 ⚡ |
 | Cinematic | AI Motion, 768p ("720p") | 40 ⚡ | 75 ⚡ | 105 ⚡ (repriced 2026-10-13) |
-| Premium | AI Motion 768p → 1080p upscale | 60 ⚡ | 100 ⚡ | 150 ⚡ |
+| Premium | **Kling 2.6 Pro**, native 1080p (replaced the 768p→1080p ffmpeg upscale 2026-10-14) | 85 ⚡ | 170 ⚡ | 250 ⚡ |
+
+Premium engine note (2026-10-14): the tier moved from Hailuo-02 standard
+768p + ffmpeg upscale to **Kling 2.6 Pro image-to-video** (`fal-ai/kling-
+video/v2.6/pro/image-to-video`, $0.07/s flat across 720p/1080p, no-audio).
+Kling only accepts 5s/10s clips, so Premium clips render at 5s ($0.35 ≈
+R5.7 each) and the Modal assembler slow-stretches each to its 6s share of
+the reel (setpts re-time — no stream-loop replay seam). COGS per length:
+30s R28.6 / 60s R57.2 / 90s R85.8 → margins at 85/170/250 ≈ 54/55/54%.
+The old 60/100/150 prices would have been ~36% on Kling COGS (below floor).
+Cinematic stays on Hailuo-02 standard — Kling at 720p costs the same $0.07/s
+as 1080p, so there is no cheaper Kling entry for the mid tier.
 
 ### AI Avatar (FlashHead, job_token `flashhead`)
 

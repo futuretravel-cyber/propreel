@@ -33,7 +33,7 @@ const costEstimates = [
   { tier: 'Essential', credits: 5 },
   { tier: 'Social', credits: 30 },
   { tier: 'Cinematic', credits: 40 },
-  { tier: 'Premium', credits: 60 },
+  { tier: 'Premium', credits: 85 },
 ];
 
 export default function EnhancedBilling() {

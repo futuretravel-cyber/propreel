@@ -44,9 +44,37 @@ FX: **$1 = R16.55** (Xe mid-market, 13 Oct 2026). Provider prices can change —
 | Cinematic (768p) | 30s | 40 | 22.3 | 17.7 | **44%** |
 | Cinematic (768p) | 60s | 75 | 44.7 | 30.3 | **40%** ← repriced 2026-10-13 |
 | Cinematic (768p) | 90s | 105 | 67.0 | 38.0 | **36%** ← repriced 2026-10-13 |
-| Premium (upscaled) | 30s | 60 | ~22.7 | 37.3 | 62% |
-| Premium | 60s | 100 | ~45.1 | 54.9 | 55% |
-| Premium | 90s | 150 | ~67.5 | 82.5 | 55% |
+| Premium — Kling 2.6 Pro (engine changed 2026-10-14; see below) | 30s | 85 | 28.9 | 56.1 | **54%** |
+| Premium — Kling 2.6 Pro | 60s | 170 | 57.9 | 112.1 | **55%** |
+| Premium — Kling 2.6 Pro | 90s | 250 | 86.8 | 163.2 | **54%** |
+
+#### Premium engine change (2026-10-14) — margin simulation of 85/170/250
+
+The tier moved off Hailuo-02 standard 768p + ffmpeg upscale onto
+**Kling 2.6 Pro image-to-video** (`fal-ai/kling-video/v2.6/pro/image-to-video`) —
+a different flagship family with **native 1080p** output, so the 768p→1080p
+ffmpeg stretch stage is gone entirely. Kling's schema takes **5s or 10s clips
+only** (no 6s), and its price is flat per-second across resolutions
+($0.07/s no-audio; there is no cheaper Kling "Standard" tier, and
+Kling 2.5 Turbo Pro is also flat at $0.07/s), so 720p Kling would cost the
+same as 1080p Kling — that is exactly why Cinematic stays on Hailuo at
+$0.045/s rather than paying a premium engine's premium price for 720p.
+
+Simulation inputs: FX $1 = R16.55, credit retail ≈ R0.99 (pack parity),
+COGS units at ~$0.0605 ≈ 1 credit (same convention as the Cinematic rows).
+
+| Length (clips) | Ring 5s clips ($0.35/clip) | 10s clips cut to 6s ($0.70/clip) |
+|---|---|---|
+| 30s (5 clips) | COGS R28.2 → **28.6 ⚡ → margin 54%** at 85 ⚡ | COGS R56.3 → 57.3 ⚡ → **9%** at 85 ⚡ (below floor) |
+| 60s (10 clips) | COGS R56.3 → 57.3 ⚡ → **55%** at 170 ⚡ | R112.7 → 114.7 ⚡ → 9% |
+| 90s (15 clips) | COGS R84.5 → 85.9 ⚡ → **54%** at 250 ⚡ | R169.0 → 172.0 ⚡ → 7% |
+
+Decision: ship **5s Kling clips** with the assembler slow-stretching each
+5s source to its 6s share of the reel (a slow cinematic dolly re-timed to
+~0.83× reads as continuous motion; a `-stream_loop` replay would paste a
+mid-shot backwards seam) — that keeps COGS at $0.35/clip and makes the
+85/170/250 reprice honest. If a 10s Kling clip is ever preferred (no
+stretch), the honest prices are ~130/260/390 ⚡, not 85/170/250.
 
 ### AI Avatar (FlashHead) — priced flat at 8 credits
 
