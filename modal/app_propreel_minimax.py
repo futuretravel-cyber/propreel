@@ -1156,7 +1156,11 @@ def _branding_card_png(
     from PIL import Image, ImageDraw, ImageFont
 
     # 1080p reference design (relative to height): photo Ø96, margin 28.
-    scale = height / 1080.0
+    # Scale from the SHORTER side, not height: on the portrait canvas
+    # (1080×1920) a height-derived scale grew every element 1.78×, which
+    # blew the contact line past the frame edges (clipped text on both
+    # sides in the render and on the end card).
+    scale = min(width, height) / 1080.0
     margin = int(36 * scale)
     photo_d = int(110 * scale)
     ring = max(3, int(5 * scale))
@@ -1234,10 +1238,13 @@ def _branding_card_png(
         max_w = width - 2 * margin
         # Too long for one line → shrink the REAL font progressively,
         # floor 0.55×design; the old fallback jumped to an illegible bitmap
-        # font — the unreadable-render root cause.
+        # font — the unreadable-render root cause. Portrait floors the
+        # shrink LOWER (14pt at 1080): long contact lines must still fit
+        # the ~1000px-wide portrait bar instead of clipping at the frame.
         MIN_SCALE = 0.55
-        while font is not None and tw > max_w and font_size > int(24 * scale):
-            font_size = max(int(font_size * 0.9), int(24 * scale))
+        floor_size = int(14 * scale)
+        while font is not None and tw > max_w and font_size > floor_size:
+            font_size = max(int(font_size * 0.9), floor_size)
             font = ImageFont.truetype(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
             bbox = draw.textbbox((0, 0), contact, font=font)
@@ -1270,7 +1277,9 @@ def _branding_end_card_path(
     """
     from PIL import Image, ImageDraw, ImageFont
 
-    scale = height / 1080.0
+    # Same short-side rule as the overlay card: a height-derived scale
+    # made portrait text 1.78× and clipped the contact line at the edges.
+    scale = min(width, height) / 1080.0
     margin = int(36 * scale)
     photo_d = int(360 * scale)   # big centered headshot
     ring = max(4, int(9 * scale))
@@ -1342,7 +1351,9 @@ def _branding_end_card_path(
     def _fit(text, px):
         f = _ttf(px)
         b = draw.textbbox((0, 0), text, font=f)
-        while b[2] - b[0] > width - 2 * margin and px > int(24 * scale):
+        # Shrink further than the old 24pt floor — long contact lines must
+        # stay inside the canvas on portrait (they clipped at both edges).
+        while b[2] - b[0] > width - 2 * margin and px > int(14 * scale):
             px = int(px * 0.92)
             f = _ttf(px)
             b = draw.textbbox((0, 0), text, font=f)

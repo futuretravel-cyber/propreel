@@ -22,7 +22,7 @@ import { useCredit } from '../context/AuthContext';
 import { queueVideoRender } from '../lib/videoPrefill';
 import { useToast } from '../context/ToastContext';
 import { PropReelAPI, useUploadWait, type Project } from '../lib/api';
-import { formatZar, downloadText } from '../lib/utils';
+import { formatZar, downloadText, downloadRemoteFile } from '../lib/utils';
 import { TONES, RETENTION_NOTICE, PROVINCES, PROPERTY_TYPES } from '../lib/constants';
 import FeatureChips from './FeatureChips';
 import CurrencyInput from './CurrencyInput';
@@ -77,9 +77,22 @@ export function VideoLightbox({ project, onClose }: { project: Project; onClose:
             <p className="text-xs text-ink-400">{[project.address, project.suburb].filter(Boolean).join(', ')}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <a href={project.videoUrl} download className="btn btn-ghost text-xs">
+            {/* Not a plain <a download>: a cross-origin CDN URL makes the
+                browser ignore the download attribute and open a media
+                player tab instead of saving. Blob-fetch → same-origin save. */}
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await downloadRemoteFile(project.videoUrl!, `propreel-${project.title.replace(/\s+/g, '-').toLowerCase().slice(0, 40)}.mp4`);
+                } catch {
+                  window.open(project.videoUrl!, '_blank', 'noopener');
+                }
+              }}
+              className="btn btn-ghost text-xs"
+            >
               <Download className="w-4 h-4" /> Download
-            </a>
+            </button>
             <button onClick={onClose} className="btn btn-ghost text-xs" aria-label="Close player">
               <X className="w-4 h-4" />
             </button>

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { formatZar, formatRelative } from '../lib/utils';
+import { formatZar, formatRelative, downloadRemoteFile } from '../lib/utils';
 import { PropReelAPI, Project } from '../lib/api';
 import {
   Search, Grid, List as ListIcon, FolderOpen, FolderPlus, Pencil, Trash2,
@@ -526,14 +526,23 @@ export default function EnhancedProjects() {
                         </button>
                       )}
                       {p.kind === 'IMAGE' && p.thumbnailUrl && (
-                        <a
-                          href={p.thumbnailUrl}
-                          download
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            // Blob-fetch → same-origin save (a plain <a download>
+                            // is ignored for cross-origin CDN URLs and opens a
+                            // player tab instead of saving)
+                            try {
+                              await downloadRemoteFile(p.thumbnailUrl!, 'propreel-edited-image.jpg');
+                            } catch {
+                              window.open(p.thumbnailUrl!, '_blank', 'noopener');
+                            }
+                          }}
                           className="flex-1 btn btn-ghost text-xs py-1.5 text-purple-300 hover:text-purple-200"
                           title="Download the edited image"
                         >
                           <Download className="w-3 h-3" /> Download
-                        </a>
+                        </button>
                       )}
                       {p.kind === 'SOCIAL' && p.description && (
                         <button
