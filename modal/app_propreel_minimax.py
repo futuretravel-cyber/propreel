@@ -3048,11 +3048,11 @@ def scheduled_fal_probe():
 # that has gone silent past the safe horizon to `failed`, so whichever
 # poller or reaper still touches it names the real cause and refunds.
 #
-# Safe horizon: a living render's worst silent stretch is ~10 min (one
-# 6-second clip's 9-minute fal poll plus assembly before its next progress
-# write) and the whole pipeline is capped at a 1800 s render inside a 3600 s
-# wrapper that DOES write failure on exit — so 45 minutes without ANY status
-# write is impossible for a living job and is treated as dead.
+# Safe horizon: silence past 45 minutes cannot come from a living job —
+# the worst healthy silent stretch is one clip's ~9-minute fal poll, and
+# every Modal retry attempt rewrites `processing / progress 0` at its
+# start, refreshing the stamp (though attempts are capped: retries=2 on
+# render_video means at most 3 attempts totalling well under an hour).
 WATCHDOG_STALL_SECONDS = 45 * 60
 WATCHDOG_MAX_KEYS = 2000  # sweep cap on the jobs/ store
 WATCHDOG_MAX_FAILURES = 50  # safety cap per sweep
