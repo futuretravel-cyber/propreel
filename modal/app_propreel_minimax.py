@@ -312,6 +312,12 @@ def _friendly_fal_error(e: Exception, context: str = "Image edit") -> str:
         return f"fal.ai rejected the request payload (422): {msg[:300]}"
     if "429" in msg or "rate limit" in msg.lower():
         return "fal.ai rate limit reached - please retry in a moment."
+    if "404" in msg or "could not be found" in lowered or "no endpoints found" in lowered:
+        return (
+            f"{context} model unavailable (404): the AI model behind this feature was "
+            "retired from the provider. Ops: update the model list and redeploy. "
+            f"({msg[:200]})"
+        )
     return f"{context} failed: {msg[:400]}"
 
 
@@ -998,7 +1004,7 @@ def generate_ai_video_clip(spec: tuple) -> str:
             raise Exception(f"Unknown fal.ai status: {status_type}")
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials")], timeout=600, retries=2)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials")], timeout=900, retries=2)
 def upscale_video(input_video_url: str, target_resolution: str = "1080p") -> str:
     """
     Upscale video from 720p to 1080p using FFmpeg
@@ -2758,7 +2764,7 @@ def _llm_chat(messages: list) -> str:
         # OpenAI-compatible /v1/chat/completions routes are the live ones)
         ("openrouter/router/openai/v1/chat/completions", {"model": "x-ai/grok-4.6"}),
         ("openrouter/router/openai/v1/chat/completions", {"model": "x-ai/grok-4.7"}),
-        ("openrouter/router/openai/v1/chat/completions", {"model": "google/gemini-2.0-flash-001"}),
+        ("openrouter/router/openai/v1/chat/completions", {"model": "google/gemini-2.5-flash"}),
         ("openrouter/router/openai/v1/chat/completions", {"model": "openai/gpt-4o-mini"}),
     ]
     last_err = None
@@ -2791,7 +2797,32 @@ def _llm_chat(messages: list) -> str:
                         return text
             last_err = RuntimeError(f"LLM returned no output from {endpoint}: {str(result)[:200]}")
         except Exception as e:
-            last_err = e
+            err_text = str(e)
+            # Some OpenRouter routes are hard-wired to reasoning (Groq-backed
+            # models reject `reasoning: {enabled: false}` with HTTP 400
+            # "Reasoning is mandatory for this endpoint and cannot be
+            # disabled"). Retrying the SAME model without the param is cheap
+            # and salvages the attempt instead of burning a fallback slot.
+            if "reasoning is mandatory" in err_text.lower():
+                try:
+                    result = _fal_run_queued(
+                        endpoint,
+                        arguments={**extra, "messages": messages},
+                        max_wait=per_attempt_s,
+                        context="AI text",
+                    )
+                    if isinstance(result, dict):
+                        choices = result.get("choices") or []
+                        if choices:
+                            text = (choices[0].get("message") or {}).get("content")
+                            if text:
+                                return text
+                    last_err = RuntimeError(f"LLM returned no output from {endpoint}: {str(result)[:200]}")
+                except Exception as e2:
+                    last_err = e2
+                    continue
+            else:
+                last_err = e
             continue
     raise last_err or RuntimeError("LLM call failed")
 
