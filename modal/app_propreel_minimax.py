@@ -1930,10 +1930,13 @@ def _apply_avatar_overlay(
         if avatar_dur + 0.3 > target:
             target = avatar_dur + 0.3
 
-        # ── Geometry: the branding card's conventions scale from HEIGHT/1080
-        # (110px photo, 36px margin, 5px ring at 1080p) — reuse them so the
-        # avatar reads as the same element, just a bit bigger.
-        scale_ref = height / 1080.0
+        # ── Geometry: the branding card's conventions (110px photo, 36px
+        # margin, 5px ring at 1080) — reuse them so the avatar reads as the
+        # same element, just a bit bigger. Short-side scale like the cards
+        # (the Oct-14 portrait fix): height-derived scaling made the
+        # portrait avatar disc 78% oversized and pushed it past the safe
+        # top-left quadrant.
+        scale_ref = min(width, height) / 1080.0
         ring_w = max(3, int(5 * scale_ref))
         # Disc diameter ~1.3x the branding photo. EVEN, always: yuv420p
         # encoding cannot carry odd dims, and the alphamerge mask must match
