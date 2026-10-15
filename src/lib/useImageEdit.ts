@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { falEditImage } from './falImage';
+import { falEditImage, type EditProgress } from './falImage';
 import { jobHeaders } from './workerAuth';
 import { useCredit } from '../context/AuthContext';
 import { track } from './analytics';
@@ -20,6 +20,10 @@ export function useImageEdit() {
   const { refundCredits, user, refresh } = useCredit() as any;
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
+  // Live removal progress (gate leftovers, sweeps, engine passes). Kept after
+  // the edit finishes so the panel can show the verdict it ended on, and
+  // cleared when the next edit starts.
+  const [progress, setProgress] = useState<EditProgress | null>(null);
 
   /** Price for this render: brush-masked staging presets run Fill Pro
    *  (4 credits); removal and every other preset are the base 2-credit
@@ -34,7 +38,9 @@ export function useImageEdit() {
     guidanceScale?: number;
     customPrompt?: string;
     maskFile?: File | null; // brush mask (staging) → Fill Pro path
-  }): Promise<{ imageUrl: string } | null> => {    setError(null);
+  }): Promise<{ imageUrl: string } | null> => {
+    setError(null);
+    setProgress(null);
 
     if (!user) {
       setError('You must be signed in');
@@ -100,7 +106,7 @@ export function useImageEdit() {
         guidanceScale: opts.guidanceScale,
         customPrompt: opts.customPrompt,
         maskUrl,
-      }, jobToken);
+      }, jobToken, setProgress);
       track('render_completed', { kind: 'IMAGE_EDIT', presetId: opts.presetId });
       playRenderComplete();
       // Store the output in My Projects (kind: IMAGE) so every Photo Editor /
@@ -130,5 +136,5 @@ export function useImageEdit() {
     }
   }, [user, refundCredits, refresh]);
 
-  return { edit, stage, error, setError, busy: stage === 'uploading' || stage === 'deducting' || stage === 'rendering' };
+  return { edit, stage, error, setError, progress, busy: stage === 'uploading' || stage === 'deducting' || stage === 'rendering' };
 }

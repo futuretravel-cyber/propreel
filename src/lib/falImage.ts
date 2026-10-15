@@ -2,11 +2,19 @@
  * Fal.ai FLUX Dev image-to-image client (async job pattern).
  *
  * POST /edit_image → { edit_id, poll_url } immediately
- * GET  /edit_status?edit_id=… → { status: queued|processing|completed|failed, image_url?, error? }
+ * GET  /edit_status?edit_id=… → { status: queued|processing|completed|failed, image_url?, error?,
+ *                                 progress? }
  *
  * The client polls until the job reaches a terminal state, so callers keep the
  * same simple `await falEditImage(...)` contract while the browser no longer
  * holds a single long HTTP connection through fal queue times.
+ *
+ * `progress` is the worker's live line for the removal paths: the removal
+ * gate's leftover inventory (gate), each directed sweep, the masked engine
+ * passes, and the final verdict. It rides the same S3-backed record the poll
+ * already fetches, so the agent sees a stubborn recliner DURING the edit
+ * instead of only in the finished frame — the optional onProgress callback
+ * gets every update as it lands.
  */
 
 const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
@@ -27,12 +35,22 @@ export interface FalEditResult {
   guidanceUsed: number;
 }
 
+/** Live edit progress written by the Modal worker (see _edit_progress). */
+export interface EditProgress {
+  stage?: string;         // gate | sweep | engines | composite | furnish | done
+  label?: string;         // the sentence to show the agent
+  leftovers?: string[];   // movable items the removal gate still sees
+  pass_no?: number;       // 1-based pass / sweep number, when it has one
+  of?: number;            // how many passes that stage allows
+  done?: boolean;         // the removal finished (nothing left behind)
+}
+
 import { workerHeaders } from './workerAuth';
 
 const POLL_INTERVAL_MS = 3000;
 const MAX_WAIT_MS = 8 * 60 * 1000; // 8 minutes — fal queues can be long; UI shows live status
 
-export async function falEditImage(params: FalEditParams, jobToken?: Record<string, string>): Promise<FalEditResult> {
+export async function falEditImage(params: FalEditParams, jobToken?: Record<string, string>, onProgress?: (progress: EditProgress) => void): Promise<FalEditResult> {
   // 1) Submit the async job — with the PAID single-use token when the caller
   //    minted one (?action=job_token). Polling below keeps using the free
   //    generic token: status reads are not jobs and must not burn a payment.
@@ -80,6 +98,12 @@ export async function falEditImage(params: FalEditParams, jobToken?: Record<stri
       continue;
     }
     const job = await statusRes.json();
+
+    // Live progress (removal gate verdict / sweeps). Best-effort by design: a
+    // malformed or absent field must never disturb the poll loop.
+    if (onProgress && job.progress && typeof job.progress === 'object') {
+      onProgress(job.progress as EditProgress);
+    }
 
     if (job.status === 'completed' && job.image_url) {
       return {

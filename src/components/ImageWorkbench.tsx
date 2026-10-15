@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Brush, Eraser, Camera, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
+import { AlertTriangle, Brush, Eraser, Camera, CheckCircle2, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { useImageEdit } from '../lib/useImageEdit';
 import { useRenderProgress, TYPICAL_IMAGE_EDIT_SECONDS } from '../lib/useRenderProgress';
 import RenderProgressBar from './RenderProgressBar';
@@ -38,15 +38,21 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
   const [resultUrl, setResultUrl] = useStudioDraft<string | null>(studioDraftKey(user?.id, `workbench:${draftSlot}:result`), null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { edit, busy, stage, error, setError } = useImageEdit();
+  const { edit, busy, stage, error, setError, progress } = useImageEdit();
   const uploadWait = useUploadWait();
   // Brush mask presets: staging paints the furniture to REPLACE (Fill Pro);
-  // the three furniture-removal presets paint what to ERASE (FLUX Erase
-  // [pro]) — the painted mask is required for both. Vehicle removal lives
-  // only in the AI Photo Editor (remove_cars, maskless Kontext path).
+  // the clutter/personal-item removal presets paint what to ERASE (masked
+  // composite path on the worker). 'remove_all_furniture' is fully maskless
+  // (validated Gemini-style whole-photo regen); vehicle removal lives only
+  // in the AI Photo Editor (remove_cars, maskless Kontext path).
   const showBrush = ['luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
     'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft',
-    'remove_all_furniture', 'remove_clutter', 'remove_personal_items'].includes(presetId);
+    'remove_clutter', 'remove_personal_items'].includes(presetId);
+  // The two targeted removal presets are CI: the mask is OPTIONAL precision
+  // (paint to erase exactly that; skip painting and the worker's maskless
+  // path clears clutter/personal items over the whole photo). Staging must
+  // still paint: Fill Pro needs a mask to replace furniture in-place.
+  const maskRequired = presetId !== 'remove_clutter' && presetId !== 'remove_personal_items';
   // The mask tutorial plays EVERY time the staging tab is entered (or the
   // draft first appears) — small enough that it teaches without blocking.
   const [tutorialOpen, setTutorialOpen] = useState(false);
@@ -87,7 +93,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
     editProgress.start();
     try {
       const maskFile = showBrush ? mask.exportMaskFile() : null;
-      if (showBrush && !maskFile) {
+      if (showBrush && !maskFile && maskRequired) {
         setError('Paint over the furniture you want replaced before generating — everything you leave unpainted is locked.');
         editProgress.stop();
         return;
@@ -274,13 +280,47 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
         />
       )}
 
+      {/* Live removal progress: the worker's gate verdict and sweep state,
+          published while the edit runs. The point is that a leftover ('gate
+          still sees 2 item(s): leather recliner, rug' + the item chips) is
+          visible DURING the render — the old UI only ever revealed survivors
+          in the finished image, so a directed sweep looked like a hang. */}
+      {progress?.label && (busy || resultUrl) && (
+        <div className="rounded-lg bg-purple-950/40 border border-purple-500/25 px-3 py-2 flex items-start gap-2">
+          {/* Verdict first: finished-and-clear, still running, or finished
+              with an item the gate never got rid of. */}
+          {progress.stage === 'done' && progress.done === true ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+          ) : busy ? (
+            <Loader2 className="w-4 h-4 animate-spin text-purple-300 mt-0.5 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+          )}
+          <div className="min-w-0">
+            <p className="text-xs text-purple-100">{progress.label}</p>
+            {!!progress.leftovers?.length && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {progress.leftovers.slice(0, 6).map(item => (
+                  <span
+                    key={item}
+                    className="text-[11px] px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-200"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {preview && (
         <div className="flex gap-3">
-            <button onClick={() => guardAIRender(run)} disabled={busy || (showBrush && !mask.hasStrokes)} className="btn btn-primary flex-1 min-h-[48px]">
+            <button onClick={() => guardAIRender(run)} disabled={busy || (showBrush && maskRequired && !mask.hasStrokes)} className="btn btn-primary flex-1 min-h-[48px]">
             {busy ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
             ) : (
-              <><Zap className="w-4 h-4" /> {showBrush && !mask.hasStrokes ? 'Paint the mask to enable' : ctaLabel}</>
+              <><Zap className="w-4 h-4" /> {showBrush && maskRequired && !mask.hasStrokes ? 'Paint the mask to enable' : ctaLabel}</>
             )}
           </button>
           <RenderProgressBar

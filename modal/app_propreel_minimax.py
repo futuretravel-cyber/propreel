@@ -728,36 +728,173 @@ _ROOM_ANCHOR_SYSTEM = (
 )
 
 
-def _room_cleared(image_url: str, emptied_url: str) -> bool:
-    """Vision check: did the emptier leave furniture in the room?
+# Vision-gate spec for the emptier: an ITEMISED inventory, not a yes/no
+# verdict (2026-10-15). The old single-token gate asked "is photo 2 empty?"
+# and passed an edit whose foreground leather recliner was still sitting in
+# the frame — with most of the room genuinely emptied, one survivor is easy
+# to wave through. A list cannot hide a survivor, and the names it returns
+# are what let the retry tell the model exactly what to take out.
+_LEFTOVER_SYSTEM = (
+    "You compare two photos of the SAME room. PHOTO 1 is the original room. "
+    "PHOTO 2 is that room after a furniture-removal edit. Your job is to find "
+    "what the edit MISSED.\n"
+    "MOVABLE items — anything a person could carry out: sofas, sectionals, "
+    "armchairs, recliners, upholstered, dining, desk or accent chairs, stools, "
+    "benches, ottomans, beds, tables, desks, coffee and side tables, "
+    "freestanding cabinets, bookcases and shelving, lamps and light stands, "
+    "rugs and carpets, cushions and throws, decorative objects, personal "
+    "belongings.\n"
+    "FIXED items — never report them: walls, windows, doors, curtains, blinds, "
+    "ceiling, floor, skirting, stairs, fireplace, stove, mantelpiece, built-in "
+    "cupboards and kitchen units, countertops, sinks, appliances, radiators, "
+    "wall-mounted television, wall art, mirrors, light fittings and switches, "
+    "and plants that belong to the room's fixed styling.\n"
+    "An item counts when ANY part of it is visible in PHOTO 2 — including "
+    "large pieces in the FOREGROUND or at the frame edges, items against a "
+    "wall, items partly cut off by the frame, and dark objects against a dark "
+    "floor. Never report something that was already absent from PHOTO 1, and "
+    "never report only a shadow, patch or outline the edit left on the floor.\n"
+    "Reply with one short line per remaining item, naming the item and where "
+    "it is, then a FINAL line that is exactly "
+    "`REMAINING: <item names separated by commas>` — or `REMAINING: none` "
+    "when PHOTO 2 shows no movable item at all."
+)
 
-    Feeds the original + emptied photos to the LLM and asks strictly whether
-    any movable item remains. The stubborn dining set survived stage A even
-    at guidance 2.9 in three different wordings — the reliable pattern is a
-    strict Y/N vision gate, not firmer prose."""
-    caption = _llm_chat([
-        {"role": "system", "content": (
-            "You check whether a room was successfully emptied of furniture. "
-            "You are shown PHOTO 1 (the original furnished room) and PHOTO 2 "
-            "(the same room after a removal edit). Built-in elements — "
-            "kitchen units, cupboards, appliances, counters, light switches, "
-            "wall art, curtains, doors — SHOULD remain and do not count as "
-            "furniture. Movable items — tables, chairs, sofas, beds, lamps, "
-            "rugs, side tables, decorative objects, personal belongings — "
-            "MUST all be gone. Answer with ONLY the word YES if photo 2 "
-            "contains any such movable item from photo 1, or NO if the room "
-            "is completely empty of movable items. One word, nothing else."
-        )},
+
+def _parse_leftovers(reply: str) -> list | None:
+    """Read the gate's `REMAINING:` verdict line.
+
+    Returns [] for a clean sweep, the item names when something survived, and
+    None when the reply carried no usable verdict at all — the caller treats
+    None as "unknown" and keeps the historical lenient default, so a flaky
+    LLM answer can never add fal spend or fail a paid render.
+
+    Partial compliance is recovered deliberately, because this gate is the
+    only thing standing between a paid render and a surviving sofa: a bulleted
+    list of survivors counts even without the final marker, and a bare legacy
+    YES triggers one generic sweep. Prose that merely mentions the old words
+    ("no sofa is left, but the recliner remains") is NOT trusted either way —
+    reading that as clean is the exact failure this rewrite exists to stop.
+    """
+    import re
+    lines = [ln.strip() for ln in str(reply or "").splitlines() if ln.strip()]
+    if not lines:
+        return None
+    # Walk the reply BACKWARDS for the verdict line: the model sometimes states
+    # a first verdict and corrects itself later ("REMAINING: armchair" ... then
+    # "REMAINING: none"), and the FINAL line is its considered answer. Matching
+    # per line (never over the joined text) also stops a greedy `.*` from
+    # swallowing a later marker on another line.
+    tail = None
+    for line in reversed(lines):
+        # Match only the marker itself, then slice after the LAST one on the
+        # line: a greedy `(.*)` would swallow a later "REMAINING: none" on the
+        # same line, which is exactly the self-corrected reply we must honour.
+        marks = list(re.finditer(r"REMAINING\s*:", line, re.IGNORECASE))
+        if marks:
+            tail = line[marks[-1].end():]
+            break
+    if tail is None:
+        bare = " ".join(str(reply or "").split()).strip(" .!*_`'\"").upper()
+        if bare == "YES":  # legacy one-word answer: sweep, but we have no names
+            return ["movable furniture that is still visible"]
+        if bare == "NO":
+            return []
+        # No verdict line, so fall back to the per-item lines the spec asked
+        # for: a bulleted or numbered list still names the survivors.
+        listed = []
+        for line in lines:
+            m = re.match(r"(?:[-*\u2022]|\d+[.)])\s+(.{3,120})$", line)
+            if m:
+                name = m.group(1).strip(" .,-*`\u2019'\"")
+                if name and name not in listed:
+                    listed.append(name[:80])
+        return listed[:8] if listed else None
+    tail = tail.strip(" .,`*_\u2019'\"")
+    if not tail:
+        return None  # marker with nothing after it: a truncated reply, not a verdict
+    if tail.lower().rstrip(".") in {"none", "no", "nothing", "nil", "n/a", "empty", "- none"}:
+        return []
+    items = []
+    for part in re.split(r"[,;]|\band\b", tail):
+        name = part.strip(" .,-*`\u2019'\"")
+        if len(name) < 3 or name.lower() in {"none", "nothing", "no"}:
+            continue
+        if name not in items:
+            items.append(name[:80])
+    return items[:8]
+
+
+def _finish_edit_job(edit_id: str, status: str, extra: dict):
+    """Terminal job write that carries the live progress line forward.
+
+    _write_job_status replaces the whole record, so a plain 'completed' write
+    dropped `progress` — a poller that arrived after the render (slow poll,
+    reloaded tab, a second device) saw the finished image but not the reason
+    it looks the way it does ("Removal gate still sees 3 item(s): kettle")
+    or that a sweep even ran. The last verdict stays attached to the result.
+    """
+    prior = _read_job_status(edit_id) or {}
+    if prior.get("progress"):
+        extra = {"progress": prior["progress"], **extra}
+    _write_job_status(edit_id, status, extra)
+
+
+def _leftover_label(leftovers: list, sweeps_done: int = 0) -> str:
+    """One line for the removal gate's verdict (shared by every gate caller).
+
+    Read by the agent in Studio while the edit is still running — see
+    _edit_progress — so it names the survivors instead of just a count.
+    """
+    if not leftovers:
+        return ("Removal gate: nothing left behind — room is clear"
+                if not sweeps_done else
+                f"Removal gate: room clear after {sweeps_done} leftover sweep(s)")
+    names = ", ".join(str(x) for x in leftovers[:4])
+    more = f" and {len(leftovers) - 4} more" if len(leftovers) > 4 else ""
+    return f"Removal gate still sees {len(leftovers)} item(s): {names}{more}"
+
+
+def _room_leftovers(image_url: str, emptied_url: str) -> list | None:
+    """Movable items the emptier left behind; [] = clean, None = no verdict."""
+    reply = _llm_chat([
+        {"role": "system", "content": _LEFTOVER_SYSTEM},
         {"role": "user", "content": [
-            {"type": "text", "text": "Is PHOTO 2 completely empty of movable furniture and items? PHOTO 1 is the original, PHOTO 2 is the emptied room."},
+            {"type": "text", "text": (
+                "PHOTO 1 is the original room, PHOTO 2 is the same room after "
+                "the furniture-removal edit. List every movable item still "
+                "visible in PHOTO 2, then the final REMAINING: line."
+            )},
             *[
                 {"type": "image_url", "image_url": {"url": presign_media(u)}}
                 for u in (image_url, emptied_url)
             ],
         ]},
     ])
-    verdict = caption.strip().upper()
-    return verdict.endswith("YES")
+    return _parse_leftovers(reply)
+
+
+def _removal_sweep_prompt(full_prompt: str, leftovers: list) -> str:
+    """Retry prompt for one clear-and-verify pass, naming the survivors.
+
+    The generic wording ("a chair, sofa, table, lamp, rug...") made the model
+    re-scan and re-decide; naming what the gate actually saw turns the retry
+    into a directed sweep."""
+    named = ""
+    if leftovers:
+        named = (
+            "These items are STILL visible and must not survive this pass: "
+            + "; ".join(str(x) for x in leftovers[:4]) + ". "
+        )
+    return (
+        "This is the SAME room after a furniture-removal edit, and the job is "
+        "not finished: movable furniture is still present. " + named +
+        "Remove every remaining movable item completely — including large "
+        "upholstered pieces such as sofas, armchairs and recliners, whether in "
+        "the foreground or against a wall — and rebuild the floor, walls, "
+        "skirting and lighting revealed behind them so no impression, shadow or "
+        "ghost is left. Keep the original specification: " + full_prompt
+    )
 
 
 def _room_anchor_bytes_url(image_url: str, images: "list | None" = None) -> str:
@@ -879,6 +1016,57 @@ def _camera_move_deck(record_id: str) -> list[str]:
     return random.Random(record_id or "").sample(sorted(VIDEO_PROMPTS), 3)
 
 
+# ── Premium-tier prompt set (Kling 2.6 Pro) ─────────────────────────────────
+# Kling prompting practice differs from Hailuo's: the POSITIVE prompt should
+# be short, carry exactly ONE camera move at its head, describe what the
+# viewer sees, and explicitly preserve the source image's room (I2V's image
+# already supplies the scene; big departures from it are what causes
+# hallucinated geometry). Exclusions ride in the ENDPOINT's dedicated
+# negative_prompt field, short and specific — not as a long in-prompt "No ...
+# list", which Kling guidance says can weaken the result. Same A/B/C move
+# deck (zoom-in / pan-left / pan-right) so the render-level rotation, camera
+# deck seeding and merge timing stay identical across engines.
+_KLING_BODY = (
+    "Premium real estate walkthrough of the room shown in the image. "
+    "%MOVE% "
+    "Keep this exact room unchanged: every wall, window, door, cupboard, "
+    "fixture, texture and colour stays exactly as pictured - the camera "
+    "only travels through space already visible in the frame and never "
+    "exits through a wall or the image edge. Ambient motion stays "
+    "luxurious and minimal: daylight and lamp light remain constant, "
+    "curtains and reflective surfaces drift almost imperceptibly, nothing "
+    "else in the room moves. Calm high-end interior cinematography, "
+    "stable perspective, even natural light, crisp detail throughout."
+)
+KLING_PROMPTS = {
+    "A": _KLING_BODY.replace(
+        "%MOVE%",
+        "The camera performs one continuous slow dolly push-in, drifting "
+        "gently deeper into the room at walking pace: foreground furniture "
+        "and door frames slide wide with soft parallax as the far wall "
+        "recedes."),
+    "B": _KLING_BODY.replace(
+        "%MOVE%",
+        "The camera performs one continuous slow lateral pan left across "
+        "the room, near furniture gliding past while the far walls ease "
+        "slowly with soft parallax - a gliding dolly pan, never a flat "
+        "swivel."),
+    "C": _KLING_BODY.replace(
+        "%MOVE%",
+        "The camera performs one continuous slow lateral pan right across "
+        "the room, near furniture gliding past while the far walls ease "
+        "slowly with soft parallax - a gliding dolly pan, never a flat "
+        "swivel."),
+}
+KLING_NEGATIVE_PROMPT = (
+    "invented rooms, added objects, new furniture, changed room layout, "
+    "warped walls, bent lines, distorted geometry, exiting the frame, "
+    "revealing spaces beyond the image, camera drift, shaking, handheld "
+    "jitter, sudden zooms, fast sweeping pans, flicker, jump cuts, blur, "
+    "low quality, text, watermark, people, animals"
+)
+
+
 def _write_job_status(record_id: str, status: str, extra: dict | None = None):
     """Persist job status to S3 so any worker container can serve /render_status."""
     import boto3, json as _json
@@ -908,6 +1096,41 @@ def _read_job_status(record_id: str):
         return _json.loads(obj['Body'].read())
     except Exception:
         return None
+
+
+def _edit_progress(progress_id: str | None, stage: str, label: str, **extra):
+    """Publish one line of live progress for an image edit (best-effort).
+
+    Why: the removal gate's verdict (_room_leftovers) and each leftover sweep
+    used to exist only in container logs and in the finished image, so an
+    agent watching the spinner could not tell a directed sweep from a stalled
+    render — a leftover recliner looked identical to a hang until the result
+    landed. /edit_status already serves jobs/{id}.json to every poller, so the
+    progress rides there and the Studio shows it while the edit runs.
+
+    Read-merge-write on purpose: _write_job_status replaces the whole record,
+    which would drop fields other writers set (kind, preset_id, the finished
+    image_url). A terminal record is never reopened, and a falsy progress_id
+    (synchronous ?wait=true calls, ops scripts) makes this a no-op, so the
+    progress channel can never change a job's outcome.
+    """
+    if not progress_id:
+        return None
+    payload = {"stage": stage, "label": label, **extra}
+    try:
+        current = _read_job_status(progress_id) or {}
+        if current.get("status") in ("completed", "failed", "cancelled"):
+            return None
+        carried = {k: v for k, v in current.items()
+                   if k not in ("record_id", "status", "updatedAt", "progress")}
+        _write_job_status(progress_id, "processing", {**carried, "progress": payload})
+    except Exception as e:
+        # A progress write must never fail a paid render.
+        print(f"edit progress write skipped ({e})")
+    # Returned so the caller can hand the FINAL line to _store_edit: the job
+    # wrapper then puts it in the completed record from the result itself,
+    # instead of depending on a fresh read of a record another container wrote.
+    return payload
 
 class RenderCancelled(Exception):
     """User cancelled this job — raised at cooperative checkpoints so the
@@ -980,27 +1203,28 @@ TIER_VIDEO_ENGINE = {
 KLING_MODEL = "fal-ai/kling-video/v2.6/pro/image-to-video"      # $0.07/s, native 1080p
 HAILUO_MODEL = "fal-ai/minimax/hailuo-02/standard/image-to-video"  # $0.045/s @ 768P
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=600, retries=2, min_containers=0, max_containers=200, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("bria-credentials")], timeout=600, retries=2, min_containers=0, max_containers=200, scaledown_window=300)
 def generate_ai_video_clip(spec: tuple) -> str:
     """
     Generate a 6-second AI video clip using fal-ai/minimax/hailuo-02
 
     Args (one tuple per clip — Modal .map fans these out one container each):
-        spec: (image_url, prompt, resolution, duration, engine, kling_aspect) —
+        spec: (image_url, prompt, resolution, duration, engine) —
               image_url: URL of the source image,
               prompt: Video generation prompt (max 2000 chars),
               resolution: Target resolution (512p/768p Hailuo; 1080p Kling native),
               duration: Duration in seconds (default 6; Kling: 5 or 10),
-              engine: ENG_HAILUO (default) or ENG_KLING26 — picks the fal model,
-              kling_aspect: "16:9"/"9:16" (Kling's schema requires an explicit aspect)
+              engine: ENG_HAILUO (default) or ENG_KLING26 — picks the fal model
+              (Kling's i2v aspect follows the input image — no aspect arg)
 
     Returns:
         URL of the generated video clip
     """
     import fal_client
 
-    image_url, prompt, resolution, duration, engine, kling_aspect = (
-        list(spec) + ["512p", 6, ENG_HAILUO, ""])[:6]
+    parts = list(spec)
+    image_url, prompt, resolution, duration = (parts + ["768p", 6, ENG_HAILUO])[:4]
+    engine = parts[4] if len(parts) > 4 else ENG_HAILUO
     duration = int(duration)
 
     # Truncate prompt to 2000 characters if needed
@@ -1010,19 +1234,26 @@ def generate_ai_video_clip(spec: tuple) -> str:
     print(f"Generating AI video clip: {engine}, {resolution}, {duration}s")
     
     if engine == ENG_KLING26:
-        # Kling 2.6 Pro image-to-video (PREMIUM): native 1080p, 5s/10s clips
-        # only. Negative constraints ride INSIDE the prompt — the same
-        # convention as Hailuo, so the argument set stays exactly the five
-        # fields every Kling i2v endpoint accepts (no untested extras).
+        # Kling 2.6 Pro image-to-video (PREMIUM): fal's documented schema for
+        # this endpoint is prompt + start_image_url (REQUIRED), with optional
+        # duration ("5"/"10"), negative_prompt and generate_audio. There is
+        # NO image_url, resolution or aspect_ratio field on the i2v route
+        # (the aspect follows the input image) — sending them would 422 the
+        # whole Premium render.
         model = KLING_MODEL
         fal_arguments = {
             # Private buckets: fal.ai downloads the frame itself, so it needs
             # a signature (raw object URLs now 403).
-            "image_url": presign_media(image_url),
             "prompt": prompt,
-            "resolution": resolution.lower(),          # "1080p" (native)
+            "start_image_url": presign_media(image_url),
             "duration": "5" if duration <= 5 else "10",
-            "aspect_ratio": kling_aspect or "16:9",
+            # Negatives go in the endpoint's DEDICATED field, kept short and
+            # specific per Kling prompting guidance — long "No ..." lists
+            # inside the positive prompt can weaken Kling's result.
+            "negative_prompt": KLING_NEGATIVE_PROMPT,
+            # Ambient audio is real money per second and both AI tiers are
+            # silent (music/VO are mixed in at assembly) — audio OFF.
+            "generate_audio": False,
         }
     else:
         # Hailuo-02 standard (SOCIAL/CINEMATIC) — spec unchanged.
@@ -1217,19 +1448,40 @@ def _branding_geometry(width: int, height: int) -> dict:
     landscape looked perfect).
 
     Scale derives from the SHORTER side against the 1080p reference design
-    (photo Ø110, ring 5, margin 36, bar 96 / headshot Ø360, ring 9, bar
-    200); the avatar reuses the card photo disc at ~1.3x, even-rounded
-    (yuv420p cannot carry odd dims, and the alphamerge mask must match the
-    scaled frame exactly). Returns every element's pixel size at scale.
+    (photo Ø150, ring 5, margin 36, bar 96 / font 40, headshot Ø360, logo
+    200, bar 200); the avatar keeps its own design size (~1.3x the static
+    disc), even-rounded, because yuv420p cannot carry odd dims and the
+    alphamerge mask must match the scaled frame exactly. Returns every
+    element's pixel size at scale.
     """
     scale = min(width, height) / 1080.0
-    avatar_side = max(64, int(110 * scale * 1.3) & ~1)
+    # Card disc / logo by orientation — every value here was measured on
+    # DELIVERED frames, never guessed. Third pass (2026-10-15): the agent
+    # cropped its own renders and counted pixels against a grid.
+    #   * Landscape disc Ø150 + ring = 161px outer = 14.9% of frame height
+    #     — signed off, unchanged.
+    #   * The logo was the real offender: at 108/150 it measured ~110px and
+    #     read as a postage stamp, because the fitted tile was mostly dead
+    #     space (see _trim_logo_padding — only ~30% of the agent's own logo
+    #     art is the mark). It is now 200 AFTER the trim, so the fitted
+    #     height means the artwork's height, not the file's.
+    #   * Portrait grew the disc again (150 -> 250, ~23% of the 1080-wide
+    #     canvas) — it read small next to the tall frame even after the
+    #     second pass.
+    portrait = height > width
+    card_photo_design = 250 if portrait else 150
+    card_logo_design = 200
+    # The avatar corner is deliberately NOT tied to the card disc any more:
+    # its size was tuned (and reported as correct) independently, so growing
+    # the static photo must not silently resize the talking head.
+    avatar_photo_design = 190
+    avatar_side = max(64, int(avatar_photo_design * scale * 1.3) & ~1)
     return {
         "scale": scale,
         "margin": int(36 * scale),
-        "card_photo_d": int(110 * scale),
+        "card_photo_d": int(card_photo_design * scale),
         "card_ring": max(3, int(5 * scale)),
-        "card_logo_h": int(72 * scale),
+        "card_logo_h": int(card_logo_design * scale),
         "card_bar_h": int(96 * scale),
         "card_font": int(40 * scale),
         # Longest contact lines must still fit a ~1080-wide portrait bar
@@ -1237,7 +1489,9 @@ def _branding_geometry(width: int, height: int) -> dict:
         "font_floor": max(10, int(14 * scale)),
         "end_photo_d": int(360 * scale),
         "end_ring": max(4, int(9 * scale)),
-        "end_logo_h": int(120 * scale),
+        # End-card logo tracks the running card's bigger mark so the brand
+        # mark is the same size class on the closing frame.
+        "end_logo_h": int(190 * scale),
         "end_bar_h": int(200 * scale),
         "end_name_size": int(64 * scale),
         "end_font": int(48 * scale),
@@ -1249,6 +1503,75 @@ def _branding_geometry(width: int, height: int) -> dict:
         "avatar_outer": avatar_side + 2 * max(3, int(5 * scale)),
         "avatar_margin": max(8, int(36 * scale)),
     }
+
+
+def _trim_logo_padding(img):
+    """Crop near-blank outer borders so a fitted logo is sized by its MARK.
+
+    The byte-verified cause of "the agency logo is still too small": most
+    exported logos carry wide dead margins, and a flattened JPEG has no
+    alpha to trim with. Measured on the agent's own logo (268x158): 28% of
+    the height was blank above the wordmark and the bottom 15% was a footer
+    strip — so a tile fitted to 150px painted a mark only ~45px tall. Trim
+    first, then fit, and the target height finally means the artwork.
+
+    Conservative on purpose: never removes more than 45% from one side,
+    never leaves less than 25% of a dimension, skips tiny images, and hands
+    back the original untouched whenever it cannot read a confident border.
+    Real transparency (PNG alpha) is exact and preferred when present.
+    """
+    try:
+        if img.width < 40 or img.height < 40:
+            return img
+        if img.mode in ("RGBA", "LA"):
+            bbox = img.convert("RGBA").getchannel("A").getbbox()
+            if bbox and (bbox[2] - bbox[0]) >= img.width * 0.25 and (bbox[3] - bbox[1]) >= img.height * 0.25:
+                # Real transparency: the alpha box IS the artwork, so crop to
+                # it. An image that is opaque everywhere (a JPEG re-saved as
+                # PNG) keeps its full box and falls through to the luminance
+                # path below, which is the case that mattered here.
+                if (bbox[2] - bbox[0]) < img.width or (bbox[3] - bbox[1]) < img.height:
+                    return img.crop(bbox)
+        import numpy as np
+        lum = np.asarray(img.convert("L"), dtype=np.float32)
+        MIN_DEV = 6.0  # flat JPEG background sits at std < 4; art is >> 20
+        rows = np.flatnonzero(lum.std(axis=1) >= MIN_DEV)
+        cols = np.flatnonzero(lum.std(axis=0) >= MIN_DEV)
+        if rows.size == 0 or cols.size == 0:
+            return img
+        top, bottom = int(rows[0]), int(rows[-1]) + 1
+        left, right = int(cols[0]), int(cols[-1]) + 1
+        if top > img.height * 0.45 or (img.height - bottom) > img.height * 0.45:
+            return img
+        if left > img.width * 0.45 or (img.width - right) > img.width * 0.45:
+            return img
+        if (bottom - top) < img.height * 0.25 or (right - left) < img.width * 0.25:
+            return img
+        if (top, left, bottom, right) == (0, 0, img.height, img.width):
+            return img
+        return img.crop((left, top, right, bottom))
+    except Exception as te:
+        print(f"logo padding trim skipped: {te}")
+        return img
+
+
+def _fit_logo_tile(img, target_h: int, max_w: int):
+    """Trim dead border, then fit the mark to target_h WITHOUT distortion.
+
+    One implementation for the running overlay card and the end card — the
+    end card used to clamp width while forcing height, which squashed wide
+    marks. ``max_w`` is each caller's own discipline (40% of the frame for the
+    corner mark, 80% for the centred end-card mark); when it binds, width AND
+    height scale down together so the mark is never distorted.
+    """
+    from PIL import Image  # function-local, like the rest of this module
+
+    logo = _trim_logo_padding(img)
+    target_h = max(24, int(target_h))
+    w = max(1, int(round(logo.width * target_h / max(logo.height, 1))))
+    if w > max_w > 0:
+        return logo.resize((max_w, max(1, int(round(target_h * max_w / w)))), Image.LANCZOS)
+    return logo.resize((w, target_h), Image.LANCZOS)
 
 
 def _branding_card_png(
@@ -1315,15 +1638,19 @@ def _branding_card_png(
         except Exception as pe:
             print(f"branding photo fetch failed (skipped): {pe}")
 
-    # 2) Agency logo — top-right, fitted height.
+    # 2) Agency logo — top-right, fitted height (after trimming dead padding).
     logo_url = (branding or {}).get("logo_url")
     logo_fetched = False
     if logo_url:
         try:
             from io import BytesIO
             logo = Image.open(BytesIO(fetch_media(logo_url, timeout=60))).convert("RGBA")
-            w = max(1, int(logo.width * logo_h / max(logo.height, 1)))
-            logo = logo.resize((min(w, width // 3), logo_h), Image.LANCZOS)
+            # Width cap = 40% of the frame (was a third of the width): the old
+            # cap clipped tall-aspect wordmarks in portrait, which is exactly
+            # where the agent asked for a bigger mark. It never crosses the
+            # centre line, and inside the helper the pair scales down together,
+            # so nothing is squashed.
+            logo = _fit_logo_tile(logo, logo_h, max(1, int(width * 0.4)))
             canvas.alpha_composite(logo, (width - margin - logo.width, margin))
             logo_fetched = True
         except Exception as le:
@@ -1450,15 +1777,16 @@ def _branding_end_card_path(
         except Exception as pe:
             print(f"end-card photo fetch failed (skipped): {pe}")
 
-    # Logo — centered beneath the photo
+    # Logo — centered beneath the photo. Same trim+fit as the overlay card,
+    # so the end card's mark matches the mark that ran over the reel (it used
+    # to clamp width while forcing height, which squashed wide wordmarks).
     if logo_url:
         try:
             from io import BytesIO
             logo = Image.open(BytesIO(fetch_media(logo_url, timeout=60))).convert("RGBA")
-            w = max(1, int(logo.width * logo_h / max(logo.height, 1)))
-            logo = logo.resize((min(w, int(width * 0.6)), logo_h), Image.LANCZOS)
+            logo = _fit_logo_tile(logo, logo_h, max(1, int(width * 0.8)))
             canvas.alpha_composite(logo, ((width - logo.width) // 2, y + logo_gap))
-            y += logo_h + logo_gap
+            y += logo.height + logo_gap
         except Exception as le:
             print(f"end-card logo fetch failed (skipped): {le}")
 
@@ -2469,11 +2797,15 @@ def render_video(
             if image_prompts:
                 match = next((p for p in image_prompts if p.get("image_url") == image_url and p.get("prompt")), None)
                 supplied = match.get("prompt") if match else None
-            prompts.append(supplied or VIDEO_PROMPTS[deck[i % 3]])
+            # Engine-aware deck: Premium (Kling 2.6 Pro) gets the Kling-tuned
+            # prompt set; every other tier keeps the Hailuo-authored prompts
+            # byte-identical. Same shuffled A/B/C deck either way, so camera
+            # rotation and retry replays stay identical across engines.
+            engine_prompt = KLING_PROMPTS[deck[i % 3]] if engine == ENG_KLING26 else VIDEO_PROMPTS[deck[i % 3]]
+            prompts.append(supplied or engine_prompt)
 
         # Determine engine + base resolution for AI generation (tier-engine map)
         engine = TIER_VIDEO_ENGINE.get(tier, ENG_HAILUO)
-        kling_aspect = "9:16" if orientation == "PORTRAIT" else "16:9"
         if engine == ENG_KLING26:
             # PREMIUM: Kling 2.6 Pro generates native 1080p — no 768p source
             # stage and no ffmpeg upscale. Kling only accepts 5s or 10s
@@ -2501,8 +2833,7 @@ def render_video(
         # each clip still retries independently (retries=2 on the function).
         video_clips = list(generate_ai_video_clip.map(
             [
-                (image_url, prompt, ai_resolution, clip_seconds, engine,
-                 kling_aspect)
+                (image_url, prompt, ai_resolution, clip_seconds, engine)
                 for image_url, prompt in zip(images, prompts)
             ],
             order_outputs=True,
@@ -2815,7 +3146,7 @@ async def render_video_job(
 # IMAGE EDITING FUNCTIONS
 # ───────────────────────────────────────────────────────────────────────────
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2, max_containers=200, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("bria-credentials")], timeout=300, retries=2, max_containers=200, scaledown_window=300)
 def edit_image_job(edit_id: str, image_url: str, preset_id: str, custom_prompt: str | None = None, strength: float | None = None, guidance_scale: float | None = None, mask_url: str | None = None):
     """Async image-edit job wrapper: runs the sync edit_image body and mirrors
     progress/result into S3 so /edit_status can serve it to any poller."""
@@ -2828,8 +3159,14 @@ def edit_image_job(edit_id: str, image_url: str, preset_id: str, custom_prompt: 
             strength=strength,
             guidance_scale=guidance_scale,
             mask_url=mask_url,
+            # The edit body publishes removal-gate / sweep progress under this
+            # id — it writes nothing on its own. See _edit_progress.
+            progress_id=edit_id,
         )
-        _write_job_status(edit_id, "completed", {
+        _finish_edit_job(edit_id, "completed", {
+            # The edit body hands back its last progress line; prefer it over
+            # the record read inside _finish_edit_job.
+            **({"progress": result["progress"]} if result.get("progress") else {}),
             "image_url": result.get("image_url"),
             "preset_id": result.get("preset_id"),
             "strength": result.get("strength"),
@@ -2837,7 +3174,7 @@ def edit_image_job(edit_id: str, image_url: str, preset_id: str, custom_prompt: 
             "credits_used": result.get("credits_used"),
         })
     except Exception as e:
-        _write_job_status(edit_id, "failed", {"error": _friendly_fal_error(e)})
+        _finish_edit_job(edit_id, "failed", {"error": _friendly_fal_error(e)})
 
 
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=120)
@@ -3431,31 +3768,78 @@ def _run_kontext(image_url: str, prompt: str, guidance: float):
     return response.content
 
 
+# fal-ai/flux-pro/v1/fill bills per OUTPUT megapixel, rounded UP ($0.05/MP),
+# and its input schema has no image_size field (verified against fal's live
+# OpenAPI 2026-10-15 — see scripts/_fal_engine_schema_probe.py). The request
+# used to ask for a 1280x720 output purely to keep the bill at 1MP instead of
+# the 3MP a 1920x1080 output billed; with the field gone, the output follows
+# the input's pixels, so the same saving is kept by capping the INPUT.
+FILL_MAX_INPUT_PIXELS = 1_000_000
+
+
+def _fill_frame_pair(src_bytes: bytes, mask_bytes: bytes):
+    """Fit a source+mask pair to one frame Fill bills as a single megapixel.
+
+    Aspect is PRESERVED (no crop): cropping the source before the model ever
+    sees it amputates the room, and the rest of the pipeline already stores a
+    1920x1080 frame via _fit_image_bytes afterwards. Both images come out of
+    one scale factor, so Fill's "image and mask must share dimensions"
+    contract holds exactly. The mask is downscaled with LANCZOS and then
+    thresholded (same recipe as _mask_png_bytes), never nearest: a thin brush
+    stroke sampled away at 0.3x would silently erase nothing.
+
+    Returns (src_bytes, mask_bytes, (w, h), scaled); scaled=False means the
+    pair already fits and the caller should pass the originals through — so
+    Call 2's already-fitted frame is never re-encoded.
+    """
+    from PIL import Image
+    import io as _io
+    src = Image.open(_io.BytesIO(src_bytes)).convert("RGB")
+    mask = Image.open(_io.BytesIO(mask_bytes)).convert("L")
+    if mask.size != src.size:
+        mask = mask.resize(src.size, Image.LANCZOS)
+    if src.width * src.height <= FILL_MAX_INPUT_PIXELS:
+        return src_bytes, mask_bytes, src.size, False
+    scale = (FILL_MAX_INPUT_PIXELS / float(src.width * src.height)) ** 0.5
+    size = (max(1, int(src.width * scale)), max(1, int(src.height * scale)))
+    src_small = src.resize(size, Image.LANCZOS)
+    mask_small = (mask.resize(size, Image.LANCZOS)
+                  .point(lambda v: 255 if v > 127 else 0, mode="1").convert("L"))
+    out_src, out_mask = _io.BytesIO(), _io.BytesIO()
+    src_small.save(out_src, format="JPEG", quality=92)
+    mask_small.save(out_mask, format="PNG")
+    return out_src.getvalue(), out_mask.getvalue(), size, True
+
+
 def _fill_pro(image_url: str, mask_url: str, prompt: str) -> bytes:
     """One fal-ai/flux-pro/v1/fill (inpainting) call: regenerate ONLY the masked
     region; everything outside the mask is physically locked to the source
     pixels — a hard constraint, unlike prompt-based 'keep the walls' language.
     Returns the output image bytes. guidance defaults are fal's own.
 
-    Fill accepts regular images and data URIs; source and mask must have the
-    same aspect ratio — callers pre-crop the mask to the image size.
+    Inputs are capped at one megapixel by _fill_frame_pair (billing parity,
+    see FILL_MAX_INPUT_PIXELS); the pipeline stores a 1920x1080 frame either
+    way, because every masked-path output goes through _fit_image_bytes.
     """
     import fal_client
     try:
+        fit_src, fit_mask, size, scaled = _fill_frame_pair(
+            fetch_media(image_url, timeout=60), fetch_media(mask_url, timeout=60))
+        if scaled:
+            # Private bucket: fal fetches these itself, so they must be signed.
+            image_arg = presign_media(_upload_mask(
+                size, fit_src, ext="jpg", content_type="image/jpeg", kind="fill_src"))
+            mask_arg = presign_media(_upload_mask(size, fit_mask, kind="fill_mask"))
+            print(f"fill inputs fitted to {size[0]}x{size[1]} ({size[0]*size[1]/1e6:.2f}MP)")
+        else:
+            image_arg, mask_arg = presign_media(image_url), presign_media(mask_url)
+            print(f"fill inputs already {size[0]}x{size[1]} — passed through")
         result = fal_client.run(
             "fal-ai/flux-pro/v1/fill",
             arguments={
-                "image_url": presign_media(image_url),
-                "mask_url": presign_media(mask_url),
+                "image_url": image_arg,
+                "mask_url": mask_arg,
                 "prompt": prompt,
-                # Fill bills per OUTPUT megapixel, rounded UP ($0.05/MP).
-                # The old 1920x1080 request (2.07MP) billed as 3MP = $0.15;
-                # 1280x720 (0.92MP) bills as 1MP = $0.05 — a 3x cut on every
-                # masked call (2-call staging: $0.30 -> $0.10). Same 16:9
-                # frame, same aspect constraints, and the pipeline still
-                # stores a 1920x1080 image: every masked-path output goes
-                # through _fit_image_bytes before storage.
-                "image_size": {"width": 1280, "height": 720},
             },
         )
     except Exception as e:
@@ -3474,6 +3858,25 @@ def _erase_pro(image_url: str, mask_url: str, prompt: str) -> bytes:
     of the surrounding floor/walls, and everything outside the mask stays
     source pixels. (The 'fal-ai/flux-erase' alias does not exist —
     flux-pro/v1/erase is the real endpoint; verified 2026-10-11.)
+
+    PROMPTLESS by design, like BRIA's eraser: this endpoint's input schema is
+    {image_url, mask_url, dilate_pixels, sync_mode, output_format,
+    enable_safety_checker} with image_url + mask_url required — verified
+    against fal's live OpenAPI on 2026-10-15. The `prompt` argument this call
+    used to send is NOT in that schema, so it never reached the model: fal
+    drops undeclared keys on this endpoint instead of rejecting them (live
+    check 2026-10-15 — the old payload, and even a nonsense key, both returned
+    an image, and the response echoed fal's own prompt field back), which left
+    a prompt-steered call that was silently unsteered. The arg stays in the
+    signature (the chain dispatches four engines with one signature) and is
+    deliberately not forwarded, so the payload matches the published contract
+    exactly — the next schema change here is then a hard failure we can see,
+    not a silent no-op on the chain's last fallback.
+    `scripts/_fal_engine_schema_probe.py` re-checks every engine payload
+    against the live schema for free; `scripts/_erase_payload_live.py` runs
+    this one for real and asserts the masked region is gone. The mask we
+    upload is already hole-filled and dilated (see _prepare_removal_mask);
+    the endpoint applies its own default 10px dilation on top.
     Returns the output image bytes.
     """
     import fal_client
@@ -3483,7 +3886,6 @@ def _erase_pro(image_url: str, mask_url: str, prompt: str) -> bytes:
             arguments={
                 "image_url": presign_media(image_url),
                 "mask_url": presign_media(mask_url),
-                "prompt": prompt,
             },
         )
     except Exception as e:
@@ -3494,6 +3896,236 @@ def _erase_pro(image_url: str, mask_url: str, prompt: str) -> bytes:
     if not out_url:
         raise Exception(f"Erase Pro returned no image: {str(result)[:200]}")
     return requests.get(out_url, timeout=120).content
+
+
+def _qwen_inpaint(image_url: str, mask_url: str, prompt: str) -> bytes:
+    """One fal-ai/qwen-image-edit/inpaint call — the PRIMARY removal engine
+    (2026-10-14). FLUX Erase kept leaving furniture-edge remnants and often
+    hallucinated an object into heavily-painted regions across three Engine
+    variants (fixed dilate / composite / two-pass). Qwen-Edit's inpaint route
+    is dramatically better at reconstructing interiors behind furniture and
+    deliberately inventing NOTHING in the hole (trained instruction editor —
+    'remove X' really removes X, fewer sticker ghosts). Same white=edit mask
+    polarity as FLUX Erase, same {images:[{url}]} response shape.
+    Verified 2026-10-14 vs fal docs; $0.03/MP (vs Erase $0.034/MP-w-1MP-input)."""
+    import fal_client
+    try:
+        result = fal_client.run(
+            "fal-ai/qwen-image-edit/inpaint",
+            arguments={
+                "image_url": presign_media(image_url),
+                "mask_url": presign_media(mask_url),
+                "prompt": (
+                    "Remove everything inside the masked region completely - "
+                    "furniture, objects, and shadows - and reconstruct the "
+                    "wall, floor, and baseboard that were behind it, matching "
+                    "the existing texture, lighting and perspective. Do not "
+                    "add any new object or pattern in the removed area. "
+                    f"Context: {prompt}"
+                ),
+                "num_inference_steps": 30,
+                "guidance_scale": 4.0,
+                "num_images": 1,
+                "enable_safety_checker": True,
+            },
+        )
+    except Exception as e:
+        raise RuntimeError(_friendly_fal_error(e)) from None
+    images = (result or {}).get("images") or []
+    out_url = (images[0] or {}).get("url") if images else None
+    if not out_url:
+        raise Exception(f"Qwen Inpaint returned no image: {str(result)[:200]}")
+    return requests.get(out_url, timeout=120).content
+
+
+def _bria_eraser(image_url: str, mask_url: str, prompt: str) -> bytes:
+    """One BRIA image/edit/erase call — the PRIMARY removal engine as of
+    2026-10-14 when BRIA_API_TOKEN is configured. BRIA's Eraser returns the
+    ORIGINAL resolution and contractually guarantees pixels outside the mask
+    remain completely unchanged (docs.bria.ai/image-editing/editing/erase) —
+    the strongest structure-preservation promise of any eraser API we
+    benchmarked (fal Qwen-Edit/FLUX Erase, Clipdrop, LaMa hosts, GPT-image).
+    Its mask convention matches ours exactly: white 255 = erase, black 0 =
+    preserve, same aspect ratio. The eraser is promptless by design — the
+    prompt arg is accepted for interface compatibility and ignored.
+    Sync mode (sync=true) returns {result: {image_url}} directly.
+    """
+    import os as _os
+    token = _os.environ.get("BRIA_API_TOKEN")
+    if not token:
+        raise RuntimeError("BRIA_API_TOKEN not configured")
+    payload = {
+        # The output bucket is private — BRIA's fetcher must get presigned
+        # URLs, same as the fal engines (raw URLs 403 and the render would
+        # silently fall back to Qwen: HTTP 460 "image URL returned HTTP 403",
+        # seen live 2026-10-14).
+        "image": presign_media(image_url),
+        "mask": presign_media(mask_url),
+        "mask_type": "manual",
+        "sync": True,
+    }
+    r = requests.post(
+        "https://engine.prod.bria-api.com/v2/image/edit/erase",
+        json=payload,
+        # Auth contract verified live (200 on BRIA's own example assets):
+        # token rides the "api_token" HEADER on engine.prod.bria-api.com.
+        headers={"api_token": token, "Content-Type": "application/json",
+                 "User-Agent": "PropReel/removal"},
+        timeout=180,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"BRIA erase HTTP {r.status_code}: {r.text[:200]}")
+    out_url = ((r.json() or {}).get("result") or {}).get("image_url")
+    if not out_url:
+        raise RuntimeError(f"BRIA erase returned no image: {r.text[:200]}")
+    return requests.get(out_url, timeout=120).content
+
+
+def _nanobanana_edit(image_url: str, prompt: str) -> bytes:
+    """One fal-ai/nano-banana/edit call with a caller-supplied whole-image
+    instruction — shared by the maskless full-removal path below. Schema
+    verified 2026-10-14 (fal.ai/docs): image_urls + prompt, $0.039/image.
+    """
+    import fal_client
+    try:
+        result = fal_client.run(
+            "fal-ai/nano-banana/edit",
+            arguments={
+                "image_urls": [presign_media(image_url)],
+                "prompt": prompt,
+                "num_images": 1,
+                "aspect_ratio": "auto",
+                "output_format": "jpeg",
+                "safety_tolerance": "4",
+            },
+        )
+    except Exception as e:
+        raise RuntimeError(_friendly_fal_error(e)) from None
+    images = (result or {}).get("images") or []
+    out_url = (images[0] or {}).get("url") if images else None
+    if not out_url:
+        raise Exception(f"Nano Banana returned no image: {str(result)[:200]}")
+    return requests.get(out_url, timeout=120).content
+
+
+def _nanobanana_removal(image_url: str, mask_url: str, prompt: str) -> bytes:
+    """One fal-ai/nano-banana/edit call (Gemini 2.5 Flash Image) — PRIMARY
+    removal engine as of 2026-10-14. Verification vs alternatives across six
+    engine variants: the user's side-by-side Gemini test emptied the room
+    with zero invented furniture — the quality ceilings BRIA/Qwen/Erase kept
+    missing. Its documented weakness (semantic whole-image regeneration
+    without a mask; the fal schema has NO mask field — image_urls + prompt
+    only) is exactly what our composite paste-back already neutralizes:
+    unmasked pixels of OUR output come from the source photo, not the model.
+    Removal prompt per Google's own guidance: name the operation + describe
+    what must stay; avoid "empty the room" phrasing that invites wider edits.
+    Verified schema 2026-10-14 (fal.ai/docs nano-banana): $0.039/image flat.
+    """
+    import fal_client
+    try:
+        result = fal_client.run(
+            "fal-ai/nano-banana/edit",
+            arguments={
+                "image_urls": [presign_media(image_url)],
+                "prompt": (
+                    "Completely remove all the furniture and movable objects "
+                    "that are inside the indicated worn/faded regions of this "
+                    "room photo. Reconstruct the tiled floor, rug-free areas, "
+                    "walls and baseboards behind them naturally, matching the "
+                    "existing tile color, lighting and perspective. Keep the "
+                    "camera angle, ceilings, windows, curtains, and every "
+                    "architectural fixture outside those regions exactly as "
+                    "in the original photo. Do not add any new object."
+                ),
+                "num_images": 1,
+                "aspect_ratio": "auto",
+                "output_format": "jpeg",
+                "safety_tolerance": "4",
+            },
+        )
+    except Exception as e:
+        raise RuntimeError(_friendly_fal_error(e)) from None
+    images = (result or {}).get("images") or []
+    out_url = (images[0] or {}).get("url") if images else None
+    if not out_url:
+        raise Exception(f"Nano Banana returned no image: {str(result)[:200]}")
+    return requests.get(out_url, timeout=120).content
+
+
+def _removal_engine_call(image_url: str, mask_url: str, prompt: str) -> bytes:
+    """Engine chain for masked furniture removal, best first:
+      1. Nano Banana (Gemini 2.5 Flash Image) — empties rooms with zero
+                         invented furniture (quality ceiling of all engines;
+                         verified side-by-side); whole-image regen is safe
+                         because the composite paste-back locks unmasked
+                         pixels to the source.
+      2. BRIA Eraser   — original-resolution output, contractual out-of-mask
+                         pixel preservation (mask-only, no invented blobs).
+      3. Qwen inpaint  — fal's instruction-editor inpaint route.
+      4. FLUX Erase    — last resort, proven schema.
+    Each step falls back on ANY error so a paid render never fails over a
+    single vendor hiccup. The composite + mask-prep pipeline upstream is
+    engine-agnostic.
+    """
+    engines = (
+        ("nanobanana", lambda: _nanobanana_removal(image_url, mask_url, prompt)),
+        ("bria", lambda: _bria_eraser(image_url, mask_url, prompt)),
+        ("qwen-inpaint", lambda: _qwen_inpaint(image_url, mask_url, prompt)),
+        ("flux-erase", lambda: _erase_pro(image_url, mask_url, prompt)),
+    )
+    errors = []
+    for name, call in engines:
+        try:
+            out = call()
+            print(f"removal engine: {name} ok")
+            _removal_engine_call._last_engine = name   # read by the pass-2 gate
+            return out
+        except Exception as e:
+            print(f"removal engine: {name} failed ({e}); trying next")
+            errors.append(f"{name}: {e}")
+    raise RuntimeError("all removal engines failed: " + " | ".join(errors)[:400])
+
+
+# Masked furniture-removal guarantees (2026-10-14): fal's Erase endpoint
+# regenerates the frame but never guarantees unmasked-pixel identity, and
+# users routinely under-paint furniture contact shadows and feet. Two
+# application-side fixes close that gap without a second fal call:
+#   1) mask inflation BEFORE the call → covers what erasing actually needs;
+#   2) composite paste-back AFTER the call → unmasked pixels stay source.
+_MASK_GROW_PX = 6        # minimum dilation px (small photos)
+_MASK_GROW_FRAC = 0.006   # proportional dilation: 0.6% of the long side
+_MASK_GROW_PX_MAX = 48    # dilation cap — beyond this the paste band bites
+                          # neighbours (user complaint 2026-10-14: 6px fixed
+                          # dilate at a 5472px-wide source is 0.1% of frame —
+                          # nothing; coarse upscaled brush strokes need % based
+                          # growth, hole-filling, and a second erase pass).
+_MASK_FEATHER_PX = 4      # Gaussian-soften the paste edge (blur radius px)
+
+
+def _composite_masked(original_bytes: bytes, generated_bytes: bytes,
+                      mask_l, feather_px: int = _MASK_FEATHER_PX) -> bytes:
+    """Stamp an erased/filled output over the ORIGINAL image only inside the
+    (feathered) mask; every pixel outside the mask stays source pixels. This
+    is what actually guarantees "same room" — no fal inpainting model promises
+    unmasked-pixel identity. mask_l is an L-mode PIL mask (255 = take pixel
+    from the generated image). Returns JPEG bytes at the source image's size.
+    A full re-encode at the source frame keeps the pasted pixels visually
+    identical while _fit_image_bytes handles the final frame as before."""
+    import io as _ioc
+    from PIL import Image, ImageFilter
+    src = Image.open(_ioc.BytesIO(original_bytes)).convert("RGB")
+    gen = Image.open(_ioc.BytesIO(generated_bytes)).convert("RGB")
+    if gen.size != src.size:
+        # Erase occasionally returns a slightly different frame; align to
+        # the source so the paste lands on the furniture it replaces.
+        gen = gen.resize(src.size, Image.LANCZOS)
+    if mask_l.size != src.size:
+        mask_l = mask_l.resize(src.size, Image.NEAREST)
+    if feather_px > 0:
+        mask_l = mask_l.filter(ImageFilter.GaussianBlur(feather_px))
+    out = _ioc.BytesIO()
+    Image.composite(gen, src, mask_l).save(out, format="JPEG", quality=95)
+    return out.getvalue()
 
 
 def _mask_png_bytes(data: bytes, width: int, height: int) -> bytes:
@@ -3513,6 +4145,71 @@ def _mask_png_bytes(data: bytes, width: int, height: int) -> bytes:
     return out.getvalue()
 
 
+def _fill_mask_holes(mask_l):
+    """Fill any black region fully enclosed by the user's white paint and any
+    border-connected white region... no — enclosed BLACK holes only.
+
+    A painted-over sofa often misses the strips between its cushions/legs;
+    those unpainted interior speckles are exactly the "furniture still in the
+    image" complaints, and proportional dilation can't reach them. Returns a
+    new L mask with interior holes set to 255. Runs at ≤1024px wide for speed
+    (border flood-fill marks the outside background; black pixels never
+    reached are holes), then upscales back to the mask's true size."""
+    from PIL import Image, ImageChops
+    from PIL import ImageDraw as _ID
+    w, h = mask_l.size
+    d_scale = max(1.0, w / 1024.0)
+    small = mask_l.resize(
+        (max(8, round(w / d_scale)), max(8, round(h / d_scale))), Image.NEAREST
+    )
+    binary = small.point(lambda v: 255 if v >= 128 else 0)
+    # Flood-fill every black border-connected pixel with the marker value 128:
+    # what remains black afterwards is enclosed by white paint — a hole.
+    border = (
+        [(x, 0) for x in range(binary.width)]
+        + [(x, binary.height - 1) for x in range(binary.width)]
+        + [(0, y) for y in range(binary.height)]
+        + [(binary.width - 1, y) for y in range(binary.height)]
+    )
+    for seed in border:
+        if binary.getpixel(seed) == 0:
+            try:
+                _ID.floodfill(binary, seed, 128, thresh=0)
+            except Exception:
+                pass
+    holes = binary.point(lambda v: 255 if v == 0 else 0)          # 0 = hole
+    holes_full = holes.resize((w, h), Image.LANCZOS)
+    holes_full = holes_full.point(lambda v: 255 if v >= 128 else 0)
+    return ImageChops.lighter(mask_l, holes_full)
+
+
+def _prepare_removal_mask(mask_bytes: bytes, src_img) -> tuple:
+    """Turn the uploaded brush mask into (mask_png_bytes_for_fal, grown_mask_L):
+
+    1. fitted to the source photo's exact pixel size (thresholded);
+    2. interior gaps enclosed by the paint filled (_fill_mask_holes);
+    3. dilated PROPORTIONALLY (0.6% of the long side, 6–48 px) so the erase
+       regenerates the soft upscaled stroke edges, contact shadows and feet
+       a coarse browser brush leaves behind;
+    4. the grown mask serves double duty as the composite paste band.
+    """
+    from PIL import Image, ImageFilter
+    import io as _iom
+    src_w, src_h = src_img.size
+    fitted = _mask_png_bytes(mask_bytes, src_w, src_h)
+    mask_l = Image.open(_iom.BytesIO(fitted)).convert("L")
+    mask_l = _fill_mask_holes(mask_l)
+    grow = max(
+        _MASK_GROW_PX,
+        min(_MASK_GROW_PX_MAX, round(_MASK_GROW_FRAC * max(src_w, src_h))),
+    )
+    grown = mask_l.filter(ImageFilter.MaxFilter(2 * grow + 1))
+    buf = _iom.BytesIO()
+    grown.save(buf, format="PNG")
+    print(f"removal mask: {src_w}x{src_h}, holes filled, dilate ±{grow}px")
+    return buf.getvalue(), grown
+
+
 def _style_hint(preset_prompt: str) -> str:
     """Extract the preset's furniture sentence for stage B of two-stage
     staging: the text between 'Only add or replace freestanding furniture and
@@ -3524,6 +4221,19 @@ def _style_hint(preset_prompt: str) -> str:
     rest = preset_prompt[i + len(marker):]
     j = rest.find(".")
     return rest[: j if j != -1 else 300].strip()
+
+
+def _upload_mask(size, mask_bytes: bytes, ext: str = "png",
+                 content_type: str = "image/png", kind: str = "pass") -> str:
+    """Upload a mask PNG — or a fitted fill source — and return its raw S3 URL
+    for a fal call (callers presign it). Same clean-key handling as
+    _store_intermediate but for the small fitted frames the erase/fill engines
+    consume."""
+    s3_key = f"edited/_masks/{kind}_{size[0]}x{size[1]}_{os.urandom(6).hex()}.{ext}"
+    s3 = boto3.client('s3', region_name=S3_REGION)
+    s3.put_object(Bucket=S3_BUCKET, Key=s3_key, Body=mask_bytes,
+                  ContentType=content_type)
+    return f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
 
 
 def _store_intermediate(payload: bytes, image_url: str, preset_id: str,
@@ -3550,10 +4260,15 @@ def _store_intermediate(payload: bytes, image_url: str, preset_id: str,
 
 
 def _store_edit(payload: bytes, image_url: str, preset_id: str,
-                strength_value, guidance_value) -> dict:
+                strength_value, guidance_value, final_progress: dict | None = None) -> dict:
     """Persist an edited frame at edited/<preset>_<source>.jpg and return the
     standard edit-response dict. Shared by the generative path and the
-    deterministic HDR path so both store and answer identically."""
+    deterministic HDR path so both store and answer identically.
+
+    final_progress: the last live-progress line (see _edit_progress). It rides
+    into the response so edit_image_job can publish it with the completed
+    record — the verdict then survives for a poller that arrives after the
+    render instead of being dropped with the processing record."""
     import boto3
     from urllib.parse import urlparse
     # image_url routinely arrives presigned (the studio hands us a 1h signed
@@ -3580,18 +4295,20 @@ def _store_edit(payload: bytes, image_url: str, preset_id: str,
         "preset_id": preset_id,
         "strength": strength_value,
         "guidance_scale": guidance_value,
-        "credits_used": IMAGE_RENDER_CREDIT_COST
+        "credits_used": IMAGE_RENDER_CREDIT_COST,
+        **({"progress": final_progress} if final_progress else {}),
     }
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, retries=2)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("bria-credentials")], timeout=300, retries=2)
 def edit_image(
     image_url: str,
     preset_id: str,
     custom_prompt: str | None = None,
     strength: float | None = None,
     guidance_scale: float | None = None,
-    mask_url: str | None = None
+    mask_url: str | None = None,
+    progress_id: str | None = None
 ) -> dict:
     """
     Edit an image using fal-ai with comprehensive prompt library
@@ -3602,6 +4319,10 @@ def edit_image(
         custom_prompt: Optional custom prompt (overrides preset)
         strength: Optional strength override (uses preset default if not provided)
         guidance_scale: Optional guidance scale override (uses preset default if not provided)
+        mask_url: Optional brush mask (white = regenerable)
+        progress_id: Optional job record id (edit_image_job passes its edit_id).
+            Progress for the removal gate / sweeps is published there for
+            /edit_status pollers; None = publish nothing.
     
     Returns:
         Dictionary with edited image URL and metadata
@@ -3663,10 +4384,112 @@ def edit_image(
     # FLUX Erase [pro] (fal-ai/flux-pro/v1/erase — the "fal-ai/flux-erase"
     # alias does not exist; verified 2026-10-11). White mask pixels are
     # regenerated as seamless continuation of what surrounds them; the mask
-    # is the hard structure constraint, and the preset prompt is passed
-    # verbatim. remove_cars (photo editor) keeps the plain Kontext path,
-    # and a removal preset WITHOUT a mask (stale client) falls through to
-    # the same Kontext path as before.
+    # is the hard structure constraint. A painted mask takes the masked
+    # branch below, where the preset prompt is handed to the engine chain as
+    # steering text — only the engines that declare a prompt field use it
+    # (Nano Banana, Qwen; FLUX Erase and BRIA's eraser are promptless by
+    # design and drop it).
+    # Maskless full removal (2026-10-14): 'remove_all_furniture' now runs
+    # EXACTLY like the user's successful manual Gemini test — whole photo,
+    # the preset's professional full-removal prompt, NO mask, NO composite.
+    # Rationale from six pipeline variants: masked engines kept restyling
+    # furniture inside the paint (B firsthand), Nano Banana's side-by-side
+    # manual test emptied the room cleanly, and the masked nano-banana
+    # attempt failed the same way the others did because the model cannot
+    # SEE the mask ("indicated regions" is meaningless without mask input).
+    # The preset prompt already carries the preserve-architecture contract;
+    # its negative list rides as an explicit exclusion clause (no mask means
+    # the mask-fit/paste-back machinery is bypassed entirely).
+    # Maskless fallback for remove_clutter / remove_personal_items
+    # (2026-10-15): the client now lets those two presets render WITHOUT a
+    # painted mask (paint = precision; skip = clear the whole photo). Same
+    # nanobanana whole-image path as remove_all_furniture — the preset
+    # prompt is scoped to clutter/personal items so the whole-image edit
+    # stays conservative, and the negative list rides along verbatim.
+    # A painted mask on any of the three still takes the FLUX Erase
+    # composite branch below (anchored precision beats whole-image regen).
+    full_removal_presets = (
+        "remove_all_furniture", "remove_clutter", "remove_personal_items",
+    )
+    if preset_id in full_removal_presets and not custom_prompt and not mask_url:
+        negative = preset.get("negative_prompt") or ""
+        full_prompt = (
+            preset["prompt"]
+            + (f"\n\nAvoid: {negative}." if negative else "")
+        )
+        # Clear-and-verify loop (2026-10-15, retuned): single-pass nanobanana
+        # regen is stochastic — the agent's living-room test still came back
+        # with ONE leather recliner surviving bottom-left, i.e. the old
+        # yes/no gate passed a photo with a sofa-sized object in it. The gate
+        # now returns an INVENTORY of survivors (_room_leftovers), and each
+        # retry names them, so the sweep is directed instead of re-scanning
+        # the whole room. At most two sweeps, each seeded from the PREVIOUS
+        # pass's output.
+        # Live progress from here on (see _edit_progress): the gate verdict and
+        # each sweep land in the job record, so the agent sees "1 item still
+        # visible: leather recliner" WHILE the render runs instead of only
+        # discovering the survivor in the finished frame.
+        _edit_progress(
+            progress_id, "gate",
+            "Removal gate: checking the emptied room for leftovers…")
+        nanob = _nanobanana_edit(image_url, full_prompt)
+        # Store pass 1 so the sweeps can seed from a stable URL
+        pass_url = _store_intermediate(nanob, image_url, preset_id, "sweep0")
+        leftovers: list = []
+        try:
+            leftovers = _room_leftovers(image_url, pass_url) or []
+            print(f"maskless removal leftovers after pass 1: {leftovers}")
+        except Exception as e:
+            # A gate hiccup must not break a paid render: no names means no
+            # sweep, which is exactly the old lenient behaviour.
+            print(f"cleared-check skipped ({e})")
+        _edit_progress(progress_id, "gate", _leftover_label(leftovers),
+                       leftovers=leftovers)
+        swept = 0
+        for attempt in range(2):
+            if not leftovers:
+                break
+            try:
+                _edit_progress(
+                    progress_id, "sweep",
+                    "Sweeping the leftovers out (" + f"{attempt + 1} of 2): "
+                    + ", ".join(str(x) for x in leftovers[:4]),
+                    leftovers=leftovers, pass_no=attempt + 1, of=2)
+                sweep_bytes = _nanobanana_edit(
+                    pass_url, _removal_sweep_prompt(full_prompt, leftovers))
+                pass_url = _store_intermediate(
+                    sweep_bytes, image_url, preset_id, f"sweep{attempt + 1}")
+                swept = attempt + 1
+                print(f"removal sweep pass {attempt + 1} ok")
+                try:
+                    leftovers = _room_leftovers(image_url, pass_url) or []
+                    print(f"removal leftovers after sweep {attempt + 1}: {leftovers}")
+                except Exception as e:
+                    print(f"cleared-check skipped ({e})")
+                    leftovers = []
+                _edit_progress(progress_id, "gate",
+                               _leftover_label(leftovers, swept),
+                               leftovers=leftovers, pass_no=swept, of=2)
+            except Exception as e:
+                # A failed sweep must not kill an otherwise-good pass —
+                # return the last successful output below.
+                print(f"removal sweep {attempt + 1} failed ({e}); using previous pass")
+                _edit_progress(
+                    progress_id, "done",
+                    "Leftover sweep failed — keeping the previous pass "
+                    f"({_leftover_label(leftovers, swept)})",
+                    leftovers=leftovers)
+                break
+        cleared = not leftovers
+        final_progress = _edit_progress(
+            progress_id, "done", _leftover_label(leftovers, swept),
+            leftovers=leftovers, done=cleared)
+        print(f"removal maskless nanobanana ok (prompt {len(full_prompt)} chars, cleared={cleared})")
+        return _store_edit(
+            _fit_image_bytes(nanob if pass_url is None else fetch_media(pass_url, timeout=60)), image_url, preset_id,
+            actual_strength, actual_guidance, final_progress=final_progress
+        )
+
     if preset_id in ("remove_all_furniture", "remove_clutter", "remove_personal_items") and not custom_prompt and mask_url:
         from urllib.parse import urlparse as _ulp
         source_bytes = fetch_media(image_url, timeout=60)
@@ -3674,16 +4497,76 @@ def edit_image(
         from PIL import Image
         import io as _io3
         src_img = Image.open(_io3.BytesIO(source_bytes))
-        fitted = _mask_png_bytes(mask_bytes, src_img.width, src_img.height)
+        # Composite fix part 1 — hole-filled + proportionally inflated mask
+        # (see _prepare_removal_mask): coarse browser brush strokes upscaled
+        # to a 4-6K source leave soft edges and interior misses that a fixed
+        # 6px dilate can't cover — the #1 cause of leftover furniture.
+        mask_png, grown = _prepare_removal_mask(mask_bytes, src_img)
         mask_s3_key = f"edited/_masks/{preset_id}_{os.path.basename(_ulp(image_url).path)}.png"
         s3m = boto3.client('s3', region_name=S3_REGION)
         s3m.put_object(Bucket=S3_BUCKET, Key=mask_s3_key,
-                       Body=fitted, ContentType='image/png')
+                       Body=mask_png, ContentType='image/png')
         mask_fitted_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{mask_s3_key}"
-        erased = _erase_pro(image_url, mask_fitted_url, preset["prompt"])
+        # Two erase passes (2026-10-14): a single Erase call stochastic-slivers
+        # complex furniture edges (lamp/mirror ghosts, rug shards survived on
+        # the user's 16:32 retest even with composite). Pass 2 re-erases the
+        # same mask region of pass 1's output — remnants read as objects to
+        # remove and diffusion artifacts don't repeat across seeds.
+        # Masked removal has no inventory gate (no whole-room verdict to make),
+        # so progress here names the engine and pass instead — the equivalent
+        # "is it still working?" signal for the agent. See _edit_progress.
+        _edit_progress(progress_id, "engines",
+                       "Masked removal: erasing what you painted (pass 1 of 2)…")
+        erased = _removal_engine_call(image_url, mask_fitted_url, preset["prompt"])
+        engine_used = getattr(_removal_engine_call, "_last_engine", "?")
+        _edit_progress(progress_id, "engines",
+                       f"Masked removal: pass 1 done (engine: {engine_used})",
+                       pass_no=1, of=2)
+        print(f"removal erase pass 1 ok (engine={engine_used})")
+        # Pass 2 (remnant-sweep) only for the legacy sliver-prone engines.
+        # Nano Banana's whole-image regen is the opposite risk: re-running it
+        # re-interpret the room inside the mask for +$0.039 with marginal remnant
+        # benefit — it empties rooms first-pass (verified), so skip.
+        if engine_used != "nanobanana":
+            try:
+                _edit_progress(
+                    progress_id, "engines",
+                    "Masked removal: sweeping edge remnants (pass 2 of 2)…",
+                    pass_no=2, of=2)
+                pass1_url = _store_intermediate(
+                    erased, image_url, preset_id, "erase_pass1")
+                pass1_img = Image.open(_io3.BytesIO(erased))
+                mask2_bytes, _grown2 = _prepare_removal_mask(mask_bytes, pass1_img)
+                mask2_l = Image.open(_io3.BytesIO(mask2_bytes)).convert("L")
+                if mask2_l.size != pass1_img.size:
+                    mask2_l = mask2_l.resize(pass1_img.size, Image.NEAREST)
+                buf2 = _io3.BytesIO()
+                mask2_l.save(buf2, format="PNG")
+                erased = _removal_engine_call(
+                    pass1_url, _upload_mask(pass1_img.size, buf2.getvalue()),
+                    preset["prompt"])
+                _edit_progress(
+                    progress_id, "engines",
+                    "Masked removal: pass 2 done (engine: "
+                    f"{getattr(_removal_engine_call, '_last_engine', '?')})",
+                    pass_no=2, of=2)
+                print(f"removal erase pass 2 ok (engine={getattr(_removal_engine_call, '_last_engine', '?')})")
+            except Exception as _e2:
+                print(f"removal erase pass 2 skipped ({_e2}); using pass 1")
+        else:
+            print("removal pass 2 skipped: nanobanana empties first-pass")
+        # Composite fix part 2 — paste the erased output back over the
+        # ORIGINAL only inside the (feathered) inflated mask: every pixel
+        # the user did not paint stays their photo's own pixels, so the
+        # "doesn't look like the same room" failure can't happen here.
+        final_progress = _edit_progress(
+            progress_id, "composite",
+            "Masked removal: locking every unpainted pixel to your photo…")
+        composited = _composite_masked(source_bytes, erased, grown)
+        print("removal composite paste-back applied")
         return _store_edit(
-            _fit_image_bytes(erased), image_url, preset_id,
-            actual_strength, actual_guidance
+            _fit_image_bytes(composited), image_url, preset_id,
+            actual_strength, actual_guidance, final_progress=final_progress
         )
 
     # Masked staging (brush tool): FLUX.1 Fill [pro] inpainting. The mask is
@@ -3712,9 +4595,11 @@ def edit_image(
             _set_hint_b = _style_hint(preset["prompt"])
             mapped_guidance = round(max(1.5, min(3.5, 1.5 + float(actual_strength) * 2.0)), 2)  # unused in fill path (kept for response shape)
 
-            # Call 1 — remove furniture inside the mask. Output comes back in
-            # Fill's target frame (1920x1080), which may differ from the
-            # source's aspect for photos wider/taller than 16:9.
+            # Call 1 — remove furniture inside the mask. Fill has no output
+            # size any more (schema-verified): it returns the frame of the
+            # pair it was given, which _fill_pro caps at ≤1MP in the source's
+            # own aspect, and the stored image is normalised to 1920x1080 by
+            # _fit_image_bytes below.
             removed = _fill_pro(
                 image_url, mask_fitted_url,
                 "Completely remove the furniture and objects inside the "
@@ -3730,15 +4615,16 @@ def edit_image(
                 _fit_image_bytes(removed), image_url, preset_id, "masked_empty")
 
             # Call 2 — furnish the SAME mask region of the emptied frame.
-            # The emptied frame lives in Fill's 1920x1080 output frame, so the
-            # mask MUST be re-fitted to THAT frame — reusing the source-fitted
-            # mask here is what made fal reject "Image and mask sizes do not
-            # match" on photos wider than 16:9 (Fill center-cropped Call 1's
-            # output to the 16:9 frame) and silently fall back to whole-frame
+            # The emptied frame is the stored 1920x1080 image, so the mask
+            # MUST be re-fitted to THAT frame's true pixel size — reusing the
+            # source-fitted mask here is what once made fal reject "Image and
+            # mask sizes do not match" and silently fall back to whole-frame
             # Kontext, which re-rendered the entire room. Re-fit from the
             # ORIGINAL user mask to the emptied frame's true pixel size so
             # Call 2 regenerates exactly the furniture regions of Call 1's
             # output — the staircase/kitchen outside the paint never moves.
+            # (_fill_pro then caps source+mask together at ≤1MP, so the pair
+            # shown to Fill is always dimension-matched.)
             removed_img = Image.open(_io2.BytesIO(_fit_image_bytes(removed)))
             mask_for_b = _mask_png_bytes(mask_bytes, removed_img.width, removed_img.height)
             mask_b_key = f"edited/_masks/{preset_id}_b_{os.path.basename(_ulp(image_url).path)}.png"
@@ -3836,18 +4722,29 @@ def edit_image(
         # costs one fal job but preserves the guarantee the preset is sold on.
         stage_a_url = None
         for attempt in range(3):
+            # Same gate, same channel as the removal presets: staging's stage A
+            # IS a furniture removal, so its survivors surface live too.
+            _edit_progress(
+                progress_id, "gate",
+                "Clearing the room for staging — emptying it"
+                + (f" (retry {attempt + 1} of 3)…" if attempt else "…"))
             stage_a_bytes = _run_kontext(image_url, stage_a_prompt, stage_a_guidance)
             stage_a_url = _store_intermediate(
                 stage_a_bytes, image_url, preset_id, f"empty{attempt or ''}")
             try:
-                cleared = _room_cleared(image_url, stage_a_url)
+                # Inventory gate (shared with the removal presets): judging
+                # "is it empty?" as one token let a surviving recliner through.
+                survivors = _room_leftovers(image_url, stage_a_url) or []
             except Exception as e:
                 print(f"cleared-check skipped: {e}")
-                cleared = True  # don't loop forever on LLM hiccups
-            if cleared:
+                survivors = []  # don't loop forever on LLM hiccups
+            _edit_progress(progress_id, "gate",
+                           _leftover_label(survivors, attempt),
+                           leftovers=survivors)
+            if not survivors:
                 _anchor = _anchor or ""  # keep original anchor for stage B
                 break
-            print(f"stage A attempt {attempt}: furniture remains — retrying")
+            print(f"stage A attempt {attempt}: still present {survivors} — retrying")
         if stage_a_url is None:
             raise Exception("staging: emptier produced no output")
         # Anchor stage B on BOTH frames: the emptied stage-A output is the
@@ -3865,10 +4762,14 @@ def edit_image(
             f"{stage_b_prompt}\n\nTHIS EXACT ROOM for reference: "
             f"{stage_b_anchor}\n\nDo not include: {negative_prompt}."
         )
+        final_progress = _edit_progress(
+            progress_id, "furnish",
+            "Room is clear — placing the new furniture set…")
         stage_b_bytes = _run_kontext(stage_a_url, stage_b_prompt, stage_b_guidance)
         payload = _fit_image_bytes(stage_b_bytes)
         payload = _staging_brightness_floor(payload, fetch_media(image_url, timeout=60))
-        return _store_edit(payload, image_url, preset_id, actual_strength, mapped_guidance)
+        return _store_edit(payload, image_url, preset_id, actual_strength, mapped_guidance,
+                           final_progress=final_progress)
 
     prompt_for_model = _wrap(prompt)
     print(f"kontext: guidance={mapped_guidance}, prompt={len(prompt_for_model)} chars")
