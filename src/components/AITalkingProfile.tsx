@@ -146,6 +146,11 @@ export default function AITalkingProfile({
         </div>
         <button
           onClick={handleToggle}
+          role="switch"
+          aria-checked={enabled}
+          aria-label={enabled
+            ? 'AI Avatar Video included in this render — switch off to exclude it'
+            : 'Include AI Avatar Video in this render'}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
             enabled ? 'bg-purple-600' : 'bg-ink-700'
           }`}

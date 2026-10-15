@@ -1442,7 +1442,7 @@ function VideoGeneratorPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <TrialDeadlineModal />
-      <ToolPageHeader title="AI Video Generator" subtitle="Property reel in 8 guided steps — description, tier, photos, orientation, voiceover, avatar, music & branding, render." />
+      <ToolPageHeader title="AI Video Generator" subtitle="Property reel in 8 guided steps — description, tier, orientation, photos, voiceover, avatar, music & branding, render." />
       <div className="card-dark p-6">
         <ErrorBoundary label="Video Generator">
           <VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} langCheck={langCheck} initialImages={prefillImages} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} />
@@ -2993,8 +2993,8 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   const WIZARD_STEPS = [
     { id: 'description', label: 'Description' },
     { id: 'tier', label: 'Tier & Config' },
-    { id: 'photos', label: 'Photos' },
     { id: 'orientation', label: 'Orientation' },
+    { id: 'photos', label: 'Photos' },
     { id: 'voiceover', label: 'Voiceover' },
     { id: 'avatar', label: 'AI Avatar' },
     { id: 'extras', label: 'Music & Branding' },
@@ -3002,7 +3002,9 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   ];
   const [step, setStep] = useState(0);
   // Photos are the one hard gate — a reel without images can't render.
-  const canNext = step !== 2 || uploadedImages.length > 0;
+  // (2026-10-15: Photos moved after Orientation — agents pick the frame
+  // FIRST, so the orientation tip shapes how they shoot/upload the set.)
+  const canNext = step !== 3 || uploadedImages.length > 0;
   const nextStep = () => { if (step < WIZARD_STEPS.length - 1 && canNext) setStep(step + 1); };
   const prevStep = () => setStep(s => Math.max(0, s - 1));
   // Listing details → Voiceover Script: arriving at the Voiceover step
@@ -3019,6 +3021,8 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
     lastWizardStepRef.current = step;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
+  // Step 3 now latches as "Photos chosen at orientation time" — see the
+  // ORIENTATION_PHOTO_TIP render in the orientation block for why.
 
   return (
     <div className="space-y-6">
@@ -3155,8 +3159,8 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
 
       </>)}
 
-      {/* Step 3 — Property Photos */}
-      {step === 2 && (
+      {/* Step 4 — Property Photos (after Orientation — see Step 3 note) */}
+      {step === 3 && (
       <div>
         <div className="flex items-center justify-between">
           <label className="label">Property Photos ({uploadedImages.length} / {selectedConfig.images})</label>
@@ -3189,11 +3193,14 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           </p>
           <p className="text-ink-500 text-xs mt-1">Up to {selectedConfig.images} images for {selectedConfig.duration}s video — JPEG/PNG/WEBP up to 25MB</p>
         </div>
+        {/* 2026-10-15: bigger thumbnails (2-col mobile / 3-col desktop,
+            4:3 instead of square) — agents couldn't see what was in each
+            photo at the old 5-up grid when picking the reel order */}
         {uploadedImages.length > 0 && (
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mt-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
             {uploadedImages.map((src, i) => (
               <div key={src} className={videoOrder.dragClass(i, 'relative group')} {...videoOrder.dragProps(i)}>
-                <img src={userFacingPhoto(src)} alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
+                <img src={userFacingPhoto(src)} alt={`Photo ${i + 1}`} className="w-full aspect-[4/3] object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
                 <span className="absolute top-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">{i + 1}</span>
                 <button
                   onClick={e => { e.stopPropagation(); setUploadedImages(prev => prev.filter((_, idx) => idx !== i)); }}
@@ -3210,14 +3217,16 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
 
       )}
 
-      {/* Step 4 — Orientation */}
-      {step === 3 && (
+      {/* Step 3 — Orientation (moved BEFORE Photos 2026-10-15: pick the
+          frame first — the orientation tip then tells the agent what to
+          watch for when they upload the set) */}
+      {step === 2 && (
       <div>
         <div className="flex items-center justify-between">
           <label className="label">Orientation</label>
           <button
             type="button"
-            onClick={() => { setOrientation('LANDSCAPE'); toast.info('Orientation reset to Landscape', 'Step 4'); }}
+            onClick={() => { setOrientation('LANDSCAPE'); toast.info('Orientation reset to Landscape', 'Step 3'); }}
             className="text-xs text-ink-400 hover:text-red-400"
           >
             Clear
@@ -3404,15 +3413,21 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           The clip itself renders FIRST, inside Generate Video on Step 8;
           the voiceover stays on Step 5, the only place it is chosen. */}
       <div className={step === 5 ? undefined : 'hidden'}>
-        <div className="flex items-center justify-between">
-          <label className="label">AI Avatar Video (optional add-on)</label>
+        {/* Clear sits BESIDE the label on the left, never on the right:
+            right-aligned here stacked directly above the enable toggle and
+            read as "toggle to clear the form" instead of "toggle to include
+            the avatar" (agent feedback 2026-10-15). The right edge of the
+            avatar header belongs to the toggle alone. */}
+        <div className="flex items-center gap-3 flex-wrap mb-1">
+          <label className="label mb-0">AI Avatar Video (optional add-on)</label>
           {(profileImage || aiTalkingProfile) && (
             <button
               type="button"
               onClick={() => { onProfileImageChange(null); setAiTalkingProfile(false); toast.info('AI Avatar cleared', 'Step 6'); }}
-              className="text-xs text-ink-400 hover:text-red-400"
+              className="inline-flex items-center gap-1 text-xs text-ink-400 hover:text-red-400"
+              aria-label="Clear the AI Avatar photo and switch the add-on off"
             >
-              Clear
+              <X className="w-3 h-3" /> Clear
             </button>
           )}
         </div>
@@ -3527,7 +3542,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       </div>
       </>)}
 
-      {step === 2 && !canNext && (
+      {step === 3 && !canNext && (
         <p className="text-xs text-amber-400/90 text-center">Add at least one property photo to continue — a reel needs images to render.</p>
       )}
 
