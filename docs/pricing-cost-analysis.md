@@ -97,6 +97,25 @@ The billing is flat but cost is per-second (fal $0.005/s + Narakeet $0.0033/s). 
 | Brush-mask staging (Fill Pro) | 1× Fill @3MP | 4 | 2.48 | 1.52 | 38% |
 | Brush removal (Erase Pro) | 1× Erase | 2 | 0.58 | 1.42 | 71% |
 
+#### Brush removal repriced with composite fix (2026-10-14)
+
+Furniture removal now runs Erase + mask inflation (6 px MaxFilter dilate,
+no extra fal call) + composite paste-back so unmasked pixels stay the
+agent's own photo. Same single Erase call, no COGS change:
+
+| Component | Cost | Notes |
+|---|---:|---|
+| FLUX Erase [pro], ≤1 MP output | $0.03 | $0.03 first MP ($0.004/extra MP over 1) |
+| Erase input-image charge | $0.004 | 1 MP reference image |
+| S3 mask PNG + client | ~$0.0005 | pennies, spread |
+| **Total COGS** | **≈$0.0345 = R0.57** | FX $1 = R16.55 |
+
+Price stays 2 credits (2 ⚡): margin ≈ R1.43 = 71% — above the 40%
+blended floor with room for a retry. Retries cost COGS each (a failed
+Erase refunds via the standard failure path), so worst-case 2-attempt
+COGS ≈ R1.14, still 43% at 2 ⚡. Do not drop to 1 ⚡ (1.42× headroom is
+what absorbs pathological rooms needing a redo).
+
 ### AI text (Grok 4.7 via fal/OpenRouter)
 
 | Service | Price (R) | Cost (R) | Profit (R) | Margin |
