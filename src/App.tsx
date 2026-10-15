@@ -43,7 +43,8 @@ import {
   TrendingUp, Eye, Clock, AlertCircle, AlertTriangle, Download, Copy, RefreshCw, Plus, VolumeX,
   Search, Filter, ArrowRight, Globe, Phone, Mail, MapPin, ChevronDown, ChevronLeft,
   Monitor, Smartphone, Mic, Camera, Palette, Sun, Cloud, Moon as MoonIcon, Bell,
-  FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle, FolderOpen
+  FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle, FolderOpen,
+  GraduationCap
 } from 'lucide-react';
 
 import { lazy, Suspense, type ComponentProps } from 'react';
@@ -69,6 +70,8 @@ const AgentBrandingBase = lazy(() => import('./components/AgentBranding'));
 const SecuritySettingsBase = lazy(() => import('./components/SecuritySettings'));
 const AITalkingProfileBase = lazy(() => import('./components/AITalkingProfile'));
 const AdminMusicLibraryBase = lazy(() => import('./components/AdminMusicLibrary'));
+const AdminTutorialsBase = lazy(() => import('./components/AdminTutorials'));
+const DashboardTutorialsBase = lazy(() => import('./components/DashboardTutorials'));
 const AdminUpdateModeBase = lazy(() => import('./components/AdminUpdateMode'));
 const MaintenanceGate = lazy(() => import('./components/MaintenanceGate').then(m => ({ default: m.MaintenanceGate })));
 const ShareSheetBase = lazy(() => import('./components/ShareSheet'));
@@ -128,6 +131,9 @@ function AITalkingProfile(props: ComponentProps<typeof AITalkingProfileBase>) {
 }
 function AdminMusicLibrary() {
   return <Suspense fallback={<DashboardSkeleton />}><AdminMusicLibraryBase /></Suspense>;
+}
+function AdminTutorials() {
+  return <Suspense fallback={<DashboardSkeleton />}><AdminTutorialsBase /></Suspense>;
 }
 function AdminUpdateMode() {
   return <Suspense fallback={<DashboardSkeleton />}><AdminUpdateModeBase /></Suspense>;
@@ -850,6 +856,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     { path: '/dashboard/projects', icon: <FolderOpen className="w-5 h-5" />, label: 'My Projects' },
     { path: '/dashboard/branding', icon: <Palette className="w-5 h-5" />, label: 'Agent Branding' },
     { path: '/dashboard/analytics', icon: <BarChart3 className="w-5 h-5" />, label: 'Analytics' },
+    { path: '/dashboard/tutorials', icon: <GraduationCap className="w-5 h-5" />, label: 'Tutorials' },
     // Agency tab only appears once an agency signup exists (or for admins,
     // who have full visibility across the site including agency dashboards)
     ...((user?.agencyId || isAdmin) ? [{ path: '/dashboard/agency', icon: <Building2 className="w-5 h-5" />, label: 'Agency' }] : []),
@@ -1115,6 +1122,10 @@ function DashboardMyProjects() {
 
 function DashboardAnalytics() {
   return <Suspense fallback={<DashboardSkeleton />}><EnhancedAnalytics /></Suspense>;
+}
+
+function DashboardTutorials() {
+  return <Suspense fallback={<DashboardSkeleton />}><DashboardTutorialsBase /></Suspense>;
 }
 
 function DashboardAgency() {
@@ -3656,7 +3667,7 @@ function AdminPage() {
         <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {['overview', 'pnl', 'ops', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music', 'api-keys', 'update-mode'].map(t => (
+        {['overview', 'pnl', 'ops', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'tutorials', 'music', 'api-keys', 'update-mode'].map(t => (
           <button key={t} onClick={() => setTab(t)} className={`tab-pill ${tab === t ? 'tab-pill-active' : ''}`}>
             {t === 'music' ? 'Music Library' : t === 'pnl' ? 'P&L' : t === 'api-keys' ? 'API Keys' : t === 'update-mode' ? 'Update Mode' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -3671,6 +3682,7 @@ function AdminPage() {
         {tab === 'reviews' && <AdminReviews />}
         {tab === 'settings' && <AdminSettings />}
         {tab === 'prompts' && <AdminPrompts />}
+        {tab === 'tutorials' && <AdminTutorials />}
         {tab === 'music' && <AdminMusicLibrary />}
         {tab === 'api-keys' && <AdminApiKeys />}
         {tab === 'update-mode' && <AdminUpdateMode />}
@@ -4811,6 +4823,7 @@ function AppRoutes() {
       <Route path="/dashboard/projects" element={<RequireAuth><DashboardLayout><DashboardMyProjects /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/branding" element={<RequireAuth><DashboardLayout><DashboardBranding /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/analytics" element={<RequireAuth><DashboardLayout><DashboardAnalytics /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/tutorials" element={<RequireAuth><DashboardLayout><DashboardTutorials /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/photo-editor" element={<RequireAuth><DashboardLayout><PhotoEditorPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/description" element={<RequireAuth><DashboardLayout><DescriptionPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/video" element={<RequireAuth><DashboardLayout><VideoGeneratorPage /></DashboardLayout></RequireAuth>} />

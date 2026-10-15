@@ -33,6 +33,17 @@ const ALLOWED_AUDIO = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'aud
 /** Hard cap on audio uploads — the 15MB the admin UI has always promised, now enforced server-side. */
 const MAX_BYTES = 15 * 1024 * 1024;
 
+// ── Admin tutorial videos (the SAME shared media route — api/** sits on
+// the Vercel Hobby 12-function cap, so tutorials ride here rather than in
+// a 13th lambda). Flow mirrors the audio path exactly; only the sniff and
+// the key space differ.
+const ALLOWED_VIDEO = ['video/mp4', 'video/quicktime', 'video/webm'];
+/** ≤100 MB per the tutorial publishing checklist (S3 + CDN-friendly). */
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+/** Browser-playable formats only — mkv/avi upload fine elsewhere but a
+ * playlist the whole dashboard can play must not need an extension hack. */
+const VIDEO_FORMATS = ['mp4', 'mov', 'webm'];
+
 function s3() {
   return new S3Client({
     region: S3_REGION,
@@ -91,6 +102,39 @@ type AudioCheck =
  * container or garbage is rejected and the object is deleted, so a renamed
  * .mp3 never reaches the Studio music picker (played by all users).
  */
+type VideoCheck =
+  | { ok: true; contentType: string; bytes: number; storedType: string }
+  | { ok: false; status: number; error: string };
+
+/** Same contract as verifyAudioObject, for tutorial how-to videos: HEAD
+ * the object, 4KB ranged GET, and lib/mediaSniff's binary signature —
+ * only browser-playable MP4/MOV/WebM survives. Anything else (a renamed
+ * HTML trap, an MKV, an image) is deleted from the bucket. */
+async function verifyVideoObject(key: string): Promise<VideoCheck> {
+  try {
+    const head = await s3().send(new HeadObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+    const len = Number(head.ContentLength || 0);
+    if (len <= 0 || len > MAX_VIDEO_BYTES) {
+      await s3().send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: key })).catch(() => {});
+      return { ok: false, status: 413, error: 'Video must be between 1 byte and 100MB' };
+    }
+    const part = await s3().send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: key, Range: 'bytes=0-4095' }));
+    const head4k = Buffer.from(await (part.Body as any).transformToByteArray());
+    const sniff = sniffMedia(head4k);
+    if (sniff.kind !== 'video' || !sniff.format || !VIDEO_FORMATS.includes(sniff.format)) {
+      await s3().send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: key })).catch(() => {});
+      return { ok: false, status: 415, error: 'Not a browser-playable MP4, MOV or WebM video — the file was discarded' };
+    }
+    return { ok: true, contentType: sniff.format === 'mp4' ? 'video/mp4' : `video/${sniff.format}`, bytes: len, storedType: head.ContentType || '' };
+  } catch (err: any) {
+    if (err?.name === 'NoSuchKey' || err?.name === 'NotFound' || err?.$metadata?.httpStatusCode === 404) {
+      return { ok: false, status: 404, error: 'Uploaded video not found — try the upload again' };
+    }
+    console.error('tutorial verify failed:', err);
+    return { ok: false, status: 500, error: 'Could not verify the video — try again' };
+  }
+}
+
 async function verifyAudioObject(key: string): Promise<AudioCheck> {
   try {
     const head = await s3().send(new HeadObjectCommand({ Bucket: S3_BUCKET, Key: key }));
@@ -279,6 +323,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // ── GET /api/music?action=tutorials — public tutorial list ─────────
+    // (Placed BEFORE the generic GET list so the two never mix.) Ordered
+    // newest-first by the admin's upload date; viewers get 1h signed edge
+    // URLs and rows keep their raw object URLs (M-5, same as tracks).
+    if (req.method === 'GET' && req.query.action === 'tutorials') {
+      const result = await docClient.send(new ScanCommand({
+        TableName: TABLES.SETTINGS,
+        FilterExpression: '#t = :tv',
+        ExpressionAttributeNames: { '#t': 'type' },
+        ExpressionAttributeValues: { ':tv': 'tutorial_video' },
+      }));
+      const videos = (result.Items || []).sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      const signed = await Promise.all(videos.map(async (v: any) => ({
+        ...v,
+        url: toEdgeUrl((await signS3Url(v.url)) || v.url),
+      })));
+      return res.status(200).json({ success: true, tutorials: signed });
+    }
+
     // ── GET /api/music — list all tracks ─────────────────────────────
     if (req.method === 'GET') {
       const result = await docClient.send(new ScanCommand({
@@ -296,6 +359,86 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         url: toEdgeUrl((await signS3Url(t.url)) || t.url),
       })));
       return res.status(200).json({ success: true, tracks: signed });
+    }
+
+    // ── POST /api/music?action=tutorial_upload — presigned video PUT ───
+    // Admin only. Same size-pinned presign contract as audio (the declared
+    // size lands in the signature, so the PUT itself is capped).
+    if (req.method === 'POST' && req.query.action === 'tutorial_upload') {
+      const admin = await requireAdmin(req);
+      if (!admin.ok) return res.status(403).json({ error: admin.error });
+      const rl = await consumeRateLimit('presign', String(admin.userId), PRESIGN_LIMIT, RATE_WINDOW_SEC);
+      if (!rl.allowed) return tooManyUploads(res, rl.retryAfterSec);
+
+      const { category, contentType, size } = req.body || {};
+      if (!category) return res.status(400).json({ error: 'category is required' });
+      if (!ALLOWED_VIDEO.includes(contentType)) {
+        return res.status(400).json({ error: `contentType must be one of: ${ALLOWED_VIDEO.join(', ')}` });
+      }
+      const bytes = Number(size);
+      if (!Number.isFinite(bytes) || bytes <= 0) {
+        return res.status(400).json({ error: 'size (bytes) is required' });
+      }
+      if (bytes > MAX_VIDEO_BYTES) {
+        return res.status(413).json({ error: 'Videos must be 100MB or smaller' });
+      }
+
+      const catSlug = String(category).toLowerCase().replace(/[^a-z0-9-_ ]/gi, '').trim().replace(/\s+/g, '-') || 'tutorial';
+      const ext = contentType === 'video/quicktime' ? 'mov' : contentType.split('/')[1];
+      const key = `tutorials/${Date.now()}-${catSlug}.${ext}`;
+      const put = new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, ContentType: contentType, ContentLength: bytes });
+      const uploadUrl = await getSignedUrl(s3() as any, put, { expiresIn: 300 });
+      return res.status(200).json({ success: true, uploadUrl: toEdgeUrl(uploadUrl), s3Key: key, expiresIn: 300 });
+    }
+
+    // ── POST /api/music?action=tutorial_verify — binary video check ────
+    if (req.method === 'POST' && req.query.action === 'tutorial_verify') {
+      const admin = await requireAdmin(req);
+      if (!admin.ok) return res.status(403).json({ error: admin.error });
+      const rl = await consumeRateLimit('verify', String(admin.userId), VERIFY_LIMIT, RATE_WINDOW_SEC);
+      if (!rl.allowed) return tooManyUploads(res, rl.retryAfterSec);
+      const key = req.body?.key;
+      if (typeof key !== 'string' || !key.startsWith('tutorials/')) {
+        return res.status(400).json({ error: 'Invalid upload key' });
+      }
+      const v = await verifyVideoObject(key);
+      if (!v.ok) return res.status(v.status).json({ error: v.error });
+      if (v.storedType !== v.contentType) await setContentType(key, v.contentType);
+      return res.status(200).json({ success: true, contentType: v.contentType, bytes: v.bytes });
+    }
+
+    // ── POST /api/music?action=tutorial_register — publish metadata ─────
+    if (req.method === 'POST' && req.query.action === 'tutorial_register') {
+      const admin = await requireAdmin(req);
+      if (!admin.ok) return res.status(403).json({ error: admin.error });
+      const { title, category, description, language, s3Key, durationSeconds } = req.body || {};
+      if (!title || !category || !s3Key) {
+        return res.status(400).json({ error: 'title, category and s3Key are required' });
+      }
+      if (!s3Key.startsWith('tutorials/')) return res.status(400).json({ error: 's3Key must be inside tutorials/' });
+      // Belt-and-braces (same as audio): registration re-sniffs the stored
+      // bytes, so a request that skipped tutorial_verify still can't
+      // publish non-video.
+      const check = await verifyVideoObject(s3Key);
+      if (!check.ok) return res.status(check.status).json({ error: check.error });
+      if (check.storedType !== check.contentType) await setContentType(s3Key, check.contentType);
+
+      const id = `tut_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const tutorial = {
+        id,
+        type: 'tutorial_video',
+        title: String(title).slice(0, 120),
+        category: String(category).slice(0, 60),
+        description: String(description || '').slice(0, 300),
+        language: String(language || 'en').slice(0, 8),
+        s3Key,
+        url: publicUrl(s3Key),
+        durationSeconds: Number(durationSeconds) || null,
+        uploadedBy: admin.userId || null,
+        createdAt: new Date().toISOString(),
+      };
+      await putItem(TABLES.SETTINGS, tutorial);
+      return res.status(201).json({ success: true, tutorial: { ...tutorial, url: toEdgeUrl((await signS3Url(tutorial.url)) || tutorial.url) } });
     }
 
     // ── POST /api/music?action=upload — presigned PUT ────────────────
@@ -364,7 +507,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(201).json({ success: true, track: { ...track, url: toEdgeUrl((await signS3Url(track.url)) || track.url) } });
     }
 
-    // ── DELETE /api/music?id=xxx ─────────────────────────────────────
+    // ── DELETE /api/music?id=xxx [&action=tutorial] ─────────────────
     if (req.method === 'DELETE') {
       const admin = await requireAdmin(req);
       if (!admin.ok) return res.status(403).json({ error: admin.error });
@@ -372,9 +515,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const id = req.query.id as string;
       if (!id) return res.status(400).json({ error: 'id required' });
 
+      const wantType = req.query.action === 'tutorial' ? 'tutorial_video' : 'music_track';
+      const missingLabel = wantType === 'tutorial_video' ? 'Video not found' : 'Track not found';
       const existing = await getItem<any>(TABLES.SETTINGS, { id });
-      if (!existing || existing.type !== 'music_track') {
-        return res.status(404).json({ error: 'Track not found' });
+      if (!existing || existing.type !== wantType) {
+        return res.status(404).json({ error: missingLabel });
       }
 
       // Remove the S3 object too (best-effort)
