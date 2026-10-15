@@ -18,6 +18,7 @@ import { jobCredits, flashheadCreditsForText, narrationSecondsForText, FLASHHEAD
 import { createHash } from 'crypto';
 import { consumeRateLimit } from '../lib/rateLimit';
 import { recordCronRun } from '../lib/cronRuns';
+import { getMaintenanceState, setMaintenanceState } from '../lib/maintenance';
 import { rawS3Url, signS3Url, toEdgeUrl } from '../lib/s3Urls';
 import { auditApiResponses, auditStoredRows, type MediaCheck } from '../lib/mediaAudit';
 
@@ -2781,6 +2782,54 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
  *   email, fullName, phone?, role?, agencyName?, planId?, cycle?
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // ── ?action=maintenance — site Update Mode state ────────────────────
+  // GET: public — the browser boot gate shows the maintenance page even
+  // pre-login. POST: admin-session-only { enabled, message }.
+  if (req.query.action === 'maintenance') {
+    if (req.method === 'GET') {
+      const state = await getMaintenanceState();
+      return res.status(200).json({ success: true, ...state });
+    }
+    if (req.method === 'POST') {
+      const gate = await requireAdminSession(req);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      const { enabled, message } = req.body || {};
+      const state = await setMaintenanceState(
+        !!enabled,
+        typeof message === 'string' ? message.slice(0, 300) : undefined,
+      );
+      console.log(`Update mode ${state.enabled ? 'ENABLED' : 'disabled'} by ${gate.user.email}`);
+      return res.status(200).json({ success: true, ...state });
+    }
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // ── Update-mode gate (Admin → Update Mode) ───────────────────────────
+  // While the row is ON, every non-admin caller gets a 503 across this
+  // whole function (nested routes included): the SPA refuses to render
+  // anything else and direct callers get the same protocol answer, so the
+  // "entire website" is really in update mode, not just the homepage.
+  // Exempt: the auth_* family (sign-in/registration/session restore —
+  // admins must be able to sign in during a maintenance window and users
+  // must be able to see the gate) and this status action itself. The admin
+  // check uses the SESSION identity — a claimed admin id in the payload
+  // proves nothing. When the mode is OFF (the normal case) this costs one
+  // cached settings read (lib/maintenance, 10s TTL).
+  const gateAction = String(req.query.action || req.body?.action || '');
+  if (!gateAction.startsWith('auth_') && gateAction !== 'maintenance') {
+    const maint = await getMaintenanceState();
+    if (maint.enabled) {
+      const actor = await sessionUser(req);
+      if (!actor || !isAdminActor(actor)) {
+        return res.status(503).json({
+          maintenance: true,
+          error: maint.message,
+          message: maint.message,
+        });
+      }
+    }
+  }
+
   // Nested routes (function consolidation)
   if (req.query.action === 'preferences') {
     return notificationPreferences(req, res);

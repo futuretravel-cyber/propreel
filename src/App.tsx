@@ -69,6 +69,8 @@ const AgentBrandingBase = lazy(() => import('./components/AgentBranding'));
 const SecuritySettingsBase = lazy(() => import('./components/SecuritySettings'));
 const AITalkingProfileBase = lazy(() => import('./components/AITalkingProfile'));
 const AdminMusicLibraryBase = lazy(() => import('./components/AdminMusicLibrary'));
+const AdminUpdateModeBase = lazy(() => import('./components/AdminUpdateMode'));
+const MaintenanceGate = lazy(() => import('./components/MaintenanceGate').then(m => ({ default: m.MaintenanceGate })));
 const ShareSheetBase = lazy(() => import('./components/ShareSheet'));
 const ImageWorkbenchBase = lazy(() => import('./components/ImageWorkbench'));
 const CreditSystemDashboard = lazy(() => import('./components/CreditSystemDashboard'));
@@ -126,6 +128,9 @@ function AITalkingProfile(props: ComponentProps<typeof AITalkingProfileBase>) {
 }
 function AdminMusicLibrary() {
   return <Suspense fallback={<DashboardSkeleton />}><AdminMusicLibraryBase /></Suspense>;
+}
+function AdminUpdateMode() {
+  return <Suspense fallback={<DashboardSkeleton />}><AdminUpdateModeBase /></Suspense>;
 }
 
 function AdminApiKeys() {
@@ -3651,9 +3656,9 @@ function AdminPage() {
         <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {['overview', 'pnl', 'ops', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music', 'api-keys'].map(t => (
+        {['overview', 'pnl', 'ops', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'music', 'api-keys', 'update-mode'].map(t => (
           <button key={t} onClick={() => setTab(t)} className={`tab-pill ${tab === t ? 'tab-pill-active' : ''}`}>
-            {t === 'music' ? 'Music Library' : t === 'pnl' ? 'P&L' : t === 'api-keys' ? 'API Keys' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'music' ? 'Music Library' : t === 'pnl' ? 'P&L' : t === 'api-keys' ? 'API Keys' : t === 'update-mode' ? 'Update Mode' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -3668,6 +3673,7 @@ function AdminPage() {
         {tab === 'prompts' && <AdminPrompts />}
         {tab === 'music' && <AdminMusicLibrary />}
         {tab === 'api-keys' && <AdminApiKeys />}
+        {tab === 'update-mode' && <AdminUpdateMode />}
       </div>
     </div>
   );
@@ -4836,7 +4842,14 @@ export default function App() {
         </a>
         <ToastProvider>
           <CreditProvider>
-            <AppRoutes />
+            {/* Update-mode gate: when the Admin → Update Mode row is ON, the
+                whole app is replaced by the "We're upgrading" page for
+                non-admins; admins get a banner. Polls every 60s. */}
+            <Suspense fallback={null}>
+              <MaintenanceGate>
+                <AppRoutes />
+              </MaintenanceGate>
+            </Suspense>
             <ShortcutsHelpListener />
             <OnboardingAndHelp />
             <OfflineBanner />

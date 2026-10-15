@@ -1,7 +1,8 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail, transferCredits, refundDeduction, REFUND_SCOPES } from '../lib/userService';
 import { jobCredits } from '../lib/renderPricing';
-import { requireOwner, requireAdminSession } from '../lib/auth';
+import { requireOwner, requireAdminSession, sessionUser, isAdminActor } from '../lib/auth';
+import { getMaintenanceState } from '../lib/maintenance';
 
 /**
  * Unified credits endpoint (Hobby plan has a 12-function limit).
@@ -9,6 +10,23 @@ import { requireOwner, requireAdminSession } from '../lib/auth';
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = (req.query.action as string) || '';
+
+  // Update-mode gate (mirror of the users.ts gate — lib/maintenance shares
+  // the cached state so both functions answer identically): every credit
+  // action — including ledger reads — is a 503 for non-admin sessions while
+  // the Admin → Update Mode row is ON. Admin actions (gate e.g. `add`)
+  // keep working so the admin can operate during the window.
+  try {
+    const maint = await getMaintenanceState();
+    if (maint.enabled) {
+      const actor = await sessionUser(req);
+      if (!actor || !isAdminActor(actor)) {
+        return res.status(503).json({ maintenance: true, error: maint.message, message: maint.message });
+      }
+    }
+  } catch (e) {
+    console.error('credit maintenance gate failed (fail-open):', e);
+  }
 
   try {
     // ── GET /api/credits?action=report&user_id=…&period=… ──────────
