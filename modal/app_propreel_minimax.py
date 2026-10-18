@@ -4128,19 +4128,33 @@ def _logo_probe_cli():
     print(_json.dumps(logo_geometry_probe.local(), indent=2))
 
 
-@app.function(image=image)
-def health_check() -> dict:
-    """Health check endpoint"""
+def _health_payload() -> dict:
+    """Shared health metadata, DERIVED from the live tier catalog so it can
+    never drift from what the render path actually uses (it used to hardcode
+    hailuo-02 / [512p,720p,1080p] after the wan-25-preview migration, which
+    misreported the engine to operators)."""
+    ai_tiers = [t for t in TIER_CONFIGS.values() if t["processing_type"] != "local"]
+    ai_resolutions = [t["resolution"] for t in ai_tiers]
+    # Default (most common) AI engine, for the single-value `model` field the
+    # frontend status cards render; the full per-tier map rides in `engine`.
+    primary_engine_model = WAN25_MODEL
     return {
         "status": "healthy",
         "service": "propreel-render",
         "version": "2.1.0",
-        "model": "fal-ai/minimax/hailuo-02",
-        "clip_duration": 6,
-        "resolutions": ["512p", "720p", "1080p"],
+        "engine": TIER_VIDEO_ENGINE,
+        "model": primary_engine_model,
+        "clip_duration": 5,
+        "resolutions": ai_resolutions,
         "audio": False,
         "flashhead": "fal-ai/flashhead/v1/lip-sync"
     }
+
+
+@app.function(image=image)
+def health_check() -> dict:
+    """Health check endpoint"""
+    return _health_payload()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -4169,16 +4183,7 @@ async def api_make_thumbnail(request: ThumbnailRequest):
 @web_app.get("/health")
 async def health():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "propreel-render",
-        "version": "2.1.0",
-        "model": "fal-ai/minimax/hailuo-02",
-        "clip_duration": 6,
-        "resolutions": ["512p", "720p", "1080p"],
-        "audio": False,
-        "flashhead": "fal-ai/flashhead/v1/lip-sync"
-    }
+    return _health_payload()
 
 @web_app.post("/render_video")
 async def api_render_video(request: RenderVideoRequest, raw_request: Request):
