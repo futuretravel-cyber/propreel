@@ -1396,11 +1396,17 @@ def _branding_geometry(width: int, height: int) -> dict:
     # Cap by BOTH the free row width (a mark must never collide with the
     # top-left disc/avatar) and the client's 340-design-px width budget.
     card_logo_max_w = max(1, min(row_room_w, int(card_logo_max_design_w * scale)))
-    # Flush to the top edge and hard against the right: 0 top offset, ~1px
-    # right gap. Both are floored at 1px because a 0-width pad can confuse
-    # the composite and even dimensions matter downstream.
-    card_logo_top = max(1, int(1 * scale))
-    card_logo_right_gap = max(1, int(1 * scale))
+    # Inset from the TOP and RIGHT edges so the mark reads as placed, not
+    # glued to the frame. 2026-10-18: the logo was hard-flush (1px) by an
+    # earlier spec and the agent reported it "too close to the boundaries",
+    # while the photo disc it sits beside already honours the 36px design
+    # margin. It now uses a real inset (16 design px ≈ 15% of the margin, so
+    # it clearly clears the edge WITHOUT growing the dead top row enough to
+    # crowd the disc beside it). The left/bottom clearance to the disc is
+    # still enforced by logo_gap, so this cannot cause a collision.
+    card_logo_inset_design = 16
+    card_logo_top = max(2, int(card_logo_inset_design * scale))
+    card_logo_right_gap = max(2, int(card_logo_inset_design * scale))
     return {
         "scale": scale,
         "margin": margin,
@@ -1666,8 +1672,9 @@ def _branding_card_png(
             # can never collide with them, and _fit_logo_tile scales width
             # and height down together, so nothing is squashed.
             logo = _fit_logo_tile(logo, logo_h, logo_max_w)
-            # Flush to the top edge and hard against the right (client spec:
-            # top 0, ~1px right gap) — NOT the card's photo margin.
+            # Inset from the top/right edges (2026-10-18: was flush at 1px —
+            # the agent reported it crowding the frame boundary). The inset
+            # scales with the frame via card_logo_top/right_gap above.
             logo_x = width - g["card_logo_right_gap"] - logo.width
             logo_y = g["card_logo_top"]
             canvas.alpha_composite(logo, (logo_x, logo_y))
