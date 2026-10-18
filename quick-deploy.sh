@@ -19,9 +19,30 @@ echo "Building project..."
 npm run build
 
 # Deploy
+# 2026-10-15: `vercel --prod` failed once with a bare "Error: Not authorized"
+# while the same CLI+token listed envs fine and deployed a minute later —
+# a transient auth/session-refresh hiccup, not a scope or TTY problem (both
+# were ruled out empirically). The explicit `deploy` subcommand with --yes
+# keeps the call non-interactive, and a bounded retry rides out the refresh
+# race instead of turning a live production push into a FAILED exit.
 echo ""
 echo "Deploying to Vercel..."
-vercel --prod
+DEPLOY_OUT=""
+for attempt in 1 2 3; do
+  if DEPLOY_OUT=$(vercel deploy --prod --yes 2>&1); then
+    printf '%s\n' "$DEPLOY_OUT" | tail -n 5
+    break
+  fi
+  printf '%s\n' "$DEPLOY_OUT" | tail -n 6
+  echo "⚠️  Deploy attempt $attempt/3 failed"
+  if [ "$attempt" -lt 3 ]; then
+    echo "   retrying in 15s…"
+    sleep 15
+  else
+    echo "❌ All 3 deploy attempts failed — production was NOT updated."
+    exit 1
+  fi
+done
 
 echo ""
 echo "✅ Deployed successfully!"

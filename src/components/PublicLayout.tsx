@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Menu, X, ArrowRight, Sun, Moon, AlertTriangle } from 'lucide-react';
+import { Menu, X, ArrowRight, Sun, Moon, AlertTriangle } from 'lucide-react';
 import { SIGNUP_BONUS } from '../lib/constants';
 import { AI_DISCLAIMER_TEXT } from '../lib/aiDisclaimer';
 import { useTheme } from '../lib/theme';
@@ -16,7 +16,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2 min-h-[44px]" aria-label="PropReel home">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
-              <Play className="w-4 h-4 text-white fill-white" />
+              <img src="/images/logo-icon.png" alt="" className="w-full h-full object-cover" />
             </div>
             <span className="font-bold text-xl">PropReel</span>
           </Link>
@@ -78,7 +78,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
-                  <Play className="w-4 h-4 text-white fill-white" />
+                  <img src="/images/logo-icon.png" alt="" className="w-full h-full object-cover" />
                 </div>
                 <span className="font-bold text-xl text-white">PropReel</span>
               </div>

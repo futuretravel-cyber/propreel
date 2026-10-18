@@ -9,10 +9,9 @@
  * same simple `await falEditImage(...)` contract while the browser no longer
  * holds a single long HTTP connection through fal queue times.
  *
- * `progress` is the worker's live line for the removal paths: the removal
- * gate's leftover inventory (gate), each directed sweep, the masked engine
- * passes, and the final verdict. It rides the same S3-backed record the poll
- * already fetches, so the agent sees a stubborn recliner DURING the edit
+ * `progress` is the worker's live line for the edit paths: the engine
+ * pass and the final verdict. It rides the same S3-backed record the poll
+ * already fetches, so the agent sees pass-by-pass status DURING the edit
  * instead of only in the finished frame — the optional onProgress callback
  * gets every update as it lands.
  */
@@ -25,7 +24,6 @@ export interface FalEditParams {
   strength?: number;        // within the preset's min–max; server defaults to preset default
   guidanceScale?: number;
   customPrompt?: string;    // overrides the preset prompt (AI Photo Editor custom box)
-  maskUrl?: string;         // brush mask (staging); triggers the Fill Pro path
 }
 
 export interface FalEditResult {
@@ -37,7 +35,7 @@ export interface FalEditResult {
 
 /** Live edit progress written by the Modal worker (see _edit_progress). */
 export interface EditProgress {
-  stage?: string;         // gate | sweep | engines | composite | furnish | done
+  stage?: string;         // engines | done — the live edit pass lines
   label?: string;         // the sentence to show the agent
   leftovers?: string[];   // movable items the removal gate still sees
   pass_no?: number;       // 1-based pass / sweep number, when it has one
@@ -63,7 +61,6 @@ export async function falEditImage(params: FalEditParams, jobToken?: Record<stri
       strength: params.strength,
       guidance_scale: params.guidanceScale,
       custom_prompt: params.customPrompt || undefined,
-      mask_url: params.maskUrl || undefined,
     }),
   });
 

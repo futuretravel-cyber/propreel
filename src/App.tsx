@@ -24,6 +24,9 @@ import { useStudioDraft, studioDraftKey, dataUrlToFile } from './lib/studioDraft
 import { useRepairDraftPhotos } from './lib/repairDraftPhotos';
 import { useReorderable } from './lib/reorder';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
+import type { PhotoMeta } from '../lib/videoPrompts';
+import { cameraPrompt, movesForRoomType, CAMERA_MOVE_LABEL, ROOM_TYPE_LABEL, MAX_PROMPT_CHARS } from '../lib/videoPrompts';
+import { TIERS as VIDEO_TIERS, imagesForDuration } from '../lib/videoTiers';
 import { playRenderComplete } from './lib/renderSound';
 import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
@@ -633,7 +636,7 @@ function LoginPage() {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
-              <Play className="w-5 h-5 text-white fill-white" />
+              <img src="/images/logo-icon.png" alt="" className="w-full h-full object-cover" />
             </div>
             <span className="font-bold text-2xl text-white">PropReel</span>
           </Link>
@@ -770,7 +773,7 @@ function RegisterPage() {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
-              <Play className="w-5 h-5 text-white fill-white" />
+              <img src="/images/logo-icon.png" alt="" className="w-full h-full object-cover" />
             </div>
             <span className="font-bold text-2xl text-white">PropReel</span>
           </Link>
@@ -850,6 +853,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Overview' },
     { path: '/dashboard/photo-editor', icon: <Camera className="w-5 h-5" />, label: 'Photo Editor' },
     { path: '/dashboard/description', icon: <FileText className="w-5 h-5" />, label: 'Property Description' },
+    // Social Media used to be a sub-tab under Property Description — it now
+    // earns its own sidebar destination.
+    { path: '/dashboard/social', icon: <Share2 className="w-5 h-5" />, label: 'Social Media' },
     { path: '/dashboard/video', icon: <Video className="w-5 h-5" />, label: 'Video Generator' },
     { path: '/dashboard/credits', icon: <Zap className="w-5 h-5" />, label: 'Credits' },
     { path: '/dashboard/listings', icon: <List className="w-5 h-5" />, label: 'Listings' },
@@ -878,7 +884,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           <div className="p-4 border-b border-white/5">
             <Link to="/" className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
-                <Play className="w-4 h-4 text-white fill-white" />
+                <img src="/images/logo-icon.png" alt="" className="w-full h-full object-cover" />
               </div>
               <span className="font-bold text-lg text-white">PropReel</span>
             </Link>
@@ -1354,7 +1360,7 @@ function PhotoEditorPage() {
   const [tab, setTab] = useToolTab(['photo', 'staging', 'removal', 'twilight'], 'photo');
   const tabs = [
     { id: 'photo', label: 'AI Photo Editor', icon: <Camera className="w-4 h-4" />, cost: 2 },
-    { id: 'staging', label: 'Virtual Staging', icon: <Sofa className="w-4 h-4" />, cost: 4 },
+    { id: 'staging', label: 'Virtual Staging', icon: <Sofa className="w-4 h-4" />, cost: 2 },
     { id: 'removal', label: 'Furniture Removal', icon: <Trash2 className="w-4 h-4" />, cost: 2 },
     { id: 'twilight', label: 'Twilight', icon: <MoonIcon className="w-4 h-4" />, cost: 2 },
   ];
@@ -1383,30 +1389,37 @@ function PhotoEditorPage() {
   );
 }
 
-// ── Property Description: Description 1⚡ / Social Media 2⚡ ─────────────
+// ── Property Description: 1⚡ AI write-ups. Social Media moved OUT to its
+//    own dashboard tool (/dashboard/social) instead of a sub-tab here.
 function DescriptionPage() {
   const loading = useSimulatedLoading(300);
-  const [tab, setTab] = useToolTab(['description', 'social'], 'description');
-  const tabs = [
-    { id: 'description', label: 'Description', icon: <FileText className="w-4 h-4" />, cost: 1 },
-    { id: 'social', label: 'Social Media', icon: <Share2 className="w-4 h-4" />, cost: 2 },
-  ];
+  const [searchParams] = useSearchParams();
+  // Old ?tab=social deep links (bookmarks, notifications, help pages,
+  // old onboarding links) forward to the standalone tool.
+  const legacySocial = searchParams.get('tab') === 'social';
+  if (loading) return <DashboardSkeleton />;
+  if (legacySocial) return <Navigate to="/dashboard/social" replace />;
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <TrialDeadlineModal />
+      <ToolPageHeader title="Property Description" subtitle="AI write-ups for your listing — a full description." />
+      <div className="card-dark p-6">
+        <ErrorBoundary label="Description"><DescriptionTab /></ErrorBoundary>
+      </div>
+    </div>
+  );
+}
+
+// ── Social Media: its own dashboard tab (2⚡ per post) ────────────────────
+function SocialMediaPage() {
+  const loading = useSimulatedLoading(300);
   if (loading) return <DashboardSkeleton />;
   return (
     <div className="space-y-6 animate-fade-in">
       <TrialDeadlineModal />
-      <ToolPageHeader title="Property Description" subtitle="AI write-ups for your listing — a full description or ready-to-post social copy." />
-      <div className="flex flex-wrap gap-2 pb-2">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 ${tab === t.id ? 'tab-pill tab-pill-active' : 'tab-pill'}`}>
-            {t.icon} <span className="hidden sm:inline">{t.label}</span>
-            <span className="text-[10px] font-bold text-yellow-300" title={`${t.cost} credits per render`}>⚡{t.cost}</span>
-          </button>
-        ))}
-      </div>
+      <ToolPageHeader title="Social Media" subtitle="Platform-ready social copy for your listing — fill in the details and let AI write the posts." />
       <div className="card-dark p-6">
-        <div className={tab === 'description' ? undefined : 'hidden'}><ErrorBoundary label="Description"><DescriptionTab /></ErrorBoundary></div>
-        <div className={tab === 'social' ? undefined : 'hidden'}><ErrorBoundary label="Social Media"><SocialTab /></ErrorBoundary></div>
+        <ErrorBoundary label="Social Media"><SocialTab /></ErrorBoundary>
       </div>
     </div>
   );
@@ -1459,7 +1472,8 @@ function StudioRedirect() {
   const t = searchParams.get('tab');
   const to =
     t === 'video' || t === 'flashhead' ? '/dashboard/video'
-    : t === 'description' || t === 'social' ? '/dashboard/description'
+    : t === 'social' ? '/dashboard/social'
+    : t === 'description' ? '/dashboard/description'
     : t === 'staging' || t === 'removal' || t === 'twilight' ? `/dashboard/photo-editor?tab=${t}`
     : '/dashboard/photo-editor';
   return <Navigate to={to} replace />;
@@ -1877,7 +1891,7 @@ function StagingTab() {
       <div className="bg-purple-950/30 border border-purple-500/20 rounded-lg p-3">
         <p className="text-xs text-purple-200 flex items-center gap-2">
           <Zap className="w-3 h-3" />
-          ⚡4 Virtual Staging — 4 credits per render (Fill Pro inpainting)
+          ⚡2 Virtual Staging — 2 credits per render
         </p>
       </div>
       {/* Upload first — the drop zone sits at the top of the workflow */}
@@ -1886,7 +1900,7 @@ function StagingTab() {
         draftSlot="staging"
         strength={selectedPreset?.strength.default}
         guidanceScale={selectedPreset?.guidanceScale.default}
-        ctaLabel="Stage Room (4 credits)"
+        ctaLabel="Stage Room (2 credits)"
         emptyHint="Upload an empty room photo — JPEG/PNG/WEBP up to 25MB"
       />
       <div>
@@ -2472,7 +2486,11 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   // Elapsed-vs-typical progress for the reel render (typical scales with clip count)
   const reelProgress = useRenderProgress(typicalVideoSeconds(uploadedImages.length || 1));
 
-  const tierConfig = TIERS.find(t => t.id === tier)!;
+  // The tier catalog is the shared one (lib/videoTiers) — the same table the
+  // server prices renders from, so the UI's credits/images/durations can
+  // never drift from the charge. The render body sends the tier id + duration;
+  // the worker looks up images/resolution/engine itself.
+  const tierConfig = VIDEO_TIERS.find(t => t.id === tier) ?? VIDEO_TIERS[1];
   const selectedConfig = tierConfig.configurations[configIndex];
 
   // Calculate target word count based on selected duration
@@ -2856,6 +2874,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
             config_index: configIndex,
             orientation,
             images: uploadedImages,
+            photo_meta: buildCameraPayload(uploadedImages, photoMeta),
             voiceover_text: avatarUrl ? '' : (noNarration ? '' : script),
             voice_id: voice,
             language,
@@ -3001,10 +3020,26 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
     { id: 'render', label: 'Render' },
   ];
   const [step, setStep] = useState(0);
-  // Photos are the one hard gate — a reel without images can't render.
+  // Per-photo camera metadata (interior/exterior + camera move) — the render
+  // picks the exact per-photo prompt from it, and it gates leaving the Photos
+  // step. Kept as {photoUrl: {roomType, move}} so a removed photo's entry is
+  // simply ignored (the gate only ever reads entries for current photos).
+  const [photoMeta, setPhotoMeta] = useStudioDraft<Record<string, PhotoMeta>>(studioDraftKey(user?.id, 'video:photoMeta'), {});
+  const setPhotoMetaFor = (url: string, patch: Partial<PhotoMeta>) =>
+    setPhotoMeta(prev => ({ ...prev, [url]: { roomType: 'interior', move: 'in', ...(prev[url] || {}), ...patch } }));
+  // Photos are the first hard gate — a reel without images can't render.
   // (2026-10-15: Photos moved after Orientation — agents pick the frame
   // FIRST, so the orientation tip shapes how they shoot/upload the set.)
-  const canNext = step !== 3 || uploadedImages.length > 0;
+  // 2026-10-18: SECOND gate — every uploaded photo must carry BOTH a
+  // room-type (interior/exterior) and a camera move before the agent can
+  // advance. The move list depends on the room type: EXTERIOR unlocks the
+  // extra "Zoom out" move (a pull-back reveal) that INTERIOR does not get,
+  // because retreating out of an interior space exits the room. The render
+  // maps (roomType, move) to one of the eight authoritative camera prompts.
+  const photosMissingMeta = step === 3
+    ? uploadedImages.filter(u => { const m = photoMeta[u]; return !m || !m.roomType || !m.move; }).length
+    : 0;
+  const canNext = step !== 3 || (uploadedImages.length > 0 && photosMissingMeta === 0);
   const nextStep = () => { if (step < WIZARD_STEPS.length - 1 && canNext) setStep(step + 1); };
   const prevStep = () => setStep(s => Math.max(0, s - 1));
   // Listing details → Voiceover Script: arriving at the Voiceover step
@@ -3165,7 +3200,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         <div className="flex items-center justify-between">
           <label className="label">Property Photos ({uploadedImages.length} / {selectedConfig.images})</label>
           {uploadedImages.length > 0 && (
-            <button onClick={() => setUploadedImages([])} className="text-xs text-ink-400 hover:text-red-400">Clear all</button>
+            <button onClick={() => { setUploadedImages([]); setPhotoMeta({}); }} className="text-xs text-ink-400 hover:text-red-400">Clear all</button>
           )}
         </div>
         <input
@@ -3209,6 +3244,43 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
                 >
                   <X className="w-3 h-3" />
                 </button>
+                {/* Per-photo camera metadata — required before leaving this
+                    step. Room type drives the move list: EXTERIOR also gets
+                    the pull-back (Zoom out); INTERIOR never does, because
+                    retreating out of a room exits it. The render maps this to
+                    one of the eight authoritative camera prompts. */}
+                <div className="mt-2 space-y-2 rounded-lg bg-black/40 p-2">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Photo is from a</span>
+                    <div className="flex gap-1 mt-1">
+                      {(['interior', 'exterior'] as const).map(rt => (
+                        <button
+                          key={rt}
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setPhotoMetaFor(src, { roomType: rt, move: 'in' }); }}
+                          className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition ${(photoMeta[src]?.roomType ?? 'interior') === rt ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+                        >
+                          {ROOM_TYPE_LABEL[rt]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Camera move</span>
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      {movesForRoomType(photoMeta[src]?.roomType ?? 'interior').map(mv => (
+                        <button
+                          key={mv}
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setPhotoMetaFor(src, { move: mv }); }}
+                          className={`rounded px-2 py-1 text-[11px] font-medium transition ${(photoMeta[src]?.move ?? 'in') === mv ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+                        >
+                          {CAMERA_MOVE_LABEL[mv]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -3543,7 +3615,11 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       </>)}
 
       {step === 3 && !canNext && (
-        <p className="text-xs text-amber-400/90 text-center">Add at least one property photo to continue — a reel needs images to render.</p>
+        <p className="text-xs text-amber-400/90 text-center">
+          {uploadedImages.length === 0
+            ? 'Add at least one property photo to continue — a reel needs images to render.'
+            : `Tag every photo with a room type (Interior / Exterior) and a camera move before continuing — ${photosMissingMeta} photo${photosMissingMeta === 1 ? '' : 's'} still untagged.`}
+        </p>
       )}
 
       {/* Step 8 — Render / Video Player */}
@@ -4799,7 +4875,7 @@ function AppRoutes() {
     <Suspense fallback={(
       <div className="min-h-screen bg-ink-950 flex items-center justify-center">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center animate-pulse">
-          <Play className="w-5 h-5 text-white fill-white" />
+          <img src="/images/logo-icon.png" alt="" className="w-full h-full object-cover" />
         </div>
       </div>
     )}>
@@ -4841,6 +4917,7 @@ function AppRoutes() {
       <Route path="/dashboard/tutorials" element={<RequireAuth><DashboardLayout><DashboardTutorials /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/photo-editor" element={<RequireAuth><DashboardLayout><PhotoEditorPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/description" element={<RequireAuth><DashboardLayout><DescriptionPage /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/social" element={<RequireAuth><DashboardLayout><SocialMediaPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/video" element={<RequireAuth><DashboardLayout><VideoGeneratorPage /></DashboardLayout></RequireAuth>} />
       {/* Billing moved into Credits; Notifications moved into Settings */}
       <Route path="/dashboard/billing" element={<Navigate to="/dashboard/credits?tab=billing" replace />} />

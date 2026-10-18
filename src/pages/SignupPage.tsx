@@ -216,7 +216,7 @@ export default function SignupPage() {
         <div className="text-center mb-6">
           <Link to="/" className="inline-flex items-center gap-2">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
-              <svg className="w-5 h-5 text-white fill-white" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <img src="/images/logo-icon.png" alt="" className="w-full h-full object-cover" />
             </div>
             <span className="font-bold text-2xl text-white">PropReel</span>
           </Link>

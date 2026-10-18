@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Brush, Eraser, Camera, CheckCircle2, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Camera, Download, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { useImageEdit } from '../lib/useImageEdit';
 import { useRenderProgress, TYPICAL_IMAGE_EDIT_SECONDS } from '../lib/useRenderProgress';
 import RenderProgressBar from './RenderProgressBar';
@@ -8,8 +8,6 @@ import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDraf
 import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
 import { downloadRemoteFile } from '../lib/utils';
-import { useBrushMask } from '../lib/useBrushMask';
-import MaskTutorial from './ModalMaskTutorial';
 
 interface ImageWorkbenchProps {
   presetId: string;
@@ -26,7 +24,8 @@ interface ImageWorkbenchProps {
 
 /**
  * Upload → render → before/after workbench shared by all four image tools.
- * Renders via Modal (fal-ai/flux/dev/image-to-image) and deducts 2 credits.
+ * Renders via Modal (openai/gpt-image-2.5/flare/edit) and deducts 2 credits
+ * (every category — staging included — prices at the base edit rate).
  */
 export default function ImageWorkbench({ presetId, draftSlot, strength, guidanceScale, customPrompt, ctaLabel, emptyHint, accept = 'image/*' }: ImageWorkbenchProps) {
   const { user } = useCredit() as any;
@@ -38,32 +37,14 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
   const [resultUrl, setResultUrl] = useStudioDraft<string | null>(studioDraftKey(user?.id, `workbench:${draftSlot}:result`), null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { edit, busy, stage, error, setError, progress } = useImageEdit();
+  const { edit, busy, stage, error, setError } = useImageEdit();
   const uploadWait = useUploadWait();
-  // Brush mask presets: staging paints the furniture to REPLACE (Fill Pro);
-  // the clutter/personal-item removal presets paint what to ERASE (masked
-  // composite path on the worker). 'remove_all_furniture' is fully maskless
-  // (validated Gemini-style whole-photo regen); vehicle removal lives only
-  // in the AI Photo Editor (remove_cars, maskless Kontext path).
-  const showBrush = ['luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
-    'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft',
-    'remove_clutter', 'remove_personal_items'].includes(presetId);
-  // The two targeted removal presets are CI: the mask is OPTIONAL precision
-  // (paint to erase exactly that; skip painting and the worker's maskless
-  // path clears clutter/personal items over the whole photo). Staging must
-  // still paint: Fill Pro needs a mask to replace furniture in-place.
-  const maskRequired = presetId !== 'remove_clutter' && presetId !== 'remove_personal_items';
-  // The mask tutorial plays EVERY time the staging tab is entered (or the
-  // draft first appears) — small enough that it teaches without blocking.
-  const [tutorialOpen, setTutorialOpen] = useState(false);
-  useEffect(() => {
-    if (preview && showBrush) setTutorialOpen(true);
-    else setTutorialOpen(false);
-    // Intentionally re-arms whenever the photo changes: a new photo = a fresh
-    // surface to paint on, so a new popup is wanted.
-  }, [preview, showBrush]);
-  const mask = useBrushMask(showBrush && !!preview);
-  // Elapsed-vs-typical progress for the ~30s FLUX edit
+  // Every image tool renders whole-photo since 2026-10-16: Virtual Staging
+  // moved to gpt-image-2.5/flare — the same maskless single call Furniture
+  // Removal uses — so there is nothing to paint. The brush overlay, its
+  // tutorial and the mask upload went with the masking feature
+  // (useBrushMask.ts and ModalMaskTutorial.tsx deleted).
+  // Elapsed-vs-typical progress for the ~30s flare edit
   const editProgress = useRenderProgress(TYPICAL_IMAGE_EDIT_SECONDS);
 
   const pick = (f: File | null) => {
@@ -92,13 +73,7 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
     if (!f) return;
     editProgress.start();
     try {
-      const maskFile = showBrush ? mask.exportMaskFile() : null;
-      if (showBrush && !maskFile && maskRequired) {
-        setError('Paint over the furniture you want replaced before generating — everything you leave unpainted is locked.');
-        editProgress.stop();
-        return;
-      }
-      const res = await edit({ file: f, presetId, strength, guidanceScale, customPrompt, maskFile });
+      const res = await edit({ file: f, presetId, strength, guidanceScale, customPrompt });
       if (res) setResultUrl(res.imageUrl);
     } finally {
       editProgress.stop();
@@ -166,65 +141,9 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
               {/* Natural aspect, full width: the whole photo stays visible —
                   the old aspect-square + object-cover cropped landscape shots
                   and upscaled them (cut off + soft). Click opens full size. */}
-              {showBrush ? (
-                /* Mask editor: the photo sits under a translucent overlay
-                   canvas; purple-white strokes mark what gets replaced.
-                   Everything NOT painted stays pixel-locked (Fill Pro
-                   constrains the edit to the mask). The canvas backing store
-                   is sized to the photo's real pixels inside useBrushMask and
-                   pointer coords are mapped through the live layout rect —
-                   strokes land exactly under the cursor on any aspect. */
-                <div
-                  className="relative"
-                  onPointerDown={e => { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); mask.stroke(e); }}
-                  onPointerMove={e => {
-                    if (e.buttons === 1) mask.stroke(e);
-                    else mask.track(e);
-                  }}
-                  onPointerUp={() => mask.endStroke()}
-                  onPointerCancel={() => mask.endStroke()}
-                  onPointerLeave={() => { mask.endStroke(); mask.hideCursor(); }}
-                  style={{ touchAction: 'none' }}
-                >
-                  <img ref={mask.drawImageRef} src={preview} alt="Original" className="w-full h-auto rounded-xl border border-white/10 pointer-events-none select-none" draggable={false} />
-                  {/* Off-screen export twin: same strokes, white on black —
-                      purple is screen-only (brand theme), the mask file the
-                      worker receives stays strictly white-on-black. */}
-                  <canvas
-                    ref={mask.bindExportCanvas}
-                    width={2}
-                    height={2}
-                    className="hidden"
-                    aria-hidden="true"
-                  />
-                  <canvas
-                    ref={mask.bindCanvas}
-                    className="absolute inset-0 w-full h-full cursor-crosshair rounded-xl"
-                    style={{ mixBlendMode: 'screen', opacity: 0.55 }}
-                    aria-label="Mask painter — paint over the furniture you want replaced"
-                  />
-                  {mask.cursor && (
-                    /* Live brush footprint ring — shows exactly what a stroke
-                       will cover before you click. */
-                    <div
-                      className="absolute rounded-full ring-2 ring-purple-400/95 bg-purple-500/30 pointer-events-none mix-blend-screen"
-                      style={{
-                        width: `${mask.brushPct}%`,
-                        aspectRatio: '1 / 1',
-                        maxWidth: '14%',
-                        maxHeight: '14%',
-                        left: `${mask.cursor.xPct}%`,
-                        top: `${mask.cursor.yPct}%`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                    />
-                  )}
-                </div>
-              ) : (
               <a href={preview || undefined} target="_blank" rel="noopener" title="Open full size" className="block">
                 <img src={preview} alt="Original" className="w-full h-auto rounded-xl border border-white/10" />
               </a>
-              )}
               {/* The image stays exactly where it is (survives tab switches)
                   until the user removes it or the render finishes */}
               <button
@@ -259,68 +178,13 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
         </div>
       )}
 
-      {preview && showBrush && (
-        <div className="rounded-lg bg-purple-950/40 border border-purple-500/25 px-3 py-2">
-          <MaskTutorial
-            photoSrc={preview}
-            variant="hint"
-            hasStrokes={mask.hasStrokes}
-            onClearStrokes={mask.clear}
-            busy={busy}
-          />
-        </div>
-      )}
-
-      {preview && showBrush && tutorialOpen && (
-        <MaskTutorial
-          photoSrc={preview}
-          hasStrokes={mask.hasStrokes}
-          onClearStrokes={mask.clear}
-          onClose={() => setTutorialOpen(false)}
-        />
-      )}
-
-      {/* Live removal progress: the worker's gate verdict and sweep state,
-          published while the edit runs. The point is that a leftover ('gate
-          still sees 2 item(s): leather recliner, rug' + the item chips) is
-          visible DURING the render — the old UI only ever revealed survivors
-          in the finished image, so a directed sweep looked like a hang. */}
-      {progress?.label && (busy || resultUrl) && (
-        <div className="rounded-lg bg-purple-950/40 border border-purple-500/25 px-3 py-2 flex items-start gap-2">
-          {/* Verdict first: finished-and-clear, still running, or finished
-              with an item the gate never got rid of. */}
-          {progress.stage === 'done' && progress.done === true ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
-          ) : busy ? (
-            <Loader2 className="w-4 h-4 animate-spin text-purple-300 mt-0.5 shrink-0" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-          )}
-          <div className="min-w-0">
-            <p className="text-xs text-purple-100">{progress.label}</p>
-            {!!progress.leftovers?.length && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {progress.leftovers.slice(0, 6).map(item => (
-                  <span
-                    key={item}
-                    className="text-[11px] px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-200"
-                  >
-                    {item}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {preview && (
         <div className="flex gap-3">
-            <button onClick={() => guardAIRender(run)} disabled={busy || (showBrush && maskRequired && !mask.hasStrokes)} className="btn btn-primary flex-1 min-h-[48px]">
+            <button onClick={() => guardAIRender(run)} disabled={busy} className="btn btn-primary flex-1 min-h-[48px]">
             {busy ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
             ) : (
-              <><Zap className="w-4 h-4" /> {showBrush && maskRequired && !mask.hasStrokes ? 'Paint the mask to enable' : ctaLabel}</>
+              <><Zap className="w-4 h-4" /> {ctaLabel}</>
             )}
           </button>
           <RenderProgressBar

@@ -249,7 +249,7 @@ function VisualShowcase() {
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 to-transparent" />
               <div className="absolute bottom-0 p-4">
                 <h3 className="font-bold text-white">Sandton Apartment</h3>
-                <p className="text-ink-400 text-xs">Social tier reel · 512p</p>
+                <p className="text-ink-400 text-xs">Social tier reel · 480p</p>
               </div>
             </div>
           </BentoCard>

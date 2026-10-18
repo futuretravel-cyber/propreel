@@ -80,7 +80,7 @@ fallback constant only.
 | Path | Price |
 |---|---:|
 | Plain presets (photo editor, removal/erase, twilight, sky, HDR tone-map) | 2 ⚡ |
-| Brush-mask staging presets (Fill Pro: `luxury_modern`, `scandinavian_minimal`, `coastal_relaxed`, `family_comfortable`, `luxury_bedroom`, `home_office`, `industrial_loft`) | 4 ⚡ |
+| Virtual Staging presets (gpt-image-2.5 whole-photo pass: `luxury_modern`, `scandinavian_minimal`, `contemporary_dark`, `coastal_relaxed`, `family_comfortable`, `luxury_bedroom`, `home_office`, `industrial_loft`) | 4 ⚡ |
 
 ## Refund semantics — the three rules
 

@@ -316,7 +316,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ].filter(l => l !== undefined && l !== '').join('\n');
       zip.file('captions.txt', [
         'Ready-to-post captions (edit freely — generated from your listing data).',
-        'For AI-written variations, open the Studio → Social Media tab.',
+        'For AI-written variations, open Dashboard → Social Media.',
         '',
         '── Instagram / Facebook ──',
         captionBody,

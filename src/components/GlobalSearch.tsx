@@ -106,7 +106,7 @@ export default function GlobalSearch() {
       { id: 'generate-video', title: 'Generate Video', icon: Video, url: '/dashboard/video', category: 'Actions' },
       { id: 'avatar-video', title: 'AI Avatar Video', icon: Mic, url: '/dashboard/video', category: 'Actions' },
       { id: 'description', title: 'AI Property Description', icon: FileText, url: '/dashboard/description', category: 'Actions' },
-      { id: 'social', title: 'AI Social Media Post', icon: FileText, url: '/dashboard/description?tab=social', category: 'Actions' },
+      { id: 'social', title: 'AI Social Media Post', icon: FileText, url: '/dashboard/social', category: 'Actions' },
       { id: 'buy-credits', title: 'Buy Credits', icon: CreditCard, url: '/dashboard/credits', category: 'Actions' },
       { id: 'listings', title: 'Property Listings', icon: FileText, url: '/dashboard/listings', category: 'Pages' },
       { id: 'projects', title: 'My Projects', icon: Video, url: '/dashboard/projects', category: 'Pages' },

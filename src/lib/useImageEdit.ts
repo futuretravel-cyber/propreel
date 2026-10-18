@@ -25,9 +25,9 @@ export function useImageEdit() {
   // cleared when the next edit starts.
   const [progress, setProgress] = useState<EditProgress | null>(null);
 
-  /** Price for this render: brush-masked staging presets run Fill Pro
-   *  (4 credits); removal and every other preset are the base 2-credit
-   *  edit. Mirrors jobCredits(). */
+  /** Price for this render: every preset is the base 2-credit edit since
+   *  staging moved to the same whole-image gpt-image-2.5 pass (2026-10-16).
+   *  Mirrors jobCredits(). */
   const costFor = (presetId?: string) =>
     isStagingPreset(presetId) ? STAGING_EDIT_CREDITS : IMAGE_EDIT_COST;
 
@@ -37,7 +37,6 @@ export function useImageEdit() {
     strength?: number;
     guidanceScale?: number;
     customPrompt?: string;
-    maskFile?: File | null; // brush mask (staging) → Fill Pro path
   }): Promise<{ imageUrl: string } | null> => {
     setError(null);
     setProgress(null);
@@ -64,21 +63,6 @@ export function useImageEdit() {
       return null;
     }
 
-    // 1b) Optional paint-mask: brush overlay exported as a white-on-black
-    //     PNG, uploaded to the raw bucket (uploads/ prefix, presigned like
-    //     the photo). Presence of mask_url switches the worker to the
-    //     anchored Fill Pro two-call staging path.
-    let maskUrl: string | undefined;
-    if (opts.maskFile) {
-      try {
-        maskUrl = await PropReelAPI.uploadImageFile(user.id, opts.maskFile);
-      } catch (e: any) {
-        setError(e.message || 'Mask upload failed');
-        setStage('idle');
-        return null;
-      }
-    }
-
     // 2) Pay at mint: ?action=job_token charges the 2 credits server-side
     //    (price lives in lib/renderPricing) and returns the single-use token
     //    the worker demands before it starts an edit job.
@@ -96,7 +80,7 @@ export function useImageEdit() {
       return null;
     }
 
-    // 3) Render via Modal (fal-ai/flux/dev/image-to-image)
+    // 3) Render via Modal (openai/gpt-image-2.5/flare/edit)
     setStage('rendering');
     try {
       const result = await falEditImage({
@@ -105,7 +89,6 @@ export function useImageEdit() {
         strength: opts.strength,
         guidanceScale: opts.guidanceScale,
         customPrompt: opts.customPrompt,
-        maskUrl,
       }, jobToken, setProgress);
       track('render_completed', { kind: 'IMAGE_EDIT', presetId: opts.presetId });
       playRenderComplete();

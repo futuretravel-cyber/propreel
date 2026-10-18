@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Play, Home, Search, ArrowLeft } from 'lucide-react';
+import { Home, Search, ArrowLeft } from 'lucide-react';
 
 const popularPages = [
   { to: '/', label: 'Home' },
@@ -18,7 +18,7 @@ export default function NotFoundPage() {
       <div className="max-w-lg w-full text-center animate-fade-in">
         <Link to="/" className="inline-flex items-center gap-2 mb-8" aria-label="PropReel home">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
-            <Play className="w-5 h-5 text-white fill-white" />
+            <img src="/images/logo-icon.png" alt="" className="w-full h-full object-cover" />
           </div>
           <span className="font-bold text-xl text-white">PropReel</span>
         </Link>

@@ -123,10 +123,18 @@ export const IMAGE_PRESETS: ImagePreset[] = [
   {
     id: 'scandinavian_minimal',
     label: 'Scandinavian Minimal',
-    emoji: '🪵',
+    emoji: '✨',
     category: 'staging',
     strength: { min: 0.4, max: 0.5, default: 0.45 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
+  },
+  {
+    id: 'contemporary_dark',
+    label: 'Contemporary Dark',
+    emoji: '🖤',
+    category: 'staging',
+    strength: { min: 0.45, max: 0.55, default: 0.5 },
+    guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   },
   {
     id: 'coastal_relaxed',
@@ -141,7 +149,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Family Comfortable',
     emoji: '👨‍👩‍👧',
     category: 'staging',
-    strength: { min: 0.45, max: 0.6, default: 0.55 },
+    strength: { min: 0.4, max: 0.5, default: 0.45 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
   },
   {
@@ -165,7 +173,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     label: 'Industrial Loft',
     emoji: '⚙️',
     category: 'staging',
-    strength: { min: 0.5, max: 0.6, default: 0.55 },
+    strength: { min: 0.45, max: 0.55, default: 0.5 },
     guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   },
 
@@ -191,10 +199,18 @@ export const IMAGE_PRESETS: ImagePreset[] = [
   {
     id: 'remove_personal_items',
     label: 'Remove Personal Items',
-    emoji: '📷',
+    emoji: '👤',
     category: 'removal',
     strength: { min: 0.4, max: 0.5, default: 0.45 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
+  },
+  {
+    id: 'remove_vehicles',
+    label: 'Remove Vehicles',
+    emoji: '🚗',
+    category: 'removal',
+    strength: { min: 0.45, max: 0.55, default: 0.5 },
+    guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -239,6 +255,14 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     category: 'twilight',
     strength: { min: 0.4, max: 0.5, default: 0.45 },
     guidanceScale: { min: 4, max: 5, default: 4.5 }
+  },
+  {
+    id: 'festive_evening',
+    label: 'Festive Evening',
+    emoji: '🎄',
+    category: 'twilight',
+    strength: { min: 0.45, max: 0.55, default: 0.5 },
+    guidanceScale: { min: 4.5, max: 5.5, default: 5 }
   }
 ];
 

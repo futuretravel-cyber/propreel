@@ -31,7 +31,7 @@ Each tutorial is a fixed 5-beat structure (~90s for dashboard features, ~60s for
 - **AI Video Generator** — 8-step wizard; demo a 3-photo Social-tier 30s reel; end on Tier pricing table.
 - **Photo Editor** — pick one preset (HDR tone-map), strength slider story, before/after.
 - **Virtual Staging** — brush-mask luxury_modern; two-stage screen: empty → furnished; brush tutorial is the part agents need most.
-- **Furniture Removal** — paint the mask → the room empties; note 2-credit price.
+- **Furniture Removal** — upload a photo, single click → the room empties (no mask to paint since 2026-10-15); note 2-credit price.
 - **Twilight** — preset pick, single click, sky shift.
 - **AI Avatar (FlashHead)** — profile photo pitch + language/voice pick + per-10s pricing callout.
 - **Property Description** — address verify → amenities auto-fill → generate copy.

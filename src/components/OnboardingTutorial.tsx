@@ -86,7 +86,7 @@ export default function OnboardingTutorial({ onComplete }: { onComplete?: () => 
       title: 'Social Media Posts',
       description: 'Fill in the property details (beds, baths, features, photos) and AI writes platform-ready posts — 2 credits per post.',
       icon: Image,
-      action: '/dashboard/description?tab=social',
+      action: '/dashboard/social',
     },
     {
       id: 'team',

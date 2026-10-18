@@ -8,72 +8,22 @@
  * overdraw. src/lib/constants.ts re-exports TIERS, so the UI keeps reading
  * exactly the same numbers the server charges.
  *
+ * The tier catalog (durations, image allotments, resolutions, engine, credit
+ * prices) lives in lib/videoTiers.ts and is re-exported here, so there is one
+ * price table, not two.
+ *
  * Keep this module dependency-free (pure data) — it is imported by both the
  * Vite bundle and the Vercel functions.
  */
 
-export const TIERS = [
-  {
-    id: 'ESSENTIAL',
-    label: 'Essential',
-    description: 'Local FFmpeg zoom/pan render at 1080p',
-    processingType: 'local',
-    resolution: '1080p',
-    configurations: [
-      { duration: 30, images: 6, credits: 5 },
-      { duration: 60, images: 12, credits: 10 }
-    ]
-  },
-  {
-    id: 'SOCIAL',
-    label: 'Social',
-    description: 'AI Motion at 512p',
-    processingType: 'ai',
-    resolution: '512p',
-    configurations: [
-      { duration: 30, images: 5, credits: 30 },
-      { duration: 50, images: 10, credits: 50 },
-      { duration: 90, images: 15, credits: 80 }
-    ]
-  },
-  {
-    id: 'CINEMATIC',
-    label: 'Cinematic',
-    description: 'AI Motion at 720p',
-    processingType: 'ai',
-    resolution: '720p',
-    // 768p fal cost is $0.045/s (~R0.74/s): 60s costs R44.7, 90s R67 — the
-    // old 70/90 prices left margins of 36% and 26%. 75/105 restores ≥36% on
-    // every length (30s stays at 40 = 44%).
-    configurations: [
-      { duration: 30, images: 5, credits: 40 },
-      { duration: 60, images: 10, credits: 75 },
-      { duration: 90, images: 15, credits: 105 }
-    ]
-  },
-  {
-    id: 'PREMIUM',
-    label: 'Premium',
-    // Switched 2026-10-14: engine is now Kling 2.6 Pro image-to-video —
-    // a different flagship family than the mid tiers' Hailuo, generating
-    // NATIVE 1080p (no ffmpeg upscale). Kling only accepts 5s/10s clips,
-    // so clips render at 5s ($0.07/s × 5 = $0.35 ≈ R5.7 each) and the
-    // assembler slow-stretches them to their 6s reel share.
-    description: 'Kling 2.6 Pro Motion at 1080p',
-    processingType: 'ai_upscaled',
-    resolution: '1080p',
-    // COGS: $0.35/clip → R28.6 / R57.2 / R85.8 at 5/10/15 clips (FX ~R16.3).
-    // 85/170/250 credits keep every length ≥ 53% margin against the R0.99
-    // pack-parity credit (40% floor met with room; old 60/100/150 would
-    // have been 9%/13%/15% on the previous Hailuo-upscale COGS basis and
-    // ~36% on Kling COGS — below floor).
-    configurations: [
-      { duration: 30, images: 5, credits: 85 },
-      { duration: 60, images: 10, credits: 170 },
-      { duration: 90, images: 15, credits: 250 }
-    ]
-  },
-];
+// The tier catalog (durations, images, resolutions, engine, credits) is the
+// shared one in lib/videoTiers.ts — re-exported here so every existing
+// `import { TIERS } from './renderPricing'` keeps working and reads the single
+// source of truth. lib/videoTiers.ts is also imported directly where callers
+// need tier helpers (engineForTier, imagesForDuration).
+export { TIERS } from './videoTiers';
+export type { Tier, TierConfig, VideoEngine } from './videoTiers';
+import { TIERS } from './videoTiers';
 
 /** AI Avatar (FlashHead lip-sync) is billed per 10 seconds of narration —
  *  cost scales linearly with fal + Narakeet per the audio length, so a flat
@@ -144,20 +94,21 @@ export function scriptCreditsForDuration(duration: number | null | undefined): n
   // the cost of an Essential 30s render without a deliberate pricing bump.
   return Math.min(6, Math.ceil(s / 30) * SCRIPT_CREDITS_PER_30S);
 }
-/** Preset image edit (Kontext / local HDR tone-map) — fixed price. */
+/** Preset image edit (gpt-image-2.5 flare whole-image pass) — fixed price. */
 export const IMAGE_EDIT_CREDITS = 2;
-/** Staging/brush-mask presets: Fill Pro costs ~2x Kontext per fal call and
- *  the render is the product the agent paid for, so it prices at 4 credits
- *  (R4 at R1/credit vs ~R1.65 fal cost ~$0.10). Routed through the same
- *  'edit' scope; the mint decides by presetId. */
-export const STAGING_EDIT_CREDITS = 4;
-/** Preset ids priced at the 4-credit brush-render rate. Only the staging
- *  presets belong here — they run the masked Fill [pro] path. Removal
- *  presets render via the plain Kontext path with their full preset prompts
- *  (kept in sync with modal/image_prompts.py categories), so they price at
- *  the base 2-credit edit like every other Kontext preset. */
+/** Staging presets price at the same base rate as every other edit since
+ *  2026-10-16: all categories run the same whole-image gpt-image-2.5/flare
+ *  call, so the old 4-credit Fill-Pro-era premium no longer applies. The
+ *  separate constant stays so a future cost-based re-split only edits here
+ *  (the mint still decides by presetId via isStagingPreset). */
+export const STAGING_EDIT_CREDITS = 2;
+/** Preset ids priced at the 4-credit staging rate. Only the staging presets
+ *  belong here — they run the gpt-image-2.5 whole-image path (kept in sync
+ *  with modal/image_prompts.py categories). Removal presets run the same
+ *  engine at the base 2-credit edit, so they are NOT listed; every other
+ *  preset still prices at the base edit too. */
 export const STAGING_PRESET_IDS = [
-  'luxury_modern', 'scandinavian_minimal', 'coastal_relaxed',
+  'luxury_modern', 'scandinavian_minimal', 'contemporary_dark', 'coastal_relaxed',
   'family_comfortable', 'luxury_bedroom', 'home_office', 'industrial_loft',
 ];
 
@@ -201,9 +152,10 @@ export function jobCredits(
   if (scope === 'description') return DESCRIPTION_CREDITS;
   if (scope === 'social_post') return SOCIAL_POST_CREDITS;
   if (scope === 'edit') {
-    // Brush-mask staging runs Fill Pro (~2x Kontext's fal cost) and is the
-    // tool agents actually pay for — price it at 4 credits. Plain preset
-    // edits (removal, twilight, sky fix, HDR tone-map…) stay at 2 credits.
+    // Every edit category (staging, removal, twilight, photo editor) runs
+    // the same whole-image flare pass and prices at the base rate. The
+    // presetId split is kept so a future cost-based re-split only edits
+    // STAGING_EDIT_CREDITS above.
     return isStagingPreset(args.presetId) ? STAGING_EDIT_CREDITS : IMAGE_EDIT_CREDITS;
   }
   if (scope === 'render') {

@@ -22,7 +22,7 @@ FX: **$1 = R16.55** (Xe mid-market, 13 Oct 2026). Provider prices can change —
 
 - **Kontext edit**: $0.04 = **R0.66**
 - **Fill Pro at 1920×1080** (brush staging path): rounds to 3 MP = $0.15 = **R2.48**
-- **Erase Pro** (brush removal): ~$0.035 = **R0.58**
+- **Furniture Removal — `openai/gpt-image-2.5/flare/edit`, quality=high**: $0.0361–0.1001 per output size = **R0.60–R1.66** (1920×1080 = $0.0396 = R0.66; `image_size: auto` follows the source photo, so output size is THE cost driver — list prices fetched from fal 15 Oct 2026)
 - **Two-stage staging**: 2 × Kontext = $0.08 = **R1.32**
 - **Gro text call**: plain description ≈ 3k in + 700 out tokens ≈ $0.010 = **R0.17**; with ~5 vision photos ≈ 10k in ≈ $0.025 = **R0.42** (photos ≈ 1–2k input tokens each)
 - **Narakeet**: $0.20/min = **R3.31/min** ($0.0033/sec)
@@ -92,29 +92,48 @@ The billing is flat but cost is per-second (fal $0.005/s + Narakeet $0.0033/s). 
 
 | Path | fal calls | Price (R) | Cost (R) | Profit (R) | Margin |
 |---|---|---:|---:|---:|---:|
-| Photo-editor / removal / twilight / HDR presets (Kontext) | 1× Kontext | 2 | 0.66 | 1.34 | 67% |
+| Photo-editor / twilight / HDR presets (Kontext) | 1× Kontext | 2 | 0.66 | 1.34 | 67% |
 | Virtual staging, preset (2-stage clear + furnish) | 2× Kontext | 4 | 1.32 | 2.68 | 67% |
 | Brush-mask staging (Fill Pro) | 1× Fill @3MP | 4 | 2.48 | 1.52 | 38% |
-| Brush removal (Erase Pro) | 1× Erase | 2 | 0.58 | 1.42 | 71% |
+| Furniture Removal (gpt-image-2.5 flare @high, `image_size: auto`) | 1× flare | 2 | 0.66–1.66 | 0.34–1.34 | **17%–67%** |
 
-#### Brush removal repriced with composite fix (2026-10-14)
+#### Furniture Removal moved to gpt-image-2.5 (2026-10-15)
 
-Furniture removal now runs Erase + mask inflation (6 px MaxFilter dilate,
-no extra fal call) + composite paste-back so unmasked pixels stay the
-agent's own photo. Same single Erase call, no COGS change:
+Furniture Removal no longer runs the FLUX Erase two-pass mask, BRIA,
+nano-banana, the leftover-sweep loop or the VQA gate — all of that ran
+BEFORE fal was called and is what blew the client's 8-minute wait. It is
+now **one** `openai/gpt-image-2.5/flare/edit` call over the whole photo
+(`quality: high`, `image_size` left at `auto` so the source aspect is
+preserved; the endpoint takes no mask, no strength and no guidance_scale).
 
-| Component | Cost | Notes |
-|---|---:|---|
-| FLUX Erase [pro], ≤1 MP output | $0.03 | $0.03 first MP ($0.004/extra MP over 1) |
-| Erase input-image charge | $0.004 | 1 MP reference image |
-| S3 mask PNG + client | ~$0.0005 | pennies, spread |
-| **Total COGS** | **≈$0.0345 = R0.57** | FX $1 = R16.55 |
+Pricing is per output size, not flat. List price at quality=high (fetched
+from fal 15 Oct 2026; FX $1 = R16.55, price 2 ⚡ = R2.00):
 
-Price stays 2 credits (2 ⚡): margin ≈ R1.43 = 71% — above the 40%
-blended floor with room for a retry. Retries cost COGS each (a failed
-Erase refunds via the standard failure path), so worst-case 2-attempt
-COGS ≈ R1.14, still 43% at 2 ⚡. Do not drop to 1 ⚡ (1.42× headroom is
-what absorbs pathological rooms needing a redo).
+| Output size | USD | R | Margin at 2 ⚡ |
+|---|---:|---:|---:|
+| 1024×768 | 0.0361 | 0.60 | 70% |
+| 1024×1536 | 0.0412 | 0.68 | 66% |
+| 1920×1080 | 0.0396 | 0.66 | 67% |
+| 1024×1024 | 0.0527 | 0.87 | 57% |
+| 2560×1440 | 0.0553 | 0.91 | 55% |
+| 3840×2160 | 0.1001 | 1.66 | **17%** ← under the 40% floor |
+
+Prompt text is on top: the removal prompt + its "Avoid:" negative is
+~600 tokens ≈ $0.003 ≈ **R0.05**.
+
+`image_size: auto` derives the output from the source photo, so a large
+upload can land on the 4K row. Levers, best first:
+
+1. Pin `image_size` to the source aspect at ≤1920 long side — that is
+   already the canvas `_fit_image_bytes` produces, so no visible loss, and
+   it caps COGS at ≈ R0.66–0.87 (57–70%). Only do this once a render has
+   been observed: fal's resize behaviour on a non-canonical size is
+   unverified here.
+2. Drop `quality` to `medium`: $0.0103–0.0260 = R0.17–0.43 at EVERY size
+   (78–91%), at an unknown fidelity cost.
+
+Until one of those lands, treat 2 ⚡ as **17%–67%**. Do not drop to 1 ⚡:
+at 4K a single render is already R1.66 of a R2.00 price.
 
 ### AI text (Grok 4.7 via fal/OpenRouter)
 

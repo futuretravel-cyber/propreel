@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Pencil, Plus, Trash2, Upload, User, X } from 'lucide-react';
+import { Info, Loader2, Pencil, Plus, Trash2, Upload, User, X } from 'lucide-react';
 import { useCredit, type AgentProfile } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { uploadImagesForAI } from '../lib/propertyListing';
@@ -35,6 +35,48 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
     >
       <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : ''}`} />
     </button>
+  );
+}
+
+/**
+ * The sizes the renderer draws the two images at, mirrored from
+ * _branding_geometry in the render worker (photo Ø150/250, logo 230 tall at
+ * 1080p, both measured off delivered frames). Kept in one place so the
+ * guidance on the tab and inside the upload tabs cannot drift from each
+ * other.
+ *
+ * logoAspectMax is the widest mark that still renders at logoHeight in
+ * BOTH orientations. It is not a style rule but the space the picture
+ * actually leaves: in portrait the photo disc reaches ~292 of the 1080 px
+ * and the right margin takes 36 more, so ~730 px of the top row is free —
+ * 730 / 230 ≈ 3.2:1 (the worker derives the same cap from the geometry as
+ * card_logo_max_w). Wider marks still render; the portrait video just
+ * shrinks them width-and-height together to fit beside the photo.
+ */
+const RENDERED = {
+  photoLandscape: 150,
+  photoPortrait: 250,
+  logoHeight: 230,
+  photoSourceIdeal: 1000,
+  photoSourceMin: 500,
+  logoSourceMin: 600,
+  logoAspectMax: '3:1',
+};
+
+/**
+ * Upload guidance for the two images the renderer burns into every video.
+ * Both are drawn at a FIXED size on the render canvas, so these numbers say
+ * what the SOURCE has to cover for that fixed size to come out identical in
+ * every video — they are not a target the user has to match.
+ */
+function Spec({ heading, children }: { heading: string; children: React.ReactNode }) {
+  return (
+    <div className="text-left bg-ink-50 border border-ink-200 rounded-xl px-4 py-3">
+      <p className="flex items-center gap-1.5 text-xs font-semibold text-ink-700 mb-1.5">
+        <Info className="w-3.5 h-3.5 text-purple-500" /> {heading}
+      </p>
+      <ul className="space-y-1 text-xs text-ink-600 list-disc pl-4">{children}</ul>
+    </div>
   );
 }
 
@@ -181,6 +223,11 @@ function ProfileModal({
                 {uploading === 'photo' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload Photo
                 <input type="file" accept="image/*" className="hidden" onChange={e => upload('photo', e.target.files?.[0])} disabled={uploading === 'photo'} />
               </label>
+              <Spec heading="Recommended photo size">
+                <li><strong>{RENDERED.photoSourceIdeal} × {RENDERED.photoSourceIdeal} px, square</strong> ({RENDERED.photoSourceMin} × {RENDERED.photoSourceMin} minimum) — the photo is centre-cropped to a square, then to a circle, so keep the face centred with a little headroom.</li>
+                <li>Renders as a <strong>{RENDERED.photoLandscape} px</strong> circle in landscape video and <strong>{RENDERED.photoPortrait} px</strong> in portrait video (at 1080p).</li>
+                <li>That size is fixed, so a sharper photo only sharpens the render — it never changes how big the photo appears.</li>
+              </Spec>
             </div>
           )}
 
@@ -198,6 +245,13 @@ function ProfileModal({
                 {uploading === 'logo' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload Logo
                 <input type="file" accept="image/*" className="hidden" onChange={e => upload('logo', e.target.files?.[0])} disabled={uploading === 'logo'} />
               </label>
+              <Spec heading="Recommended logo size">
+                <li><strong>At least {RENDERED.logoSourceMin} px tall</strong> (e.g. 900 × 600 px for a 3:2 mark). PNG with transparency gives the cleanest edge; JPG works on a plain background.</li>
+                <li>Renders <strong>{RENDERED.logoHeight} px tall</strong> (at 1080p) in every video — the same height in landscape and portrait for any mark that follows the width rule below. The width follows your file's shape.</li>
+                <li>Keep the mark between <strong>1:1 and {RENDERED.logoAspectMax}</strong>. That is how much of the portrait frame is free beside your photo, so anything in that range — including a long, wide agency wordmark — renders at the full {RENDERED.logoHeight} px height in <strong>both</strong> landscape and portrait.</li>
+                <li>Wider than {RENDERED.logoAspectMax}? It still renders — the portrait video shrinks it (width and height together, never squashed) so it stays clear of your photo. Splitting the mark into a stacked lockup keeps it full-height.</li>
+                <li>Trim blank edges before uploading — the renderer strips obvious margins, but a tight crop is the only way to be sure the mark itself is the size shown above.</li>
+              </Spec>
             </div>
           )}
         </div>
@@ -274,6 +328,26 @@ export default function AgentBranding() {
       <div>
         <h1 className="text-2xl font-bold text-white">Agent Profile Branding</h1>
         <p className="text-sm text-ink-400">Save your branding once — auto-apply to every video.</p>
+      </div>
+
+      {/* The two images are burned in at a FIXED size, so the source
+          dimensions are what keep the mark identical in every video. Repeated
+          from the upload tabs on purpose: a profile created before this
+          existed would otherwise never show the user the numbers. */}
+      <div className="card-light p-4 sm:p-5 space-y-3">
+        <p className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+          <Info className="w-4 h-4 text-purple-500" /> Image sizes that keep every video identical
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3 text-xs text-ink-600">
+          <div className="bg-ink-50 rounded-lg px-3 py-2">
+            <p className="font-semibold text-ink-700 mb-0.5">Agent photo</p>
+            <p><strong>{RENDERED.photoSourceIdeal} × {RENDERED.photoSourceIdeal} px</strong> square ({RENDERED.photoSourceMin} × {RENDERED.photoSourceMin} min). Cropped to a circle from the centre — renders {RENDERED.photoLandscape} px in landscape video, {RENDERED.photoPortrait} px in portrait.</p>
+          </div>
+          <div className="bg-ink-50 rounded-lg px-3 py-2">
+            <p className="font-semibold text-ink-700 mb-0.5">Agency logo</p>
+            <p><strong>{RENDERED.logoSourceMin} px tall minimum</strong> (900 × 600 for a 3:2 mark), between 1:1 and {RENDERED.logoAspectMax} wide. Renders <strong>{RENDERED.logoHeight} px tall</strong> in every video — landscape and portrait alike; only a mark wider than {RENDERED.logoAspectMax} is shrunk in portrait, to keep clear of the photo.</p>
+          </div>
+        </div>
       </div>
 
       <button
