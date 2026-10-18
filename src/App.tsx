@@ -25,7 +25,7 @@ import { useRepairDraftPhotos } from './lib/repairDraftPhotos';
 import { useReorderable } from './lib/reorder';
 import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
 import type { PhotoMeta } from '../lib/videoPrompts';
-import { cameraPrompt, movesForRoomType, CAMERA_MOVE_LABEL, ROOM_TYPE_LABEL, MAX_PROMPT_CHARS } from '../lib/videoPrompts';
+import { cameraPrompt, buildCameraPayload, movesForRoomType, CAMERA_MOVE_LABEL, ROOM_TYPE_LABEL } from '../lib/videoPrompts';
 import { TIERS as VIDEO_TIERS, imagesForDuration } from '../lib/videoTiers';
 import { playRenderComplete } from './lib/renderSound';
 import { useApprovedReviews } from './lib/useReviews';
@@ -2542,17 +2542,11 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   // light, garden, views).
   const sharedDescription = sharedScript.trim();
   // Structured Step-1 facts as one compact block. Only non-empty fields are
-  // included, so an untouched form adds nothing to the grounding. The raw
-  // price is formatted to ZAR the same way DescriptionTab does it.
+  // included, so an untouched form adds nothing to the grounding. Price is
+  // intentionally excluded — the video wizard no longer collects it.
   const listingSummary = (() => {
-    const rawPrice = (fields.price || '').trim();
-    const price = !rawPrice ? ''
-      : /^\d[\d\s,]*$/.test(rawPrice) && Number(rawPrice.replace(/[^\d]/g, '')) > 0
-        ? formatZar(Number(rawPrice.replace(/[^\d]/g, '')))
-        : rawPrice;
     const facts: string[] = [];
     if ((fields.address || '').trim()) facts.push(`Address: ${fields.address.trim()}`);
-    if (price) facts.push(`Price: ${price}`);
     if ((fields.propertyType || '').trim()) facts.push(`Property type: ${fields.propertyType}`);
     if ((fields.province || '').trim()) facts.push(`Province: ${fields.province}`);
     if ((fields.bedrooms || '').trim()) facts.push(`Bedrooms: ${fields.bedrooms}`);
@@ -3026,7 +3020,15 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   // simply ignored (the gate only ever reads entries for current photos).
   const [photoMeta, setPhotoMeta] = useStudioDraft<Record<string, PhotoMeta>>(studioDraftKey(user?.id, 'video:photoMeta'), {});
   const setPhotoMetaFor = (url: string, patch: Partial<PhotoMeta>) =>
-    setPhotoMeta(prev => ({ ...prev, [url]: { roomType: 'interior', move: 'in', ...(prev[url] || {}), ...patch } }));
+    setPhotoMeta(prev => {
+      const prior = prev[url];
+      // Explicit precedence (patch > existing > default) — an object-spread
+      // version of this either tripped TS2783 or let the defaults clobber
+      // the existing tags when a button patches only ONE of the two fields.
+      const roomType = patch.roomType ?? prior?.roomType ?? 'interior';
+      const move = patch.move ?? prior?.move ?? 'in';
+      return { ...prev, [url]: { roomType, move } };
+    });
   // Photos are the first hard gate — a reel without images can't render.
   // (2026-10-15: Photos moved after Orientation — agents pick the frame
   // FIRST, so the orientation tip shapes how they shoot/upload the set.)
@@ -3104,7 +3106,6 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2"><label className="label">Address</label><input className="input" value={fields.address} onChange={setField('address')} placeholder="Street, suburb, city" aria-label="Address" /></div>
-            <div><label className="label">Price (ZAR)</label><CurrencyInput className="input" value={fields.price} onChange={v => setFields(f => ({ ...f, price: v }))} placeholder="12,500,000" aria-label="Price in rand" /></div>
             <div>
               <label className="label">Property Type</label>
               <select className="input" value={fields.propertyType} onChange={setField('propertyType')} aria-label="Property Type">

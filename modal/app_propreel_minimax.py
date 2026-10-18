@@ -22,6 +22,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import fal_client
+# Authoritative per-photo walk-through prompts + the shared negative prompt,
+# generated from lib/videoPrompts.ts (single source of truth). BOTH names are
+# load-bearing: the wan branch passes CAMERA_NEGATIVE_PROMPT to fal's dedicated
+# negative field, and render_video maps each photo's (roomType, move) to a
+# CAMERA_PROMPTS entry. They were shipped without this import, so any AI-tier
+# render raised NameError before a single fal call went out.
+from camera_prompts import CAMERA_PROMPTS, CAMERA_NEGATIVE_PROMPT
 
 # Define the Modal app
 app = modal.App("propreel-render")
@@ -782,10 +789,12 @@ class EditImageRequest(BaseModel):
 # every clip randomly gets ZOOM (A), LEFT (B) or RIGHT (C). Hailuo reads the
 # head of a prompt hardest, so the BOLD motion directive leads and the
 # asset-lock prose follows; the negative tail starting "Motion must be fluid"
-# is the proven part and stays byte-identical. FULL prompt must stay <= 2000
-# chars: fal silently truncates longer prompts, and the old 2200+ char
-# prompts lost the final ~200 chars of negative constraints
-# (flicker/blur/text/logos) on every clip.
+# is the proven part and stays byte-identical. (The "<= 2000 chars" budget
+# below was a HAILUO-ONLY constraint — fal clipped longer Hailuo prompts and
+# the old 2200+ char prompts lost their final ~200 chars of negative
+# constraints. wan-25-preview, which now serves every AI tier, has NO
+# prompt-length limit, so the per-photo camera prompts from camera_prompts.py
+# run at full length; these A/B/C decks are only the untagged-photo fallback.)
 #
 # 2026-10-14 fix (Cinematic 30s regression): a Hailuo clip swept the camera
 # OUT of the image frame and invented a new kitchen. Correction: the
@@ -808,9 +817,8 @@ class EditImageRequest(BaseModel):
 # (Architectural Digest editorial, zero lens distortion, rectilinear
 # perspective); the tail stays ONE constant-speed glide - no whip pans or
 # speed ramps - so the brisker pace cannot turn into jerky motion.
-# Budgets after the 2026-10-16 change: A=1916, B=1990, C=1991 chars (must
-# stay <= 2000: fal silently truncates longer prompts and the negatives
-# ride at the tail).
+# Historical char budgets (Hailuo's 2000-char clip ceiling): A=1916, B=1990,
+# C=1991.
 VIDEO_PROMPTS = {
     'A': """Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera performs a purposeful PUSH-IN with clear forward momentum, a smooth gimbal dolly advancing deep into the room at a confident showcase walking pace: door frames and foreground furniture swell toward the viewer with real-space parallax as the far corner recedes. Each depth layer moves at its own rate - a true 3D camera journey, never a flat photo zoom. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays exactly as pictured - all animation is pure camera travel through the visible scene. The property is the absolute hero of every frame - always in focus, always the center of attention, never drifting away. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Architectural Digest editorial quality: hyper-realistic reflections, soft natural light, immaculate finishes, perfectly straight vertical lines, zero lens distortion. Motion must be fluid, smooth and unbroken - one constant-speed showcase glide at a confident purposeful pace with clear momentum. No whip pans, snap zooms, speed ramps, or stop-start jitter. No object, wall, fixture, texture or architectural element is added, removed, replaced or altered. No new rooms or spaces - no added kitchen, bathroom, hallway, driveway, parking lot, street, extension, furniture, appliances, counters, cabinetry, cars or vehicles; no exiting through walls, image boundaries or border-crossing, no revealing exterior spaces. No geometry warping, slanted walls, curved vertical lines, fisheye lens or extreme distortion. No flicker, shake, blur, out-of-focus, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures or unrealistic reflections. No text, watermarks, logos, people, animals, clutter, or dirty surfaces.""",
     'B': """Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera sweeps decisively LEFT with steady momentum, a long smooth gimbal lateral dolly across the room at a confident showcase walking pace: near furniture glides fast across the locked background while far walls ease slowly - a true 3D camera journey, never a flat photo pan. The sweep stays strictly inside the space already visible - image edges are hard walls the camera never approaches and the move never leaves the room shown. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays exactly as pictured - all animation is pure camera travel through the visible scene. The property is the absolute hero of every frame - always in focus, always the center of attention, never drifting away. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Architectural Digest editorial quality: hyper-realistic reflections, soft natural light, immaculate finishes, perfectly straight vertical lines, zero lens distortion. Motion must be fluid, smooth and unbroken - one constant-speed showcase glide at a confident purposeful pace with clear momentum. No whip pans, snap zooms, speed ramps, or stop-start jitter. No object, wall, fixture, texture or architectural element is added, removed, replaced or altered. No new rooms or spaces - no added kitchen, bathroom, hallway, driveway, parking lot, street, extension, furniture, appliances, counters, cabinetry, cars or vehicles; no exiting through walls, image boundaries or border-crossing, no revealing exterior spaces. No geometry warping, slanted walls, curved vertical lines, fisheye lens or extreme distortion. No flicker, shake, blur, out-of-focus, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures or unrealistic reflections. No text, watermarks, logos, people, animals, clutter, or dirty surfaces.""",
@@ -1047,7 +1055,8 @@ def generate_ai_video_clip(spec: tuple) -> str:
     Args (one tuple per clip — Modal .map fans these out one container each):
         spec: (image_url, prompt, resolution, duration, engine) —
               image_url: URL of the source image,
-              prompt: Video generation prompt (max 2000 chars),
+              prompt: Video generation prompt (no length limit on wan/Kling;
+                     Hailuo clips past 2000 chars),
               resolution: Target resolution (512p/768p Hailuo; 1080p Kling native),
               duration: Duration in seconds (default 6; Kling: 5 or 10),
               engine: ENG_HAILUO (default) or ENG_KLING26 — picks the fal model
@@ -1063,8 +1072,11 @@ def generate_ai_video_clip(spec: tuple) -> str:
     engine = parts[4] if len(parts) > 4 else ENG_HAILUO
     duration = int(duration)
 
-    # Truncate prompt to 2000 characters if needed
-    if len(prompt) > 2000:
+    # Hailuo silently clips prompts past 2000 chars (the negatives ride at the
+    # tail, so a clipped prompt loses its negative block). wan-25-preview and
+    # Kling have no prompt-length limit, so they get the prompt verbatim — the
+    # restored full-length prompts are only ever truncated for Hailuo.
+    if engine == ENG_HAILUO and len(prompt) > 2000:
         prompt = prompt[:2000]
 
     print(f"Generating AI video clip: {engine}, {resolution}, {duration}s")
