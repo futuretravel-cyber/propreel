@@ -30,6 +30,20 @@ import fal_client
 # render raised NameError before a single fal call went out.
 from camera_prompts import CAMERA_PROMPTS, CAMERA_NEGATIVE_PROMPT
 
+# FlashVSR self-hosted upscaler (modal/flashvsr_endpoint.py, separate Modal app
+# so its ~8 GB GPU image stays out of the render image). When enabled, the AI
+# tiers generate every wan-25 clip at 480p and upscale it to the delivery
+# resolution here, instead of paying fal's 720p/1080p generation rate.
+# Kill-switch: unset FLASHVSR_UPSCALE (or set it to "0") to generate at the
+# tier's native resolution and skip the hop entirely.
+FLASHVSR_APP = "propreel-flashvsr"
+FLASHVSR_FN = "flashvsr_upscale_video"
+
+
+def _flashvsr_enabled() -> bool:
+    return os.environ.get("FLASHVSR_UPSCALE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 # Define the Modal app
 app = modal.App("propreel-render")
 
@@ -2795,7 +2809,7 @@ def render_video_local(
     return video_url, narakeet_seconds
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("narakeet")], timeout=1800, retries=2, min_containers=0, max_containers=100, scaledown_window=300)
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("narakeet")], timeout=1800, retries=2, min_containers=0, max_containers=100,    scaledown_window=300, env={"FLASHVSR_UPSCALE": "1"})
 def render_video(
     record_id: str,
     tier: str,
@@ -2918,7 +2932,15 @@ def render_video(
             # (480p/720p/1080p) with 5s or 10s clips; the assembler stretches
             # each clip to its even share of the reel. No ffmpeg upscale pass
             # is needed — the canvas below already matches the tier.
-            ai_resolution = resolution
+            if _flashvsr_enabled() and resolution != "480p":
+                # FlashVSR self-hosted upscaler: generate at 480p (fal's
+                # cheapest rate) and upscale each clip to the delivery
+                # resolution after generation. The upscale hop below falls
+                # back to the native-fal clip if FlashVSR fails, so a paid
+                # render never dies here.
+                ai_resolution = "480p"
+            else:
+                ai_resolution = resolution
             clip_seconds = 5
         elif engine == ENG_KLING26:
             # PREMIUM: Kling 2.6 Pro generates native 1080p — no 768p source
@@ -2955,6 +2977,47 @@ def render_video(
         for c in video_clips:
             if not c:
                 raise RuntimeError("One or more AI clips came back empty — render aborted")
+
+        # FlashVSR upscale hop: clips were generated at 480p above (fal's
+        # cheapest rate); upscale each to the tier's delivery resolution via
+        # the separate propreel-flashvsr Modal app. Concurrent (.map). Per-clip
+        # fallback: on ANY upscale failure keep the native 480p clip so a paid
+        # render never dies here — the assembler's pad/scale normalizes it to
+        # the canvas regardless of source resolution.
+        if _flashvsr_enabled() and engine == ENG_WAN25 and resolution != "480p":
+            portrait = (orientation == "PORTRAIT")
+            try:
+                _fv = modal.Function.from_name(FLASHVSR_APP, FLASHVSR_FN)
+                # .map takes ONE ITERABLE PER POSITIONAL PARAMETER (zip
+                # semantics — no tuple unpacking). A list of 3-tuples passes
+                # the whole tuple as input_video_url and the endpoint dies
+                # with "'tuple' object has no attribute 'decode'" (urlparse
+                # on a tuple; seen live 2026-10-19 — both verification
+                # renders silently fell back to native 480p clips).
+                # return_exceptions=True lets the per-clip merge below keep
+                # native clips for individual failures without killing the
+                # whole hop.
+                upscaled = list(_fv.map(
+                    video_clips,
+                    [resolution] * len(video_clips),
+                    [portrait] * len(video_clips),
+                    order_outputs=True,
+                    return_exceptions=True,
+                ))
+                merged = []
+                for native, up in zip(video_clips, upscaled):
+                    url = (up or {}).get("url") if isinstance(up, dict) else None
+                    if url:
+                        merged.append(url)
+                    else:
+                        print(f"FlashVSR upscale failed for a clip — keeping native 480p: {up}")
+                        merged.append(native)
+                video_clips = merged
+                print(f"FlashVSR upscaled {sum(1 for u in video_clips if 'upscaled/' in u)}/{len(video_clips)} clips to {resolution}")
+            except Exception as _fe:
+                # Cross-app call itself failed (app not deployed, name typo,
+                # Modal auth) — keep the native 480p clips and continue.
+                print(f"FlashVSR upscale hop unavailable — using native 480p clips: {_fe}")
 
         # Concatenate video clips — the paid clips are ALWAYS used now.
         # Assembly runs on its own container (ffmpeg work, not fal spend) so
@@ -4166,11 +4229,14 @@ def _health_payload() -> dict:
         "clip_duration": 5,
         "resolutions": ai_resolutions,
         "audio": False,
-        "flashhead": "fal-ai/flashhead/v1/lip-sync"
+        "flashhead": "fal-ai/flashhead/v1/lip-sync",
+        # Live kill-switch state (FLASHVSR_UPSCALE) — operators read this from
+        # GET /health without digging through render logs.
+        "flashvsr_upscale": _flashvsr_enabled(),
     }
 
 
-@app.function(image=image)
+@app.function(image=image, env={"FLASHVSR_UPSCALE": "1"})
 def health_check() -> dict:
     """Health check endpoint"""
     return _health_payload()
@@ -4745,7 +4811,7 @@ async def admin_secret(request: Request) -> dict:
 
 
 # Mount the FastAPI app to Modal
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("render-auth"), modal.Secret.from_name("narakeet"), modal.Secret.from_name("admin-api"), modal.Secret.from_name("modal-admin-creds")])
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("render-auth"), modal.Secret.from_name("narakeet"), modal.Secret.from_name("admin-api"), modal.Secret.from_name("modal-admin-creds")], env={"FLASHVSR_UPSCALE": "1"})
 @modal.asgi_app()
 def web():
     """Mount FastAPI app as Modal web endpoint"""

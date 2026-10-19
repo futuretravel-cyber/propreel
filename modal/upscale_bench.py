@@ -827,6 +827,36 @@ def run_all() -> dict:
     return report
 
 
+# ── CPU: prep one arbitrary clip for the FlashVSR endpoint ─────────────────
+# One Modal .run() per target size. Cuts the source to a chosen scale, pads to
+# a 128-multiple canvas, and uploads to the upscaled/ prefix so the deployed
+# propreel-flashvsr endpoint can ingest it via its S3 branch. 480p and 720p
+# only: FlashVSR upscales 1.5x from a canvas whose area it normalizes against,
+# so 1080p-in is a no-op that burns GPU for identical pixels, and a >1080p
+# canvas is far past the largest size the bench ever proved.
+@app.function(image=bench_image, secrets=[AWS_SECRET], timeout=900, cpu=2)
+def prep_for_upscale(src_key: str, out_w: int, out_h: int) -> dict:
+    """Cut `src_key` to out_w x out_h and upload to upscaled/ for upscaling."""
+    import subprocess
+
+    work = Path("/tmp/prep"); work.mkdir(exist_ok=True)
+    src = work / "src.mp4"
+    _s3().download_file(S3_BUCKET, src_key, str(src))
+    cut = work / f"cut_{out_w}x{out_h}.mp4"
+    # scale + force_original_aspect_ratio=decrease + pad: keeps the source
+    # aspect and letterboxes the remainder, so a non-16:9 source never gets
+    # geometrically distorted before the upscaler sees it.
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(src),
+         "-vf", f"scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
+                f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2",
+         "-an", "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p",
+         str(cut)], check=True)
+    base = Path(src_key).stem
+    up = _upload(str(cut), f"upscaled/src_{base}_{out_w}x{out_h}.mp4")
+    return {"key": up["key"], "w": out_w, "h": out_h}
+
+
 @app.local_entrypoint()
 def main():
     run_all.remote()
