@@ -29,13 +29,6 @@ const bundles = [
   { credits: 500, price: 500, popular: false },
 ];
 
-const costEstimates = [
-  { tier: 'Essential', credits: 5 },
-  { tier: 'Social', credits: 30 },
-  { tier: 'Cinematic', credits: 40 },
-  { tier: 'Premium', credits: 85 },
-];
-
 export default function EnhancedBilling() {
   const { user, balance, refresh, giftCredits } = useAuth();
   const toast = useToast();
@@ -54,6 +47,15 @@ export default function EnhancedBilling() {
   const [refCopied, setRefCopied] = useState(false);
   const [refStats, setRefStats] = useState<ReferralStats | null>(null);
   const [refStatsLoading, setRefStatsLoading] = useState(true);
+
+  // Credit Cost Breakdown — derived from the canonical tier table at render
+  // time, so it tracks the same TIERS the Studio picker, job_token pricing
+  // and the pricing_config merge use (the hardcoded copy still showed the
+  // old 40/85 prices after the 2026-10-18 tier move).
+  const costEstimates = TIERS.map((t) => ({
+    tier: t.label,
+    credits: t.configurations[0]?.credits ?? 0,
+  }));
 
   // Give-5-get-5 numbers: signups by link, first purchases (paid), pending payout
   useEffect(() => {

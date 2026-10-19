@@ -264,12 +264,12 @@ Attributes:
 
 ### Video Tiers
 
-| Tier | Processing | Resolution | Credits |
-|------|------------|------------|---------|
-| Essential | Local FFmpeg | 1080p | 5-10 |
-| Social | AI (512p) | 512p | 30-80 |
-| Cinematic | AI (720p) | 720p | 40-105 |
-| Premium | AI + Upscale | 1080p | 60-150 |
+| Tier | Processing | Resolution | Images (30s/60s/90s) | Credits |
+|------|------------|------------|----------------------|---------|
+| Essential | Local FFmpeg | 1080p | 6 / 12 / — | 5-10 |
+| Social | AI (wan-25-preview) | 480p | 6 / 12 / 18 | 30-90 |
+| Cinematic | AI (wan-25-preview) | 720p | 6 / 12 / 18 | 50-150 |
+| Premium | AI (wan-25-preview) | 1080p | 6 / 12 / 18 | 75-225 |
 
 ## Environment Variables Summary
 

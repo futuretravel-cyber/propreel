@@ -98,12 +98,12 @@ Health check endpoint.
 
 ## Video Tiers
 
-| Tier | Duration | Max Images | Transition | Credits |
-|------|----------|------------|------------|---------|
-| ESSENTIAL | 15s | 4 | fade | 5 |
-| SOCIAL | 30s | 8 | slide | 15 |
-| CINEMATIC | 60s | 14 | zoom | 45 |
-| PREMIUM | 120s | 24 | cinematic | 150 |
+| Tier | Durations | Images (per duration) | Transition | Credits |
+|------|-----------|----------------------|------------|---------|
+| ESSENTIAL | 30s / 60s | 6 / 12 | fade | 5-10 |
+| SOCIAL | 30s / 60s / 90s | 6 / 12 / 18 | slide | 30-90 |
+| CINEMATIC | 30s / 60s / 90s | 6 / 12 / 18 | zoom | 50-150 |
+| PREMIUM | 30s / 60s / 90s | 6 / 12 / 18 | cinematic | 75-225 |
 
 ## Deployment
 

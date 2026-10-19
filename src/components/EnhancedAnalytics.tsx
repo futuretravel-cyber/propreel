@@ -9,10 +9,9 @@ import {
   AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
 import { PropReelAPI, CreditReportData } from '../lib/api';
+import { TIERS } from '../../lib/renderPricing';
 
 // ─── Real analytics: every number derives from the user's credit ledger ────
-
-const TIER_COSTS: Record<string, number> =  { ESSENTIAL: 5, SOCIAL: 30, CINEMATIC: 40, PREMIUM: 85 };
 
 export default function EnhancedAnalytics() {
   const { user } = useAuth();
@@ -53,10 +52,17 @@ export default function EnhancedAnalytics() {
     for (const t of txns) {
       if (t.amount >= 0) continue;
       const reason = String(t.reason || '').toLowerCase();
+      if (!(reason.includes('video') || reason.includes('render'))) continue;
       const cost = Math.abs(t.amount);
-      let tier: string | null = null;
-      for (const [name, c] of Object.entries(TIER_COSTS)) {
-        if (cost === c && (reason.includes('video') || reason.includes('render'))) tier = name;
+      // Prefer the tier the mint recorded (job_token writes metadata.tier) —
+      // amounts alone are ambiguous (150 = Cinematic 90s or Premium 60s), and
+      // the fallback match must track the canonical table, never a hardcoded
+      // copy (the old map still expected 40/85 and dropped every render
+      // charged at the 2026-10-18 prices).
+      const tagged = String(t.metadata?.tier || '').toUpperCase();
+      let tier: string | null = TIERS.find((e) => e.id === tagged)?.id ?? null;
+      if (!tier) {
+        tier = TIERS.find((e) => e.configurations.some((c) => c.credits === cost))?.id ?? null;
       }
       if (tier) {
         counts[tier] = counts[tier] || { renders: 0, credits: 0 };

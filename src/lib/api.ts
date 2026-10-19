@@ -68,6 +68,8 @@ export interface CreditReportData {
     description?: string;
     reason?: string;
     kind?: string;
+    /** Ledger metadata — job_token writes scope/tier here (tier breakdown) */
+    metadata?: Record<string, any>;
   }>;
   /** Derived client-side from transaction reasons (ledger has no feature column) */
   creditsByFeature: { videoGeneration: number; imageEditing: number; flashHead: number; other: number };

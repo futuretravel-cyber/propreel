@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X, Search, ChevronDown, MessageCircle, BookOpen } from 'lucide-react';
+import { TIERS } from '../../lib/renderPricing';
 
 interface FaqItem {
   q: string;
@@ -7,8 +8,18 @@ interface FaqItem {
   category: string;
 }
 
+// Credit ranges derived from the canonical tier table so this FAQ can never
+// drift from what job_token actually charges (the 2026-10-18 tier move left
+// this text quoting the old 40–105 / 85–250 prices).
+const tierCreditRanges = TIERS.map((t) => {
+  const cs = t.configurations.map((c) => c.credits);
+  return `${t.label} ${Math.min(...cs)}–${Math.max(...cs)}`;
+}).join(', ');
+const allTierCredits = TIERS.flatMap((t) => t.configurations.map((c) => c.credits));
+const tierCreditSpan = `${Math.min(...allTierCredits)}–${Math.max(...allTierCredits)}`;
+
 const FAQS: FaqItem[] = [
-  { category: 'Getting Started', q: 'How do credits work?', a: 'Every action in PropReel uses credits: AI photo edits cost 2 credits, video tiers cost 5–250 credits depending on tier (Essential 5–10, Social 30–80, Cinematic 40–105, Premium 85–250), and AI Avatar talking-head videos are billed 2 credits per 10 seconds of narration (90-second cap). You get 5 free credits on signup, and plan credits renew monthly. FIFO expiry: oldest credits are spent first.' },
+  { category: 'Getting Started', q: 'How do credits work?', a: `Every action in PropReel uses credits: AI photo edits cost 2 credits, video tiers cost ${tierCreditSpan} credits depending on tier (${tierCreditRanges}), and AI Avatar talking-head videos are billed 2 credits per 10 seconds of narration (90-second cap). You get 5 free credits on signup, and plan credits renew monthly. FIFO expiry: oldest credits are spent first.` },
   { category: 'Getting Started', q: 'How do I create my first video?', a: 'Open the Video Generator and follow the 8 steps: add a property description, pick a video tier (start with Essential to try it out), upload your photos, choose orientation and a voice, then hit Generate on the last step. Your video usually renders in a few minutes and appears under Projects when ready.' },
   { category: 'Getting Started', q: 'What are project templates?', a: 'Templates pre-fill property type, tier, and style defaults so you can move faster. Find them via the Templates button on the Projects page — options include Family Home, Luxury Villa, Apartment, Commercial, Vacant Land, and New Development.' },
   { category: 'Credits & Billing', q: 'How do I top up credits?', a: 'Go to Dashboard → Credits, pick a bundle or a custom amount (minimum R50), and pay securely with Paystack using card, EFT, or SnapScan. Credits are added the moment your payment is confirmed.' },
