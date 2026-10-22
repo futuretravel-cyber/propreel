@@ -1,13 +1,71 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Play, Check, Clock, Sparkles, Video, Image, FileText, Share2 } from 'lucide-react';
+import {
+  ArrowLeft, Play, Check, Clock, Sparkles, Video, Image, FileText, Share2,
+  GraduationCap, Loader2, AlertCircle,
+} from 'lucide-react';
 
+interface TutorialVideo {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  url: string;
+  durationSeconds: number | null;
+  createdAt: string;
+}
+
+const ALL = 'All tools';
+
+/**
+ * Public /tutorial: the video tutorial library FIRST (the same catalog
+ * Admin → Tutorials publishes and Dashboard → Tutorials watches — served
+ * by the public /api/music?action=tutorials route), then the written
+ * quick-start guide for people who prefer to read.
+ */
 export default function TutorialVideoPage() {
   const [currentStep, setCurrentStep] = useState(0);
 
-  // Step-by-step written walkthrough. (Video tutorials are produced
-  // separately; this page intentionally renders an interactive guide
-  // rather than embedding placeholder videos.)
+  // ── video catalog ─────────────────────────────────────────────────────
+  const [videos, setVideos] = useState<TutorialVideo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [category, setCategory] = useState(ALL);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setFailed(false);
+    try {
+      const res = await fetch('/api/music?action=tutorials');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setVideos(data.tutorials || []);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const categories = useMemo(() => {
+    const seen = new Set(videos.map(v => v.category).filter(Boolean));
+    return [ALL, ...[...seen].sort()];
+  }, [videos]);
+
+  const filtered = useMemo(
+    () => (category === ALL ? videos : videos.filter(v => v.category === category)),
+    [videos, category],
+  );
+
+  const fmtDur = (s: number | null) => {
+    if (!s) return null;
+    const m = Math.round(s / 60);
+    return m >= 1 ? `${m} min` : `${Math.round(s)} sec`;
+  };
+
+  // ── written quick-start guide (kept below the videos) ─────────────────
   const steps = [
     {
       id: 1,
@@ -68,14 +126,102 @@ export default function TutorialVideoPage() {
 
         <div className="text-center mb-12">
           <h1 className="text-4xl sm:text-5xl font-black text-gray-900 mb-4">
-            Create Your First Video
+            PropReel Tutorials
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Follow this step-by-step tutorial to create your first stunning property video in under 20 minutes.
+            Watch how every tool works — photo editing, staging, video reels, voiceovers and more —
+            then follow the quick-start guide to create your first video.
           </p>
         </div>
 
-        {/* Step Visual Panel (no placeholder videos — interactive written guide) */}
+        {/* ── Video library ───────────────────────────────────────────── */}
+        <section id="videos" className="mb-16">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div className="flex items-center gap-2 text-gray-900">
+              <GraduationCap className="w-5 h-5 text-purple-700" />
+              <h2 className="text-xl font-bold">Video tutorials</h2>
+              <span className="text-sm text-gray-500 font-normal">
+                {filtered.length} {filtered.length === 1 ? 'video' : 'videos'}
+              </span>
+            </div>
+            {categories.length > 1 && (
+              <div className="flex flex-wrap gap-1.5">
+                {categories.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setCategory(c)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      c === category
+                        ? 'bg-purple-700 text-white'
+                        : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {loading ? (
+            <p className="text-sm text-gray-500 flex items-center gap-2 py-8 justify-center">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading tutorials…
+            </p>
+          ) : failed ? (
+            <div className="space-y-2 text-center py-8">
+              <p className="text-sm text-gray-500 flex items-center justify-center gap-2">
+                <AlertCircle className="w-4 h-4" /> Could not load the videos right now.
+              </p>
+              <button onClick={load} className="btn btn-secondary text-xs">Retry</button>
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">
+              No tutorial videos{category !== ALL ? ` for ${category}` : ''} yet — the written
+              guide below covers everything in the meantime.
+            </p>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filtered.map(v => (
+                <div key={v.id} className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                  <video
+                    src={v.url}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="w-full aspect-video bg-black"
+                    aria-label={`Tutorial: ${v.title}`}
+                  />
+                  <div className="p-3.5 space-y-1">
+                    <p className="text-sm font-semibold text-gray-900 line-clamp-2">{v.title}</p>
+                    <p className="flex items-center gap-1.5 text-xs text-purple-700">
+                      <Video className="w-3.5 h-3.5" /> {v.category}
+                      {fmtDur(v.durationSeconds) && (
+                        <span className="text-gray-400 flex items-center gap-1">
+                          · <Clock className="w-3 h-3" /> {fmtDur(v.durationSeconds)}
+                        </span>
+                      )}
+                    </p>
+                    {v.description && (
+                      <p className="text-xs text-gray-500 line-clamp-2">{v.description}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <hr className="border-gray-200 mb-12" />
+
+        {/* ── Written quick-start guide ───────────────────────────────── */}
+        <div className="text-center mb-10">
+          <h2 className="text-3xl font-black text-gray-900 mb-3">Quick start in writing</h2>
+          <p className="text-gray-600 max-w-2xl mx-auto">
+            Follow this step-by-step guide to create your first stunning property video in under 20 minutes.
+          </p>
+        </div>
+
+        {/* Step Visual Panel */}
         <div className="mb-12">
           <div className="aspect-video bg-gradient-to-br from-purple-900 via-purple-800 to-purple-950 rounded-2xl shadow-2xl flex flex-col items-center justify-center text-center px-8">
             <div className="w-20 h-20 rounded-2xl bg-white/10 flex items-center justify-center text-white mb-6">
@@ -114,6 +260,7 @@ export default function TutorialVideoPage() {
                     ? 'bg-purple-300'
                     : 'bg-gray-200'
                 }`}
+                aria-label={`Go to step ${step.id}: ${step.title}`}
               />
             ))}
           </div>
@@ -126,9 +273,9 @@ export default function TutorialVideoPage() {
               </div>
               <div className="flex-1">
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                  {steps[currentStep].title}
+                  Step {steps[currentStep].id}: {steps[currentStep].title}
                 </h3>
-                <p className="text-gray-600 text-lg">
+                <p className="text-lg text-gray-700">
                   {steps[currentStep].description}
                 </p>
               </div>

@@ -23,13 +23,35 @@ const CATEGORIES = [
   'AI Writer', 'Billing & Credits',
 ];
 
+/**
+ * Dashboard tool route each tutorial category points to (so the admin can
+ * open the live tool next to the video and spot mismatched copy).
+ */
+const CATEGORY_TOOL_LINK: Record<string, string> = {
+  'Photo Editor': '/dashboard/photo-editor',
+  'Virtual Staging': '/dashboard/photo-editor?tab=staging',
+  'Furniture Removal': '/dashboard/photo-editor?tab=removal',
+  'Twilight': '/dashboard/photo-editor?tab=twilight',
+  'AI Avatar (FlashHead)': '/dashboard/video',
+  'Property Description': '/dashboard/description',
+  'Social Media': '/dashboard/social',
+  'AI Writer': '/dashboard/video',
+  'Billing & Credits': '/dashboard/credits',
+};
+
+const TOOL_LABEL: Record<string, string> = {
+  '/dashboard/photo-editor': 'Photo Editor',
+  '/dashboard/description': 'Property Description',
+  '/dashboard/social': 'Social Media',
+  '/dashboard/video': 'Video Generator',
+  '/dashboard/credits': 'Credits',
+};
+
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // ≤100MB — matches the server cap
 
 /**
  * Admin → Tutorials: upload the how-to videos the dashboard plays for
- * users. Same 4-stage pipeline as the Music Library (presigned PUT →
- * browser→S3 direct upload → server-side magic-byte verify → metadata
- * register), riding the same shared media route.
+ * users. Same 4-stage pipeline as the Music Library (presigned PUT →\n * browser→S3 direct upload → server-side magic-byte verify → metadata\n * register), riding the same shared media route.
  */
 export default function AdminTutorials() {
   const toast = useToast();
@@ -140,7 +162,7 @@ export default function AdminTutorials() {
   };
 
   const remove = async (video: TutorialVideo) => {
-    if (!confirm(`Delete "${video.title}" permanently?`)) return;
+    if (!confirm(`Delete \"${video.title}\" permanently?`)) return;
     try {
       const res = await fetch(`/api/music?id=${encodeURIComponent(video.id)}&action=tutorial&user_id=${encodeURIComponent(user?.id || '')}`, { method: 'DELETE' });
       const data = await res.json();
@@ -176,27 +198,37 @@ export default function AdminTutorials() {
         <p className="text-sm text-ink-400">No tutorial videos yet. Upload your first how-to (MP4/MOV/WebM, ≤100MB).</p>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {videos.map(v => (
-            <div key={v.id} className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
-              <video
-                src={v.url} controls playsInline preload="metadata"
-                className="w-full aspect-video bg-black"
-                aria-label={`Tutorial: ${v.title}`}
-              />
-              <div className="p-3 space-y-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{v.title}</p>
-                    <p className="text-[11px] text-ink-500">{v.category} · {v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-ZA') : '—'}</p>
+          {videos.map(v => {
+            const toolHref = CATEGORY_TOOL_LINK[v.category] ?? '/dashboard';
+            const toolName = TOOL_LABEL[toolHref] ?? 'the tool';
+            return (
+              <div key={v.id} className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+                <video
+                  src={v.url} controls playsInline preload="metadata"
+                  className="w-full aspect-video bg-black"
+                  aria-label={`Tutorial: ${v.title}`}
+                />
+                <div className="p-3 space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{v.title}</p>
+                      <p className="text-[11px] text-ink-500">{v.category} · {v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-ZA') : '—'}</p>
+                    </div>
+                    <button onClick={() => remove(v)} title="Delete" className="p-1.5 rounded hover:bg-red-500/15 text-red-400">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button onClick={() => remove(v)} title="Delete" className="p-1.5 rounded hover:bg-red-500/15 text-red-400">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {v.description && <p className="text-xs text-ink-400 line-clamp-2">{v.description}</p>}
+                  <a
+                    href={toolHref}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-medium text-purple-400 hover:text-purple-300 mt-1"
+                  >
+                    Open {toolName} →
+                  </a>
                 </div>
-                {v.description && <p className="text-xs text-ink-400 line-clamp-2">{v.description}</p>}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

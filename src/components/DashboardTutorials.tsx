@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GraduationCap, Play, Loader2, Video } from 'lucide-react';
+import { TUTORIALS } from '../../scripts/_tut_content';
 
 interface TutorialVideo {
   id: string;
@@ -20,7 +21,23 @@ const ALL = 'All services';
  * /api/music?action=tutorials (the same source the admin tab writes).
  * Grouped by service with a filter, so the "Show me how" jumps land
  * somewhere complete.
+ *
+ * Each card links straight to the matching service tool on the dashboard,
+ * so a user who watches a tutorial and thinks "okay, show me that" never
+ * has to hunt for /dashboard/photo-editor or /dashboard/social.
  */
+const TOOL_ROUTES: Record<string, string> = {
+  'Photo Editor': '/dashboard/photo-editor',
+  'Virtual Staging': '/dashboard/photo-editor?tab=staging',
+  'Furniture Removal': '/dashboard/photo-editor?tab=removal',
+  'Twilight': '/dashboard/photo-editor?tab=twilight',
+  'AI Avatar (FlashHead)': '/dashboard/video',
+  'Property Description': '/dashboard/description',
+  'Social Media': '/dashboard/social',
+  'AI Writer': '/dashboard/video',
+  'Billing & Credits': '/dashboard/credits',
+};
+
 export default function DashboardTutorials() {
   const [videos, setVideos] = useState<TutorialVideo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,28 +115,46 @@ export default function DashboardTutorials() {
         </p>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(v => (
-            <div key={v.id} className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
-              <video
-                src={v.url}
-                controls
-                playsInline
-                preload="metadata"
-                className="w-full aspect-video bg-black"
-                aria-label={`Tutorial: ${v.title}`}
-              />
-              <div className="p-3 space-y-1">
-                <p className="text-sm font-medium text-white line-clamp-2">{v.title}</p>
-                <p className="flex items-center gap-1.5 text-[11px] text-ink-500">
-                  <Video className="w-3 h-3" /> {v.category}
-                  {v.durationSeconds ? ` · ${Math.round(v.durationSeconds / 60)} min` : ''}
-                </p>
-                {v.description && (
-                  <p className="text-xs text-ink-400 line-clamp-2">{v.description}</p>
-                )}
+          {filtered.map(v => {
+            const toolHref = TOOL_ROUTES[v.category] ?? '/dashboard';
+            const toolLabel = {
+              '/dashboard/photo-editor': 'Photo Editor',
+              '/dashboard/description': 'Property Description',
+              '/dashboard/social': 'Social Media',
+              '/dashboard/video': 'Video Generator',
+              '/dashboard/credits': 'Credits',
+            }[toolHref] ?? 'the tool';
+            return (
+              <div key={v.id} className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+                <video
+                  src={v.url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="w-full aspect-video bg-black"
+                  aria-label={`Tutorial: ${v.title}`}
+                />
+                <div className="p-3 space-y-1">
+                  <p className="text-sm font-medium text-white line-clamp-2">{v.title}</p>
+                  <p className="flex items-center gap-1.5 text-[11px] text-ink-500">
+                    <Video className="w-3 h-3" /> {v.category}
+                    {v.durationSeconds ? ` · ${Math.round(v.durationSeconds / 60)} min` : ''}
+                  </p>
+                  {v.description && (
+                    <p className="text-xs text-ink-400 line-clamp-2">{v.description}</p>
+                  )}
+                  {toolHref !== '/dashboard' && (
+                    <a
+                      href={toolHref}
+                      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-purple-400 hover:text-purple-300 mt-1"
+                    >
+                      Open {toolLabel} →
+                    </a>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
