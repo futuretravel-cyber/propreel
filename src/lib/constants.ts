@@ -58,6 +58,8 @@ export const PHONE_COUNTRY_CODES = [
 // (worker-side credit enforcement). Re-exported here so every UI import
 // keeps working unchanged.
 export { TIERS } from '../../lib/renderPricing';
+// Cash price per top-up-pack credit — same constant the server charges with.
+export { CREDIT_PACK_RAND } from '../../lib/renderPricing';
 
 export const ORIENTATIONS = [
   { id: 'LANDSCAPE', label: 'Landscape', ratio: '16:9', icon: '▭' },
@@ -114,15 +116,10 @@ export const SA_LANGUAGES: VoiceLanguage[] = [
     id: 'en-ZA',
     label: 'English',
     voices: [
-      { id: 'aletta', label: 'Aletta — SA Female' },
-      { id: 'piet', label: 'Piet — SA Male' },
-      { id: 'charlize', label: 'Charlize — SA Female' },
-      { id: 'hilda', label: 'Hilda — SA Female' },
-      { id: 'riaan', label: 'Riaan — SA Male' },
       { id: 'joanna', label: 'Joanna — US Female' },
       { id: 'sarah', label: 'Sarah — US Female' },
-      { id: 'amy', label: 'Amy — UK Female' },
       { id: 'brian', label: 'Brian — UK Male' },
+      { id: 'zach', label: 'Zach — US Male' },
     ],
   },
   {
@@ -303,28 +300,37 @@ export const TWILIGHT_STYLES = getPresetsByCategory('twilight').map(p => ({
 
 export const PLANS = [
   {
-    id: 'STARTER', name: 'Starter', monthlyZar: 129, annualZar: 110, monthlyCredits: 130,
+    id: 'STARTER', name: 'Starter', monthlyZar: 129, annualZar: 110, monthlyCredits: 110,
     tagline: 'For the solo agent getting started.',
-    features: ['130 credits every month', 'All 7 Studio tools', 'Landscape & portrait reels', 'Agent branding watermark', 'Email support'],
+    features: ['110 credits every month', 'All 7 Studio tools', 'Landscape & portrait reels', 'Agent branding watermark', 'Email support'],
   },
   {
-    id: 'PROFESSIONAL', name: 'Professional', monthlyZar: 589, annualZar: 560, monthlyCredits: 600, popular: true,
+    id: 'PROFESSIONAL', name: 'Professional', monthlyZar: 589, annualZar: 560, monthlyCredits: 520, popular: true,
     tagline: 'For the active agent with a full pipeline.',
-    features: ['600 credits every month', 'Priority render queue', 'AI social captions for 7 platforms', 'Agent profile & verification watermark', 'Priority email support'],
+    features: ['520 credits every month', 'Priority render queue', 'AI social captions for 7 platforms', 'Agent profile & verification watermark', 'Priority email support'],
   },
   {
-    id: 'PREMIUM', name: 'Premium', monthlyZar: 1270, annualZar: 1200, monthlyCredits: 1300,
+    id: 'PREMIUM', name: 'Premium', monthlyZar: 1270, annualZar: 1200, monthlyCredits: 1150,
     tagline: 'For top producers and boutique teams.',
-    features: ['1 300 credits every month', 'Fastest render queue', 'Cinematic + Premium tiers', 'Custom voice selection', 'Dedicated support line'],
+    features: ['1 150 credits every month', 'Fastest render queue', 'Cinematic + Premium tiers', 'Custom voice selection', 'Dedicated support line'],
   },
   {
-    id: 'AGENCY', name: 'Agency', monthlyZar: 5000, annualZar: 5000, monthlyCredits: 5000,
+    id: 'AGENCY', name: 'Agency', monthlyZar: 5000, annualZar: 5000, monthlyCredits: 4300,
     tagline: 'For brokerages with a team of agents.',
-    features: ['5 000 shared credits every month', 'Up to 25 agent seats', 'Shared credit pool', 'Per-agent spend analytics', 'White-glove onboarding'],
+    features: ['4 300 shared credits every month', 'Up to 25 agent seats', 'Shared credit pool', 'Per-agent spend analytics', 'White-glove onboarding'],
   },
 ];
 
 export const SIGNUP_BONUS = 5;
+/**
+ * LIST value of one credit — what the price list assigns to a credit
+ * (docs/pricing-cost-analysis.md: actions are valued at credits × R1.50,
+ * e.g. a Social 30s reel = 34⚡ = R51). Pricing UI shows these equivalents
+ * so customers see the Rand worth of what they hold. NOTE: this is the
+ * valuation anchor for the ≈ displays. Top-up packs charge exactly this
+ * per credit since 2026-10-21 (CREDIT_PACK_RAND in lib/renderPricing).
+ */
+export const CREDIT_LIST_RAND = 1.5;
 export const STRENGTH_MIN = 0.25;
 export const STRENGTH_MAX = 0.35;
 

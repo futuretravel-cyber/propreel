@@ -22,18 +22,22 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import fal_client
-# Authoritative per-photo walk-through prompts + the shared negative prompt,
-# generated from lib/videoPrompts.ts (single source of truth). BOTH names are
-# load-bearing: the wan branch passes CAMERA_NEGATIVE_PROMPT to fal's dedicated
-# negative field, and render_video maps each photo's (roomType, move) to a
-# CAMERA_PROMPTS entry. They were shipped without this import, so any AI-tier
-# render raised NameError before a single fal call went out.
-from camera_prompts import CAMERA_PROMPTS, CAMERA_NEGATIVE_PROMPT
+# Authoritative per-photo (roomType, move) → gentle walkthrough prompt table,
+# generated from lib/budgetVideoPrompts.ts (single source of truth — re-run
+# scripts/gen_camera_prompts_py.ts after editing that file). render_video maps
+# each tagged photo to a CAMERA_PROMPTS entry; the browser sends the same text
+# via the request's image_prompts field. (The generated table no longer ships
+# CAMERA_NEGATIVE_PROMPT — that was wan-25's dedicated negative field, and the
+# engine went with it. It was once shipped without this import at all, so any
+# AI-tier render raised NameError before a single fal call went out.)
+from camera_prompts import CAMERA_PROMPTS
 
 # FlashVSR self-hosted upscaler (modal/flashvsr_endpoint.py, separate Modal app
-# so its ~8 GB GPU image stays out of the render image). When enabled, the AI
-# tiers generate every wan-25 clip at 480p and upscale it to the delivery
-# resolution here, instead of paying fal's 720p/1080p generation rate.
+# so its ~8 GB GPU image stays out of the render image). When enabled, PREMIUM
+# generates its Hailuo clips at 768p (the top native rung) and FlashVSR
+# upscales them to the 1080p delivery resolution here — Hailuo standard has
+# no 1080p rung, and ~$0.0033/s of A100 time beats Hailuo Pro's $0.08/s
+# native-1080p generation.
 # Kill-switch: unset FLASHVSR_UPSCALE (or set it to "0") to generate at the
 # tier's native resolution and skip the hop entirely.
 FLASHVSR_APP = "propreel-flashvsr"
@@ -798,45 +802,22 @@ class EditImageRequest(BaseModel):
     strength: Optional[float] = None
     guidance_scale: Optional[float] = None
 
-# Video prompts (rotating A, B, C)
-# Video prompts - one camera move per image, drawn from a shuffled deck so
-# every clip randomly gets ZOOM (A), LEFT (B) or RIGHT (C). Hailuo reads the
-# head of a prompt hardest, so the BOLD motion directive leads and the
-# asset-lock prose follows; the negative tail starting "Motion must be fluid"
-# is the proven part and stays byte-identical. (The "<= 2000 chars" budget
-# below was a HAILUO-ONLY constraint — fal clipped longer Hailuo prompts and
-# the old 2200+ char prompts lost their final ~200 chars of negative
-# constraints. wan-25-preview, which now serves every AI tier, has NO
-# prompt-length limit, so the per-photo camera prompts from camera_prompts.py
-# run at full length; these A/B/C decks are only the untagged-photo fallback.)
-#
-# 2026-10-14 fix (Cinematic 30s regression): a Hailuo clip swept the camera
-# OUT of the image frame and invented a new kitchen. Correction: the
-# boundary negative now names new rooms/kitchens/bathrooms/hallways and
-# added furniture/appliances/cabinetry explicitly, and the lateral sweeps
-# (B/C) carry an edge-lock right at the head (Hailuo reads the head
-# strongest). Paid for by trimming persona/flavor; the proven tail from
-# "Motion must be fluid" stays byte-identical apart from the boundary
-# clause. (Superseded budgets below are historical.)
-# 2026-10-16 fix (Social tier review, client reference prompt): three Hailuo
-# defects on one 30s reel - clip 1 swept LEFT and INVENTED an exterior
-# (parking lot + cars not in the source photo), the zoom and left clips
-# crawled (the old tail said "slow velvety ... unhurried"), and a right
-# sweep drifted off the property. Corrected: every head leads with a
-# confident showcase pace + clear MOMENTUM, the lateral heads carry the
-# edge-lock AND "never leaves the room shown", and the shared tail names
-# driveways/parking lots/streets/cars/vehicles explicitly in the boundary
-# negative while keeping the property the hero (always in focus, center of
-# attention). Quality line mirrors the client's reference prompt
-# (Architectural Digest editorial, zero lens distortion, rectilinear
-# perspective); the tail stays ONE constant-speed glide - no whip pans or
-# speed ramps - so the brisker pace cannot turn into jerky motion.
-# Historical char budgets (Hailuo's 2000-char clip ceiling): A=1916, B=1990,
-# C=1991.
+# Fallback prompt deck (rotating A, B, C)
+# 2026-10-21 ENGINE UNIFICATION: the cinematic A/B/C deck this replaces warped
+# geometry and invented rooms (client A/B against the Budget reels), so the
+# fallback deck now holds the GENTLE Budget prompts — the motion standard for
+# every AI tier. Text is byte-identical to lib/budgetVideoPrompts.ts (via
+# camera_prompts.py); only the deck KEYS stay A/B/C so _camera_move_deck and
+# the retry-replay seeding are untouched. These fire only for photos with
+# neither an image_prompts entry nor camera_prompts tags (legacy drafts,
+# hand-edited payloads) — the browser sends the same gentle text for every
+# tagged photo on every tier. Interior wording is the fallback default (most
+# reel photos are interiors); tagged photos always get their exact
+# room-appropriate prompt. All sit far under Hailuo's 2000-char ceiling.
 VIDEO_PROMPTS = {
-    'A': """Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera performs a purposeful PUSH-IN with clear forward momentum, a smooth gimbal dolly advancing deep into the room at a confident showcase walking pace: door frames and foreground furniture swell toward the viewer with real-space parallax as the far corner recedes. Each depth layer moves at its own rate - a true 3D camera journey, never a flat photo zoom. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays exactly as pictured - all animation is pure camera travel through the visible scene. The property is the absolute hero of every frame - always in focus, always the center of attention, never drifting away. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Architectural Digest editorial quality: hyper-realistic reflections, soft natural light, immaculate finishes, perfectly straight vertical lines, zero lens distortion. Motion must be fluid, smooth and unbroken - one constant-speed showcase glide at a confident purposeful pace with clear momentum. No whip pans, snap zooms, speed ramps, or stop-start jitter. No object, wall, fixture, texture or architectural element is added, removed, replaced or altered. No new rooms or spaces - no added kitchen, bathroom, hallway, driveway, parking lot, street, extension, furniture, appliances, counters, cabinetry, cars or vehicles; no exiting through walls, image boundaries or border-crossing, no revealing exterior spaces. No geometry warping, slanted walls, curved vertical lines, fisheye lens or extreme distortion. No flicker, shake, blur, out-of-focus, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures or unrealistic reflections. No text, watermarks, logos, people, animals, clutter, or dirty surfaces.""",
-    'B': """Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera sweeps decisively LEFT with steady momentum, a long smooth gimbal lateral dolly across the room at a confident showcase walking pace: near furniture glides fast across the locked background while far walls ease slowly - a true 3D camera journey, never a flat photo pan. The sweep stays strictly inside the space already visible - image edges are hard walls the camera never approaches and the move never leaves the room shown. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays exactly as pictured - all animation is pure camera travel through the visible scene. The property is the absolute hero of every frame - always in focus, always the center of attention, never drifting away. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Architectural Digest editorial quality: hyper-realistic reflections, soft natural light, immaculate finishes, perfectly straight vertical lines, zero lens distortion. Motion must be fluid, smooth and unbroken - one constant-speed showcase glide at a confident purposeful pace with clear momentum. No whip pans, snap zooms, speed ramps, or stop-start jitter. No object, wall, fixture, texture or architectural element is added, removed, replaced or altered. No new rooms or spaces - no added kitchen, bathroom, hallway, driveway, parking lot, street, extension, furniture, appliances, counters, cabinetry, cars or vehicles; no exiting through walls, image boundaries or border-crossing, no revealing exterior spaces. No geometry warping, slanted walls, curved vertical lines, fisheye lens or extreme distortion. No flicker, shake, blur, out-of-focus, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures or unrealistic reflections. No text, watermarks, logos, people, animals, clutter, or dirty surfaces.""",
-    'C': """Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera sweeps decisively RIGHT with steady momentum, a long smooth gimbal lateral dolly across the room at a confident showcase walking pace: near furniture glides fast across the locked background while far walls ease slowly - a true 3D camera journey, never a flat photo pan. The sweep stays strictly inside the space already visible - image edges are hard walls the camera never approaches and the move never leaves the room shown. Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays exactly as pictured - all animation is pure camera travel through the visible scene. The property is the absolute hero of every frame - always in focus, always the center of attention, never drifting away. Continuous, clearly visible movement for the ENTIRE clip is mandatory - never a still frame. Architectural Digest editorial quality: hyper-realistic reflections, soft natural light, immaculate finishes, perfectly straight vertical lines, zero lens distortion. Motion must be fluid, smooth and unbroken - one constant-speed showcase glide at a confident purposeful pace with clear momentum. No whip pans, snap zooms, speed ramps, or stop-start jitter. No object, wall, fixture, texture or architectural element is added, removed, replaced or altered. No new rooms or spaces - no added kitchen, bathroom, hallway, driveway, parking lot, street, extension, furniture, appliances, counters, cabinetry, cars or vehicles; no exiting through walls, image boundaries or border-crossing, no revealing exterior spaces. No geometry warping, slanted walls, curved vertical lines, fisheye lens or extreme distortion. No flicker, shake, blur, out-of-focus, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures or unrealistic reflections. No text, watermarks, logos, people, animals, clutter, or dirty surfaces.""",
+    'A': """Architectural Digest editorial quality: hyper-realistic reflections, soft natural light, immaculate finishes, flawless staging, no clutter or personal items. The camera smoothly dollies forward and pushes into the property for a seamless first-person walking tour. Near objects grow larger as far walls draw closer, a true 3D push-in, never a flat digital zoom. The scene comes alive: inside, curtains sway gently while light patterns shift subtly across polished floors, wood, and metal; outside, leaves shift in the breeze and clouds drift slowly across the sky. No text, watermarks, logos, people, animals, or clutter.""",
+    'B': """Architectural Digest editorial quality: hyper-realistic reflections, soft natural light, immaculate finishes, flawless staging, no clutter or personal items. The camera sweeps in a wide, graceful arc to the LEFT inside the room. Near objects grow larger as far walls ease slowly , a true 3D push-in, never a flat digital zoom. The scene comes alive: inside, curtains sway gently while light patterns shift subtly across polished floors, wood, and metal; outside, leaves shift in the breeze and clouds drift slowly across the sky. No text, watermarks, logos, people, animals, or clutter.""",
+    'C': """Architectural Digest editorial quality: hyper-realistic reflections, soft natural light, immaculate finishes, flawless staging, no clutter or personal items. The camera sweeps in a wide, graceful arc to the RIGHT inside the room. Near objects grow larger as far walls ease slowly , a true 3D push-in, never a flat digital zoom. The scene comes alive: inside, curtains sway gently while light patterns shift subtly across polished floors, wood, and metal; outside, leaves shift in the breeze and clouds drift slowly across the sky. No text, watermarks, logos, people, animals, or clutter.""",
 }
 
 
@@ -1005,61 +986,87 @@ TIER_CONFIGS = {
             {"duration": 60, "images": 12, "credits": 10}
         ]
     },
+    # 2026-10-19 repriced with lib/videoTiers.ts (single source of truth):
+    # R-ladder at 1 credit = R1.50, rounded up — Social 34/60/89, Cinematic
+    # 47/63/95, Premium 60/80/100 (60/90s floored to the 40% margin floor
+    # the same day). Keep this mirror identical to the TS copy.
+    # 2026-10-21 engine unification: SOCIAL 480p → 512p, CINEMATIC 720p →
+    # 768p — Hailuo-02 standard's two native rungs replace wan-25's ladder.
     "SOCIAL": {
         "processing_type": "ai",
-        "resolution": "480p",
+        "resolution": "512p",
         "configurations": [
-            {"duration": 30, "images": 6, "credits": 30},
+            {"duration": 30, "images": 6, "credits": 34},
             {"duration": 60, "images": 12, "credits": 60},
-            {"duration": 90, "images": 18, "credits": 90}
+            {"duration": 90, "images": 18, "credits": 89}
         ]
     },
     "CINEMATIC": {
         "processing_type": "ai",
-        "resolution": "720p",
+        "resolution": "768p",
         "configurations": [
-            {"duration": 30, "images": 6, "credits": 50},
-            {"duration": 60, "images": 12, "credits": 100},
-            {"duration": 90, "images": 18, "credits": 150}
+            {"duration": 30, "images": 6, "credits": 47},
+            {"duration": 60, "images": 12, "credits": 63},
+            {"duration": 90, "images": 18, "credits": 95}
         ]
     },
     "PREMIUM": {
         "processing_type": "ai",
         "resolution": "1080p",
         "configurations": [
-            {"duration": 30, "images": 6, "credits": 75},
-            {"duration": 60, "images": 12, "credits": 150},
-            {"duration": 90, "images": 18, "credits": 225}
+            {"duration": 30, "images": 6, "credits": 60},
+            {"duration": 60, "images": 12, "credits": 80},
+            {"duration": 90, "images": 18, "credits": 100}
+        ]
+    },
+    # 2026-10-20: BUDGET — the gentle-motion tier, mirror of lib/videoTiers.ts
+    # (20⚡ 512p / 34⚡ 768p — repriced from the 10/26 launch floor the same
+    # day on the client's call). Hailuo-02 standard — since 2026-10-21 the
+    # engine EVERY AI tier shares (wan-25-preview removed): one length (30s
+    # from 5 photos), no voiceover and no avatar ever — the agent-facing copy
+    # promises calm motion, so the per-photo prompts ride the request's
+    # image_prompts payload (gentle library in lib/budgetVideoPrompts.ts) and
+    # this mirror's CONFIGS each name their own fal resolution — the only
+    # tier where the config, not the tier, picks 512p vs 768p. No FlashVSR
+    # hop (that gate is Premium-only); assembly lands on the same 1080p
+    # canvas as every AI tier.
+    "BUDGET": {
+        "processing_type": "ai",
+        "resolution": "512p",
+        "configurations": [
+            {"duration": 30, "images": 5, "credits": 20, "resolution": "512p"},
+            {"duration": 30, "images": 5, "credits": 34, "resolution": "768p"}
         ]
     }
 }
 
 
-# ── Tier-engine map (2026-10-14): which fal engine ships each AI tier ──────
-# CINEMATIC stays on Hailuo-02 standard 768p (cheapest AI engine at
-# $0.045/s; the negative-prompt drift fix lives in VIDEO_PROMPTS above).
-# PREMIUM moves to Kling 2.6 Pro image-to-video — a different flagship
-# family that generates NATIVE 1080p, so the ai_upscaled ffmpeg stretch is
-# skipped for it entirely. Kling's schema only takes 5s or 10s clips (no
-# 6s), so Premium clips render at 5s and the assembler stretches each to
-# its even share of the reel (setpts slow-stretch — no stream-loop seam).
-# Every other tier keeps its exact existing fal spec.
+# ── Tier-engine map (2026-10-21 ENGINE UNIFICATION): one engine everywhere ──
+# wan-25-preview is gone — its reels warped geometry and invented rooms
+# (client A/B against the Budget reels, 2026-10-21), so every AI tier runs
+# MiniMax Hailuo-02 standard image-to-video — the Budget engine — with the
+# SAME gentle per-photo prompts (lib/budgetVideoPrompts.ts). Hailuo's native
+# rungs are 512p ($0.017/s) and 768p ($0.045/s): SOCIAL → 512p, CINEMATIC →
+# 768p (both land on the 1920×1080 delivery canvas via the assembler's
+# lanczos normalize), PREMIUM → generates 768p and the self-hosted FlashVSR
+# upscaler delivers 1080p (≈$0.048/s all-in vs $0.08/s for native-1080p
+# Hailuo Pro; kill-switch FLASHVSR_UPSCALE ships 768p content on the 1080p
+# canvas). ESSENTIAL stays pure-FFmpeg (no engine). KLING26 is retained as
+# the dormant alternate engine (native 1080p; 5s/10s clips only, which is
+# why the assembler's stretch flag names it) in case Premium ever needs a
+# different flagship family again.
 ENG_HAILUO = "hailuo-02-standard"
 ENG_KLING26 = "kling-26-pro"
-ENG_WAN25 = "wan-25-preview"
-# All three AI tiers moved to wan-25-preview image-to-video (2026-10-18), which
-# is per-second priced by resolution ($0.05/s 480p, $0.10/s 720p, $0.15/s
-# 1080p). Social is now 480p (was Hailuo 512p); Cinematic stays 720p; Premium
-# stays 1080p (Kling's native-1080p upscale skip no longer applies — Wan's
-# 1080p is the canvas directly). ESSENTIAL stays pure-FFmpeg (no engine).
 TIER_VIDEO_ENGINE = {
-    "SOCIAL": ENG_WAN25,
-    "CINEMATIC": ENG_WAN25,
-    "PREMIUM": ENG_WAN25,
+    "SOCIAL": ENG_HAILUO,
+    "CINEMATIC": ENG_HAILUO,
+    "PREMIUM": ENG_HAILUO,
+    # BUDGET: the gentle-motion rung that (2026-10-21) became the motion
+    # standard for the whole catalog — same engine, priced below Social.
+    "BUDGET": ENG_HAILUO,
 }
-KLING_MODEL = "fal-ai/kling-video/v2.6/pro/image-to-video"      # $0.07/s, native 1080p
-HAILUO_MODEL = "fal-ai/minimax/hailuo-02/standard/image-to-video"  # $0.045/s @ 768P
-WAN25_MODEL = "fal-ai/wan-25-preview/image-to-video"
+KLING_MODEL = "fal-ai/kling-video/v2.6/pro/image-to-video"      # $0.07/s, native 1080p (dormant)
+HAILUO_MODEL = "fal-ai/minimax/hailuo-02/standard/image-to-video"  # $0.017/s @ 512P, $0.045/s @ 768P
 
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials"), modal.Secret.from_name("bria-credentials")], timeout=600, retries=2, min_containers=0, max_containers=200, scaledown_window=300)
 def generate_ai_video_clip(spec: tuple) -> str:
@@ -1069,9 +1076,10 @@ def generate_ai_video_clip(spec: tuple) -> str:
     Args (one tuple per clip — Modal .map fans these out one container each):
         spec: (image_url, prompt, resolution, duration, engine) —
               image_url: URL of the source image,
-              prompt: Video generation prompt (no length limit on wan/Kling;
-                     Hailuo clips past 2000 chars),
-              resolution: Target resolution (512p/768p Hailuo; 1080p Kling native),
+              prompt: Video generation prompt (Hailuo clips past 2000 chars;
+                     Kling has no limit),
+              resolution: Target resolution (512p/768p Hailuo — the engine now
+                     serving EVERY AI tier; 1080p Kling native),
               duration: Duration in seconds (default 6; Kling: 5 or 10),
               engine: ENG_HAILUO (default) or ENG_KLING26 — picks the fal model
               (Kling's i2v aspect follows the input image — no aspect arg)
@@ -1087,37 +1095,15 @@ def generate_ai_video_clip(spec: tuple) -> str:
     duration = int(duration)
 
     # Hailuo silently clips prompts past 2000 chars (the negatives ride at the
-    # tail, so a clipped prompt loses its negative block). wan-25-preview and
-    # Kling have no prompt-length limit, so they get the prompt verbatim — the
-    # restored full-length prompts are only ever truncated for Hailuo.
+    # tail, so a clipped prompt loses its negative block). Kling gets the
+    # prompt verbatim. The gentle per-photo prompts (lib/budgetVideoPrompts.ts
+    # via camera_prompts.py / image_prompts) all sit well under the ceiling.
     if engine == ENG_HAILUO and len(prompt) > 2000:
         prompt = prompt[:2000]
 
     print(f"Generating AI video clip: {engine}, {resolution}, {duration}s")
 
-    if engine == ENG_WAN25:
-        # wan-25-preview image-to-video (SOCIAL/CINEMATIC/PREMIUM): fal's schema
-        # for this endpoint is prompt + image_url (REQUIRED), with optional
-        # duration ("5"/"10"), resolution ("480p"/"720p"/"1080p"),
-        # negative_prompt and enable_prompt_expansion. There is NO
-        # start_image_url on this route (that is Kling) and NO num_frames
-        # (unlike Hailuo) — sending either would 422 the render.
-        model = WAN25_MODEL
-        fal_arguments = {
-            # Private buckets: fal.ai downloads the frame itself, so it needs
-            # a signature (raw object URLs now 403).
-            "image_url": presign_media(image_url),
-            "prompt": prompt,
-            # The engine's only clip lengths are "5" and "10"; the assembler
-            # stretches the clip to its per-shot share of the reel.
-            "duration": "5" if duration <= 5 else "10",
-            "resolution": resolution if resolution in ("480p", "720p", "1080p") else "1080p",
-            # Dedicated negative field — the walk-through negatives live here.
-            "negative_prompt": CAMERA_NEGATIVE_PROMPT,
-            # The prompt already carries the full instruction; no expansion.
-            "enable_prompt_expansion": False,
-        }
-    elif engine == ENG_KLING26:
+    if engine == ENG_KLING26:
         # Kling 2.6 Pro image-to-video (PREMIUM): fal's documented schema for
         # this endpoint is prompt + start_image_url (REQUIRED), with optional
         # duration ("5"/"10"), negative_prompt and generate_audio. There is
@@ -1140,14 +1126,18 @@ def generate_ai_video_clip(spec: tuple) -> str:
             "generate_audio": False,
         }
     else:
-        # Hailuo-02 standard (SOCIAL/CINEMATIC) — spec unchanged.
+        # Hailuo-02 standard — the engine for EVERY AI tier since the
+        # 2026-10-21 unification (SOCIAL 512p, CINEMATIC 768p, PREMIUM 768p
+        # gen → FlashVSR 1080p, BUDGET 512p/768p per config).
         model = HAILUO_MODEL
         fal_arguments = {
             "image_url": presign_media(image_url),
             "prompt": prompt,
             "num_frames": duration * 24,  # 24 fps
-            # fal.ai expects "512P" or "768P"
-            "resolution": resolution.upper(),
+            # fal.ai expects "512P" or "768P" — Hailuo standard has NO 1080p
+            # rung (Premium's 1080p delivery is FlashVSR's job; never pass a
+            # 1080p resolution here).
+            "resolution": "768P" if resolution not in ("512p", "512P") else "512P",
             "audio": False  # Audio OFF as requested
         }
     
@@ -1938,8 +1928,10 @@ def _concat_ai_clips(
     the first image"), and no branding/avatar card could align on the off-
     canvas resolution. This stage:
       1. downloads each fal clip (they were paid for — always use them),
-      2. pad/scales each to exactly width×height (portrait canvases get
-         contain+pad for portrait sources, landscape sources cover-crop),
+      2. pad/scales each to exactly width×height with LANCZOS (portrait
+         canvases get contain+pad for portrait sources, landscape sources
+         cover-crop; the flag matters because FlashVSR clips are being
+         resampled 1.5× up to the 1080p delivery canvas),
       3. stretches each clip over an EVEN share of the tier duration
          (setpts+tpad clone-freeze the clip's motion frame tail, not none),
       4. stream-copy concats the uniform segments + faststart.
@@ -1982,11 +1974,11 @@ def _concat_ai_clips(
         # Portrait canvas: contain + pad (never amputate a vertical shot).
         # Landscape canvas: cover-crop, same convention as the Essential tier.
         if height > width:
-            vf = (f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            vf = (f"scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos,"
                   f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,"
                   f"{retime}fps=24,format=yuv420p")
         else:
-            vf = (f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            vf = (f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
                   f"crop={width}:{height},{retime}fps=24,format=yuv420p")
         proc = _sp.run(
             ["ffmpeg", "-y", "-stream_loop", "-1", "-i", raw_path,
@@ -2143,7 +2135,7 @@ def _mix_music_bed(
 # post legacy ElevenLabs names (Joanna, Aria…).
 NARAKEET_VOICES: dict = {
     "af-ZA": ["rolanda", "jochem", "joost", "laurika"],
-    "en-ZA": ["aletta", "piet", "charlize", "hilda", "riaan", "joanna", "sarah", "amy", "brian"],
+    "en-ZA": ["aletta", "charlize", "hilda", "riaan", "joanna", "sarah", "brian", "zach"],
     "nso-ZA": ["mpho", "mogau"],
     "st-ZA": ["palesa"],
     "tn-ZA": ["bokang"],
@@ -2625,6 +2617,21 @@ def _apply_avatar_overlay(
                     pass
 
 
+@app.function(image=image, secrets=[modal.Secret.from_name("narakeet")], timeout=300)
+def tut_tts_one(text: str, voice: str = "charlize") -> tuple:
+    """Synthesize ONE tutorial voiceover beat → (base64 mp3, billed seconds).
+
+    Admin content production only: the /tutorial page's how-to videos are
+    narrated with the product's own Narakeet narrator so they sound identical
+    to in-app voiceovers. Text comes from trusted repo content
+    (scripts/_tut_content.ts), never from an HTTP request, so this cannot be
+    repaid into an arbitrary-spend lever. Returns base64 so the MP4 bytes
+    survive Modal's JSON-ish result transport intact. No Fal involved.
+    """
+    mp3, tts_seconds = narakeet_tts(text, voice)
+    return base64.b64encode(mp3).decode("ascii"), round(float(tts_seconds), 2)
+
+
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("narakeet")], timeout=1200, retries=2)
 def render_video_local(
     record_id: str,
@@ -2855,7 +2862,10 @@ def render_video(
     tier_config = TIER_CONFIGS.get(tier, TIER_CONFIGS["SOCIAL"])
     config = tier_config["configurations"][config_index]
     processing_type = tier_config["processing_type"]
-    resolution = tier_config["resolution"]
+    # BUDGET's configs each name their own fal resolution (512p / 768p — the
+    # one thing the agent picks on its studio tab); every other tier's configs
+    # have no resolution key and inherit the tier default, as before.
+    resolution = str(config.get("resolution") or tier_config["resolution"])
     
     print(f"Processing type: {processing_type}, Resolution: {resolution}")
     print(f"Duration: {config['duration']}s, Images: {config['images']}, Credits: {config['credits']}")
@@ -2926,35 +2936,29 @@ def render_video(
             engine_prompt = KLING_PROMPTS[deck[i % 3]] if engine == ENG_KLING26 else VIDEO_PROMPTS[deck[i % 3]]
             prompts.append(supplied or engine_prompt)
 
-        # Determine base resolution for AI generation (tier-engine map)
-        if engine == ENG_WAN25:
-            # wan-25-preview generates at the tier's advertised resolution
-            # (480p/720p/1080p) with 5s or 10s clips; the assembler stretches
-            # each clip to its even share of the reel. No ffmpeg upscale pass
-            # is needed — the canvas below already matches the tier.
-            if _flashvsr_enabled() and resolution != "480p":
-                # FlashVSR self-hosted upscaler: generate at 480p (fal's
-                # cheapest rate) and upscale each clip to the delivery
-                # resolution after generation. The upscale hop below falls
-                # back to the native-fal clip if FlashVSR fails, so a paid
-                # render never dies here.
-                ai_resolution = "480p"
-            else:
-                ai_resolution = resolution
-            clip_seconds = 5
-        elif engine == ENG_KLING26:
-            # PREMIUM: Kling 2.6 Pro generates native 1080p — no 768p source
-            # stage and no ffmpeg upscale. Kling only accepts 5s or 10s
-            # clips; 5s is the cheapest Premium clip and the assembler
-            # stretches each to its even share of the reel.
+        # Determine base resolution for AI generation (tier-engine map).
+        # 2026-10-21: every AI tier runs Hailuo-02 standard, whose native
+        # rungs are 512p and 768p — SOCIAL 512p and CINEMATIC 768p generate
+        # at their delivery resolution directly; PREMIUM's 1080p delivery
+        # has no Hailuo rung, so it generates at 768p and the FlashVSR hop
+        # below upscales each clip (kill-switch: 768p content ships on the
+        # 1080p canvas). BUDGET's per-config resolution (512p/768p) is
+        # already in `resolution`. All Hailuo clips are 6s; the assembler
+        # stretches/trims each to its even share of the reel.
+        if engine == ENG_KLING26:
+            # Dormant alternate: Kling 2.6 Pro generates native 1080p. Kling
+            # only accepts 5s or 10s clips; 5s is the cheapest clip and the
+            # assembler stretches each to its even share of the reel.
             ai_resolution = "1080p"
             clip_seconds = 5
-        elif processing_type == "ai_upscaled":
-            # PREMIUM on Hailuo (fallback): Generate at 768p, upscale to 1080p
+        elif resolution == "1080p":
+            # PREMIUM on Hailuo: no 1080p rung — generate 768p, FlashVSR
+            # delivers 1080p (the upscale hop below falls back to the native
+            # clip on failure, so a paid render never dies here).
             ai_resolution = "768p"
             clip_seconds = 6
         else:
-            # SOCIAL/CINEMATIC: Use tier resolution
+            # SOCIAL (512p) / CINEMATIC (768p) / BUDGET (512p|768p per config)
             ai_resolution = resolution
             clip_seconds = 6
 
@@ -2978,13 +2982,14 @@ def render_video(
             if not c:
                 raise RuntimeError("One or more AI clips came back empty — render aborted")
 
-        # FlashVSR upscale hop: clips were generated at 480p above (fal's
-        # cheapest rate); upscale each to the tier's delivery resolution via
-        # the separate propreel-flashvsr Modal app. Concurrent (.map). Per-clip
-        # fallback: on ANY upscale failure keep the native 480p clip so a paid
-        # render never dies here — the assembler's pad/scale normalizes it to
-        # the canvas regardless of source resolution.
-        if _flashvsr_enabled() and engine == ENG_WAN25 and resolution != "480p":
+        # FlashVSR upscale hop — PREMIUM only (2026-10-21): Hailuo-02
+        # standard has no 1080p rung, so Premium clips are generated at 768p
+        # above and upscaled to the 1080p delivery resolution via the separate
+        # propreel-flashvsr Modal app. Concurrent (.map). Per-clip fallback:
+        # on ANY upscale failure keep the native 768p clip so a paid render
+        # never dies here — the assembler's lanczos normalize lifts it onto
+        # the 1080p canvas regardless of source resolution.
+        if _flashvsr_enabled() and engine != ENG_KLING26 and resolution == "1080p":
             portrait = (orientation == "PORTRAIT")
             try:
                 _fv = modal.Function.from_name(FLASHVSR_APP, FLASHVSR_FN)
@@ -2993,7 +2998,7 @@ def render_video(
                 # the whole tuple as input_video_url and the endpoint dies
                 # with "'tuple' object has no attribute 'decode'" (urlparse
                 # on a tuple; seen live 2026-10-19 — both verification
-                # renders silently fell back to native 480p clips).
+                # renders silently fell back to native clips).
                 # return_exceptions=True lets the per-clip merge below keep
                 # native clips for individual failures without killing the
                 # whole hop.
@@ -3010,47 +3015,48 @@ def render_video(
                     if url:
                         merged.append(url)
                     else:
-                        print(f"FlashVSR upscale failed for a clip — keeping native 480p: {up}")
+                        print(f"FlashVSR upscale failed for a clip — keeping native 768p: {up}")
                         merged.append(native)
                 video_clips = merged
                 print(f"FlashVSR upscaled {sum(1 for u in video_clips if 'upscaled/' in u)}/{len(video_clips)} clips to {resolution}")
             except Exception as _fe:
                 # Cross-app call itself failed (app not deployed, name typo,
-                # Modal auth) — keep the native 480p clips and continue.
-                print(f"FlashVSR upscale hop unavailable — using native 480p clips: {_fe}")
+                # Modal auth) — keep the native 768p clips and continue.
+                print(f"FlashVSR upscale hop unavailable — using native 768p clips: {_fe}")
 
         # Concatenate video clips — the paid clips are ALWAYS used now.
         # Assembly runs on its own container (ffmpeg work, not fal spend) so
         # the fal clip calls above stay the only fal cost.
         import tempfile as _tfa
         with _tfa.TemporaryDirectory(prefix=f"assemble_{record_id}_") as awork:
-            # The tier canvas: 512p fal clips upscale to 960×540 landscape
-            # (SOCIAL); 768p → 1440×810 (CINEMATIC/PREMIUM). Portrait keeps
-            # 1080×1920. Every later stage (avatar, branding, narration mix,
-            # upscale) works on this SAME canvas so cards align exactly.
+            # The DELIVERY canvas: 1920×1080 landscape / 1080×1920 portrait
+            # for every AI tier (Cinematic canvas decided 2026-10-19 — see
+            # docs/flashvsr-upscale-integration.md). Every later stage
+            # (avatar, branding, narration mix) composes on this SAME canvas
+            # so cards align exactly.
             if orientation == "PORTRAIT":
                 bw, bh = 1080, 1920
             else:
-                # Wan/Kling Premium generate at native 1080p — assemble on
-                # that canvas (downscaling to a lower nominal canvas would
-                # waste the resolution the client paid for). Social/Cinematic
-                # assemble at the tier's advertised resolution so the canvas
-                # matches the fal clip's aspect without letterboxing.
-                if engine in (ENG_KLING26, ENG_WAN25):
-                    bw, bh = 1920, 1080
-                elif resolution == "480p":
-                    bw, bh = 854, 480
-                elif resolution == "720p":
-                    bw, bh = 1280, 720
-                else:
-                    bw, bh = 1920, 1080
+                # Cinematic keeps the 1080p landscape canvas even though its
+                # FlashVSR clips stop at a crisp 1280×720: ESSENTIAL already
+                # delivers 1920×1080 from the editor's 1080p photos, so a
+                # 720p Cinematic file would sit BELOW the cheapest tier in
+                # the nominal-resolution ladder — and the buyer's player/TV
+                # would then upscale that 720p with its own (worse) scaler.
+                # The 1.5× normalize here is lanczos (see _concat_ai_clips),
+                # so the FlashVSR detail survives the resample. The former
+                # tier-resolution branches (480p → 854×480, 720p → 1280×720)
+                # were DEAD once every AI engine became wan-25 — the engine
+                # check above always won — and were removed 2026-10-19.
+                bw, bh = 1920, 1080
             try:
                 # Kling clips arrive 5s against a 6s per-shot share — the
                 # assembler slow-stretches them instead of stream-looping
                 # (a replay seam mid-shot is unacceptable on the premium tier).
+                # Hailuo clips are 6s and never need the stretch.
                 assembled = _concat_ai_clips(
                     video_clips, config['duration'], bw, bh, awork,
-                    stretch_short_clips=(engine in (ENG_KLING26, ENG_WAN25)))
+                    stretch_short_clips=(engine == ENG_KLING26))
                 upload = boto3.client('s3', region_name=S3_REGION)
                 s3_key = f"renders/{record_id}/video.mp4"
                 upload.upload_file(assembled, S3_BUCKET, s3_key,
@@ -3068,19 +3074,10 @@ def render_video(
                 })
                 video_url = video_clips[0] if video_clips else ""
 
-        # Upscale if PREMIUM tier (768p canvas → 1440x810 → 1920x1080 real).
-        # Kling and Wan Premium both shipped native 1080p (canvas above
-        # already matches) — the upscale pass would only degrade either, so
-        # it is skipped for both engines.
-        if processing_type == "ai_upscaled" and engine not in (ENG_KLING26, ENG_WAN25):
-            print("Upscaling to 1080p...")
-            video_url = upscale_video.remote(
-                input_video_url=video_url,
-                target_resolution="1080p"
-            )
-            # The published video changed size — later burn-in stages must
-            # compose for what is actually on disk now.
-            bw, bh = 1920, 1080
+        # (2026-10-21) The old ffmpeg ai_upscaled stretch pass is gone: every
+        # AI tier assembles on the 1920×1080 canvas above, Premium's 1080p
+        # delivery is FlashVSR's job (hop above), and no tier config uses
+        # processing_type "ai_upscaled" anymore.
 
         # AI Avatar add-on: the lip-sync clip rendered FIRST (before this
         # job, as part of the client's Generate Video action) and its
@@ -3155,6 +3152,39 @@ def render_video(
                 video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
                 actual_duration = round(final_dur, 1)
                 print(f"Voiceover mixed in ({final_dur:.1f}s): {video_url}")
+            finally:
+                try:
+                    import shutil as _shutil
+                    _shutil.rmtree(workdir, ignore_errors=True)
+                except Exception:
+                    pass
+        elif music_url:
+            # Silent AI reel — no avatar and no narration: BUDGET never
+            # narrates by design, and a noNarration AI reel is the same case.
+            # Neither branch above ever fired without a voice track, so the
+            # agent's music selection was silently dropped even though the
+            # client copy promises "background music still plays if selected
+            # below". Mirror render_video_local's music-only path (Essential
+            # has had this since day one); the video stream is copied, so the
+            # duration is unchanged. Any failure ships the silent render
+            # rather than failing a paid job.
+            import tempfile as _tf
+            import os as _os
+            workdir = _tf.mkdtemp(prefix=f"mus_{record_id}_")
+            try:
+                src = os.path.join(workdir, "src.mp4")
+                dst = os.path.join(workdir, "out.mp4")
+                with open(src, "wb") as vf:
+                    vf.write(fetch_media(video_url, timeout=300))
+                _mix_music_bed(src, music_url, dst, video_duration=float(config["duration"]))
+                s3 = boto3.client('s3', region_name=S3_REGION)
+                s3_key = f"renders/{record_id}/video.mp4"
+                s3.upload_file(dst, S3_BUCKET, s3_key,
+                               ExtraArgs={'ContentType': 'video/mp4'})
+                video_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+                print(f"Music bed mixed in: {video_url}")
+            except Exception as me:
+                print(f"⚠️ Music bed failed: {me} — shipping silent render")
             finally:
                 try:
                     import shutil as _shutil
@@ -4216,17 +4246,20 @@ def _health_payload() -> dict:
     hailuo-02 / [512p,720p,1080p] after the wan-25-preview migration, which
     misreported the engine to operators)."""
     ai_tiers = [t for t in TIER_CONFIGS.values() if t["processing_type"] != "local"]
-    ai_resolutions = [t["resolution"] for t in ai_tiers]
-    # Default (most common) AI engine, for the single-value `model` field the
-    # frontend status cards render; the full per-tier map rides in `engine`.
-    primary_engine_model = WAN25_MODEL
+    ai_resolutions = sorted({t["resolution"] for t in ai_tiers})
+    # Every AI tier runs Hailuo-02 standard since the 2026-10-21 engine
+    # unification, so the single-value `model` field the frontend status
+    # cards render is simply it; the full per-tier map rides in `engine`.
+    primary_engine_model = HAILUO_MODEL
     return {
         "status": "healthy",
         "service": "propreel-render",
         "version": "2.1.0",
         "engine": TIER_VIDEO_ENGINE,
         "model": primary_engine_model,
-        "clip_duration": 5,
+        # Hailuo-02 standard clips are 6s (the assembler stretches/trims each
+        # to its even share of the reel); Kling's dormant 5s clips excepted.
+        "clip_duration": 6,
         "resolutions": ai_resolutions,
         "audio": False,
         "flashhead": "fal-ai/flashhead/v1/lip-sync",
@@ -4823,10 +4856,10 @@ def main():
     """Local entrypoint for testing"""
     print("PropReel Modal Backend v2.2 (async image edits, health probe, LLM text)")
 
-    print("Video Model: fal-ai/minimax/hailuo-02")
+    print("Video Model: fal-ai/minimax/hailuo-02/standard (all AI tiers)")
     print("FlashHead Model: fal-ai/flashhead/v1/lip-sync")
     print("Clip Duration: 6 seconds")
-    print("Resolutions: 512p, 720p, 1080p")
+    print("Resolutions: 512p, 768p (Premium 768p → FlashVSR 1080p)")
     print("Audio: OFF")
     print("\nAPI Endpoints:")
     print("  GET  /health")
