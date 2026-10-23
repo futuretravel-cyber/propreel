@@ -3466,8 +3466,12 @@ async def rerender_clip_job(record_id: str, clip_index: int, prompt: str | None 
         if not new_prompt:
             raise RuntimeError("no prompt available for this clip")
         new_url = generate_ai_video_clip.remote(
-            entry["image_url"], new_prompt,
-            review["ai_resolution"], int(review["clip_seconds"]), review["engine"],
+            # ONE tuple arg — the same spec shape .map fans out per clip in
+            # the main render (def generate_ai_video_clip(spec: tuple)); five
+            # separate positionals raise "takes 1 positional argument but 5
+            # were given" inside the target.
+            (entry["image_url"], new_prompt,
+             review["ai_resolution"], int(review["clip_seconds"]), review["engine"]),
         )
         if not new_url:
             raise RuntimeError("clip generation returned an empty URL")
@@ -3478,7 +3482,12 @@ async def rerender_clip_job(record_id: str, clip_index: int, prompt: str | None 
         if review.get("flashvsr"):
             try:
                 _fv = modal.Function.from_name(FLASHVSR_APP, FLASHVSR_FN)
-                up = await _fv.remote.aio(
+                # Sync .remote — the same proven cross-function call shape as
+                # the clip call above (this single-purpose job has nothing
+                # else occupying its event loop, so the blocking upscale is
+                # free). Separate positionals match flashvsr_upscale_video's
+                # (url, resolution, portrait) signature.
+                up = _fv.remote(
                     new_url, review["resolution"],
                     review.get("orientation") == "PORTRAIT",
                 )
