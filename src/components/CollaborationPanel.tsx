@@ -84,13 +84,6 @@ export default function CollaborationPanel({ projectId }: { projectId: string })
     setNewComment('');
   };
 
-  const handleInviteByEmail = () => {
-    if (!shareEmail.trim()) return;
-    // In production, this would send an email invitation
-    alert(`Invitation sent to ${shareEmail} with ${sharePermission} permissions`);
-    setShareEmail('');
-  };
-
   return (
     <div className="card-dark overflow-hidden">
       {/* Tabs */}
@@ -130,20 +123,23 @@ export default function CollaborationPanel({ projectId }: { projectId: string })
                 placeholder="colleague@agency.co.za"
                 value={shareEmail}
                 onChange={(e) => setShareEmail(e.target.value)}
+                disabled
               />
               <select
                 className="input max-w-[140px]"
                 value={sharePermission}
                 onChange={(e) => setSharePermission(e.target.value as any)}
+                disabled
               >
                 <option value="view">Can view</option>
                 <option value="edit">Can edit</option>
                 <option value="admin">Admin</option>
               </select>
-              <button onClick={handleInviteByEmail} className="btn btn-primary">
+              <button disabled className="btn btn-primary">
                 <Send className="w-4 h-4" /> Invite
               </button>
             </div>
+            <p className="text-xs text-white/50 mt-2">Email invitations aren't available yet. Use a share link below instead.</p>
           </div>
 
           {/* Share Links */}

@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, X, ArrowRight, Sun, Moon, AlertTriangle } from 'lucide-react';
+import { Menu, X, ArrowRight, AlertTriangle } from 'lucide-react';
 import { SIGNUP_BONUS } from '../lib/constants';
 import { AI_DISCLAIMER_TEXT } from '../lib/aiDisclaimer';
-import { useTheme } from '../lib/theme';
 import SupportWidgets from './SupportWidgets';
 
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { theme, toggle } = useTheme();
 
   return (
     <div className="min-h-screen bg-ink-950 dark:bg-ink-950 text-white">
@@ -24,28 +22,15 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             <Link to="/pricing" className="text-sm font-medium text-ink-300 hover:text-white transition">Pricing</Link>
             <Link to="/blog" className="text-sm font-medium text-ink-300 hover:text-white transition">Blog</Link>
             <Link to="/reviews" className="text-sm font-medium text-ink-300 hover:text-white transition">Reviews</Link>
+            <Link to="/faq" className="text-sm font-medium text-ink-300 hover:text-white transition">FAQ</Link>
             <Link to="/about" className="text-sm font-medium text-ink-300 hover:text-white transition">About</Link>
             <Link to="/contact" className="text-sm font-medium text-ink-300 hover:text-white transition">Contact</Link>
           </div>
           <div className="hidden md:flex items-center gap-3">
-            <button
-              onClick={toggle}
-              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-ink-300 hover:text-white hover:bg-white/5 transition"
-            >
-              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
             <Link to="/login" className="btn glass text-white min-h-[44px] flex items-center hover:bg-white/10">Log in</Link>
             <Link to="/register" className="btn btn-primary min-h-[44px] flex items-center">Start Free — {SIGNUP_BONUS} Credits</Link>
           </div>
           <div className="flex items-center gap-1 md:hidden">
-            <button
-              onClick={toggle}
-              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-ink-300"
-            >
-              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
             <button onClick={() => setMenuOpen(!menuOpen)} className="p-3 -mr-2 min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}>
               {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -57,6 +42,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               ['/pricing', 'Pricing'],
               ['/blog', 'Blog'],
               ['/reviews', 'Reviews'],
+              ['/faq', 'FAQ'],
               ['/about', 'About'],
               ['/contact', 'Contact'],
               ['/login', 'Log in'],
@@ -69,7 +55,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </nav>
-      {children}
+      <main id="main-content">{children}</main>
       <SupportWidgets />
       <MobileStickyCta />
       <footer className="glass-strong border-t border-white/5 py-14">
@@ -92,7 +78,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
                 <Link to="/dashboard/video" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Video Studio</Link>
                 <Link to="/reviews" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Reviews</Link>
                 <Link to="/status" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">System status</Link>
-                <Link to="/#faq" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">FAQ</Link>
+                <Link to="/faq" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">FAQ</Link>
               </div>
             </div>
             <div>
@@ -101,7 +87,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
                 <Link to="/about" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">About</Link>
                 <Link to="/blog" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Blog</Link>
                 <Link to="/contact" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Contact</Link>
-                <Link to="/dashboard/agency" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">Agency Login</Link>
+                <Link to="/agency/signup" className="block hover:text-white py-1.5 min-h-[44px] flex items-center text-ink-300">For Agencies</Link>
               </div>
             </div>
             <div>

@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatZar, formatRelative } from '../lib/utils';
 import { PropReelAPI, Project, CreditReportData } from '../lib/api';
-import { TIERS } from '../lib/constants';
+import { PLANS, RETENTION_DAYS } from '../lib/constants';
 import UpgradeToProCTA from './UpgradeToProCTA';
 import {
   Video, Zap, List, Clock, ArrowUpRight, Activity,
@@ -122,7 +122,9 @@ export default function EnhancedOverview() {
 
   // Subscription details from the real user record
   const sub = user?.subscription;
-  const planName = sub?.planId ? TIERS.find(t => t.id === sub.planId)?.label || sub.planId : null;
+  // Plan names live in PLANS — looking them up in TIERS (video tiers) never
+  // matched, so the badge printed the raw id ("PROFESSIONAL").
+  const planName = sub?.planId ? PLANS.find(p => p.id === sub.planId)?.name || sub.planId : null;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -141,6 +143,9 @@ export default function EnhancedOverview() {
               <div className="bg-ink-800/50 rounded-xl p-3"><Camera className="w-4 h-4 text-purple-400 mb-1" /><p className="text-xs text-ink-300">Photo edit</p><p className="text-xs font-bold text-purple-300">⚡2 / render</p></div>
               <div className="bg-ink-800/50 rounded-xl p-3"><Zap className="w-4 h-4 text-purple-400 mb-1" /><p className="text-xs text-ink-300">Social post</p><p className="text-xs font-bold text-purple-300">⚡2 / post</p></div>
             </div>
+            <p className="text-xs text-ink-500 mb-4">
+              Renders are kept for {RETENTION_DAYS} days — download anything you want to keep.
+            </p>
             <button
               onClick={() => { dismissWelcome(); window.dispatchEvent(new Event('propreel:start-tour')); }}
               className="btn btn-primary w-full mb-3"
@@ -349,7 +354,7 @@ export default function EnhancedOverview() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white">Recent Projects</h2>
-          <Link to="/dashboard/listings" className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1">View All <ChevronRight className="w-4 h-4" /></Link>
+          <Link to="/dashboard/projects" className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1">View all <ChevronRight className="w-4 h-4" /></Link>
         </div>
         {loading ? (
           <div className="card-dark p-10 text-center"><Loader2 className="w-6 h-6 text-purple-400 animate-spin mx-auto" /></div>

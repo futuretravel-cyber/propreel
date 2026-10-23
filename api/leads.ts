@@ -37,10 +37,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ── GET /api/leads?action=review_queue (admin) — all pending reviews ──
   if (req.method === 'GET' && (req.query.action as string) === 'review_queue') {
     try {
-      const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
-      if (!ADMIN_EMAILS.includes(String(req.query.email || '').toLowerCase())) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
+      // Admin identity comes from the session cookie (lib/auth) — a
+      // client-supplied ?email= would let anyone read the pending queue.
+      const { requireAdminSession } = await import('../lib/auth');
+      const gate = await requireAdminSession(req);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
       const { scanItems } = await import('../lib/db');
       const all = await scanItems<any>(TABLES.SETTINGS, { limit: 300 });
       const pending = all
@@ -57,6 +58,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const userId = req.query.user_id as string;
       if (!userId) return res.status(400).json({ error: 'user_id is required' });
+      // Roster + balances are private: only the owning session (or an admin)
+      // may read them — same gate as referral_stats below.
+      const { requireOwner } = await import('../lib/auth');
+      const gate = await requireOwner(req, userId);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
       const me = await getUser(userId);
       if (!me) return res.status(404).json({ error: 'User not found' });
       if (!me.agencyId) return res.status(200).json({ success: true, members: [{ id: me.id, fullName: me.fullName, email: me.email, credits: me.credits ?? 0, role: me.role || 'AGENT', avatar: 'ME', createdAt: me.createdAt }], agencyName: null, invites: [] });
@@ -268,11 +274,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── POST /api/leads?action=review_moderate (admin) ──────────────
     if (action === 'review_moderate') {
-      const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
-      const { reviewId, approve, featured, email } = req.body || {};
-      if (!ADMIN_EMAILS.includes(String(email || '').toLowerCase())) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
+      const { reviewId, approve, featured } = req.body || {};
+      // Session-gated admin action — the body carries no identity fields.
+      const { requireAdminSession } = await import('../lib/auth');
+      const gate = await requireAdminSession(req);
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
       if (!reviewId) return res.status(400).json({ error: 'reviewId is required' });
       const { updateItem } = await import('../lib/db');
       await updateItem(TABLES.SETTINGS, { id: reviewId }, {

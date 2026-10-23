@@ -4,6 +4,7 @@ import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar, creditListZar } from '../lib/utils';
 import { PLANS, CREDIT_PACK_RAND } from '../lib/constants';
+import { CREDIT_EXPIRY_RULE, CREDIT_SPEND_RULE, CREDIT_CANCEL_RULE } from '../../lib/creditPolicy';
 import { BackendAPI } from '../lib/backendAPI';
 import { CreditCard, Check, Shield, Lock, Loader2, LogIn } from 'lucide-react';
 
@@ -34,10 +35,16 @@ export default function PaymentPage() {
   const verifiedRef = useRef(false);
 
   const plan = PLANS.find(p => p.id === planId);
-  // Annual plans pass the per-month equivalent in ?price= — checkout
-  // charges the full year (annualZar × 12, matching Paystack's plan).
-  const amount = isTopup ? topupAmount : (cycle === 'ANNUAL' ? priceParam * 12 : priceParam);
-  const signedIn = !loading && !!user;
+  const planName = plan?.name ?? 'PropReel';
+  // Everything money-shaped on this page uses chargeZar: top-ups are priced
+  // in CREDITS (?amount=) and converted at the same rate the server charges,
+  // while annual plans pass the per-month equivalent in ?price= and are
+  // billed for the full year (annualZar × 12, matching Paystack's plan).
+  // Printing `amount` for a top-up showed credits as rand (100 credits →
+  // "R100" instead of R150) on the receipt.
+  const chargeZar = isTopup
+    ? Math.round(topupAmount * CREDIT_PACK_RAND)
+    : (cycle === 'ANNUAL' ? priceParam * 12 : priceParam);
   const loginPath = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
 
   const runVerify = async (reference: string) => {
@@ -68,15 +75,6 @@ export default function PaymentPage() {
     runVerify(callbackRef);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callbackRef]);
-
-  // Payment approved → straight to the dashboard, where the welcome message
-  // and the dashboard tutorial are waiting.
-  useEffect(() => {
-    if (!success || !signedIn) return;
-    const t = setTimeout(() => navigate('/dashboard?welcome=1', { replace: true }), 3500);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [success, signedIn]);
 
   // Real payment flow:
   //  - Credit top-ups → Paystack hosted checkout (initialize → redirect).
@@ -122,21 +120,24 @@ export default function PaymentPage() {
           <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
             <Check className="w-8 h-8 text-green-400" />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Payment Successful!</h2>
+          <h2 className="text-2xl font-bold text-white mb-2">Payment successful</h2>
           <p className="text-ink-400 mb-4">
-            {callbackRef || isTopup
+            {isTopup
               ? creditsAdded
                 ? `${creditsAdded} credits added — your balance is now ${balance}.`
-                : 'Your credits are already in your account.'
-              : `Your ${plan?.name} subscription is now active with ${balance} credits available.`
+                : 'Your payment went through. Your credits are in your account.'
+              : `Your ${planName} plan is now active with ${balance} credits available.`
             }
           </p>
           <div className="bg-ink-800/50 rounded-xl p-4 mb-6">
-            <p className="text-sm text-ink-400">Amount</p>
-            <p className="text-2xl font-bold text-white">{formatZar(amount)}</p>
+            <p className="text-sm text-ink-400">Amount paid</p>
+            <p className="text-2xl font-bold text-white">{formatZar(chargeZar)}</p>
+            {!isTopup && cycle === 'ANNUAL' && (
+              <p className="text-xs text-ink-500 mt-1">Annual plan — {formatZar(chargeZar)} for 12 months</p>
+            )}
           </div>
           <Link to="/dashboard?welcome=1" className="btn btn-primary mt-4 w-full">Go to Dashboard</Link>
-          <p className="text-xs text-ink-500 mt-3">Redirecting to your dashboard…</p>
+          <p className="text-xs text-ink-500 mt-3">A receipt has been emailed to you.</p>
         </div>
       </div>
     );
@@ -196,11 +197,16 @@ export default function PaymentPage() {
             Sign In
           </Link>
           <Link
-            to={`/register?plan=${planId}&cycle=${cycle}&price=${priceParam}`}
+            to={isTopup ? '/register' : `/register?plan=${planId}&cycle=${cycle}&price=${priceParam}`}
             className="btn w-full mt-3"
           >
             Create an account
           </Link>
+          {isTopup && (
+            <p className="text-xs text-ink-500 mt-2">
+              Create your account first, then buy credits from Credits → Top up.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -223,26 +229,34 @@ export default function PaymentPage() {
             {isTopup ? 'Top Up Credits' : 'Complete Your Subscription'}
           </h2>
           <p className="text-ink-400 text-center mb-6">
-            {isTopup ? `Add ${topupAmount} credits to your account` : `Subscribe to ${plan?.name}`}
+            {isTopup ? `Add ${topupAmount} credits to your account` : `Subscribe to ${planName}`}
           </p>
 
           {/* Order Summary */}
           <div className="bg-ink-800/50 rounded-xl p-4 mb-6">
             <div className="flex items-center justify-between py-2 border-b border-white/5">
-              <span className="text-ink-400 text-sm">{isTopup ? 'Credit Top-up' : plan?.name + ' Plan'}</span>
-              <span className="text-white font-medium">{isTopup ? `${topupAmount} credits` : `${plan?.monthlyCredits} credits/month ≈ ${creditListZar(plan?.monthlyCredits ?? 0)}`}</span>
+              <span className="text-ink-400 text-sm">{isTopup ? 'Credit top-up' : `${planName} plan`}</span>
+              <span className="text-white font-medium">
+                {isTopup
+                  ? `${topupAmount} credits × R${CREDIT_PACK_RAND.toFixed(2)}`
+                  : `${plan?.monthlyCredits ?? 0} credits/month ≈ ${creditListZar(plan?.monthlyCredits ?? 0)}`}
+              </span>
             </div>
             {!isTopup && (
               <div className="flex items-center justify-between py-2 border-b border-white/5">
-                <span className="text-ink-400 text-sm">Billing Cycle</span>
-                <span className="text-white font-medium">{cycle === 'ANNUAL' ? 'Annual' : 'Monthly'}</span>
+                <span className="text-ink-400 text-sm">Billing cycle</span>
+                <span className="text-white font-medium">
+                  {cycle === 'ANNUAL' ? `Annual — ${formatZar(chargeZar)} per year` : 'Monthly'}
+                </span>
               </div>
             )}
             <div className="flex items-center justify-between py-2">
               <span className="text-white font-semibold">Total</span>
-              <span className="text-2xl font-bold text-purple-400">{formatZar(isTopup ? Math.round(topupAmount * CREDIT_PACK_RAND) : amount)}</span>
+              <span className="text-2xl font-bold text-purple-400">{formatZar(chargeZar)}</span>
             </div>
-            <p className="text-xs text-ink-500 mt-2">All prices include VAT</p>
+            <p className="text-xs text-ink-500 mt-2">
+              All prices include VAT{cycle === 'ANNUAL' && !isTopup ? ' · billed once for 12 months' : ''}
+            </p>
           </div>
 
           {/* Payment Button */}
@@ -267,8 +281,8 @@ export default function PaymentPage() {
           {/* Refund Policy */}
           <div className="mt-6 p-3 bg-ink-800/30 rounded-lg">
             <p className="text-xs text-ink-400 text-center">
-              <strong className="text-ink-300">Credit Policy:</strong> All credits are non-refundable once spent. 
-              Subscription cancellations apply at next renewal. Purchased credits never expire (365 days of inactivity).
+              <strong className="text-ink-300">Credit policy:</strong> {CREDIT_EXPIRY_RULE}{' '}
+              {CREDIT_SPEND_RULE} {CREDIT_CANCEL_RULE}
             </p>
           </div>
 

@@ -24,11 +24,11 @@ export default function UpgradeToProCTA() {
           </div>
           <div>
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              Upgrade to Pro
+              Upgrade to Premium
               <Sparkles className="w-4 h-4 text-yellow-400" />
             </h3>
             <p className="text-ink-400 text-sm mt-1">
-              Unlock more videos, AI staging, and more.
+              More credits every month — render every listing without watching the meter.
             </p>
             <div className="flex flex-wrap gap-3 mt-3">
               <div className="flex items-center gap-1 text-xs text-ink-300">
@@ -37,11 +37,11 @@ export default function UpgradeToProCTA() {
               </div>
               <div className="flex items-center gap-1 text-xs text-ink-300">
                 <Image className="w-3 h-3 text-purple-400" />
-                <span>Priority rendering</span>
+                <span>Dedicated support line</span>
               </div>
               <div className="flex items-center gap-1 text-xs text-ink-300">
                 <Zap className="w-3 h-3 text-purple-400" />
-                <span>All AI features</span>
+                <span>Everything in Professional</span>
               </div>
             </div>
           </div>

@@ -8,7 +8,9 @@ const EnhancedBilling = lazy(() => import('./EnhancedBilling'));
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar, formatDate } from '../lib/utils';
+import { useActivity } from '../lib/useActivity';
 import { PLANS, CREDIT_PACK_RAND } from '../lib/constants';
+import { CREDIT_EXPIRY_RULE, CREDIT_ROLLOVER_RULE, CREDIT_CANCEL_RULE, CREDIT_SPEND_RULE } from '../../lib/creditPolicy';
 import {
   Zap, AlertTriangle, TrendingUp, CreditCard, Gift, Settings,
   Clock, ArrowUpRight, ArrowDownRight, Check, X, Sparkles,
@@ -19,17 +21,19 @@ import {
 // never drift from the ladder again (they were hardcoded "1,300" until
 // 2026-10-21).
 const PREMIUM_CREDITS = PLANS.find(pl => pl.id === 'PREMIUM')?.monthlyCredits ?? 0;
+/** The plan's real monthly allowance. This used to be a hardcoded map
+ *  (115/600/1300/5000) that had drifted from PLANS (110/520/1150/4300), so
+ *  every progress bar and "x / N monthly allowance" was wrong. */
+const planAllowance = (planId?: string | null) =>
+  PLANS.find(pl => pl.id === planId)?.monthlyCredits ?? 0;
 
 export default function CreditSystemDashboard() {
-  const { user, balance, lowCreditWarning, acknowledgeLowCredit, purchaseCredits, setAutoTopup, giftCredits, upgradePlan, isAdmin } = useCredit();
+  const { user, balance, lowCreditWarning, acknowledgeLowCredit, setAutoTopup, upgradePlan, isAdmin } = useCredit();
   const toast = useToast();
   const navigate = useNavigate();
   const [showTopup, setShowTopup] = useState(false);
   const [topupAmount, setTopupAmount] = useState(100);
   const [showAutoTopup, setShowAutoTopup] = useState(false);
-  const [showGift, setShowGift] = useState(false);
-  const [giftEmail, setGiftEmail] = useState('');
-  const [giftAmount, setGiftAmount] = useState(50);
   const [autoTopupAuthPrompt, setAutoTopupAuthPrompt] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   // Sub-tab in the URL (?tab=billing) so the old /dashboard/billing links and
@@ -63,7 +67,7 @@ export default function CreditSystemDashboard() {
     } catch (err: any) {
       if (err?.message?.includes('No active subscription') || err?.message?.includes('Downgrades apply')) {
         // No active subscription — fall back to the normal checkout flow
-        navigate('/payment?plan=PREMIUM&cycle=MONTHLY&price=1270');
+        navigate(`/payment?plan=PREMIUM&cycle=MONTHLY&price=${PLANS.find(pl => pl.id === 'PREMIUM')?.monthlyZar ?? ''}`);
         return;
       }
       toast.error(err?.message || 'Upgrade failed — try again or use the payment page');
@@ -85,7 +89,7 @@ export default function CreditSystemDashboard() {
     if (!user?.email) return;
     setAuditLoading(true);
     try {
-      const res = await fetch(`/api/users?action=admin_ledger&email=${encodeURIComponent(user.email)}&limit=100`);
+      const res = await fetch('/api/users?action=admin_ledger&limit=100');
       const data = await res.json().catch(() => ({}));
       if (res.ok) setAudit(data.transactions || []);
       else toast.error(data.error || 'Ledger load failed');
@@ -97,12 +101,17 @@ export default function CreditSystemDashboard() {
   }, [user?.email]);
   useEffect(() => { if (isAdmin && user?.email) loadAudit(); }, [isAdmin, user?.email, loadAudit]);
 
-  const allowance = user?.subscription?.planId === 'STARTER' ? 115 :
-                    user?.subscription?.planId === 'PROFESSIONAL' ? 600 :
-                    user?.subscription?.planId === 'PREMIUM' ? 1300 :
-                    user?.subscription?.planId === 'AGENCY' ? 5000 : 0;
+  const allowance = planAllowance(user?.subscription?.planId);
 
-  const usagePercentage = allowance > 0 ? ((allowance - user!.credits) / allowance) * 100 : 0;
+  // Credit runway — balance vs the 30-day usage pace from the activity feed.
+  const { stats: activityStats } = useActivity(user?.id);
+  const runwayDays = activityStats.used30d > 0
+    ? Math.round((balance.total / activityStats.used30d) * 30)
+    : null;
+  const runwayLabel = runwayDays == null ? null
+    : runwayDays < 60 ? `about ${runwayDays} days`
+    : runwayDays < 365 ? `about ${Math.round(runwayDays / 7)} weeks`
+    : 'over a year';
 
   // Low credit warning banner
   const LowCreditBanner = () => {
@@ -210,7 +219,7 @@ export default function CreditSystemDashboard() {
         </div>
       </div>
 
-      {/* Upgrade to Pro Banner */}
+      {/* Upgrade to Premium banner */}
       {user?.subscription?.planId !== 'PREMIUM' && user?.subscription?.planId !== 'AGENCY' && (
         <div className="card-dark p-6 bg-gradient-to-r from-purple-950/50 to-ink-900 border-purple-500/20">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -218,7 +227,7 @@ export default function CreditSystemDashboard() {
               <Crown className="w-8 h-8 text-yellow-400" />
               <div>
                 <h3 className="text-lg font-bold text-white">Upgrade to Premium</h3>
-                <p className="text-ink-400 text-sm">Get {PREMIUM_CREDITS} credits/month, fastest render queue, and priority support</p>
+                <p className="text-ink-400 text-sm">Get {PREMIUM_CREDITS} credits/month and a dedicated support line</p>
               </div>
             </div>
             <button onClick={handleUpgradeNow} disabled={upgrading} className="btn btn-primary disabled:opacity-60">
@@ -231,25 +240,25 @@ export default function CreditSystemDashboard() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <button onClick={() => setShowTopup(true)} className="bg-gradient-to-br from-green-600 to-green-800 rounded-xl p-4 text-left text-white hover:scale-[1.02] transition-transform">
+        <button onClick={() => setShowTopup(true)} className="btn btn-primary flex-col items-start gap-1 p-4 min-h-[92px]">
           <Plus className="w-5 h-5" />
-          <p className="font-semibold text-sm mt-2">Top Up Credits</p>
-          <p className="text-xs text-green-200 mt-1">From R50</p>
+          <span className="font-semibold text-sm mt-1">Top up credits</span>
+          <span className="text-xs font-normal text-white/70">From R75 (50 credits)</span>
         </button>
-        <button onClick={() => setShowAutoTopup(!showAutoTopup)} className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl p-4 text-left text-white hover:scale-[1.02] transition-transform">
-          <RefreshCw className="w-5 h-5" />
-          <p className="font-semibold text-sm mt-2">Auto Top-up</p>
-          <p className="text-xs text-blue-200 mt-1">{user?.autoTopup.enabled ? 'Enabled' : 'Disabled'}</p>
+        <button onClick={() => setShowAutoTopup(!showAutoTopup)} className="btn btn-secondary flex-col items-start gap-1 p-4 min-h-[92px]">
+          <RefreshCw className="w-5 h-5 text-purple-300" />
+          <span className="font-semibold text-sm mt-1">Auto top-up</span>
+          <span className="text-xs font-normal text-ink-400">{user?.autoTopup.enabled ? 'Enabled' : 'Disabled'}</span>
         </button>
-        <button onClick={() => setShowGift(true)} className="bg-gradient-to-br from-pink-600 to-pink-800 rounded-xl p-4 text-left text-white hover:scale-[1.02] transition-transform">
-          <Gift className="w-5 h-5" />
-          <p className="font-semibold text-sm mt-2">Gift Credits</p>
-          <p className="text-xs text-pink-200 mt-1">Transfer to agent</p>
+        <button onClick={() => navigate('/dashboard/credits?tab=billing&btab=gifting')} className="btn btn-secondary flex-col items-start gap-1 p-4 min-h-[92px]">
+          <Gift className="w-5 h-5 text-purple-300" />
+          <span className="font-semibold text-sm mt-1">Gift credits</span>
+          <span className="text-xs font-normal text-ink-400">Transfer to an agent</span>
         </button>
-        <button onClick={() => setActiveTab('billing')} className="bg-gradient-to-br from-orange-600 to-orange-800 rounded-xl p-4 text-left text-white hover:scale-[1.02] transition-transform">
-          <CreditCard className="w-5 h-5" />
-          <p className="font-semibold text-sm mt-2">Billing History</p>
-          <p className="text-xs text-orange-200 mt-1">View invoices</p>
+        <button onClick={() => setActiveTab('billing')} className="btn btn-secondary flex-col items-start gap-1 p-4 min-h-[92px]">
+          <CreditCard className="w-5 h-5 text-purple-300" />
+          <span className="font-semibold text-sm mt-1">Billing history</span>
+          <span className="text-xs font-normal text-ink-400">Invoices & payments</span>
         </button>
       </div>
 
@@ -294,7 +303,7 @@ export default function CreditSystemDashboard() {
                 min={50}
                 max={1000}
               />
-              <p className="text-xs text-ink-500 mt-1">Amount to add when triggered (min R50)</p>
+              <p className="text-xs text-ink-500 mt-1">Amount to add when triggered (minimum 50 credits)</p>
             </div>
           </div>
           <div className="mt-4 p-3 bg-blue-950/30 border border-blue-500/20 rounded-lg">
@@ -332,7 +341,9 @@ export default function CreditSystemDashboard() {
                 <span className="text-ink-400">Price</span>
                 <span className="text-white font-bold text-xl">{formatZar(topupAmount * CREDIT_PACK_RAND)}</span>
               </div>
-              <p className="text-xs text-ink-500 mt-1">R{CREDIT_PACK_RAND.toFixed(2)} per credit • Credits expire after 365 days</p>
+              <p className="text-xs text-ink-500 mt-1">
+                R{CREDIT_PACK_RAND.toFixed(2)} per credit · {CREDIT_EXPIRY_RULE}
+              </p>
             </div>
             <div className="flex gap-3">
               <button onClick={() => setShowTopup(false)} className="btn btn-secondary flex-1">Cancel</button>
@@ -344,56 +355,6 @@ export default function CreditSystemDashboard() {
                 className="btn btn-primary flex-1"
               >
                 <CreditCard className="w-4 h-4" /> Pay {formatZar(topupAmount * CREDIT_PACK_RAND)}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Gift Credits Modal */}
-      {showGift && (
-        <div className="card-dark p-6 animate-fade-in">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <Gift className="w-5 h-5 text-pink-400" /> Gift Credits to Team Member
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className="label">Recipient Email</label>
-              <input
-                type="email"
-                className="input"
-                placeholder="agent@agency.co.za"
-                value={giftEmail}
-                onChange={e => setGiftEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label">Amount (credits)</label>
-              <input
-                type="number"
-                className="input"
-                value={giftAmount}
-                onChange={e => setGiftAmount(Number(e.target.value))}
-                min={1}
-                max={user?.credits || 0}
-              />
-              <p className="text-xs text-ink-500 mt-1">You have {user?.credits} credits available</p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setShowGift(false)} className="btn btn-secondary flex-1">Cancel</button>
-              <button
-                onClick={async () => {
-                  try {
-                    await giftCredits(giftEmail, giftAmount);
-                    toast.success(`Gifted ${giftAmount} credits to ${giftEmail}`, 'Gift Sent!');
-                    setShowGift(false);
-                  } catch (err: any) {
-                    toast.error(err.message);
-                  }
-                }}
-                className="btn btn-primary flex-1"
-              >
-                <Gift className="w-4 h-4" /> Send Gift
               </button>
             </div>
           </div>
@@ -442,31 +403,46 @@ export default function CreditSystemDashboard() {
         </div>
       )}
 
-      {/* Credit Expiry Information */}
+      {/* Credit runway — how long the balance lasts at the current pace */}
+      {activityStats.used30d > 0 && runwayLabel && (
+        <div className="card-dark p-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-white">Credit runway</p>
+            <p className="text-xs text-ink-400 mt-1">
+              You've used {activityStats.used30d} credits in the last 30 days — at that pace your {balance.total} credits last {runwayLabel}.
+            </p>
+          </div>
+          {balance.expiringSoon > 0 && (
+            <span className="badge badge-warning">{balance.expiringSoon} credits expire within 7 days</span>
+          )}
+        </div>
+      )}
+
+      {/* Credit Expiry Information — one rule, shared with the rest of the app */}
       <div className="card-dark p-6">
         <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-          <Clock className="w-5 h-5 text-yellow-400" /> Credit Expiry Policy
+          <Clock className="w-5 h-5 text-yellow-400" /> How credits work
         </h3>
         <div className="space-y-3">
           <div className="flex items-start gap-3 p-3 bg-ink-800/50 rounded-lg">
             <Check className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm text-white font-medium">Subscription Credits</p>
-              <p className="text-xs text-ink-400">Unused credits roll over to next month. Expire at next renewal date.</p>
+              <p className="text-sm text-white font-medium">Expiry</p>
+              <p className="text-xs text-ink-400">{CREDIT_EXPIRY_RULE}</p>
             </div>
           </div>
           <div className="flex items-start gap-3 p-3 bg-ink-800/50 rounded-lg">
-            <Clock className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <RefreshCw className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm text-white font-medium">Purchased Credits</p>
-              <p className="text-xs text-ink-400">Never expire as long as account is active. 365-day expiry if account inactive.</p>
+              <p className="text-sm text-white font-medium">Rollover</p>
+              <p className="text-xs text-ink-400">{CREDIT_ROLLOVER_RULE}</p>
             </div>
           </div>
           <div className="flex items-start gap-3 p-3 bg-ink-800/50 rounded-lg">
-            <Check className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+            <CreditCard className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm text-white font-medium">Gifted Credits</p>
-              <p className="text-xs text-ink-400">Follow same expiry rules as subscription credits.</p>
+              <p className="text-sm text-white font-medium">Refunds</p>
+              <p className="text-xs text-ink-400">{CREDIT_SPEND_RULE} {CREDIT_CANCEL_RULE}</p>
             </div>
           </div>
         </div>

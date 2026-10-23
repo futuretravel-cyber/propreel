@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Copy, X } from 'lucide-react';
 import { track } from '../lib/analytics';
 
@@ -24,6 +24,14 @@ const PLATFORMS: Array<{ id: string; label: string; build: (url: string, text: s
  */
 export default function ShareSheet({ videoUrl, caption = '', hashtags = [], onClose }: ShareSheetProps) {
   const [copied, setCopied] = useState(false);
+  const [copiedCaption, setCopiedCaption] = useState(false);
+
+  // Escape closes the sheet (the backdrop handles click-outside).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const text = `${caption}${hashtags.length ? '\n\n' + hashtags.map(h => `#${h.replace(/\s+/g, '')}`).join(' ') : ''}`;
 
   const share = (platformId: string) => {
@@ -59,6 +67,25 @@ export default function ShareSheet({ videoUrl, caption = '', hashtags = [], onCl
     setCopied(true);
     track('share_clicked', { platform: 'copy' });
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Instagram and TikTok have no web share intents — caption + link on the
+  // clipboard is the real flow for them (paste into the post composer).
+  const copyCaptionAndLink = async () => {
+    const payload = `${text}\n${videoUrl}`;
+    try {
+      await navigator.clipboard.writeText(payload);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = payload;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopiedCaption(true);
+    track('share_clicked', { platform: 'copy_caption' });
+    setTimeout(() => setCopiedCaption(false), 2000);
   };
 
   const hasNative = typeof navigator !== 'undefined' && !!navigator.share;
@@ -97,6 +124,11 @@ export default function ShareSheet({ videoUrl, caption = '', hashtags = [], onCl
             {copied ? <><Check className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy link</>}
           </button>
         </div>
+
+        <button onClick={copyCaptionAndLink} className={`mt-3 w-full btn min-h-[48px] ${copiedCaption ? 'bg-green-600 text-white' : 'border border-gray-300 text-gray-700'}`}>
+          {copiedCaption ? <><Check className="w-4 h-4" /> Caption & link copied!</> : <><Copy className="w-4 h-4" /> Copy caption & link (Instagram / TikTok)</>}
+        </button>
+        <p className="mt-2 text-xs text-gray-500 text-center">Instagram and TikTok have no web share button — copy, then paste into your post.</p>
       </div>
     </div>
   );

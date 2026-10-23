@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { GraduationCap, Upload, Play, Trash2, Loader2, X, FileVideo } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { toApiError, withRateLimitRetry } from '../lib/api';
 
 interface TutorialVideo {
@@ -55,6 +56,7 @@ const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // ≤100MB — matches the server ca
  */
 export default function AdminTutorials() {
   const toast = useToast();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [videos, setVideos] = useState<TutorialVideo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -162,7 +164,7 @@ export default function AdminTutorials() {
   };
 
   const remove = async (video: TutorialVideo) => {
-    if (!confirm(`Delete \"${video.title}\" permanently?`)) return;
+    if (!(await confirm(`Delete "${video.title}" permanently?`, { title: 'Delete video?', confirmLabel: 'Delete', destructive: true }))) return;
     try {
       const res = await fetch(`/api/music?id=${encodeURIComponent(video.id)}&action=tutorial&user_id=${encodeURIComponent(user?.id || '')}`, { method: 'DELETE' });
       const data = await res.json();

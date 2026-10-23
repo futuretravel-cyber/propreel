@@ -3,18 +3,20 @@ import { motion, useInView } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
   Play, Sparkles, ArrowRight, Check, Star, Camera, Sofa, Trash2, MoonIcon,
-  Share2, FileText, Video, Loader2, Sun, Moon, Mic, Wand2, X,
+  Share2, FileText, Video, Mic, Wand2,
 } from 'lucide-react';
 import { PublicLayout } from './PublicLayout';
-import { useTheme } from '../lib/theme';
 import { track } from '../lib/analytics';
 import { SmartImage, BeforeAfterSlider } from './SmartMedia';
 import { useApprovedReviews } from '../lib/useReviews';
-import { SIGNUP_BONUS, PLANS } from '../lib/constants';
+import { SIGNUP_BONUS, TIERS, PHOTO_PRESETS, SA_LANGUAGES } from '../lib/constants';
 
-// Hero stats read the live ladder (PLANS) so marketing counts can't drift
-// from what signup/billing actually charge.
-const STARTER_PLAN = PLANS.find(p => p.id === 'STARTER');
+// Hero stats read the live data tables (TIERS / PHOTO_PRESETS / SA_LANGUAGES)
+// so marketing counts can't drift from what the Studio actually offers.
+const SA_LANGUAGE_COUNT = SA_LANGUAGES.length;
+// The free-credit promise on this page is only true for the cheapest reel.
+// Read it from the tier table instead of hardcoding "30-second reel".
+const ESSENTIAL_30_CREDITS = TIERS.find(t => t.id === 'ESSENTIAL')?.configurations[0]?.credits ?? 5;
 
 const IMG = {
   hero: 'hero-cape-town',
@@ -98,16 +100,16 @@ function Hero() {
             </Link>
           </div>
           <p className="mt-4 text-sm text-ink-400">
-            No credit card needed — your {SIGNUP_BONUS} free credits cover your first 30-second reel.
+            No card needed — your {SIGNUP_BONUS} free credits cover a full Essential 30-second reel.
           </p>
         </Reveal>
         <Reveal delay={0.32}>
           <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto">
             {[
-              { label: 'AI Video Tiers', value: '4' },
-              { label: 'AI Photo Presets', value: '27' },
+              { label: 'AI Video Tiers', value: String(TIERS.length) },
+              { label: 'AI Photo Presets', value: String(PHOTO_PRESETS.length) },
               { label: 'Free Credits on Signup', value: String(SIGNUP_BONUS) },
-              { label: `Starter plan — ${STARTER_PLAN?.monthlyCredits ?? '—'} credits/mo`, value: `R${STARTER_PLAN?.monthlyZar ?? '—'}` },
+              { label: 'SA voiceover languages', value: String(SA_LANGUAGE_COUNT) },
             ].map(s => (
               <div key={s.label} className="glass rounded-2xl px-4 py-5">
                 <p className="text-2xl sm:text-3xl font-black text-purple-300">{s.value}</p>
@@ -256,7 +258,7 @@ function VisualShowcase() {
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 to-transparent" />
               <div className="absolute bottom-0 p-4">
                 <h3 className="font-bold text-white">Sandton Apartment</h3>
-                <p className="text-ink-400 text-xs">Social tier reel · 512p</p>
+                <p className="text-ink-400 text-xs">Made for Reels & TikTok</p>
               </div>
             </div>
           </BentoCard>
@@ -318,7 +320,7 @@ function PropertyShowcase() {
 /* ── How it works — step-by-step process visualization ────────────── */
 const STEPS = [
   { n: '01', title: 'Upload Photos', desc: 'Drop in 4–8 listing photos. Any phone camera works — the AI does the heavy lifting.', icon: <Camera className="w-6 h-6" /> },
-  { n: '02', title: 'Pick Your Tier', desc: 'Social, Essential, Professional or Cinematic — from quick social reels to 1080p showpieces.', icon: <Video className="w-6 h-6" /> },
+  { n: '02', title: 'Pick Your Tier', desc: 'Essential, Social, Cinematic or Premium — Essential is the cheapest way to see a finished reel.', icon: <Video className="w-6 h-6" /> },
   { n: '03', title: 'Let the AI Work', desc: 'Motion, narration, music and captions assemble automatically. Photo presets stage the rooms.', icon: <Wand2 className="w-6 h-6" /> },
   { n: '04', title: 'Share Everywhere', desc: 'Download the reel, grab portal-ready captions and a branded social pack in one click.', icon: <Share2 className="w-6 h-6" /> },
 ];
@@ -363,8 +365,8 @@ function EditorDemo() {
   const badges = [
     { icon: <Mic className="w-4 h-4" />, label: 'AI Voiceovers', sub: '7 voices incl. SA English' },
     { icon: <Sofa className="w-4 h-4" />, label: 'Virtual Staging', sub: '100% geometry lock' },
-    { icon: <Wand2 className="w-4 h-4" />, label: 'AI Motion', sub: 'Generate AI Video from Images' },
-    { icon: <Mic className="w-4 h-4" />, label: 'AI Avatar Video', sub: 'Generate an AI-powered avatar video' },
+    { icon: <Wand2 className="w-4 h-4" />, label: 'AI Motion', sub: 'Camera motion from one still' },
+    { icon: <Mic className="w-4 h-4" />, label: 'AI Avatar Video', sub: 'A talking presenter in your brand' },
   ];
 
   return (
@@ -372,7 +374,7 @@ function EditorDemo() {
       <div className="absolute inset-0 bg-[radial-gradient(800px_400px_at_70%_20%,rgba(168,85,247,0.12),transparent_70%)]" />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <Reveal className="text-center mb-16">
-          <h2 className="text-3xl sm:text-5xl font-black text-white">One Studio. Seven AI Tools.</h2>
+          <h2 className="text-3xl sm:text-5xl font-black text-white">One Studio. Every Asset Your Listing Needs.</h2>
           <p className="mt-4 text-lg text-ink-400">From listing photos to a finished, narrated reel — no editor, no agency, no waiting.</p>
         </Reveal>
 

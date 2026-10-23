@@ -22,7 +22,7 @@ export default function MobileNav() {
 
         <NavLink
           to="/dashboard/video"
-          aria-label="AI tools"
+          aria-label="Create"
           className={({ isActive }) =>
             `flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition ${isActive ? 'text-purple-400' : 'text-ink-500'}`
           }
@@ -66,8 +66,9 @@ export default function MobileNav() {
           </NavLink>
         )}
 
-        {!showAgency && (
-          <NavLink
+        {/* Settings/Profile is always present — agency owners need it too
+            (the Agency item below is in addition to it, never a replacement). */}
+        <NavLink
             to="/dashboard/settings"
             aria-label="Profile"
             className={({ isActive }) =>
@@ -77,7 +78,6 @@ export default function MobileNav() {
             <User className="w-5 h-5" />
             <span className="text-[10px] font-medium">Profile</span>
           </NavLink>
-        )}
       </div>
     </nav>
   );

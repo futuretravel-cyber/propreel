@@ -21,6 +21,7 @@ import {
 import { useCredit } from '../context/AuthContext';
 import { queueVideoRender } from '../lib/videoPrefill';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { PropReelAPI, useUploadWait, type Project } from '../lib/api';
 import { formatZar, downloadText, downloadRemoteFile } from '../lib/utils';
 import { TONES, RETENTION_NOTICE, PROVINCES, PROPERTY_TYPES } from '../lib/constants';
@@ -351,7 +352,7 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
     if (!user) return;
     const cost = DESCRIPTION_RENDER_COST;
     if ((user.credits ?? 0) < cost) {
-      toast.error(`Not enough credits — a description costs ${cost} credit. Top up in Billing.`, 'Insufficient credits');
+      toast.error(`Not enough credits — a description costs ${cost} credit. Top up in Credits.`, 'Insufficient credits');
       return;
     }
     setGenerating(true);
@@ -937,6 +938,7 @@ export function ListingEditPage() {
 }
 
 export default function PropertyListings() {
+  const confirm = useConfirm();
   const { user } = useCredit();
   const toast = useToast();
   const navigate = useNavigate();
@@ -1000,7 +1002,7 @@ export default function PropertyListings() {
   // Deleted listings are NOT destroyed — they move to Expired, out of the
   // active portfolio (spec: deleted → Expired).
   const remove = async (p: Project) => {
-    if (!window.confirm(`Delete "${p.title}"? It will be moved to your Expired listings.`)) return;
+    if (!(await confirm(`Delete "${p.title}"? It will be moved to your Expired listings.`, { title: 'Delete listing?', confirmLabel: 'Delete', destructive: true }))) return;
     try {
       await PropReelAPI.updateProject(user!.id, p.id, { marketStatus: 'EXPIRED' } as any);
       toast.success('Listing moved to Expired');

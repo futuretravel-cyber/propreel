@@ -69,9 +69,8 @@ async function requireAdmin(req: VercelRequest): Promise<{ ok: boolean; error?: 
   if (!sessionUser) return { ok: false, error: 'Sign in required' };
   const claimed = (req.query.user_id as string) || req.body?.user_id;
   if (claimed && claimed !== sessionUser.id) return { ok: false, error: 'Sign in required' };
-  const email = (sessionUser.email || '').toLowerCase();
-  const isAdmin = sessionUser.role === 'ADMIN' || email === 'futuretravel@gmail.com' || email === 'ulric@propreel.co.za';
-  if (!isAdmin) return { ok: false, error: 'Admin access required' };
+  const { isAdminActor } = await import('../lib/auth');
+  if (!isAdminActor(sessionUser)) return { ok: false, error: 'Admin access required' };
   return { ok: true, userId: sessionUser.id };
 }
 

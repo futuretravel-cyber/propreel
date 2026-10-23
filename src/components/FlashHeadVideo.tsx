@@ -12,7 +12,7 @@ import { useVoicePreview } from '../lib/useVoicePreview';
 import { useAvatarPhotoIssue } from '../lib/useAvatarPhotoIssue';
 import LanguageMismatchBanner from './LanguageMismatchBanner';
 import type { VoiceoverLanguageCheck } from '../lib/useVoiceoverLanguageCheck';
-import { SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage } from '../lib/constants';
+import { SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage, RETENTION_DAYS } from '../lib/constants';
 import { downloadRemoteFile } from '../lib/utils';
 
 interface FlashHeadVideoProps {
@@ -301,6 +301,11 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
               {sourceUrl && (
                 <p className="text-xs text-ink-500 mt-1">Using your branding profile image — remove it to upload a different photo.</p>
               )}
+              {profileImage && preview === profileImage && (
+                <p className="text-xs text-ink-500 mt-1">
+                  This photo is shared with the Video step — removing it here removes it there too.
+                </p>
+              )}
               {photoIssue && (
                 <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
                   <AlertCircle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
@@ -422,6 +427,9 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
               className="btn btn-secondary text-sm"
             ><Download className="w-4 h-4" /> Download</button>
           </div>
+          <p className="text-xs text-ink-500 text-center mt-2">
+            Clips are kept for {RETENTION_DAYS} days — download this one to keep it.
+          </p>
         </div>
       )}
 

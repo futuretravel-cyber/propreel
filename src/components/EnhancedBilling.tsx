@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar, formatDate, creditListZar } from '../lib/utils';
@@ -33,7 +33,16 @@ export default function EnhancedBilling() {
   const { user, balance, refresh, giftCredits } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<'overview' | 'history' | 'bundles' | 'analytics' | 'gifting'>('overview');
+  // Deep-linkable sub-tab (?btab=) so Credits → Gift credits and the dunning
+  // banner land on the right panel instead of the overview underneath it.
+  const BILLING_TABS = ['overview', 'history', 'bundles', 'analytics', 'gifting'] as const;
+  type BillingTab = typeof BILLING_TABS[number];
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('btab');
+  const initialTab: BillingTab = (BILLING_TABS as readonly string[]).includes(requestedTab || '')
+    ? (requestedTab as BillingTab)
+    : 'overview';
+  const [tab, setTab] = useState<BillingTab>(initialTab);
   const [credits, setCredits] = useState(100);
   const [report, setReport] = useState<CreditReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +64,7 @@ export default function EnhancedBilling() {
   const costEstimates = TIERS.map((t) => ({
     tier: t.label,
     credits: t.configurations[0]?.credits ?? 0,
+    duration: t.configurations[0]?.duration ?? 0,
   }));
 
   // Give-5-get-5 numbers: signups by link, first purchases (paid), pending payout
@@ -121,8 +131,10 @@ export default function EnhancedBilling() {
     return true;
   });
 
-  const totalSpent = allTransactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-  const totalEarned = allTransactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
+  // Totals follow the table's filters — they used to sum all time while the
+  // table showed "last 7 days", so the two disagreed on screen.
+  const totalSpent = filteredTransactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const totalEarned = filteredTransactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
 
   // Real usage-by-feature from the ledger metadata
   const usageByType = useMemo(() => {
@@ -130,7 +142,7 @@ export default function EnhancedBilling() {
     return [
       { name: 'Video Renders', value: byFeature.videoGeneration, color: '#800080' },
       { name: 'Photo Edits', value: byFeature.imageEditing, color: '#9333ea' },
-      { name: 'FlashHead', value: byFeature.flashHead, color: '#a855f7' },
+      { name: 'AI Avatar', value: byFeature.flashHead, color: '#a855f7' },
       { name: 'Other', value: byFeature.other, color: '#c084fc' },
     ].filter(x => x.value > 0);
   }, [report]);
@@ -256,7 +268,7 @@ export default function EnhancedBilling() {
         {[
           { id: 'overview', label: 'Overview', icon: <CreditCard className="w-4 h-4" /> },
           { id: 'history', label: 'Transaction History', icon: <History className="w-4 h-4" /> },
-          { id: 'bundles', label: 'Credit Bundles', icon: <Package className="w-4 h-4" /> },
+          { id: 'bundles', label: 'Top-ups', icon: <Package className="w-4 h-4" /> },
           { id: 'analytics', label: 'Usage Analytics', icon: <BarChart3 className="w-4 h-4" /> },
           { id: 'gifting', label: 'Gift Credits', icon: <Gift className="w-4 h-4" /> },
         ].map(t => (
@@ -442,12 +454,11 @@ export default function EnhancedBilling() {
                   <h3 className="font-semibold text-white text-sm">Payment failed — action needed</h3>
                   <p className="text-xs text-ink-400 mt-1">
                     Your last card charge didn't go through ({user.paymentFailure.count} attempt{user.paymentFailure.count === 1 ? '' : 's'},
-                    first on {formatDate(user.paymentFailure.firstFailedAt)}). We retry your saved card automatically over the
-                    next two weeks. If payment can't be collected within 21 days, the subscription is cancelled — your
-                    remaining credits stay usable.
+                    first on {formatDate(user.paymentFailure.firstFailedAt)}). We retry your saved card automatically for 21 days.
+                    If it still doesn't clear, the subscription is cancelled and the credits already in your account stay usable.
                   </p>
                 </div>
-                <button onClick={() => navigate('/dashboard/bundles')} className="btn btn-primary text-xs py-2 px-3 shrink-0">Update Payment</button>
+                <button onClick={() => setTab('bundles')} className="btn btn-primary text-xs py-2 px-3 shrink-0">Update card</button>
               </div>
             </div>
           )}
@@ -479,7 +490,7 @@ export default function EnhancedBilling() {
                 <Download className="w-4 h-4 text-purple-400" /> Invoices
               </h3>
               <div className="space-y-2">
-                {user!.invoices!.slice().reverse().slice(0, 8).map(inv => (
+                {user!.invoices!.slice().reverse().map(inv => (
                   <div key={inv.invoiceNumber} className="flex items-center justify-between bg-ink-800/50 rounded-lg px-4 py-2.5">
                     <div>
                       <p className="text-sm text-white font-medium">{inv.invoiceNumber}</p>
@@ -519,7 +530,17 @@ export default function EnhancedBilling() {
               <div><p className="text-ink-400">Monthly Cost</p><p className="text-white font-semibold">{plan ? `${formatZar(plan.monthlyZar)}/mo` : '—'}</p></div>
               <div><p className="text-ink-400">Credits/Month</p><p className="text-white font-semibold">{plan ? `${plan.monthlyCredits} (≈ ${creditListZar(plan.monthlyCredits)})` : '—'}</p></div>
               <div><p className="text-ink-400">Next Renewal</p><p className="text-white font-semibold">{user?.subscription?.currentPeriodEnd ? formatDate(user.subscription.currentPeriodEnd) : '—'}</p></div>
-              <div><p className="text-ink-400">Status</p><p className="text-white font-semibold">{user?.subscription?.status || 'NONE'}</p></div>
+              <div>
+                <p className="text-ink-400">Status</p>
+                <p className="text-white font-semibold">
+                  {({
+                    ACTIVE: 'Active',
+                    PAST_DUE: 'Payment due',
+                    CANCELLED: 'Cancelled',
+                    DOWNGRADE_PENDING: 'Changing plan',
+                  } as Record<string, string>)[user?.subscription?.status || ''] || 'No plan'}
+                </p>
+              </div>
             </div>
             <div className="pt-4 border-t border-white/5 flex gap-3">
               {!user?.agencyId && (
@@ -543,7 +564,7 @@ export default function EnhancedBilling() {
                 <div key={c.tier} className="bg-ink-800/50 rounded-xl p-4 text-center">
                   <p className="font-bold text-white">{c.tier}</p>
                   <p className="text-2xl font-black text-purple-400 my-2">{c.credits}</p>
-                  <p className="text-xs text-ink-400">credits</p>
+                  <p className="text-xs text-ink-400">credits · {c.duration}s</p>
                 </div>
               ))}
             </div>
@@ -557,7 +578,7 @@ export default function EnhancedBilling() {
 
           {/* Quick Top-Up — real checkout */}
           <div className="card-dark p-6">
-            <h3 className="font-semibold text-white mb-4">Custom Amount</h3>
+            <h3 className="font-semibold text-white mb-4">Custom top-up</h3>
             <div className="flex items-center gap-4">
               <input type="range" min={50} max={1000} step={10} value={credits} onChange={e => setCredits(Number(e.target.value))} className="flex-1" />
               <div className="text-right min-w-[80px]">
@@ -655,8 +676,11 @@ export default function EnhancedBilling() {
       {tab === 'bundles' && (
         <div className="space-y-6">
           <div className="card-dark p-6">
-            <h3 className="font-semibold text-white mb-2">Credit Bundles</h3>
-            <p className="text-ink-400 text-sm mb-4">Buy credits via Paystack's secure checkout. Credits land in your account immediately after payment.</p>
+            <h3 className="font-semibold text-white mb-2">Top-up credits</h3>
+            <p className="text-ink-400 text-sm mb-4">
+              One price, R{CREDIT_PACK_RAND.toFixed(2)} per credit — larger packs are not discounted, so buy only what you need.
+              Checkout is secured by Paystack and credits land the moment payment clears.
+            </p>
             <div className="mb-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3" role="note">
               <p className="text-xs font-semibold text-amber-300 mb-1">AI-generated content notice</p>
               <p className="text-xs text-ink-400 leading-relaxed">{AI_DISCLAIMER_TEXT}</p>
@@ -664,7 +688,7 @@ export default function EnhancedBilling() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {bundles.map(b => (
                 <div key={b.credits} className={`relative rounded-xl p-6 text-center transition ${b.popular ? 'bg-gradient-to-b from-purple-950/80 to-ink-900 border-2 border-purple-500/50' : 'bg-ink-800/50 border border-white/5'}`}>
-                  {b.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2 badge badge-brand">Most Popular</div>}
+                  {b.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2 badge badge-brand">Most popular</div>}
                   <p className="text-3xl font-black text-white">{b.credits}</p>
                   <p className="text-sm text-ink-400">credits</p>
                   <div className="my-4">
@@ -693,12 +717,16 @@ export default function EnhancedBilling() {
                     <p className="text-2xl font-black text-white mt-2">{formatZar(p.monthlyZar)}<span className="text-sm text-ink-400 font-normal">/mo</span></p>
                     <p className="text-xs text-purple-400 mt-1">{p.monthlyCredits} credits/month ≈ {creditListZar(p.monthlyCredits)}</p>
                     <ul className="mt-4 space-y-2">
-                      {p.features.slice(0, 3).map((f, i) => (
+                      {p.features.map((f, i) => (
                         <li key={i} className="text-xs text-ink-300 flex items-center gap-1"><Check className="w-3 h-3 text-green-400" /> {f}</li>
                       ))}
                     </ul>
-                    <button onClick={() => navigate(`/payment?plan=${p.id}&cycle=MONTHLY&price=${p.monthlyZar}`)} className="btn btn-secondary w-full mt-4 text-xs">
-                      {isCurrent ? 'Renew' : 'Switch Plan'}
+                    <button
+                      onClick={() => navigate(`/payment?plan=${p.id}&cycle=MONTHLY&price=${p.monthlyZar}`)}
+                      disabled={isCurrent}
+                      className="btn btn-secondary w-full mt-4 text-xs disabled:opacity-50"
+                    >
+                      {isCurrent ? 'Current plan' : 'Switch plan'}
                     </button>
                   </div>
                 );

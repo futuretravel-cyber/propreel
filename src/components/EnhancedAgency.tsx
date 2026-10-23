@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { formatDate, formatRelative, formatZar } from '../lib/utils';
 import { PropReelAPI } from '../lib/api';
 import {
@@ -88,6 +89,7 @@ const onboardingSteps = [
 ];
 
 export default function EnhancedAgency() {
+  const confirm = useConfirm();
   const { user, refresh, isAdmin } = useAuth();
   const toast = useToast();
   const [tab, setTab] = useState<'overview' | 'members' | 'team_credits' | 'usage' | 'reports' | 'history' | 'onboarding' | 'settings'>('overview');
@@ -169,7 +171,7 @@ export default function EnhancedAgency() {
 
   // ── Remove member (owner control) ───────────────────────────────────
   const removeMember = async (m: AgencyMember) => {
-    if (!window.confirm(`Remove ${m.fullName} from the agency? They keep their personal account and projects.`)) return;
+    if (!(await confirm(`Remove ${m.fullName} from the agency? They keep their personal account and projects.`, { title: 'Remove member?', confirmLabel: 'Remove', destructive: true }))) return;
     try {
       const res = await fetch('/api/users?action=agency_remove_member', {
         method: 'POST',
@@ -190,9 +192,9 @@ export default function EnhancedAgency() {
   // created via invite (the agent never paid a subscription themselves),
   // the agency admin is the natural person to also take that away.
   const deleteMember = async (m: AgencyMember) => {
-    if (!window.confirm(`Permanently DELETE ${m.fullName}'s account (${m.email})?
+    if (!(await confirm(`Permanently DELETE ${m.fullName}'s account (${m.email})?
 
-This removes their account, projects and sign-ins — it cannot be undone. The email address can only be used again by creating a brand-new account. Use "Remove" instead if you only want to detach them from the agency.`)) return;
+This removes their account, projects and sign-ins — it cannot be undone. The email address can only be used again by creating a brand-new account. Use "Remove" instead if you only want to detach them from the agency.`, { title: 'Delete account?', confirmLabel: 'Delete account', destructive: true }))) return;
     try {
       const res = await fetch('/api/users?action=agency_delete_member', {
         method: 'POST',

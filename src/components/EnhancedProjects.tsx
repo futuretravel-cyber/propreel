@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { formatZar, formatRelative, downloadRemoteFile } from '../lib/utils';
 import { PropReelAPI, Project } from '../lib/api';
 import {
@@ -44,6 +45,7 @@ const templates = [
 ];
 
 export default function EnhancedProjects() {
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
@@ -134,7 +136,7 @@ export default function EnhancedProjects() {
 
   const deleteProjects = async (ids: string[]) => {
     if (!user?.id || !ids.length) return;
-    if (!window.confirm(`Permanently delete ${ids.length} project(s)? This cannot be undone.`)) return;
+    if (!(await confirm(`Permanently delete ${ids.length} project(s)? This cannot be undone.`, { title: 'Delete projects?', confirmLabel: 'Delete', destructive: true }))) return;
     try {
       await Promise.all(ids.map(id => PropReelAPI.deleteProject(user.id, id)));
       toast.success(`${ids.length} project(s) deleted`);
@@ -198,11 +200,11 @@ export default function EnhancedProjects() {
     toast.success('Folder renamed');
   };
 
-  const deleteFolder = (folderId: string) => {
+  const deleteFolder = async (folderId: string) => {
     const folder = folders.find(f => f.id === folderId);
     if (!folder) return;
     const affected = projects.filter(p => p.folder === folder.name).length;
-    if (!window.confirm(`Delete folder "${folder.name}"?${affected > 0 ? ` ${affected} project(s) inside will move back to All Projects.` : ''}`)) return;
+    if (!(await confirm(`Delete folder "${folder.name}"?${affected > 0 ? ` ${affected} project(s) inside will move back to All Projects.` : ''}`, { title: 'Delete folder?', confirmLabel: 'Delete', destructive: true }))) return;
     persistFolders(folders.filter(f => f.id !== folderId));
     // Clear the folder assignment on affected projects (real update)
     projects.filter(p => p.folder === folder.name).forEach(p => {

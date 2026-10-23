@@ -199,55 +199,65 @@ export function voicesForLanguage(languageId: string): StudioVoice[] {
   );
 }
 
+/**
+ * Platform caption limits.
+ *
+ * `charLimit` is the platform's real hard cap (checked by the over-limit
+ * warning); `rules` carries the length we actually recommend to the model.
+ * These used to be a single invented "max": Instagram 300, X 240, LinkedIn
+ * 700 — which forced agents to cut copy that would have fitted, and told the
+ * model to. Sources: Instagram 2,200; X 280; LinkedIn 3,000; TikTok 2,200;
+ * Facebook 63,206.
+ */
 export const SOCIAL_PLATFORMS = [
-  { 
-    id: 'instagram', 
-    label: 'Instagram', 
-    charLimit: 300, 
+  {
+    id: 'instagram',
+    label: 'Instagram',
+    charLimit: 2200,
     icon: '📸',
-    rules: 'Max 300 chars, punchy caption, line breaks, 5-8 relevant real estate hashtags'
+    rules: 'Up to 2,200 chars (aim for 150–300 so the caption is readable before "more"), line breaks between ideas, 5-8 relevant local real estate hashtags'
   },
-  { 
-    id: 'facebook', 
-    label: 'Facebook', 
-    charLimit: 500, 
+  {
+    id: 'facebook',
+    label: 'Facebook',
+    charLimit: 63206,
     icon: '👥',
-    rules: 'Max 500 chars, engaging story-style post for community groups, call to action'
+    rules: 'Up to 63,000 chars — aim for 2-4 short paragraphs, story-style, community tone, clear call to action'
   },
-  { 
-    id: 'whatsapp', 
-    label: 'WhatsApp', 
-    charLimit: 400, 
+  {
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    charLimit: 400,
     icon: '💬',
-    rules: 'Max 400 chars, direct, personal broadcast message format with key highlights and emoji bullet points'
+    rules: 'Around 400 chars for a broadcast message: direct, personal, key highlights as emoji bullet points'
   },
-  { 
-    id: 'linkedin', 
-    label: 'LinkedIn', 
-    charLimit: 700, 
+  {
+    id: 'linkedin',
+    label: 'LinkedIn',
+    charLimit: 3000,
     icon: '💼',
-    rules: 'Max 700 chars, professional announcement tone, investment/market potential focus'
+    rules: 'Up to 3,000 chars — 2-3 short paragraphs, professional announcement tone, investment/market potential focus'
   },
-  { 
-    id: 'twitter', 
-    label: 'X / Twitter', 
-    charLimit: 240, 
+  {
+    id: 'twitter',
+    label: 'X / Twitter',
+    charLimit: 280,
     icon: '🐦',
-    rules: 'Max 240 chars, concise tweet with price, location, beds/baths, and key highlight'
+    rules: 'Hard limit 280 chars: price, location, beds/baths and one key highlight, no hashtag stuffing'
   },
-  { 
-    id: 'tiktok', 
-    label: 'TikTok', 
-    charLimit: 300, 
+  {
+    id: 'tiktok',
+    label: 'TikTok',
+    charLimit: 2200,
     icon: '🎵',
-    rules: 'Max 300 chars, casual, trendy, youthful voiceover-style caption'
+    rules: 'Up to 2,200 chars — casual, trend-aware, youthful caption with 3-5 hashtags'
   },
-  { 
-    id: 'newsletter', 
-    label: 'Newsletter', 
-    charLimit: 1000, 
+  {
+    id: 'newsletter',
+    label: 'Newsletter',
+    charLimit: 1000,
     icon: '📧',
-    rules: 'Max 1000 chars, comprehensive property feature section for monthly email blasts'
+    rules: 'Max 1,000 chars for the email section: headline, two short paragraphs, one call to action'
   },
 ];
 
@@ -306,21 +316,30 @@ export const TWILIGHT_STYLES = getPresetsByCategory('twilight').map(p => ({
   emoji: p.emoji
 }));
 
+/**
+ * Plan ladder. The `features` strings must only promise what the app
+ * actually enforces or delivers: every plan gets every Studio tool, every
+ * video tier, every narrator voice and all 7 social platforms — the real
+ * differences are the monthly credit allowance, the support level and (on
+ * Agency) the shared pool and seats. (An earlier version claimed tier
+ * gating, queue priority and per-plan platform counts that nothing in the
+ * code enforced.)
+ */
 export const PLANS = [
   {
     id: 'STARTER', name: 'Starter', monthlyZar: 129, annualZar: 110, monthlyCredits: 110,
     tagline: 'For the solo agent getting started.',
-    features: ['110 credits every month', 'All 7 Studio tools', 'Landscape & portrait reels', 'Agent branding watermark', 'Email support'],
+    features: ['110 credits every month', 'Every Studio tool — reels, photo editing, descriptions, social', 'Landscape & portrait reels', 'Agent branding watermark', 'Email support'],
   },
   {
     id: 'PROFESSIONAL', name: 'Professional', monthlyZar: 589, annualZar: 560, monthlyCredits: 520, popular: true,
     tagline: 'For the active agent with a full pipeline.',
-    features: ['520 credits every month', 'Priority render queue', 'AI social captions for 7 platforms', 'Agent profile & verification watermark', 'Priority email support'],
+    features: ['520 credits every month', 'Everything in Starter, with credits for weekly listings', 'Landscape & portrait reels', 'Agent branding watermark', 'Priority email support'],
   },
   {
     id: 'PREMIUM', name: 'Premium', monthlyZar: 1270, annualZar: 1200, monthlyCredits: 1150,
     tagline: 'For top producers and boutique teams.',
-    features: ['1 150 credits every month', 'Fastest render queue', 'Cinematic + Premium tiers', 'Custom voice selection', 'Dedicated support line'],
+    features: ['1 150 credits every month', 'Everything in Professional, with credits for daily listings', 'Landscape & portrait reels', 'Agent branding watermark', 'Dedicated support line'],
   },
   {
     id: 'AGENCY', name: 'Agency', monthlyZar: 5000, annualZar: 5000, monthlyCredits: 4300,

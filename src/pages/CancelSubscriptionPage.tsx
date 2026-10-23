@@ -88,11 +88,11 @@ export default function CancelSubscriptionPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
-                  <span>Unused subscription credits will expire at the end of the billing period</span>
+                  <span>Credits already in your account stay usable until their expiry date — 365 days after they were added</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
-                  <span>Purchased credits (top-ups) never expire and remain in your account</span>
+                  <span>Top-up credits follow the same 365-day rule and are not removed when you cancel</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
@@ -106,7 +106,7 @@ export default function CancelSubscriptionPage() {
             </div>
 
             <div className="flex gap-3">
-              <Link to="/dashboard/billing" className="btn btn-secondary flex-1">
+              <Link to="/dashboard/credits?tab=billing" className="btn btn-secondary flex-1">
                 Keep Subscription
               </Link>
               <button
@@ -134,7 +134,7 @@ export default function CancelSubscriptionPage() {
               <ul className="space-y-2 text-sm text-red-200">
                 <li>• Your subscription will remain active until the end of your current billing period</li>
                 <li>• You will not be charged again after this period</li>
-                <li>• Unused subscription credits will expire at the end of the billing period</li>
+                <li>• Credits already in your account stay usable until their expiry date (365 days after they were added)</li>
                 <li>• You can reactivate your subscription at any time</li>
               </ul>
             </div>

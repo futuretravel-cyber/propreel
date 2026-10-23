@@ -27,22 +27,29 @@ const RESET_TTL_MINUTES = 60;
 
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, keylen: 64 };
 
-export function hashPassword(password: string): string {
+// scrypt runs on the threadpool instead of blocking the (serverless) event
+// loop for ~100ms per login.
+const scryptAsync = (password: string, salt: string, keylen: number, opts: crypto.ScryptOptions) =>
+  new Promise<Buffer>((resolve, reject) => {
+    crypto.scrypt(password, salt, keylen, opts, (err, key) => (err ? reject(err) : resolve(key)));
+  });
+
+export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.randomBytes(16).toString('base64');
-  const hash = crypto.scryptSync(password, salt, SCRYPT_PARAMS.keylen, {
+  const hash = (await scryptAsync(password, salt, SCRYPT_PARAMS.keylen, {
     N: SCRYPT_PARAMS.N, r: SCRYPT_PARAMS.r, p: SCRYPT_PARAMS.p,
-  }).toString('base64');
+  })).toString('base64');
   return `scrypt$${SCRYPT_PARAMS.N}$${salt}$${hash}`;
 }
 
-export function verifyPassword(password: string, stored: string | undefined | null): boolean {
+export async function verifyPassword(password: string, stored: string | undefined | null): Promise<boolean> {
   if (!stored) return false;
   try {
     const [scheme, nStr, salt, expected] = String(stored).split('$');
     if (scheme !== 'scrypt' || !salt || !expected) return false;
-    const actual = crypto.scryptSync(password, salt, 64, {
+    const actual = (await scryptAsync(password, salt, 64, {
       N: Number(nStr) || SCRYPT_PARAMS.N, r: SCRYPT_PARAMS.r, p: SCRYPT_PARAMS.p,
-    }).toString('base64');
+    })).toString('base64');
     const a = Buffer.from(actual);
     const b = Buffer.from(expected);
     return a.length === b.length && crypto.timingSafeEqual(a, b);
@@ -273,7 +280,15 @@ export async function issuePasswordResetToken(user: User): Promise<string> {
 // ready-to-send failure the handler can send as
 // `return res.status(gate.status).json({ error: gate.error })`.
 
-const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
+/** Single source of truth for the platform-admin email list — the
+ *  duplicated copies that used to live in api/users.ts, api/leads.ts and
+ *  api/music.ts all route through here now. */
+export const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
+
+/** Plain-email admin check for code paths without a loaded user row. */
+export function isAdminEmail(email: string | undefined | null): boolean {
+  return !!email && ADMIN_EMAILS.includes(String(email).toLowerCase());
+}
 
 export type SessionGate =
   | { ok: true; user: User }

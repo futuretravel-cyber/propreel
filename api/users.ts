@@ -9,7 +9,7 @@ import {
   clientMeta,
   issueEmailConfirmToken, consumeEmailConfirmToken, issuePasswordResetToken,
   consumePasswordResetToken,
-  requireOwner, requireAdminSession, sessionUser, isAdminActor,
+  requireOwner, requireAdminSession, sessionUser, isAdminActor, isAdminEmail, ADMIN_EMAILS,
 } from '../lib/auth';
 import { sendEmail, confirmEmailTemplate, resetPasswordTemplate, accountExistsTemplate, agencyInviteTemplate } from '../lib/email';
 import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../lib/totp';
@@ -22,8 +22,7 @@ import { getMaintenanceState, setMaintenanceState } from '../lib/maintenance';
 import { rawS3Url, signS3Url, toEdgeUrl } from '../lib/s3Urls';
 import { auditApiResponses, auditStoredRows, type MediaCheck } from '../lib/mediaAudit';
 
-const isAdminEmail = (email: string | undefined | null) =>
-  !!email && ADMIN_EMAILS.includes(String(email).toLowerCase());
+// isAdminEmail + ADMIN_EMAILS come from lib/auth — single source of truth.
 
 /**
  * Per-IP signup cap. Offices and carrier NATs legitimately share one
@@ -581,7 +580,6 @@ async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: str
 }
 
 // Admin accounts receive 1000 credits on first sign-in (spec doc)
-const ADMIN_EMAILS = ['futuretravel@gmail.com', 'ulric@propreel.co.za'];
 const ADMIN_GRANT_CREDITS = 1000;
 
 // Default notification preferences applied to new users
@@ -1959,7 +1957,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       // systematic delta).
       await Promise.all([
         updateUser(user.id, {
-          passwordHash: hashPassword(password),
+          passwordHash: await hashPassword(password),
           emailVerified: false,
           ...(enableTwoFactor ? { twoFactorOptIn: true } : {}),
           ...(consentVersion
@@ -2089,11 +2087,11 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       const user = await getUserByEmail(email);
       if (!user || !user.passwordHash) {
         // Equalize timing so probing can't distinguish unknown emails
-        verifyPassword(password, 'scrypt$16384$dummy$dummy');
+        await verifyPassword(password, 'scrypt$16384$dummy$dummy');
         await holdAuthFloor(AUTH_FLOOR_LOGIN_MS);
         return res.status(401).json({ error: 'Invalid email or password' });
       }
-      if (!verifyPassword(password, user.passwordHash)) {
+      if (!(await verifyPassword(password, user.passwordHash))) {
         await holdAuthFloor(AUTH_FLOOR_LOGIN_MS);
         return res.status(401).json({ error: 'Invalid email or password' });
       }
@@ -2319,7 +2317,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
       const row = await consumePasswordResetToken(token);
       if (!row) return res.status(410).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
-      await updateUser(row.userId, { passwordHash: hashPassword(password), passwordResetToken: null, twoFactorEnabled: false, twoFactorSecret: null, twoFactorOptIn: false, twoFactorPendingToken: null, passwordChangedAt: new Date().toISOString() } as any);
+      await updateUser(row.userId, { passwordHash: await hashPassword(password), passwordResetToken: null, twoFactorEnabled: false, twoFactorSecret: null, twoFactorOptIn: false, twoFactorPendingToken: null, passwordChangedAt: new Date().toISOString() } as any);
       await deleteSessionsForUser(row.userId);
       return res.status(200).json({ success: true });
     }
@@ -2448,14 +2446,14 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
             fullName: 'Enumeration Selftest',
             credits: 0,
             emailVerified: true,
-            passwordHash: hashPassword(`${randomToken()}${randomToken()}`),
+            passwordHash: await hashPassword(`${randomToken()}${randomToken()}`),
             createdAt: now,
             updatedAt: now,
           } as any);
         } else if (!known.emailVerified || !known.passwordHash) {
           await updateUser(known.id, {
             emailVerified: true,
-            ...(known.passwordHash ? {} : { passwordHash: hashPassword(`${randomToken()}${randomToken()}`) }),
+            ...(known.passwordHash ? {} : { passwordHash: await hashPassword(`${randomToken()}${randomToken()}`) }),
           } as any);
         }
       } catch (e) {

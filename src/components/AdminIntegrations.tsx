@@ -79,7 +79,7 @@ export default function AdminIntegrations() {
       const res = await fetch('/api/users?action=feature_flags', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user?.email, flags: next }),
+        body: JSON.stringify({ flags: next }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Save failed');

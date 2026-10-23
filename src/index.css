@@ -24,7 +24,9 @@
   --color-ink-200: #d5d9e8;
   --color-ink-300: #b0b8d0;
   --color-ink-400: #7f8aab;
-  --color-ink-500: #5b678b;
+  /* 500 is the helper-text colour on ink-950; #5b678b only reached ~3.3:1.
+     #6f7c9e clears WCAG AA (≈4.6:1) without looking like body copy. */
+  --color-ink-500: #6f7c9e;
   --color-ink-600: #454f70;
   --color-ink-700: #333b56;
   --color-ink-800: #1e2338;
@@ -34,6 +36,12 @@
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
+}
+
+:root {
+  /* One source for the brand gradient — used by .btn-primary,
+     .tab-pill-active and .brand-text-gradient (was copy-pasted). */
+  --brand-gradient: linear-gradient(135deg, #800080 0%, #9a35a6 50%, #b252bd 100%);
 }
 
 @layer base {
@@ -143,7 +151,7 @@
   }
 
   .btn-primary {
-    background: linear-gradient(135deg, #800080 0%, #9a35a6 50%, #b252bd 100%);
+    background: var(--brand-gradient);
     color: white;
     box-shadow: 0 0 0 1px rgba(128,0,128,0.25), 0 8px 32px -8px rgba(128,0,128,0.55);
   }
@@ -296,7 +304,7 @@
     color: var(--color-ink-100);
   }
   .tab-pill-active {
-    background: linear-gradient(135deg, #800080 0%, #9a35a6 50%, #b252bd 100%);
+    background: var(--brand-gradient);
     color: white;
     box-shadow: 0 0 0 1px rgba(128,0,128,0.25), 0 8px 32px -8px rgba(128,0,128,0.55);
   }
@@ -307,7 +315,7 @@
     text-wrap: balance;
   }
   .brand-text-gradient {
-    background: linear-gradient(135deg, #800080 0%, #9a35a6 50%, #b252bd 100%);
+    background: var(--brand-gradient);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -348,6 +356,17 @@
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Honour the OS-level motion preference: the marketing page runs several
+   infinite float/pulse loops and every section reveals on scroll. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .animate-fade-in { animation: fade-in 0.35s ease-out both; }

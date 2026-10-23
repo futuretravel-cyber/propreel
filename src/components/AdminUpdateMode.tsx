@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Wrench, Power, Loader2, ShieldCheck, Info } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 interface State {
   enabled: boolean;
@@ -21,6 +22,7 @@ interface State {
  */
 export default function AdminUpdateMode() {
   const toast = useToast();
+  const confirm = useConfirm();
   const [state, setState] = useState<State | null>(null);
   const [saving, setSaving] = useState(false);
   const [draftMessage, setDraftMessage] = useState('');
@@ -38,8 +40,8 @@ export default function AdminUpdateMode() {
 
   const setMode = async (enabled: boolean) => {
     const verb = enabled ? 'enable' : 'disable';
-    if (enabled && !confirm(
-      'Enable Update Mode?\n\nThe whole site locks for everyone except you (full-screen update page + API 503s for non-admins) until you switch it off.')) return;
+    if (enabled && !(await confirm(
+      'Enable Update Mode?\n\nThe whole site locks for everyone except you (full-screen update page + API 503s for non-admins) until you switch it off.', { title: 'Enable Update Mode?', confirmLabel: 'Enable' }))) return;
     setSaving(true);
     try {
       const res = await fetch('/api/users?action=maintenance', {

@@ -28,9 +28,11 @@ export default function RenderProgressBar({ progress, stage = '', label }: Rende
         : `${label || 'Rendering'}… typically ${progress.typicalLabel}`;
 
   return (
-    <div className="rounded-xl border border-purple-500/20 bg-purple-950/20 p-3 space-y-2" aria-live="polite">
+    <div className="rounded-xl border border-purple-500/20 bg-purple-950/20 p-3 space-y-2">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-purple-200 font-medium">{statusLine}</span>
+        {/* Only the stage text is announced — the elapsed clock ticks every
+            second and used to chatter through the wrapper's aria-live. */}
+        <span className="text-purple-200 font-medium" aria-live="polite">{statusLine}</span>
         <span className="text-ink-400 tabular-nums" title={`${progress.elapsedLabel} elapsed`}>
           {progress.elapsedLabel} elapsed
         </span>

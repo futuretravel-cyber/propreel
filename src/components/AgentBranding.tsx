@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Info, Loader2, Pencil, Plus, Trash2, Upload, User, X } from 'lucide-react';
 import { useCredit, type AgentProfile } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { uploadImagesForAI } from '../lib/propertyListing';
 
 /**
@@ -267,6 +268,7 @@ function ProfileModal({
 }
 
 export default function AgentBranding() {
+  const confirm = useConfirm();
   const { user, refresh } = useCredit();
   const toast = useToast();
   const [editing, setEditing] = useState<AgentProfile | null>(null);
@@ -305,7 +307,7 @@ export default function AgentBranding() {
   };
 
   const handleDelete = async (p: AgentProfile) => {
-    if (!window.confirm(`Delete "${p.profileName}"? This cannot be undone.`)) return;
+    if (!(await confirm(`Delete "${p.profileName}"? This cannot be undone.`, { title: 'Delete profile?', confirmLabel: 'Delete', destructive: true }))) return;
     try {
       await persist(profiles.filter(x => x.id !== p.id));
       toast.success('Agent profile deleted');

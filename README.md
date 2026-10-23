@@ -138,15 +138,22 @@ npm run typecheck
 
 ## API Endpoints
 
+All of these are single serverless functions with an `action` query parameter.
+
 ### Credit Management
-- `POST /api/credits/deduct` - Deduct credits from user
-- `POST /api/credits/add` - Add credits to user
-- `GET /api/credits/report` - Get credit usage report
-- `POST /api/credits/transfer` - Transfer credits between users
+- `POST /api/credits?action=deduct` - Deduct credits from user
+- `POST /api/credits?action=add` - Add credits to user
+- `POST /api/credits?action=refund` - Refund a failed job
+- `POST /api/credits?action=transfer` - Transfer credits between users
+- `POST /api/credits?action=gift_email` - Gift credits by recipient email
+- `GET /api/credits?action=report` - Get credit usage report
 
 ### Subscriptions
-- `POST /api/subscriptions/create` - Create subscription
-- `POST /api/subscriptions/cancel` - Cancel subscription
+- `POST /api/subscriptions?action=create` - Create subscription
+- `POST /api/subscriptions?action=checkout` - Start a Paystack checkout
+- `POST /api/subscriptions?action=upgrade` - Prorated plan upgrade
+- `POST /api/subscriptions?action=cancel` - Cancel subscription
+- `GET /api/subscriptions?action=pricing` - Current plan pricing
 
 ### Payments
 - `POST /api/paystack/initialize` - Initialize Paystack payment
@@ -257,19 +264,24 @@ Attributes:
 
 | Plan | Monthly (ZAR) | Annual (ZAR) | Credits/Month |
 |------|---------------|--------------|---------------|
-| Starter | R129 | R1,320/yr | 130 |
-| Professional | R589 | R6,720/yr | 600 |
-| Premium | R1,270 | R14,400/yr | 1,300 |
-| Agency | R5,000 | R60,000/yr | 5,000 |
+| Starter | R129 | R1,320/yr | 110 |
+| Professional | R589 | R6,720/yr | 520 |
+| Premium | R1,270 | R14,400/yr | 1,150 |
+| Agency | R5,000 | R60,000/yr | 4,300 |
+
+These numbers live in `src/lib/constants.ts` (`PLANS`); update them there first.
 
 ### Video Tiers
 
 | Tier | Processing | Resolution | Images (30s/60s/90s) | Credits |
 |------|------------|------------|----------------------|---------|
-| Essential | Local FFmpeg | 1080p | 6 / 12 / — | 5-10 |
-| Social | AI (wan-25-preview) | 480p | 6 / 12 / 18 | 30-90 |
-| Cinematic | AI (wan-25-preview) | 720p | 6 / 12 / 18 | 50-150 |
-| Premium | AI (wan-25-preview) | 1080p | 6 / 12 / 18 | 75-225 |
+| Essential | Local FFmpeg | 1080p | 6 / 12 / — | 5 / 10 |
+| Social | AI (hailuo-02-standard) | 512p | 6 / 12 / 18 | 34 / 60 / 89 |
+| Cinematic | AI (hailuo-02-standard) | 768p | 6 / 12 / 18 | 47 / 63 / 95 |
+| Premium | AI (hailuo-02-standard + FlashVSR) | 1080p | 6 / 12 / 18 | 60 / 80 / 100 |
+| Budget | AI (hailuo-02-standard) | 512p / 768p | 5 (30s only) | 20 / 34 |
+
+The tier table in `lib/videoTiers.ts` is authoritative — the client, the modal worker and the pricing docs all read it.
 
 ## Environment Variables Summary
 

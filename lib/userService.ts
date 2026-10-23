@@ -4,6 +4,7 @@
  */
 
 import { getItem, putItem, putItemIfNotExists, updateItem, queryItems, scanItems, decrementIfEnough, incrementValue, TABLES } from './db';
+import { CREDIT_TTL_DAYS } from './creditPolicy';
 
 export interface CreditExpiry {
   amount: number;
@@ -28,8 +29,10 @@ export interface Subscription {
  * land — signup bonus, referral bonuses, purchases, auto top-ups and
  * subscription allocations alike. Single source of truth; the nightly
  * process-expired-credits cron consumes the resulting creditExpiries rows.
+ * Re-exported for existing importers; the value now lives in creditPolicy so
+ * the UI copy and the expiry stamp can never disagree.
  */
-export const CREDIT_TTL_DAYS = 365;
+export { CREDIT_TTL_DAYS };
 export const creditTtlIso = (from: number = Date.now()): string =>
   new Date(from + CREDIT_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 

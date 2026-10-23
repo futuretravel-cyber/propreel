@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Music, Upload, Play, Pause, Trash2, Loader2, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { toApiError, useUploadWait, withRateLimitRetry } from '../lib/api';
 
 interface MusicTrack {
@@ -18,6 +19,7 @@ const GENRES = ['Classical', 'Corporate', 'Acoustic', 'Electronic', 'Jazz', 'Amb
 
 export default function AdminMusicLibrary() {
   const toast = useToast();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,7 +120,7 @@ export default function AdminMusicLibrary() {
   };
 
   const remove = async (track: MusicTrack) => {
-    if (!confirm(`Delete "${track.name}" permanently?`)) return;
+    if (!(await confirm(`Delete "${track.name}" permanently?`, { title: 'Delete track?', confirmLabel: 'Delete', destructive: true }))) return;
     try {
       const res = await fetch(`/api/music?id=${encodeURIComponent(track.id)}&user_id=${encodeURIComponent(user?.id || '')}`, { method: 'DELETE' });
       const data = await res.json();

@@ -4,16 +4,19 @@ import CookieConsent from './components/CookieConsent';
 import NotFoundPage from './pages/NotFoundPage';
 import OfflineBanner from './components/OfflineBanner';
 import { useState, useEffect, useRef } from 'react';
+import { MotionConfig } from 'framer-motion';
 import MobileNav from './components/MobileNav';
 import UploadQueueNotifier from './components/UploadQueueNotifier';
 import AIDisclaimerGate from './components/AIDisclaimerGate';
 import AdminUserDetail from './components/AdminUserDetail';
 import AdminGiveCredits from './components/AdminGiveCredits';
-import { DashboardSkeleton, ProjectsSkeleton, useSimulatedLoading } from './components/Skeleton';
+import { DashboardSkeleton, ProjectsSkeleton } from './components/Skeleton';
 import { useAuth, useCredit, AuthProvider, CreditProvider, isFreeTierUser } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
+import { ConfirmProvider, useConfirm } from './context/ConfirmContext';
 import { SearchButton } from './components/GlobalSearch';
-import { TIERS, ORIENTATIONS, SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, PROVINCES, PROPERTY_TYPES } from './lib/constants';
+import { TIERS, ORIENTATIONS, SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, RETENTION_DAYS, PROVINCES, PROPERTY_TYPES } from './lib/constants';
+import { CREDIT_EXPIRY_RULE, CREDIT_ROLLOVER_RULE, CREDIT_CANCEL_RULE, CREDIT_TOPUP_RULE } from '../lib/creditPolicy';
 import { IMAGE_PRESETS, IMAGE_RENDER_CREDIT_COST } from './lib/imagePrompts';
 import { PropReelAPI, useUploadWait } from './lib/api';
 import { drainBacklog, enqueueImagesForAI, uploadStatusText, useUploadQueue } from './lib/uploadQueue';
@@ -47,7 +50,7 @@ import { ORIENTATION_PHOTO_TIP } from './lib/constants';
 import {
   Home as HomeIcon, Video, Image, Wand2, Sofa, Trash2, Moon, Share2, Play, Square,
   LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield,
-  Users, Star, ChevronRight, Check, X, Menu, LogOut, Zap, Crown, Sparkles,
+  Users, Star, ChevronRight, Check, X, Menu, LogOut, Zap, Crown, Sparkles, Loader2,
   TrendingUp, Eye, Clock, AlertCircle, AlertTriangle, Download, Copy, RefreshCw, Plus, VolumeX,
   Search, Filter, ArrowRight, Globe, Phone, Mail, MapPin, ChevronDown, ChevronLeft,
   Monitor, Smartphone, Mic, Camera, Palette, Sun, Cloud, Moon as MoonIcon, Bell,
@@ -107,6 +110,7 @@ const ForgotPasswordPage = lazy(() => import('./pages/AuthEmailPages').then(m =>
 const ResetPasswordPage = lazy(() => import('./pages/AuthEmailPages').then(m => ({ default: m.ResetPasswordPage })));
 const PaymentPage = lazy(() => import('./pages/PaymentPage'));
 const StatusPage = lazy(() => import('./pages/StatusPage'));
+const FaqPage = lazy(() => import('./pages/FaqPage'));
 const TutorialVideoPage = lazy(() => import('./pages/TutorialVideoPage'));
 const BlogIndexPage = lazy(() => import('./pages/BlogIndexPage'));
 const BlogPostPage = lazy(() => import('./pages/BlogPostPage'));
@@ -322,81 +326,93 @@ function PricingPage() {
   const bundleSavingPct = Math.round((1 - rateLo / CREDIT_PACK_RAND) * 100);
   return (
     <PublicLayout>
-      <section className="py-20 bg-gradient-to-b from-purple-50 to-white">
+      <section className="py-20 bg-ink-950">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h1 className="text-4xl sm:text-5xl font-black text-gray-900">Simple, Transparent Pricing</h1>
-            <p className="mt-4 text-lg text-gray-600">All prices include VAT. Cancel anytime.</p>
-            <p className="mt-2 text-sm text-gray-500">
-              New here? <Link to="/register" className="text-purple-700 hover:text-purple-800 font-medium">Start free with {SIGNUP_BONUS} welcome credits</Link> — no card needed, upgrade any time.
+            <h1 className="text-4xl sm:text-5xl font-black text-white">Simple, transparent pricing</h1>
+            <p className="mt-4 text-lg text-ink-300">All prices include VAT. Cancel anytime.</p>
+            <p className="mt-2 text-sm text-ink-400">
+              New here? <Link to="/register" className="text-purple-300 hover:text-purple-200 font-medium">Start free with {SIGNUP_BONUS} welcome credits</Link> — no card needed, upgrade any time.
             </p>
-            <div className="mt-8 inline-flex items-center gap-3 bg-gray-100 rounded-full p-1">
-              <button onClick={() => { track('pricing_toggle', { to: 'monthly' }); setAnnual(false); }} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${!annual ? 'bg-white shadow text-purple-700' : 'text-gray-600'}`}>Monthly</button>
-              <button onClick={() => { track('pricing_toggle', { to: 'annual' }); setAnnual(true); }} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${annual ? 'bg-white shadow text-purple-700' : 'text-gray-600'}`}>Annual <span className="text-green-600 text-xs">Save 15%</span></button>
+            <div className="mt-8 inline-flex items-center gap-3 bg-ink-900 border border-white/10 rounded-full p-1">
+              <button onClick={() => { track('pricing_toggle', { to: 'monthly' }); setAnnual(false); }} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${!annual ? 'bg-purple-700 text-white' : 'text-ink-400 hover:text-white'}`}>Monthly</button>
+              <button onClick={() => { track('pricing_toggle', { to: 'annual' }); setAnnual(true); }} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${annual ? 'bg-purple-700 text-white' : 'text-ink-400 hover:text-white'}`}>Annual <span className="text-green-400 text-xs">Save 15%</span></button>
             </div>
-            <p className="mt-6 text-sm text-gray-500">
-              Every plan bundles credits at <span className="font-semibold text-gray-700">R{rateLo.toFixed(2)}–R{rateHi.toFixed(2)} each</span> — up to {bundleSavingPct}% below the R{CREDIT_PACK_RAND.toFixed(2)}/credit top-up rate. From {PLANS[0].monthlyCredits} to {PLANS[PLANS.length - 1].monthlyCredits.toLocaleString('en-ZA')} credits a month.
+            <p className="mt-6 text-sm text-ink-400">
+              Every plan bundles credits at <span className="font-semibold text-ink-200">R{rateLo.toFixed(2)}–R{rateHi.toFixed(2)} each</span> — up to {bundleSavingPct}% below the R{CREDIT_PACK_RAND.toFixed(2)}/credit top-up rate. From {PLANS[0].monthlyCredits} to {PLANS[PLANS.length - 1].monthlyCredits.toLocaleString('en-ZA')} credits a month.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {PLANS.map(plan => {
               const price = annual ? plan.annualZar : plan.monthlyZar;
               return (
-                <div key={plan.id} className={`card-light p-6 relative ${plan.popular ? 'ring-2 ring-purple-700 shadow-xl' : ''}`}>
-                  {plan.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2 badge badge-brand">Most Popular</div>}
-                  <h3 className="font-bold text-xl text-gray-900">{plan.name}</h3>
-                  <p className="text-sm text-gray-500 mt-1">{plan.tagline}</p>
+                <div key={plan.id} className={`card-dark p-6 relative ${plan.popular ? 'ring-2 ring-purple-600 shadow-xl' : ''}`}>
+                  {plan.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2 badge badge-brand">Most popular</div>}
+                  <h3 className="font-bold text-xl text-white">{plan.name}</h3>
+                  <p className="text-sm text-ink-400 mt-1">{plan.tagline}</p>
                   <div className="mt-4">
-                    <span className="text-4xl font-black text-gray-900">{formatZar(price)}</span>
-                    <span className="text-gray-500 text-sm">/month</span>
+                    <span className="text-4xl font-black text-white">{formatZar(price)}</span>
+                    <span className="text-ink-400 text-sm">/month</span>
                   </div>
-                  <p className="text-sm text-purple-700 font-semibold mt-2">{plan.monthlyCredits.toLocaleString('en-ZA')} credits/month = {creditValueZar(plan.monthlyCredits)}</p>
+                  <p className="text-xs text-ink-500 mt-1">
+                    {annual ? `Billed ${formatZar(plan.annualZar * 12)} once a year` : 'Billed monthly, cancel anytime'}
+                  </p>
+                  <p className="text-sm text-purple-300 font-semibold mt-2">{plan.monthlyCredits.toLocaleString('en-ZA')} credits/month = {creditValueZar(plan.monthlyCredits)}</p>
                   <ul className="mt-6 space-y-3">
                     {plan.features.map((f, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                        <Check className="w-4 h-4 text-purple-700 mt-0.5 flex-shrink-0" /> {f}
+                      <li key={i} className="flex items-start gap-2 text-sm text-ink-300">
+                        <Check className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" /> {f}
                       </li>
                     ))}
                   </ul>
-                  <Link to={chooseHref(plan.id, price)} className={`btn w-full mt-6 min-h-[48px] flex items-center justify-center ${plan.popular ? 'btn-primary' : 'border border-gray-200 text-gray-700 hover:border-purple-300'}`}>
+                  <Link to={chooseHref(plan.id, price)} className={`btn w-full mt-6 min-h-[48px] flex items-center justify-center ${plan.popular ? 'btn-primary' : 'btn-secondary'}`}>
                     Choose {plan.name}
                   </Link>
                 </div>
               );
             })}
           </div>
-          <p className="text-center text-sm text-gray-500 mt-8">All prices include VAT. Custom credit top-ups available at R{zarComma(CREDIT_PACK_RAND)}/credit (min R{zarCommaCompact(50 * CREDIT_PACK_RAND)}).</p>
+          <p className="text-center text-sm text-ink-400 mt-8">All prices include VAT. Credit top-ups available at R{zarComma(CREDIT_PACK_RAND)}/credit (minimum 50 credits — R{zarCommaCompact(50 * CREDIT_PACK_RAND)}).</p>
 
           {/* Free-signup path — the zero-risk entry for undecided visitors */}
-          <div className="mt-6 max-w-2xl mx-auto text-center bg-purple-50 border border-purple-200 rounded-xl p-4">
-            <p className="text-sm text-gray-700">
-              <span className="font-semibold">Just exploring?</span>{' '}
-              <Link to="/register" className="text-purple-700 hover:text-purple-800 font-medium">Create a free account</Link>{' '}
-              — {SIGNUP_BONUS} welcome credits, no card required. Spend them on a real listing before you decide.
+          <div className="mt-6 max-w-2xl mx-auto text-center bg-purple-950/30 border border-purple-500/20 rounded-xl p-4">
+            <p className="text-sm text-ink-200">
+              <span className="font-semibold text-white">Just exploring?</span>{' '}
+              <Link to="/register" className="text-purple-300 hover:text-purple-200 font-medium">Create a free account</Link>{' '}
+              — {SIGNUP_BONUS} welcome credits, no card required. Enough for one Essential 30-second reel.
             </p>
           </div>
           
           {/* Credit Policy Summary */}
           <div className="mt-12 max-w-3xl mx-auto">
-            <h3 className="text-lg font-bold text-gray-900 text-center mb-6">Our Credit Policy</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <h3 className="text-lg font-bold text-white text-center mb-6">How credits work</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-ink-800/50 border border-white/10 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <CreditCard className="w-5 h-5 text-blue-600" />
-                  <h4 className="font-semibold text-gray-900 text-sm">Purchased Credits</h4>
+                  <CreditCard className="w-5 h-5 text-purple-400" />
+                  <h4 className="font-semibold text-white text-sm">Expiry</h4>
                 </div>
-                <p className="text-xs text-gray-600">Valid for 365 days after purchase. Non-refundable once spent.</p>
+                <p className="text-xs text-ink-400">{CREDIT_EXPIRY_RULE}</p>
               </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+              <div className="bg-ink-800/50 border border-white/10 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <Clock className="w-5 h-5 text-yellow-600" />
-                  <h4 className="font-semibold text-gray-900 text-sm">Subscriptions</h4>
+                  <RefreshCw className="w-5 h-5 text-purple-400" />
+                  <h4 className="font-semibold text-white text-sm">Rollover</h4>
                 </div>
-                <p className="text-xs text-gray-600">Monthly allowance rolls over while subscribed. Cancellations take effect at the end of the paid period — no cancellation fees.</p>
+                <p className="text-xs text-ink-400">{CREDIT_ROLLOVER_RULE}</p>
+              </div>
+              <div className="bg-ink-800/50 border border-white/10 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-5 h-5 text-yellow-400" />
+                  <h4 className="font-semibold text-white text-sm">Storage</h4>
+                </div>
+                <p className="text-xs text-ink-400">
+                  Renders and AI Avatar clips are kept for {RETENTION_DAYS} days — download anything you want to keep.
+                </p>
               </div>
             </div>
-            <p className="text-center text-sm text-gray-500 mt-6">
-              Read our full <Link to="/refund-policy" className="text-purple-700 hover:text-purple-800 font-medium">Credit Policy</Link>
+            <p className="text-center text-sm text-ink-400 mt-6">
+              Read our full <Link to="/refund-policy" className="text-purple-300 hover:text-purple-200 font-medium">Credit & refund policy</Link>
             </p>
           </div>
         </div>
@@ -967,12 +983,12 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           </nav>
           <div className="p-3 border-t border-white/5">
             {user?.subscription?.planId !== 'PREMIUM' && user?.subscription?.planId !== 'AGENCY' && user?.role !== 'ADMIN' && !user?.agencyId && !user?.trialExpiresAt && (
-              <Link to="/payment?plan=PREMIUM&cycle=MONTHLY&price=1270" className="block mb-3 p-3 rounded-xl bg-gradient-to-r from-purple-700/20 to-purple-900/20 border border-purple-500/20 hover:border-purple-500/40 transition">
+              <Link to={`/payment?plan=PREMIUM&cycle=MONTHLY&price=${PLANS.find(pl => pl.id === 'PREMIUM')?.monthlyZar ?? ''}`} className="block mb-3 p-3 rounded-xl bg-gradient-to-r from-purple-700/20 to-purple-900/20 border border-purple-500/20 hover:border-purple-500/40 transition">
                 <div className="flex items-center gap-2">
                   <Crown className="w-4 h-4 text-yellow-400" />
-                  <span className="text-sm font-semibold text-white">Upgrade to Pro</span>
+                  <span className="text-sm font-semibold text-white">Upgrade to Premium</span>
                 </div>
-                <p className="text-xs text-ink-400 mt-1">{(PLANS.find(pl => pl.id === 'PREMIUM')?.monthlyCredits ?? 0).toLocaleString('en-ZA')} credits • Priority queue</p>
+                <p className="text-xs text-ink-400 mt-1">{(PLANS.find(pl => pl.id === 'PREMIUM')?.monthlyCredits ?? 0).toLocaleString('en-ZA')} credits every month • Dedicated support</p>
               </Link>
             )}
             <div className="card-dark p-3 mb-3">
@@ -1184,8 +1200,8 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function DashboardOverview() {
-  const loading = useSimulatedLoading(450);
-  if (loading) return <DashboardSkeleton />;
+  // No artificial skeleton delay: EnhancedOverview renders its own loading
+  // state for the data it actually fetches.
   return <Suspense fallback={<DashboardSkeleton />}><EnhancedOverview /></Suspense>;
 }
 
@@ -1202,9 +1218,7 @@ function DashboardBranding() {
 
 function DashboardMyProjects() {
   // Every render job — reels and Talking Head clips — with folders/search.
-  const loading = useSimulatedLoading(400);
-  if (loading) return <ProjectsSkeleton />;
-  return <EnhancedProjects />;
+  return <Suspense fallback={<ProjectsSkeleton />}><EnhancedProjects /></Suspense>;
 }
 
 function DashboardAnalytics() {
@@ -1224,8 +1238,124 @@ function AgencySignup() {
   return <Suspense fallback={<DashboardSkeleton />}><AgencySignupPage /></Suspense>;
 }
 
+/**
+ * Profile details — actually saved. These fields were rendered with
+ * `defaultValue` and the Save/Update buttons had no handlers, so every edit
+ * was silently discarded. Password changes are not a client-side form: the
+ * account API has no signed-in change-password action, so the card now sends
+ * the user to the reset-link flow instead of pretending to save.
+ */
+function SettingsProfileForm() {
+  const { user, refresh } = useCredit();
+  const toast = useToast();
+  const [form, setForm] = useState({ fullName: '', agencyName: '', phone: '' });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    setForm({
+      fullName: user.fullName || '',
+      agencyName: user.agencyName || '',
+      phone: (user as any).phone || '',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  const save = async () => {
+    if (!user || saving) return;
+    if (!form.fullName.trim()) { toast.error('Your name cannot be empty', 'Profile'); return; }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/users?action=update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          updates: {
+            fullName: form.fullName.trim(),
+            agencyName: form.agencyName.trim(),
+            phone: form.phone.trim(),
+          },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not save your profile');
+      await refresh();
+      toast.success('Your profile has been updated', 'Saved');
+    } catch (e: any) {
+      toast.error(e.message || 'Could not save your profile', 'Profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="card-dark p-6">
+        <h3 className="font-semibold text-white mb-1">Profile</h3>
+        <p className="text-xs text-ink-500 mb-4">Shown on your branded reels and on your account.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label" htmlFor="settings-full-name">Full name</label>
+            <input
+              id="settings-full-name"
+              className="input"
+              value={form.fullName}
+              onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
+              autoComplete="name"
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="settings-email">Email</label>
+            <input id="settings-email" className="input" value={user?.email || ''} disabled />
+            <p className="text-xs text-ink-500 mt-1">Contact support to change your sign-in email.</p>
+          </div>
+          <div>
+            <label className="label" htmlFor="settings-agency">Agency</label>
+            <input
+              id="settings-agency"
+              className="input"
+              value={form.agencyName}
+              onChange={e => setForm(f => ({ ...f, agencyName: e.target.value }))}
+              placeholder="Your agency name"
+              autoComplete="organization"
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="settings-phone">Phone</label>
+            <input
+              id="settings-phone"
+              className="input"
+              value={form.phone}
+              onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+              placeholder="+27 82 000 0000"
+              autoComplete="tel"
+            />
+          </div>
+        </div>
+        <button onClick={save} disabled={saving} className="btn btn-primary mt-6">
+          {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : 'Save changes'}
+        </button>
+      </div>
+
+      <div className="card-dark p-6">
+        <h3 className="font-semibold text-white mb-1">Password</h3>
+        <p className="text-sm text-ink-400 mb-4">
+          We'll email you a secure link to set a new password. Your current password is never sent to this page.
+        </p>
+        <Link to="/dashboard/settings?tab=security" className="btn btn-secondary mr-3">Two-step verification</Link>
+        <Link
+          to="/forgot-password"
+          className="btn btn-secondary"
+        >
+          Send password reset link
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function DashboardSettings() {
-  const { user } = useAuth();
   // Tab lives in the URL (?tab=profile|security|account) so the profile
   // menu's "Go to profile" / "Go to Settings" land on the right section.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1249,26 +1379,7 @@ function DashboardSettings() {
         <button onClick={() => setTab('notifications')} className={`tab-pill ${tab === 'notifications' ? 'tab-pill-active' : ''}`}>Notifications</button>
       </div>
       {tab === 'profile' ? (
-        <div className="space-y-6">
-          <div className="card-dark p-6">
-            <h3 className="font-semibold text-white mb-4">Profile</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="label">Full Name</label><input className="input" defaultValue={user?.fullName} /></div>
-              <div><label className="label">Email</label><input className="input" defaultValue={user?.email} disabled /></div>
-              <div><label className="label">Agency</label><input className="input" defaultValue={user?.agencyName || ''} /></div>
-              <div><label className="label">Phone</label><input className="input" placeholder="+27..." /></div>
-            </div>
-            <button className="btn btn-primary mt-6">Save Changes</button>
-          </div>
-          <div className="card-dark p-6">
-            <h3 className="font-semibold text-white mb-4">Change Password</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="label">Current Password</label><input type="password" className="input" placeholder="••••••••" /></div>
-              <div><label className="label">New Password</label><input type="password" className="input" placeholder="••••••••" /></div>
-            </div>
-            <button className="btn btn-primary mt-6">Update Password</button>
-          </div>
-        </div>
+        <SettingsProfileForm />
       ) : tab === 'security' ? (
         <SecuritySettings />
       ) : tab === 'notifications' ? (
@@ -1434,10 +1545,9 @@ function useToolTab(valid: string[], fallback: string): [string, (t: string) => 
   return [tab, setTab];
 }
 
-// ── Photo Editor: AI Photo Editor 2⚡ / Virtual Staging 4⚡ /
+// ── Photo Editor: AI Photo Editor 2⚡ / Virtual Staging 2⚡ /
 //    Furniture Removal 2⚡ / Twilight 2⚡ ──────────────────────────────────
 function PhotoEditorPage() {
-  const loading = useSimulatedLoading(300);
   const [tab, setTab] = useToolTab(['photo', 'staging', 'removal', 'twilight'], 'photo');
   const tabs = [
     { id: 'photo', label: 'AI Photo Editor', icon: <Camera className="w-4 h-4" />, cost: 2 },
@@ -1445,7 +1555,6 @@ function PhotoEditorPage() {
     { id: 'removal', label: 'Furniture Removal', icon: <Trash2 className="w-4 h-4" />, cost: 2 },
     { id: 'twilight', label: 'Twilight', icon: <MoonIcon className="w-4 h-4" />, cost: 2 },
   ];
-  if (loading) return <DashboardSkeleton />;
   return (
     <div className="space-y-6 animate-fade-in">
       <TrialDeadlineModal />
@@ -1473,12 +1582,10 @@ function PhotoEditorPage() {
 // ── Property Description: 1⚡ AI write-ups. Social Media moved OUT to its
 //    own dashboard tool (/dashboard/social) instead of a sub-tab here.
 function DescriptionPage() {
-  const loading = useSimulatedLoading(300);
   const [searchParams] = useSearchParams();
   // Old ?tab=social deep links (bookmarks, notifications, help pages,
   // old onboarding links) forward to the standalone tool.
   const legacySocial = searchParams.get('tab') === 'social';
-  if (loading) return <DashboardSkeleton />;
   if (legacySocial) return <Navigate to="/dashboard/social" replace />;
   return (
     <div className="space-y-6 animate-fade-in">
@@ -1493,8 +1600,6 @@ function DescriptionPage() {
 
 // ── Social Media: its own dashboard tab (2⚡ per post) ────────────────────
 function SocialMediaPage() {
-  const loading = useSimulatedLoading(300);
-  if (loading) return <DashboardSkeleton />;
   return (
     <div className="space-y-6 animate-fade-in">
       <TrialDeadlineModal />
@@ -1675,9 +1780,15 @@ function DescriptionTab() {
   // writes the ledger kind the matcher needs).
   const generate = async () => {
     if (!user) { toast.error('Sign in to generate a description'); return; }
+    // Without an address or photos the model has nothing to describe and
+    // invents a property — this used to charge a credit for that.
+    if (!fields.address.trim() && images.length === 0) {
+      toast.error('Add the property address, or at least one photo, so the AI has something to write about.', 'Details needed');
+      return;
+    }
     const cost = DESCRIPTION_RENDER_COST;
     if ((user.credits ?? 0) < cost) {
-      toast.error(`Not enough credits — a description costs ${cost} credit. Top up in Billing.`, 'Insufficient credits');
+      toast.error(`Not enough credits — a description costs ${cost} credit. Top up in Credits.`, 'Insufficient credits');
       return;
     }
     // ZAR with the decimal system: "12500000" → "R 12 500 000,00"
@@ -1729,11 +1840,63 @@ function DescriptionTab() {
     }
   };
 
+  // ── Portal-shaped exports ───────────────────────────────────────────────
+  // Property24: compact, one heading line + specs + body, no bullets.
+  const property24Text = () => {
+    const heading = [fields.propertyType, fields.address].filter(Boolean).join(' in ') || 'Property listing';
+    const specs = [
+      fields.bedrooms && `${fields.bedrooms} bed`,
+      fields.bathrooms && `${fields.bathrooms} bath`,
+      fields.garages && `${fields.garages} garage`,
+      fields.erf && `Erf ${fields.erf} m²`,
+      fields.floor && `${fields.floor} m² under roof`,
+    ].filter(Boolean).join(' | ');
+    const price = fields.price ? `Asking R${fields.price}` : '';
+    return [
+      heading,
+      [price, specs].filter(Boolean).join(' · '),
+      '',
+      description,
+      selectedFeatures.length ? `\nFeatures: ${selectedFeatures.join(', ')}.` : '',
+    ].filter(line => line !== undefined && line !== null && line !== '').join('\n').trim();
+  };
+
+  // Private Property: labelled sections, bulleted features, clear closing.
+  const privatePropertyText = () => {
+    const rows = [
+      fields.propertyType && `Property type: ${fields.propertyType}`,
+      fields.province && `Province: ${fields.province}`,
+      fields.price && `Price: R${fields.price}`,
+      fields.bedrooms && `Bedrooms: ${fields.bedrooms}`,
+      fields.bathrooms && `Bathrooms: ${fields.bathrooms}`,
+      fields.garages && `Garages: ${fields.garages}`,
+      fields.erf && `Erf size: ${fields.erf} m²`,
+      fields.floor && `Floor size: ${fields.floor} m²`,
+    ].filter(Boolean).join('\n');
+    const features = selectedFeatures.length
+      ? `\n\nKEY FEATURES\n${selectedFeatures.map(f => `• ${f}`).join('\n')}`
+      : '';
+    const extra = fields.extraFeatures.trim() ? `\n\nALSO NOTEWORTHY\n${fields.extraFeatures.trim()}` : '';
+    return [
+      fields.address ? fields.address.toUpperCase() : 'PROPERTY LISTING',
+      '',
+      'PROPERTY DETAILS',
+      rows,
+      '',
+      'ABOUT THIS PROPERTY',
+      description,
+      features,
+      extra,
+      '',
+      'Viewing by appointment. Contact the listing agent to arrange a time.',
+    ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="w-5 h-5 text-purple-400" /> Property Description</h2>
-        <span className="badge badge-brand" title="Charged only when a render succeeds"><Zap className="w-3 h-3" /> ⚡{DESCRIPTION_RENDER_COST} credit per render · AI</span>
+        <span className="badge badge-brand" title="Charged when you generate; refunded automatically if it fails"><Zap className="w-3 h-3" /> ⚡{DESCRIPTION_RENDER_COST} credit per render · AI</span>
       </div>
 
       {/* Address + Google Maps confirmation */}
@@ -1883,8 +2046,12 @@ function DescriptionTab() {
             >
               <Video className="w-4 h-4" /> Render as video
             </button>
-            <button onClick={() => downloadText('description-property24.txt', description)} className="btn btn-secondary"><Download className="w-4 h-4" /> Download for Property24</button>
-            <button onClick={() => downloadText('description-privateproperty.txt', description)} className="btn btn-secondary"><Download className="w-4 h-4" /> Download for Private Property</button>
+            {/* The two portal buttons used to write the identical string to
+                two filenames. These are genuinely different layouts: a
+                compact Property24 block and a structured Private Property
+                listing with labelled sections and bullets. */}
+            <button onClick={() => downloadText('property24-description.txt', property24Text())} className="btn btn-secondary"><Download className="w-4 h-4" /> Property24 format</button>
+            <button onClick={() => downloadText('private-property-description.txt', privatePropertyText())} className="btn btn-secondary"><Download className="w-4 h-4" /> Private Property format</button>
             <CopyButton text={description} className="btn btn-ghost" label="Copy" />
           </div>
         </div>
@@ -2161,7 +2328,7 @@ function SocialTab() {
     if (!formComplete) { toast.error('Complete all four steps before generating a post'); return; }
     const cost = SOCIAL_POST_COST;
     if ((user.credits ?? 0) < cost) {
-      toast.error(`Not enough credits — a post costs ${cost} credits. Top up in Billing.`, 'Insufficient credits');
+      toast.error(`Not enough credits — a post costs ${cost} credits. Top up in Credits.`, 'Insufficient credits');
       return;
     }
     // ZAR with the decimal system: "12500000" → "R 12 500 000,00"
@@ -2245,7 +2412,7 @@ function SocialTab() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-white flex items-center gap-2"><Share2 className="w-5 h-5 text-purple-400" /> Social Media Post Generator</h2>
-        <span className="badge badge-brand" title="Charged only when a render succeeds"><Zap className="w-3 h-3" /> ⚡{SOCIAL_POST_COST} credits per post · AI</span>
+        <span className="badge badge-brand" title="Charged when you generate; refunded automatically if it fails"><Zap className="w-3 h-3" /> ⚡{SOCIAL_POST_COST} credits per post · AI</span>
       </div>
 
       {/* Wizard steps — same layout as the New Listing flow */}
@@ -2253,7 +2420,7 @@ function SocialTab() {
         {sectionTabs.map((s, i) => (
           <div key={s.id} className={`flex items-center ${i > 0 ? 'flex-1' : ''}`}>
             {i > 0 && <div className={`h-0.5 flex-1 mx-2 ${i <= stepIndex ? 'bg-purple-600' : 'bg-white/10'}`} />}
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-1" aria-current={i === stepIndex ? 'step' : undefined}>
               <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
                 i < stepIndex ? 'bg-purple-700 text-white' : i === stepIndex ? 'bg-purple-700/30 border border-purple-500 text-white' : 'bg-white/10 text-ink-400'
               }`}>
@@ -2474,9 +2641,21 @@ const RENDER_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretr
 function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [], profileImage, profileImageReady = true, onProfileImageChange, language, onLanguageChange }: { sharedScript: string; onScriptChange: (s: string) => void; langCheck: VoiceoverLanguageCheck; initialImages?: string[]; profileImage: string | null; profileImageReady?: boolean; onProfileImageChange: (img: string | null) => void; language: string; onLanguageChange: (l: string) => void }) {
   const { user, refundCredits, refresh } = useCredit();
   const toast = useToast();
+  const confirm = useConfirm();
   const uploadWait = useUploadWait();
   const uploadQueue = useUploadQueue('video');
   const [tier, setTier] = useState('SOCIAL');
+  // Signup grants 5 credits — exactly one Essential 30s reel. SOCIAL costs 34
+  // for the same length, so a new account used to land here on a disabled
+  // "Generate Video (34 credits)" button. Until the agent picks a tier
+  // themselves, start on whatever their balance can actually render.
+  const tierTouchedRef = useRef(false);
+  useEffect(() => {
+    if (!user || tierTouchedRef.current) return;
+    const social30 = VIDEO_TIERS.find(t => t.id === 'SOCIAL')?.configurations[0]?.credits ?? 34;
+    if ((user.credits ?? 0) < social30) setTier('ESSENTIAL');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.credits]);
   const [configIndex, setConfigIndex] = useState(0);
   const [orientation, setOrientation] = useState('LANDSCAPE');
   // Narrator voices are grouped per language — keep the pick valid when the
@@ -2580,7 +2759,11 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   // never drift from the charge. The render body sends the tier id + duration;
   // the worker looks up images/resolution/engine itself.
   const tierConfig = VIDEO_TIERS.find(t => t.id === tier) ?? VIDEO_TIERS[1];
-  const selectedConfig = tierConfig.configurations[configIndex];
+  // Clamp: ESSENTIAL has two lengths, the AI tiers three. Switching from a
+  // 90s Social config to Essential used to leave configIndex=2, so
+  // selectedConfig was undefined for one render and the whole wizard threw.
+  const activeConfigIndex = Math.min(configIndex, tierConfig.configurations.length - 1);
+  const selectedConfig = tierConfig.configurations[activeConfigIndex];
 
   // Calculate target word count based on selected duration
   const calculateTargetWords = (durationSeconds: number) => {
@@ -2705,7 +2888,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   const generateScript = async () => {
     if (!user) { toast.error('Sign in to use AI Write'); return; }
     if ((user.credits ?? 0) < scriptPrice) {
-      toast.error(`Not enough credits — AI Write for a ${selectedConfig.duration}s script costs ${scriptPrice} credit${scriptPrice === 1 ? '' : 's'}. Top up in Billing.`, 'Insufficient credits');
+      toast.error(`Not enough credits — AI Write for a ${selectedConfig.duration}s script costs ${scriptPrice} credit${scriptPrice === 1 ? '' : 's'}. Top up in Credits.`, 'Insufficient credits');
       return;
     }
     const descriptionPart = sharedDescription;
@@ -3284,7 +3467,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   // Step 6 picks the AI Avatar picture + toggle; Step 8 renders the avatar
   // FIRST, then the video with the avatar burned into the top-left corner.
   const WIZARD_STEPS = [
-    { id: 'description', label: 'Description' },
+    { id: 'description', label: 'Listing details' },
     { id: 'tier', label: 'Tier & Config' },
     { id: 'orientation', label: 'Orientation' },
     { id: 'photos', label: 'Photos' },
@@ -3350,7 +3533,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         {WIZARD_STEPS.map((s, i) => (
           <div key={s.id} className={`flex items-center ${i > 0 ? 'flex-1' : ''}`}>
             {i > 0 && <div className={`h-0.5 flex-1 mx-2 ${i <= step ? 'bg-purple-600' : 'bg-white/10'}`} />}
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-1" aria-current={i === step ? 'step' : undefined}>
               <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
                 i < step ? 'bg-purple-700 text-white' : i === step ? 'bg-purple-700/30 border border-purple-500 text-white' : 'bg-white/10 text-ink-400'
               }`}>
@@ -3429,10 +3612,16 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           <label className="label">Video Tier</label>
           <button
             type="button"
-            onClick={() => { setTier('SOCIAL'); setConfigIndex(0); toast.info('Tier & configuration reset', 'Step 2'); }}
+            onClick={() => {
+              tierTouchedRef.current = false;
+              const social30 = VIDEO_TIERS.find(t => t.id === 'SOCIAL')?.configurations[0]?.credits ?? 34;
+              setTier((user?.credits ?? 0) < social30 ? 'ESSENTIAL' : 'SOCIAL');
+              setConfigIndex(0);
+              toast.info('Tier reset', 'Step 2');
+            }}
             className="text-xs text-ink-400 hover:text-red-400"
           >
-            Clear
+            Reset
           </button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -3445,7 +3634,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
             const maxCredits = Math.max(...t.configurations.map(c => c.credits));
             const creditRange = minCredits === maxCredits ? `${minCredits}` : `${minCredits}-${maxCredits}`;
             return (
-              <button key={t.id} onClick={() => setTier(t.id)} className={`p-4 rounded-xl text-left transition ${tier === t.id ? 'bg-purple-700/20 border border-purple-500/30' : 'bg-white/5 hover:bg-white/10'}`}>
+              <button key={t.id} onClick={() => { tierTouchedRef.current = true; setTier(t.id); }} className={`p-4 rounded-xl text-left transition ${tier === t.id ? 'bg-purple-700/20 border border-purple-500/30' : 'bg-white/5 hover:bg-white/10'}`}>
                 <p className={`font-bold ${tier === t.id ? 'text-purple-300' : 'text-white'}`}>{t.label}</p>
                 <p className="text-xs text-ink-400 mt-1">{t.description}</p>
                 <p className="text-xs text-ink-500 mt-1">
@@ -3580,13 +3769,6 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       <div>
         <div className="flex items-center justify-between">
           <label className="label">Orientation</label>
-          <button
-            type="button"
-            onClick={() => { setOrientation('LANDSCAPE'); toast.info('Orientation reset to Landscape', 'Step 3'); }}
-            className="text-xs text-ink-400 hover:text-red-400"
-          >
-            Clear
-          </button>
         </div>
         <div className="flex gap-3">
           {ORIENTATIONS.map(o => (
@@ -3647,9 +3829,9 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           <button 
             onClick={() => {
               const price = scriptCreditsForDuration(selectedConfig.duration);
-              if (window.confirm(`AI Write for a ${selectedConfig.duration}s script costs ${price} credit${price === 1 ? '' : 's'}.\n\nIt writes the voiceover from your Listing details and uploaded photos, sized to the ${selectedConfig.duration}s duration (${targetWords} words).\n\nGenerate now?`)) {
-                generateScript();
-              }
+              confirm(`AI Write for a ${selectedConfig.duration}s script costs ${price} credit${price === 1 ? '' : 's'}.\n\nIt writes the voiceover from your Listing details and uploaded photos, sized to the ${selectedConfig.duration}s duration (${targetWords} words).\n\nGenerate now?`, { title: 'Generate AI script?', confirmLabel: 'Generate' }).then((ok) => {
+                if (ok) generateScript();
+              });
             }} 
             disabled={generatingScript} 
             title={`Costs ${scriptPrice} credit${scriptPrice === 1 ? '' : 's'} at ${selectedConfig.duration}s — confirmed before running`}
@@ -3705,9 +3887,9 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
             <p className="text-xs text-amber-300">
-              Narration reads at ~{estimatedNarrationSec}s but this tier renders {selectedConfig.duration}s — the last
-              frame will stay frozen ~{freezeOverrunSec}s past the end to fit the voiceover.
-              Trim to about {targetWords} words, or pick a longer duration.
+              Your narration runs ~{estimatedNarrationSec}s but this tier renders {selectedConfig.duration}s.
+              The final frame will hold for about {freezeOverrunSec}s so the voiceover can finish — or trim
+              to about {targetWords} words for a clean ending.
             </p>
           </div>
         )}
@@ -3803,9 +3985,8 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           <Music className="w-4 h-4 text-purple-400" />
           Background Music (Optional)
         </label>
-        <div className="bg-ink-800/50 rounded-xl p-4">
-          {musicTracks.length === 0 ? (
-            <p className="text-sm text-ink-400">No music tracks available yet — your administrator can upload tracks in Admin → Music Library.</p>
+        <div className="bg-ink-800/50 rounded-xl p-4">            {musicTracks.length === 0 ? (
+            <p className="text-sm text-ink-400">No music tracks are available right now.</p>
           ) : (
             <select
               className="input"
@@ -3834,7 +4015,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
             </div>
           )}
           <p className="text-xs text-ink-500 mt-2">
-            Select background music to enhance your video. Music tracks are managed by administrators.
+            Background music plays under the narration. Preview any track before you render.
           </p>
         </div>
       </div>
@@ -3880,21 +4061,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
             <p className="text-xs text-ink-500 mt-1">{musicTracks.length === 0 ? 'No tracks uploaded yet' : selectedMusic ? 'Tap to remove — choose specific track below' : 'Tap to include — pick the track below'}</p>
           </button>
         </div>
-        {selectedMusic && (
-          <div className="bg-ink-800/50 rounded-xl p-4">
-            <select
-              className="input"
-              value={selectedMusic}
-              onChange={(e) => setSelectedMusic(e.target.value || null)}
-              aria-label="Choose music track"
-            >
-              {musicTracks.map(t => (
-                <option key={t.id} value={t.url}>{t.name} ({t.genre})</option>
-              ))}
-            </select>
-            <p className="text-xs text-ink-500 mt-2">Music tracks are uploaded by administrators in Admin → Music Library.</p>
-          </div>
-        )}
+
       </div>
       </>)}
 
@@ -3911,6 +4078,28 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       <div className="space-y-3">
         {/* While clips await review the Generate button steps aside for the
             panel — a second render must not start over a live paused job. */}
+        {/* What this render costs, assembled from the same numbers the mint
+            charges — the tier picker, the AI Write step and the avatar step
+            each showed a price, but never the total. */}
+        <div className="rounded-xl border border-white/10 bg-ink-800/40 p-4 text-sm space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-ink-300">{tierConfig.label} · {selectedConfig.duration}s · {selectedConfig.images} photos</span>
+            <span className="text-white font-semibold tabular-nums">{selectedConfig.credits} ⚡</span>
+          </div>
+          {aiTalkingProfile && avatarAddonCredits != null && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-ink-300">AI Avatar · ~{Math.round(narrationSecondsForText(script))}s narration</span>
+              <span className="text-white font-semibold tabular-nums">{avatarAddonCredits} ⚡</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-2">
+            <span className="text-white font-semibold">Total for this render</span>
+            <span className="text-purple-300 font-bold tabular-nums">{totalCredits} ⚡ ≈ {creditListZar(totalCredits)}</span>
+          </div>
+          <p className="text-xs text-ink-500">
+            AI Write is charged separately ({scriptPrice} ⚡) when you use it. A failed render is refunded automatically.
+          </p>
+        </div>
         {!clipReview && (
         <button 
           onClick={() => guardAIRender(generateReel)} 
@@ -3999,6 +4188,11 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
               aria-label="Rendered video preview"
             />
           </div>
+        )}
+        {!generating && lastRenderUrl && (
+          <p className="text-xs text-ink-500 text-center">
+            Your reel is kept for {RETENTION_DAYS} days — download it from the share sheet to keep it.
+          </p>
         )}
         {!generating && lastRenderUrl && (
           <button
@@ -4557,7 +4751,7 @@ function BudgetVideoTab() {
         {WIZARD_STEPS.map((s, i) => (
           <div key={s.id} className={`flex items-center ${i > 0 ? 'flex-1' : ''}`}>
             {i > 0 && <div className={`h-0.5 flex-1 mx-2 ${i <= step ? 'bg-purple-600' : 'bg-white/10'}`} />}
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-1" aria-current={i === step ? 'step' : undefined}>
               <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
                 i < step ? 'bg-purple-700 text-white' : i === step ? 'bg-purple-700/30 border border-purple-500 text-white' : 'bg-white/10 text-ink-400'
               }`}>
@@ -4908,6 +5102,11 @@ function BudgetVideoTab() {
           </div>
         )}
         {!generating && lastRenderUrl && (
+          <p className="text-xs text-ink-500 text-center">
+            Your reel is kept for {RETENTION_DAYS} days — download it from the share sheet to keep it.
+          </p>
+        )}
+        {!generating && lastRenderUrl && (
           <button
             onClick={() => setShareOpen(true)}
             className="btn btn-primary w-full min-h-[48px]"
@@ -4955,8 +5154,6 @@ function BudgetVideoTab() {
 
 // Budget AI Video page — same chrome as the other tool pages.
 function BudgetVideoPage() {
-  const loading = useSimulatedLoading(300);
-  if (loading) return <DashboardSkeleton />;
   return (
     <div className="space-y-6 animate-fade-in">
       <TrialDeadlineModal />
@@ -4975,19 +5172,70 @@ function BudgetVideoPage() {
 // ADMIN
 // ═══════════════════════════════════════════════════════════════════════════
 
+const ADMIN_SECTIONS: { label: string; tabs: { key: string; label: string }[] }[] = [
+  {
+    label: 'Business',
+    tabs: [
+      { key: 'overview', label: 'Overview' },
+      { key: 'pnl', label: 'Profit & loss' },
+      { key: 'ops', label: 'Render operations' },
+    ],
+  },
+  {
+    label: 'People',
+    tabs: [
+      { key: 'users', label: 'Users' },
+      { key: 'agencies', label: 'Agencies' },
+      { key: 'reviews', label: 'Reviews' },
+    ],
+  },
+  {
+    label: 'Content',
+    tabs: [
+      { key: 'prompts', label: 'AI prompts' },
+      { key: 'tutorials', label: 'Tutorials' },
+      { key: 'music', label: 'Music Library' },
+    ],
+  },
+  {
+    label: 'System',
+    tabs: [
+      { key: 'settings', label: 'Settings' },
+      { key: 'api-keys', label: 'API Keys' },
+      { key: 'update-mode', label: 'Maintenance' },
+    ],
+  },
+];
+const ADMIN_TAB_KEYS = ADMIN_SECTIONS.flatMap(s => s.tabs.map(t => t.key));
+
 function AdminPage() {
-  const [tab, setTab] = useState('overview');
+  // Tab lives in the URL (?tab=...) so a refresh keeps the selected section.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const param = searchParams.get('tab');
+  const tab = ADMIN_TAB_KEYS.includes(param || '') ? (param as string) : 'overview';
+  const setTab = (t: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', t);
+    setSearchParams(next, { replace: true });
+  };
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-2">
         <Shield className="w-6 h-6 text-purple-400" />
         <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
       </div>
-      <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {['overview', 'pnl', 'ops', 'users', 'agencies', 'reviews', 'settings', 'prompts', 'tutorials', 'music', 'api-keys', 'update-mode'].map(t => (
-          <button key={t} onClick={() => setTab(t)} className={`tab-pill ${tab === t ? 'tab-pill-active' : ''}`}>
-            {t === 'music' ? 'Music Library' : t === 'pnl' ? 'P&L' : t === 'api-keys' ? 'API Keys' : t === 'update-mode' ? 'Update Mode' : t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
+      <div className="space-y-3">
+        {ADMIN_SECTIONS.map(section => (
+          <div key={section.label} className="flex flex-wrap items-center gap-2">
+            <span className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-ink-500">{section.label}</span>
+            <div className="flex gap-2 overflow-x-auto no-scrollbar">
+              {section.tabs.map(t => (
+                <button key={t.key} onClick={() => setTab(t.key)} className={`tab-pill ${tab === t.key ? 'tab-pill-active' : ''}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
       <div className="card-dark p-6">
@@ -5015,7 +5263,8 @@ function AdminAgencies() {
   const [agencies, setAgencies] = useState<any[] | null>(null);
   useEffect(() => {
     if (!user?.email) return;
-    fetch(`/api/users?action=admin_agencies&email=${encodeURIComponent(user.email)}`)
+    // Session cookie carries the admin identity — no ?email= param needed.
+    fetch('/api/users?action=admin_agencies')
       .then(r => { if (!r.ok) throw new Error('Admin access required'); return r.json(); })
       .then(d => setAgencies(d.agencies || []))
       .catch(e => toast.error(e.message));
@@ -5028,12 +5277,12 @@ function AdminAgencies() {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-white/10">
-            <th className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Agency</th>
-            <th className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Owner</th>
+            <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Agency</th>
+            <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Owner</th>
             <th className="text-right px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Agents</th>
             <th className="text-right px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Pool</th>
             <th className="text-right px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Reports</th>
-            <th className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Created</th>
+            <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Created</th>
           </tr>
         </thead>
         <tbody>
@@ -5086,7 +5335,7 @@ function FalHealthCard() {
   return (
     <div className="bg-ink-800/50 rounded-xl p-4 flex items-center justify-between">
       <div>
-        <p className="text-sm font-medium {c.color}"><span className={c.color}>●</span> <span className="text-white">{c.label}</span></p>
+        <p className="text-sm font-medium"><span className={c.color}>●</span> <span className="text-white">{c.label}</span></p>
         {probe?.detail && <p className="text-xs text-ink-500 mt-1">{String(probe.detail).slice(0, 120)}</p>}
       </div>
       <div className="text-right">
@@ -5103,7 +5352,7 @@ function AdminOverview() {
   const [error, setError] = useState('');
   useEffect(() => {
     if (!user?.email) return;
-    fetch(`/api/users?action=admin_stats&email=${encodeURIComponent(user.email)}`)
+    fetch('/api/users?action=admin_stats')
       .then(r => { if (!r.ok) throw new Error('Admin stats unavailable'); return r.json(); })
       .then(d => setStats(d.stats))
       .catch(e => setError(e.message));
@@ -5365,7 +5614,7 @@ function AdminPnl() {
     if (!user?.email) return;
     setData(null);
     setError('');
-    fetch(`/api/users?action=pln_get&email=${encodeURIComponent(user.email)}&month=${month}`)
+    fetch(`/api/users?action=pln_get&month=${month}`)
       .then(r => { if (!r.ok) throw new Error('P&L statement unavailable'); return r.json(); })
       .then(setData)
       .catch(e => setError(e.message));
@@ -5418,7 +5667,7 @@ function AdminPnl() {
     if (!user?.email || pdfBusy) return;
     setPdfBusy(true);
     try {
-      const res = await fetch(`/api/users?action=pln_pdf&email=${encodeURIComponent(user.email)}&month=${month}`);
+      const res = await fetch(`/api/users?action=pln_pdf&month=${month}`);
       if (!res.ok) throw new Error();
       const d = await res.json();
       if (d.url) window.open(d.url, '_blank', 'noopener');
@@ -5472,7 +5721,7 @@ function AdminPnl() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10">
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Line item</th>
+                  <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Line item</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Amount (ZAR)</th>
                 </tr>
               </thead>
@@ -5710,7 +5959,7 @@ function AdminUsers() {
 
   useEffect(() => {
     if (!user?.email) return;
-    fetch(`/api/users?action=list_users&email=${encodeURIComponent(user.email)}`)
+    fetch('/api/users?action=list_users')
       .then(r => r.json())
       .then(d => setUsers(d.users || []))
       .catch(() => setUsers([]))
@@ -5752,12 +6001,12 @@ function AdminUsers() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-white/5">
-              <th className="text-left px-3 py-2 text-xs text-ink-400">User</th>
-              <th className="text-left px-3 py-2 text-xs text-ink-400">Role</th>
-              <th className="text-left px-3 py-2 text-xs text-ink-400">Subscription</th>
-              <th className="text-left px-3 py-2 text-xs text-ink-400">Credits</th>
-              <th className="text-left px-3 py-2 text-xs text-ink-400">Joined</th>
-              <th className="text-left px-3 py-2 text-xs text-ink-400"></th>
+              <th scope="col" className="text-left px-3 py-2 text-xs text-ink-400">User</th>
+              <th scope="col" className="text-left px-3 py-2 text-xs text-ink-400">Role</th>
+              <th scope="col" className="text-left px-3 py-2 text-xs text-ink-400">Subscription</th>
+              <th scope="col" className="text-left px-3 py-2 text-xs text-ink-400">Credits</th>
+              <th scope="col" className="text-left px-3 py-2 text-xs text-ink-400">Joined</th>
+              <th scope="col" className="text-left px-3 py-2 text-xs text-ink-400"></th>
             </tr>
           </thead>
           <tbody>
@@ -5808,7 +6057,7 @@ function AdminReviews() {
 
   useEffect(() => {
     if (!user?.email) return;
-    fetch(`/api/leads?action=review_queue&email=${encodeURIComponent(user.email)}`)
+    fetch('/api/leads?action=review_queue')
       .then(r => r.json())
       .then(d => setPending(d.reviews || []))
       .catch(() => setPending([]))
@@ -5820,7 +6069,7 @@ function AdminReviews() {
       await fetch('/api/leads?action=review_moderate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reviewId, approve, email: user?.email }),
+        body: JSON.stringify({ reviewId, approve }),
       });
       setPending(prev => prev.filter(r => r.id !== reviewId));
       toast.success(approve ? 'Review approved and published' : 'Review rejected');
@@ -6118,6 +6367,7 @@ function AppRoutes() {
       <Route path="/paia" element={<PAIAManualPage />} />
       <Route path="/dpa" element={<DataProcessingAgreementPage />} />
       <Route path="/tutorial" element={<TutorialVideoPage />} />
+      <Route path="/faq" element={<FaqPage />} />
       <Route path="/status" element={<PublicLayout><StatusPage /></PublicLayout>} />
       <Route path="/blog" element={<BlogIndexPage />} />
       <Route path="/blog/:slug" element={<BlogPostPage />} />
@@ -6166,11 +6416,13 @@ function AppRoutes() {
 export default function App() {
   return (
     <ThemeProvider>
+      <MotionConfig reducedMotion="user">
       <BrowserRouter>
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 left-4 z-50 bg-purple-700 text-white px-4 py-2 rounded-lg shadow-lg">
           Skip to main content
         </a>
         <ToastProvider>
+         <ConfirmProvider>
           <CreditProvider>
             {/* Update-mode gate: when the Admin → Update Mode row is ON, the
                 whole app is replaced by the "We're upgrading" page for
@@ -6186,8 +6438,10 @@ export default function App() {
             <AIDisclaimerGate />
             <CookieConsent />
           </CreditProvider>
+         </ConfirmProvider>
         </ToastProvider>
       </BrowserRouter>
+      </MotionConfig>
     </ThemeProvider>
   );
 }

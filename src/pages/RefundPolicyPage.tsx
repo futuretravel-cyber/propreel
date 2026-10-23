@@ -87,7 +87,7 @@ export default function RefundPolicyPage() {
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-yellow-600 mt-1">•</span>
-                    <span>Unused subscription credits expire at the end of the billing period</span>
+                    <span>Credits already in your account stay usable until their expiry date — 365 days after they were added</span>
                   </li>
                 </ul>
               </div>
@@ -103,12 +103,12 @@ export default function RefundPolicyPage() {
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">Purchased Credits (Top-ups)</h2>
                 <p className="text-gray-600 leading-relaxed mb-4">
-                  Credits purchased as top-ups are <strong>non-refundable</strong> but <strong>never expire</strong> as long as your account remains active.
+                  Credits purchased as top-ups are <strong>non-refundable</strong> and <strong>expire 365 days after purchase</strong>.
+                  They are not removed when you cancel a subscription.
                 </p>
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                   <p className="text-sm text-blue-800">
-                    <strong>Note:</strong> If your account is inactive for 365 days, purchased credits will expire. 
-                    Simply log in once per year to keep them active.
+                    <strong>Note:</strong> A failed render is refunded automatically. Credits are only lost at their expiry date.
                   </p>
                 </div>
               </div>
@@ -178,19 +178,19 @@ export default function RefundPolicyPage() {
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-1">Subscription Credits</h3>
                     <p className="text-gray-600 text-sm">
-                      Unused subscription credits roll over to the next month and expire at your next renewal date.
+                      Plan credits roll over month to month while your plan is active — they are not reset when your plan renews. Each credit expires 365 days after it is added.
                     </p>
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-1">Purchased Credits (Top-ups)</h3>
                     <p className="text-gray-600 text-sm">
-                      Never expire as long as your account is active. Expire after 365 days of account inactivity.
+                      Expire 365 days after purchase. Cancelling a subscription does not remove them.
                     </p>
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-1">Gifted Credits</h3>
                     <p className="text-gray-600 text-sm">
-                      Follow the same expiry rules as subscription credits (expire at next renewal).
+                      Same 365-day rule from the day they are received.
                     </p>
                   </div>
                 </div>

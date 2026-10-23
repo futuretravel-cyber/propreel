@@ -8,6 +8,7 @@ import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDraf
 import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
 import { downloadRemoteFile } from '../lib/utils';
+import { RETENTION_DAYS } from '../lib/constants';
 
 interface ImageWorkbenchProps {
   presetId: string;
@@ -179,28 +180,37 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
       )}
 
       {preview && (
-        <div className="flex gap-3">
+        <div className="space-y-3">
+          <div className="flex gap-3">
             <button onClick={() => guardAIRender(run)} disabled={busy} className="btn btn-primary flex-1 min-h-[48px]">
-            {busy ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
-            ) : (
-              <><Zap className="w-4 h-4" /> {ctaLabel}</>
+              {busy ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
+              ) : (
+                <><Zap className="w-4 h-4" /> {ctaLabel}</>
+              )}
+            </button>
+            {resultUrl && (
+              <>
+                <button onClick={() => downloadResult()} className="btn btn-secondary min-h-[48px]">
+                  <Download className="w-4 h-4" /> Download
+                </button>
+                <button onClick={() => { setResultUrl(null); }} className="btn btn-ghost min-h-[48px]" aria-label="Re-render">
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </>
             )}
-          </button>
+          </div>
+          {/* Own row: as a flex sibling the bar was squeezed into whatever
+              width the buttons left, so the progress read as a thin stripe. */}
           <RenderProgressBar
             progress={editProgress}
             stage={stage === 'rendering' ? 'processing' : stage === 'uploading' ? 'queued' : ''}
             label="Editing your image"
           />
           {resultUrl && (
-            <>
-              <button onClick={() => downloadResult()} className="btn btn-secondary min-h-[48px]">
-                <Download className="w-4 h-4" /> Download
-              </button>
-              <button onClick={() => { setResultUrl(null); }} className="btn btn-ghost min-h-[48px]" aria-label="Re-render">
-                <RefreshCw className="w-4 h-4" />
-              </button>
-            </>
+            <p className="text-xs text-ink-500 text-center">
+              Edited images are kept for {RETENTION_DAYS} days — download the ones you want to keep.
+            </p>
           )}
         </div>
       )}

@@ -1,38 +1,12 @@
-import { useState, useMemo } from 'react';
-import { X, Search, ChevronDown, MessageCircle, BookOpen } from 'lucide-react';
-import { TIERS, CREDIT_PACK_RAND } from '../../lib/renderPricing';
+import { useState, useMemo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { X, Search, ChevronDown, MessageCircle, BookOpen, ExternalLink } from 'lucide-react';
+import { FAQS, FAQ_CATEGORIES } from '../lib/faq';
 
-interface FaqItem {
-  q: string;
-  a: string;
-  category: string;
-}
+const CATEGORIES = FAQ_CATEGORIES;
 
-// Credit ranges derived from the canonical tier table so this FAQ can never
-// drift from what job_token actually charges (the 2026-10-18 tier move left
-// this text quoting the old 40–105 / 85–250 prices).
-const tierCreditRanges = TIERS.map((t) => {
-  const cs = t.configurations.map((c) => c.credits);
-  return `${t.label} ${Math.min(...cs)}–${Math.max(...cs)}`;
-}).join(', ');
-const allTierCredits = TIERS.flatMap((t) => t.configurations.map((c) => c.credits));
-const tierCreditSpan = `${Math.min(...allTierCredits)}–${Math.max(...allTierCredits)}`;
-
-const FAQS: FaqItem[] = [
-  { category: 'Getting Started', q: 'How do credits work?', a: `Every action in PropReel uses credits: AI photo edits cost 2 credits, video tiers cost ${tierCreditSpan} credits depending on tier (${tierCreditRanges}), and AI Avatar talking-head videos are billed 2 credits per 10 seconds of narration (90-second cap). You get 5 free credits on signup, and plan credits renew monthly — every credit is listed at R1.50, so a balance always shows its Rand worth. FIFO expiry: oldest credits are spent first.` },
-  { category: 'Getting Started', q: 'How do I create my first video?', a: 'Open the Video Generator and follow the 8 steps: add a property description, pick a video tier (start with Essential to try it out), upload your photos, choose orientation and a voice, then hit Generate on the last step. Your video usually renders in a few minutes and appears under Projects when ready.' },
-  { category: 'Getting Started', q: 'What are project templates?', a: 'Templates pre-fill property type, tier, and style defaults so you can move faster. Find them via the Templates button on the Projects page — options include Family Home, Luxury Villa, Apartment, Commercial, Vacant Land, and New Development.' },      { category: 'Credits & Billing', q: 'How do I top up credits?', a: `Go to Dashboard → Credits, pick a bundle or a custom amount (minimum 50 credits — R${50 * CREDIT_PACK_RAND}), and pay securely with Paystack using card, EFT, or SnapScan. Credits are added the moment your payment is confirmed.` },
-  { category: 'Credits & Billing', q: 'Do unused credits roll over?', a: 'Plan credits expire at the end of each billing month. Purchased credit bundles last 12 months. We always spend your oldest credits first, and you can see exactly what expires when on Credits → Billing under Credit Expiry Timeline.' },
-  { category: 'Credits & Billing', q: 'Can I cancel anytime?', a: 'Yes — no contracts. Cancel from Credits → Billing → Manage Subscription; your plan stays active until the end of the paid period, then moves to the free tier. See our Refund Policy for details.' },
-  { category: 'Videos & Renders', q: 'My render failed. What now?', a: 'Open the failed project and press Retry, or contact support if the problem persists.' },
-  { category: 'Videos & Renders', q: 'How long does a render take?', a: 'Essential and Social tiers typically render in 2–4 minutes. Cinematic and Premium tiers take 5–10 minutes depending on length and voice-over. You will get a notification the moment yours is ready.' },
-  { category: 'Videos & Renders', q: 'What is the AI Photo Editor?', a: 'It enhances listing photos in one click: twilight conversion, sky replacement, lawn greening, decluttering, and virtual staging. Each enhancement costs 2 credits and you can compare before/after side by side before saving.' },
-  { category: 'Account & Agency', q: 'How does the agency plan work?', a: 'The Agency plan gives you a shared 5,000-credit pool. Invite team members from the Agency page, assign roles, and transfer credits between agents. Agency owners see team-wide analytics.' },
-  { category: 'Account & Agency', q: 'How do I delete my account?', a: 'Go to Settings → Account → Delete Account. We permanently remove your data in line with POPIA within 30 days. Active subscriptions should be cancelled first.' },
-  { category: 'Account & Agency', q: 'Is my listing data safe?', a: 'Yes. Property data is encrypted in transit and at rest (AWS DynamoDB, af-south-1 region — data stays in South Africa). We never sell data or use your listings to train AI models. Full details in our Privacy Policy and PAIA Manual.' },
-];
-
-const CATEGORIES = [...new Set(FAQS.map(f => f.category))];
+/* FAQ content lives in src/lib/faq.ts so the public /faq page and this modal
+   cannot drift apart. */
 
 export default function HelpModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
@@ -43,6 +17,14 @@ export default function HelpModal({ isOpen, onClose }: { isOpen: boolean; onClos
     const q = query.toLowerCase();
     return FAQS.filter(f => f.q.toLowerCase().includes(q) || f.a.toLowerCase().includes(q) || f.category.toLowerCase().includes(q));
   }, [query]);
+
+  // Escape closes the dialog (the backdrop handles click-outside).
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -123,12 +105,15 @@ export default function HelpModal({ isOpen, onClose }: { isOpen: boolean; onClos
             )}
           </div>
 
-          <div className="p-3 border-t border-white/5 text-center flex-shrink-0">
+          <div className="p-3 border-t border-white/5 text-center flex-shrink-0 space-y-1">
             <p className="text-xs text-ink-500">
               Still stuck? Email{' '}
               <a href="mailto:support@propreel.co.za" className="text-purple-400 hover:text-purple-300">support@propreel.co.za</a>
               {' '}— we reply within one business day.
             </p>
+            <Link to="/faq" onClick={onClose} className="inline-flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300">
+              Browse all FAQs <ExternalLink className="w-3 h-3" />
+            </Link>
           </div>
         </div>
       </div>
