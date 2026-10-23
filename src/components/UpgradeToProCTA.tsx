@@ -1,6 +1,11 @@
 import { Link } from 'react-router-dom';
 import { Crown, Sparkles, ArrowRight, Zap, Video, Image } from 'lucide-react';
 import { useCredit } from '../context/AuthContext';
+import { PLANS } from '../lib/constants';
+
+// Read from PLANS — never hardcode a plan's credits (the old "1,300" went
+// stale every time the ladder changed).
+const PREMIUM_CREDITS = PLANS.find(pl => pl.id === 'PREMIUM')?.monthlyCredits ?? 0;
 
 export default function UpgradeToProCTA() {
   const { user } = useCredit();
@@ -28,7 +33,7 @@ export default function UpgradeToProCTA() {
             <div className="flex flex-wrap gap-3 mt-3">
               <div className="flex items-center gap-1 text-xs text-ink-300">
                 <Video className="w-3 h-3 text-purple-400" />
-                <span>1,300 credits/month</span>
+                <span>{PREMIUM_CREDITS.toLocaleString('en-ZA')} credits/month</span>
               </div>
               <div className="flex items-center gap-1 text-xs text-ink-300">
                 <Image className="w-3 h-3 text-purple-400" />

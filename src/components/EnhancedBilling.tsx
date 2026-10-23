@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { formatZar, formatDate } from '../lib/utils';
-import { PLANS, TIERS } from '../lib/constants';
+import { formatZar, formatDate, creditListZar } from '../lib/utils';
+import { PLANS, TIERS, CREDIT_PACK_RAND } from '../lib/constants';
 import { PropReelAPI, CreditReportData, ReferralStats } from '../lib/api';
 import { BackendAPI } from '../lib/backendAPI';
 import { track } from '../lib/analytics';
@@ -21,7 +21,7 @@ import {
 
 // ─── Real data: everything on this page comes from the credits ledger ──────
 
-// Credit bundles (1 credit = R1; checkout via Paystack hosted page)
+// Credit bundles (1 credit = R1,50; checkout via Paystack hosted page)
 const bundles = [
   { credits: 50, price: 50, popular: false },
   { credits: 100, price: 100, popular: true },
@@ -517,7 +517,7 @@ export default function EnhancedBilling() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
               <div><p className="text-ink-400">Monthly Cost</p><p className="text-white font-semibold">{plan ? `${formatZar(plan.monthlyZar)}/mo` : '—'}</p></div>
-              <div><p className="text-ink-400">Credits/Month</p><p className="text-white font-semibold">{plan ? plan.monthlyCredits : '—'}</p></div>
+              <div><p className="text-ink-400">Credits/Month</p><p className="text-white font-semibold">{plan ? `${plan.monthlyCredits} (≈ ${creditListZar(plan.monthlyCredits)})` : '—'}</p></div>
               <div><p className="text-ink-400">Next Renewal</p><p className="text-white font-semibold">{user?.subscription?.currentPeriodEnd ? formatDate(user.subscription.currentPeriodEnd) : '—'}</p></div>
               <div><p className="text-ink-400">Status</p><p className="text-white font-semibold">{user?.subscription?.status || 'NONE'}</p></div>
             </div>
@@ -566,7 +566,7 @@ export default function EnhancedBilling() {
               </div>
             </div>
             <div className="flex items-center justify-between mt-4">
-              <p className="text-xl font-bold text-white">{formatZar(credits)} <span className="text-sm text-ink-400 font-normal">(R1/credit)</span></p>
+              <p className="text-xl font-bold text-white">{formatZar(credits * CREDIT_PACK_RAND)} <span className="text-sm text-ink-400 font-normal">(R{CREDIT_PACK_RAND.toFixed(2)}/credit)</span></p>
               <button onClick={() => buyCredits(credits)} disabled={purchasing} className="btn btn-primary">
                 <CreditCard className="w-4 h-4" /> {purchasing ? 'Redirecting…' : 'Pay with Paystack'}
               </button>
@@ -668,7 +668,7 @@ export default function EnhancedBilling() {
                   <p className="text-3xl font-black text-white">{b.credits}</p>
                   <p className="text-sm text-ink-400">credits</p>
                   <div className="my-4">
-                    <p className="text-2xl font-bold text-purple-400">{formatZar(b.price)}</p>
+                    <p className="text-2xl font-bold text-purple-400">{formatZar(b.price * CREDIT_PACK_RAND)}</p>
                   </div>
                   <button onClick={() => buyCredits(b.credits)} disabled={purchasing} className={`btn w-full ${b.popular ? 'btn-primary' : 'btn-secondary'}`}>
                     {purchasing ? 'Redirecting…' : 'Buy Now'}
@@ -691,7 +691,7 @@ export default function EnhancedBilling() {
                     {isCurrent && <span className="badge badge-brand mb-2">Current Plan</span>}
                     <h4 className="font-bold text-white">{p.name}</h4>
                     <p className="text-2xl font-black text-white mt-2">{formatZar(p.monthlyZar)}<span className="text-sm text-ink-400 font-normal">/mo</span></p>
-                    <p className="text-xs text-purple-400 mt-1">{p.monthlyCredits} credits/month</p>
+                    <p className="text-xs text-purple-400 mt-1">{p.monthlyCredits} credits/month ≈ {creditListZar(p.monthlyCredits)}</p>
                     <ul className="mt-4 space-y-2">
                       {p.features.slice(0, 3).map((f, i) => (
                         <li key={i} className="text-xs text-ink-300 flex items-center gap-1"><Check className="w-3 h-3 text-green-400" /> {f}</li>

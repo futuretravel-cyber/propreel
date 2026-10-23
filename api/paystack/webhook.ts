@@ -308,6 +308,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // shared agency pool instead of the personal balance.
       const isPoolPurchase = data.metadata?.type === 'agency_pool_purchase';
 
+      // GRANT THE CREDIT COUNT, not the paid Rands: initialize stamps
+      // metadata.credits (since 2026-10-21 packs charge credits × 1.50). The
+      // `amount` fallback keeps pre-ratelimit references (R1/credit) exact.
+      const creditsGranted = Number(data.metadata?.credits) || amount;
+
       // Add credits — eventId (Paystack's unique data.id) makes the ledger
       // row itself idempotent, so duplicate/re-delivered webhooks (and
       // renewals sharing a reference pattern) can never double-credit.
@@ -317,17 +322,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { addAgencyPoolCredits } = await import('../../lib/userService');
         const newPool = await addAgencyPoolCredits(
           userId,
-          amount,
-          `Agency pool top-up: R${amount}`,
+          creditsGranted,
+          `Agency pool top-up: R${amount} (${creditsGranted} credits)`,
           { paystackReference: reference, paystackEventId: data.id ?? null, channel: data.channel }
         );
         addResult = { success: true, newBalance: newPool };
       } else {
         addResult = await addCredits(
           userId,
-          amount,
+          creditsGranted,
           'purchase',
-          `Credit purchase: R${amount}`,
+          `Credit purchase: R${amount} (${creditsGranted} credits)`,
           { paystackReference: reference, paystackEventId: data.id ?? null, channel: data.channel },
           new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year expiry
           eventId
@@ -366,8 +371,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           userName: payer?.fullName || '',
           userEmail: payer?.email || '',
           amountZar: amount,
-          credits: amount,
-          description: `PropReel credit top-up (${amount} credits)`,
+          credits: creditsGranted,
+          description: `PropReel credit top-up (${creditsGranted} credits)`,
           paidAt: new Date().toISOString(),
           userId,
         });
@@ -377,7 +382,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         success: true,
-        credits_added: amount,
+        credits_added: creditsGranted,
         reference,
       });
     }

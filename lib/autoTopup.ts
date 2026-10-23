@@ -1,6 +1,7 @@
 import { scanItems, TABLES } from './db';
 import { getUser, addCredits, creditTtlIso } from './userService';
 import { chargeAuthorization } from './paystack';
+import { CREDIT_PACK_RAND } from './renderPricing';
 
 export interface AutoTopupOutcome {
   userId: string;
@@ -42,15 +43,19 @@ export async function runAutoTopupSweep(): Promise<AutoTopupOutcome[]> {
     const cfg = u.autoTopup;
     if (!cfg?.enabled || !cfg.amount || !cfg.threshold) continue;
     if ((u.credits ?? 0) >= cfg.threshold) continue;
-
     const authCode = u.paystackAuthorizationCode;
     try {
       if (!authCode) {
+        // cfg.amount is CREDITS (the flag flows to /payment?topup=&amount=,
+        // which converts at initialize) — keep it in credits here too.
         await requestAuthorization(u.id, cfg.amount);
-        outcomes.push({ userId: u.id, email: u.email, action: 'checkout_required', detail: `no saved card — flagged for one-time checkout (R${cfg.amount})` });
+        outcomes.push({ userId: u.id, email: u.email, action: 'checkout_required', detail: `no saved card — flagged for one-time checkout (${cfg.amount} credits)` });
         continue;
       }
-      const charge = await chargeAuthorization(u.email, cfg.amount, authCode, {
+      // Charge Rands at the pack rate; the GRANT stays cfg.amount credits
+      // (metadata.credits — webhook/verify read the count, not the Rands).
+      const chargeZar = Math.round(cfg.amount * CREDIT_PACK_RAND);
+      const charge = await chargeAuthorization(u.email, chargeZar, authCode, {
         user_id: u.id, credits: cfg.amount, type: 'auto_topup',
       });
       if (charge.status === 'success') {
@@ -62,7 +67,7 @@ export async function runAutoTopupSweep(): Promise<AutoTopupOutcome[]> {
         // eventId makes the ledger row idempotent — if Paystack's webhook re-delivers the same charge (same data.id), the ledger ignores it.
         const eventId = charge.paystackId != null ? `ps_${charge.paystackId}` : undefined;
         await addCredits(u.id, cfg.amount, 'purchase', `Auto-recharge: ${cfg.amount} credits`, { paystackReference: charge.reference, auto: true }, creditTtlIso(), eventId);
-        outcomes.push({ userId: u.id, email: u.email, action: 'charged', reference: charge.reference, detail: `R${cfg.amount}` });
+        outcomes.push({ userId: u.id, email: u.email, action: 'charged', reference: charge.reference, detail: `R${chargeZar} (${cfg.amount} credits)` });
       } else {
         outcomes.push({ userId: u.id, email: u.email, action: 'failed', detail: `charge status ${charge.status}` });
       }

@@ -2,18 +2,24 @@
 FlashVSR v1.1 (tiny) video-upscale Modal endpoint.
 
 Reusable endpoint so the render pipeline (app_propreel_minimax.py) can
-self-host the 480p→720p/1080p upscaler instead of paying fal's 720p/1080p
-generation rate. It lives in its OWN Modal app so the ~8 GB FlashVSR GPU
-image (CUDA devel + torch + weights, baked once) stays out of the main
-render image, and the worker invokes it across apps via:
+self-host the 768p→1080p upscaler for the PREMIUM tier instead of paying
+for native-1080p generation. It lives in its OWN Modal app so the ~8 GB
+FlashVSR GPU image (CUDA devel + torch + weights, baked once) stays out of
+the main render image, and the worker invokes it across apps via:
 
     modal.Function.from_name("propreel-flashvsr", "flashvsr_upscale_video")
 
 Why FlashVSR (bench: docs/upscale-bench.md):
-  * ~$0.0015/video-s (480→720) and ~$0.0033/video-s (480→1080) on an A100,
-    vs fal wan-25 at $0.10/s (720p) and $0.15/s (1080p) generation — a
-    20–45× saving on the resolution line.
+  * ~$0.0033/video-s on an A100 vs $0.08/s for MiniMax Hailuo-02 Pro
+    (the cheapest native-1080p rung) — and Hailuo-02 STANDARD, which
+    serves every AI tier since the 2026-10-21 engine unification, has NO
+    1080p rung at all, so Premium's 1080p delivery is FlashVSR's job.
   * Runs on A100-80GB (no capacity wall, no frame cap).
+
+Since 2026-10-21 the only production caller is PREMIUM (768p Hailuo
+clips → 1080p delivery). Social (512p) and Cinematic (768p) deliver
+their native rungs on the 1080p canvas — the 480p/720p target keys below
+are kept for the bench tooling and any manual runs.
 
 Two quirks this module bakes in (traced to upstream source, not guessed):
   * F-frame contract — `prepare_input_tensor` returns F = the number of frames

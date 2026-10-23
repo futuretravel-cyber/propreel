@@ -54,7 +54,7 @@ const RESTORE_OVERRIDE = process.env.E2E_RESTORE_PLAN; // 'NONE' | 'STARTER' | �
 const PLANS = ['STARTER', 'PROFESSIONAL', 'PREMIUM', 'AGENCY'] as const;
 // Expected plan allowances (docs/credit-pricing-runbook.md; DB row is truth —
 // a mismatch fails the run so a plan-allowance typo gets caught here).
-const EXPECTED_PLAN_CREDITS: Record<string, number> = { STARTER: 130, PROFESSIONAL: 600, PREMIUM: 1300, AGENCY: 5000 };
+const EXPECTED_PLAN_CREDITS: Record<string, number> = { STARTER: 110, PROFESSIONAL: 520, PREMIUM: 1150, AGENCY: 4300 };
 /** Worker per-attempt cap is 110s × ≤3 fallback attempts; heaviest path ≤210s. */
 const GEN_TIMEOUT_MS = 240_000;
 

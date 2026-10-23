@@ -28,7 +28,7 @@ const ROUTES: Record<string, SeoEntry> = {
   '/pricing': {
     title: `Pricing — Pay per video in ZAR | ${SUFFIX}`,
     description:
-      'Simple credit-based pricing for South African estate agents. From R1 per credit. No subscriptions required — buy credits, render reels, pay only for what you use.',
+      'Simple credit-based pricing for South African estate agents. From R1.50 per credit. No subscriptions required — buy credits, render reels, pay only for what you use.',
   },
   '/reviews': {
     title: `Reviews — What SA estate agents say | ${SUFFIX}`,

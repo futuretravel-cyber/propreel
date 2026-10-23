@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { BackendAPI } from '../lib/backendAPI';
 import { TERMS_CONSENT_VERSION } from '../lib/termsContent';
+import { PLANS } from '../lib/constants';
 
 // ─── First-party auth over the shared /api/users function ───────────────────
 // Sessions are HttpOnly cookies issued by the API (lib/auth.ts) — no third-
@@ -151,7 +152,7 @@ interface CreditContextType {
   acknowledgeLowCredit: () => void;
   deductCredits: (amount: number, reason: string, metadata?: any, pool?: 'personal' | 'agency') => Promise<boolean>;
   /** Reverse ONE real charge after a failure — the server picks the amount */
-  refundCredits: (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'script') => Promise<boolean>;
+  refundCredits: (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'script' | 'rerender') => Promise<boolean>;
 }
 
 export interface RegisterData {
@@ -249,10 +250,24 @@ export function CreditProvider({ children }: { children: ReactNode }) {
 
   // Low credit warning
   const lowCreditWarning: 'none' | 'info' | 'warning' | 'critical' = (() => {
-    if (!user?.subscription) return 'none';
-    const allowance = user.subscription.planId === 'STARTER' ? 130 :
-                      user.subscription.planId === 'PROFESSIONAL' ? 600 :
-                      user.subscription.planId === 'PREMIUM' ? 1300 : 5000;
+    if (!user) return 'none';
+    // Free accounts (no subscription, no trial clock) get ABSOLUTE thresholds
+    // off the signup bonus instead of plan percentages — this is the
+    // conversion nudge: at 0 the dashboard banner + LowCreditNudge modal
+    // point them at plans. Admins and agency accounts are excluded (agency
+    // spend comes from the shared pool, not personal credits).
+    if (!user.subscription) {
+      if (!isFreeTierUser(user)) return 'none';
+      const free = user.credits || 0;
+      if (free <= 0) return 'critical';
+      if (free <= 2) return 'warning';
+      if (free <= 4) return 'info';
+      return 'none';
+    }
+    // Read the allowance from PLANS — never hardcode the ladder (the old
+    // 115/600/1300/5000 literals went stale when the 2026-10-21 ladder
+    // changed them to 110/520/1150/4300).
+    const allowance = PLANS.find(p => p.id === user.subscription!.planId)?.monthlyCredits ?? 5000;
     const pct = (user.credits / allowance) * 100;
     if (pct <= 5) return 'critical';
     if (pct <= 10) return 'warning';
@@ -325,7 +340,10 @@ export function CreditProvider({ children }: { children: ReactNode }) {
   }, [loadSessionUser]);
 
   const purchaseCredits = useCallback(async (amount: number) => {
-    if (amount < 50) throw new Error('Minimum purchase is R50 (50 credits)');
+    if (amount < 50) {
+      const { CREDIT_PACK_RAND } = await import('../lib/constants');
+      throw new Error(`Minimum purchase is 50 credits (R${50 * CREDIT_PACK_RAND})`);
+    }
     if (!user) throw new Error('Not logged in');
 
     const response = await BackendAPI.initializePayment(user.id, amount, user.email);
@@ -431,7 +449,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  const refundCredits = useCallback(async (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'script'): Promise<boolean> => {
+  const refundCredits = useCallback(async (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'script' | 'rerender'): Promise<boolean> => {
     if (!user) return false;
 
     try {
@@ -476,4 +494,16 @@ export function useCredit() {
 }
 
 export const useAuth = useCredit;
+
+/**
+ * Free-tier rule shared by the low-credit conversion nudge surfaces
+ * (dashboard banner, LowCreditNudge modal, AuthContext.lowCreditWarning):
+ * no subscription, no trial clock, not an admin, not an agency account
+ * (agency spend comes from the shared pool, not personal credits).
+ */
+export function isFreeTierUser(user: {
+  subscription?: unknown; trialExpiresAt?: string | null; role?: string | null; agencyId?: string | null;
+} | null | undefined): boolean {
+  return !!user && !user.subscription && !user.trialExpiresAt && user.role !== 'ADMIN' && !user.agencyId;
+}
 export const AuthProvider = CreditProvider;

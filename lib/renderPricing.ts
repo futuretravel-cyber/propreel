@@ -25,10 +25,27 @@ export { TIERS } from './videoTiers';
 export type { Tier, TierConfig, VideoEngine } from './videoTiers';
 import { TIERS } from './videoTiers';
 
+/**
+ * Cash price in Rands charged per credit for TOP-UP PACKS. Set to 1.50 on
+ * 2026-10-21 to match the R1.50 list value every action is priced at
+ * (docs/pricing-cost-analysis.md) — packs had charged R1.00/credit since
+ * launch while the price list assumed R1.50.
+ *
+ * Money → credits (server, never the browser): api/paystack/initialize and
+ * lib/autoTopup multiply credits by this before charging.
+ * Credits → money (grants): verify/webhook/autotopup must credit
+ * `metadata.credits` (the count), never the paid Rand amount.
+ * Client displays (CreditSystemDashboard, EnhancedBilling, PaymentPage)
+ * read the same constant so quotes match the charge.
+ */
+export const CREDIT_PACK_RAND = 1.5;
+
 /** AI Avatar (FlashHead lip-sync) is billed per 10 seconds of narration —
  *  cost scales linearly with fal + Narakeet per the audio length, so a flat
- *  price bakes in a loss past ~58s. 2 credits per 10s keeps every narration
- *  length ≥ ~31% margin against the ~R0.137/s unit cost. */
+ *  price bakes in a loss past ~58s. Restored to 2 credits per 10s on
+ *  2026-10-19: the R1.50 reprice briefly took it to 1cr (= R1.50/10s vs the
+ *  ~R1.37 unit cost ≈ 9% margin — under the 40% floor); 2cr = R3.00/10s ≈
+ *  55% margin, which all client copy already stated. */
 export const FLASHHEAD_CREDITS_PER_10S = 2;
 /** Hard cap: no avatar video may bill past 90 seconds of narration. */
 export const FLASHHEAD_MAX_SECONDS = 90;
@@ -124,11 +141,31 @@ export function isStagingPreset(presetId: string | undefined | null): boolean {
  *  priced server-side below, so a modified client cannot choose what it
  *  pays (the old client-sent ?action=deduct amount is gone).
  */
-export type JobScope = 'render' | 'flashhead' | 'edit' | 'script' | 'description' | 'social_post';
+export type JobScope = 'render' | 'flashhead' | 'edit' | 'script' | 'description' | 'social_post' | 'rerender';
 /** AI text tools — fixed prices, previously client constants sent as the
  *  deduct amount; now dollar-priced here so server and UI share one source. */
 export const DESCRIPTION_CREDITS = 1;
 export const SOCIAL_POST_CREDITS = 2;
+
+/**
+ * Price of re-rolling ONE clip of a review-paused render (Option 2 — the
+ * per-clip review step after generation, before assembly).
+ *
+ * Rule: the clip's own share of the tier price, rounded UP — ceil(credits /
+ * images). The tier price already carries assembly/narration/music margin on
+ * top of generation, so a generation-only re-roll at the clip's share always
+ * clears the 40% floor (Social 30s: ceil(34/6)=6⚡ = R9 vs ~R1.70 COGS;
+ * Cinematic 768p: ceil(47/6)=8⚡ vs ~R4.50; Budget 768p: ceil(34/5)=7⚡).
+ * ESSENTIAL never pauses for review (local FFmpeg render), so its price is
+ * unreachable in practice.
+ */
+export function rerenderClipCredits(tierId?: string, configIndex?: number): number | null {
+  const tier = TIERS.find(t => t.id === String(tierId || '').toUpperCase());
+  if (!tier) return null;
+  const config = tier.configurations[Number(configIndex)];
+  if (typeof config?.credits !== 'number' || typeof config?.images !== 'number' || config.images < 1) return null;
+  return Math.max(1, Math.ceil(config.credits / config.images));
+}
 
 /**
  * Price one job server-side. Returns null for an unknown tier/config —
@@ -158,6 +195,7 @@ export function jobCredits(
     // STAGING_EDIT_CREDITS above.
     return isStagingPreset(args.presetId) ? STAGING_EDIT_CREDITS : IMAGE_EDIT_CREDITS;
   }
+  if (scope === 'rerender') return rerenderClipCredits(args.tier, args.configIndex);
   if (scope === 'render') {
     const tier = TIERS.find(t => t.id === String(args.tier || '').toUpperCase());
     if (!tier) return null;

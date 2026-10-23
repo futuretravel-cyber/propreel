@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useLocation, Link, useNavigate } from 'react-router-dom';
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { formatZar } from '../lib/utils';
-import { PLANS } from '../lib/constants';
+import { formatZar, creditListZar } from '../lib/utils';
+import { PLANS, CREDIT_PACK_RAND } from '../lib/constants';
 import { BackendAPI } from '../lib/backendAPI';
 import { CreditCard, Check, Shield, Lock, Loader2, LogIn } from 'lucide-react';
 
@@ -230,7 +230,7 @@ export default function PaymentPage() {
           <div className="bg-ink-800/50 rounded-xl p-4 mb-6">
             <div className="flex items-center justify-between py-2 border-b border-white/5">
               <span className="text-ink-400 text-sm">{isTopup ? 'Credit Top-up' : plan?.name + ' Plan'}</span>
-              <span className="text-white font-medium">{isTopup ? `${topupAmount} credits` : `${plan?.monthlyCredits} credits/month`}</span>
+              <span className="text-white font-medium">{isTopup ? `${topupAmount} credits` : `${plan?.monthlyCredits} credits/month ≈ ${creditListZar(plan?.monthlyCredits ?? 0)}`}</span>
             </div>
             {!isTopup && (
               <div className="flex items-center justify-between py-2 border-b border-white/5">
@@ -240,7 +240,7 @@ export default function PaymentPage() {
             )}
             <div className="flex items-center justify-between py-2">
               <span className="text-white font-semibold">Total</span>
-              <span className="text-2xl font-bold text-purple-400">{formatZar(amount)}</span>
+              <span className="text-2xl font-bold text-purple-400">{formatZar(isTopup ? Math.round(topupAmount * CREDIT_PACK_RAND) : amount)}</span>
             </div>
             <p className="text-xs text-ink-500 mt-2">All prices include VAT</p>
           </div>

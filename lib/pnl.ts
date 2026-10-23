@@ -29,7 +29,10 @@ export const EXPENSE_CATEGORIES = [
   'fal.ai', 'Modal', 'AWS', 'Paystack', 'Marketing', 'Payroll', 'Software', 'Office', 'Other',
 ] as const;
 
-/** Credits are sold at R1 face value (top-ups are 1:1; plans ≈ R1/credit). */
+/** Credits are recognised at R1 face value (the historical default; top-ups
+ *  were 1:1 R1/credit). NOTE 2026-10-21: packs now sell at R1.50/credit and
+ *  plans at ≈R1.10–1.17 — moving the P&L face value is a client decision;
+ *  revenue below stays conservative until then. */
 export const CREDIT_FACE_VALUE = 1;
 
 export interface PnlExpense {

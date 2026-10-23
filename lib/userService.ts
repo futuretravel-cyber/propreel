@@ -147,7 +147,7 @@ export interface CreditTransaction {
 // `pricing_config` row in the settings table (seeded from these values);
 // getPlans() below reads it so DB edits drive real billing.
 export const PLANS: Record<string, { monthlyZar: number; annualZar: number; monthlyCredits: number }> = {
-  'STARTER': { monthlyZar: 129, annualZar: 110, monthlyCredits: 130 },
+  'STARTER': { monthlyZar: 129, annualZar: 110, monthlyCredits: 115 },
   'PROFESSIONAL': { monthlyZar: 589, annualZar: 560, monthlyCredits: 600 },
   'PREMIUM': { monthlyZar: 1270, annualZar: 1200, monthlyCredits: 1300 },
   'AGENCY': { monthlyZar: 5000, annualZar: 5000, monthlyCredits: 5000 },
@@ -507,6 +507,9 @@ const REFUND_MATCHERS: Record<string, (t: CreditTransaction) => boolean> = {
   description: t => t.metadata?.kind === 'PROPERTY_DESCRIPTION' || t.description === 'Property description',
   social_post: t => t.metadata?.kind === 'SOCIAL_POST' || t.description === 'Social media post',
   script: t => t.metadata?.scope === 'script' || t.description === 'AI Writer voiceover script',
+  // Per-clip re-roll inside the post-render review (Option 2) — charged by
+  // job_token with scope=rerender, so it has its own matcher like render.
+  rerender: t => t.metadata?.scope === 'rerender' || t.description === 'Clip re-render',
 };
 
 export const REFUND_SCOPES = Object.keys(REFUND_MATCHERS);

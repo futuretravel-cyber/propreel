@@ -1814,6 +1814,7 @@ async function authRoutes(req: VercelRequest, res: VercelResponse, action: strin
       // ledger and the analytics that read it keep their shape.
       const reason =
         scope === 'render' ? 'Video generation'
+        : scope === 'rerender' ? 'Clip re-render'
         : scope === 'flashhead' ? 'FlashHead lip-sync video'
         : scope === 'script' ? 'AI Writer voiceover script'
         : scope === 'description' ? 'Property description'

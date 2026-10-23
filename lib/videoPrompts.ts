@@ -46,28 +46,46 @@ export const CAMERA_MOVE_LABEL: Record<CameraMove, string> = {
 /**
  * One shared closing tail. Every prompt ends with this verbatim; only the
  * leading camera directive (which encodes the move) differs. The tail carries
- * the frozen-asset rule, the "property is the hero" rule, the continuous-motion
- * mandate, the Architectural-Digest quality bar, and the full negative block.
+ * the frozen-ARCHITECTURE rule (geometry locked, but ambient nature licensed
+ * — 2026-10-20, from the client's Budget deck: "The scene comes alive" is
+ * what produced the drifting clouds / golden-hour shift / living fireplace /
+ * rippling water the Budget reels are loved for), the "property is the hero"
+ * rule, the continuous-motion mandate, the Architectural-Digest quality bar,
+ * and the full negative block.
  * The single copy keeps all seven prompts byte-identical where they must agree.
  *
  * `verb` fills the one variable slot: glide / creep / drift / track. This is
- * the client's original wording — the prompts were briefly rewritten to dodge
- * a supposed 2000-char fal cap, but wan-25-preview has no prompt length limit
- * so the originals are restored verbatim.
+ * the client's original wording, restored verbatim during the wan era (which
+ * had no prompt-length limit).
+ *
+ * 2026-10-23 FIRE HARDENING (mirrors the budget deck's FIRE-PLACEMENT
+ * PATCH): the shared tail licensed a living fireplace without saying WHERE
+ * the fire lives, which is what put flames on a chair in a delivered reel.
+ * Even though this deck is dormant, the clause is anchored to the hearth and
+ * the negative block bans flames outside it — so reviving this deck later
+ * cannot reintroduce the fire-on-furniture defect class.
+ *
+ * 2026-10-21 STATUS: these cinematic prompts are DORMANT for rendering — the
+ * engine unification made the gentle Budget deck (lib/budgetVideoPrompts.ts)
+ * the motion standard for every AI tier, and the worker's fallback A/B/C
+ * deck now holds that gentle text too. What this module still serves live is
+ * the taxonomy: RoomType/CameraMove, movesForRoomType, the labels and the
+ * PhotoMeta type the Photos-step tagging UI shares with the worker.
  */
 const walkTail = (verb: string) =>
   'The move stays strictly inside the space already visible — image edges are hard walls the camera never approaches and the move never leaves the room shown. ' +
-  'Source image is an unalterable, frozen 3D architectural asset: every wall, window, fixture, texture and object stays exactly as pictured — all animation is pure camera travel through the visible scene. ' +
+  'The source image’s architecture is frozen: every wall, window, door, fixture, texture and built element stays exactly as pictured — no geometry is added, removed, replaced or rearranged, and the layout never changes. ' +
+  'The scene comes alive with gentle natural motion: outdoors, trees, foliage and leaves sway and rustle in a light breeze while clouds drift slowly across the sky and the light may drift naturally toward warm golden hour; if a fireplace is in view its flames burn only inside the fireplace opening and flicker and dance there, never on furniture or floors; visible water — pool, fountain or sea — ripples with softly dancing reflections; indoors, curtains sway gently and light patterns shift subtly across polished floors, wood and metal. ' +
   'The property is the absolute hero of every frame — always in focus, always the center of attention, never drifting away. ' +
   'Continuous, clearly visible movement for the ENTIRE clip is mandatory — never a still frame. ' +
   'Architectural Digest editorial quality: hyper-realistic reflections, soft natural light, flawless imperceptible finishes, perfectly straight vertical lines, zero lens distortion. ' +
   `Motion must be fluid, smooth and unbroken — one constant-speed showcase ${verb} at a confident purposeful pace with clear momentum. ` +
   'No whip pans, snap zooms, speed ramps, or stop-start jitter. ' +
-  'No object, wall, fixture, texture or architectural element is added, removed, replaced or altered. ' +
-  'No new rooms or spaces — no added kitchen, bathroom, hallway, driveway, parking lot, street, extension, furniture, appliances, counters, cabinetry, cars or vehicles; no exiting through walls, image boundaries or border-crossing, no revealing exterior spaces. ' +
-  'No geometry warping, slanted walls, curved vertical lines, fisheye lens or extreme distortion. ' +
-  'No flicker, shake, blur, out-of-focus, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures or unrealistic reflections. ' +
-  'No text, watermarks, logos, people, animals, clutter, or dirty surfaces.';
+  'No man-made object, wall, fixture or architectural element is added, removed, replaced or rearranged — only the ambient natural motion licensed above may animate the scene. ' +
+  'No new rooms or spaces — no added kitchen, bathroom, hallway, doorway, door, driveway, parking lot, street, extension, furniture, appliances, counters, cabinetry, stairs, windows, cars or vehicles; no exiting through walls, image boundaries or border-crossing, no revealing exterior spaces. ' +
+  'No geometry warping, slanted walls, curved vertical lines, fisheye lens or extreme distortion — mirrors, glass and reflective surfaces stay exactly as photographed; no warped, melted, bent or deformed beds, furniture, vases, décor or architecture. ' +
+  'No global flicker or strobing, shake, blur, out-of-focus, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures or unrealistic reflections. ' +
+  'No text, watermarks, logos, people, animals, clutter, dirty surfaces, or fire or flames anywhere except inside a fireplace.';
 
 /** The one leading camera directive per (roomType, move). */
 const HEADS: Record<RoomType, Record<CameraMove, string>> = {
@@ -78,9 +96,9 @@ const HEADS: Record<RoomType, Record<CameraMove, string>> = {
     out: 'Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera pulls back in a slow decisive zoom out from the room’s primary architectural focal point, revealing the full grandeur, scale and spatial depth of the interior as it retreats, making the room feel expansive, open and impressive. Far walls widen and more of the space enters the frame as the camera eases back — a true 3D pull-out, never a flat digital zoom. ',
   },
   interior: {
-    in: 'Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera creeps purposefully into the room’s hero architectural detail — a statement material, feature surface, or design centerpiece — closing in with slow controlled momentum that draws the viewer deeper into the space and makes every premium finish unmissable. Near textures sharpen and grow as the camera advances — a true 3D creep-in, never a flat digital zoom. ',
-    left: 'Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera drifts decisively LEFT along the room’s primary feature wall at a confident showcase walking pace, a smooth gimbal drift that hugs the architectural surface and reveals the full length of the space — near foreground elements slide past while the feature wall fills the frame with its material richness. ',
-    right: 'Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera tracks decisively RIGHT past the room’s furnishings at a confident showcase walking pace, a smooth gimbal track that moves through the space revealing each curated piece in sequence — near furniture passes through frame as far architectural elements remain locked and stationary, creating natural cinematic parallax. ',
+    in: 'Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera creeps purposefully toward the room’s hero architectural detail — a statement material, feature surface, or design centerpiece — closing in with slow controlled momentum that makes every premium finish unmissable, advancing only toward what is already in frame and never travelling past it. Near textures sharpen and grow as the camera advances — a true 3D creep-in, never a flat digital zoom. ',
+    left: 'Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera drifts decisively LEFT along the room’s primary feature wall at a confident showcase walking pace, a smooth gimbal drift that hugs the architectural surface and showcases the full length of the feature wall already in frame — near foreground elements slide past while the feature wall fills the frame with its material richness. ',
+    right: 'Cinematic real estate walkthrough - bold, unmistakable camera motion from the first frame. The camera tracks decisively RIGHT past the room’s furnishings at a confident showcase walking pace, a smooth gimbal track gliding along them so each curated piece passes through frame in sequence — near furniture slides past while far architectural elements remain locked and stationary, creating natural cinematic parallax. ',
     out: '', // unreachable: interior never offers zoom-out
   },
 };
@@ -106,18 +124,19 @@ export function cameraPrompt(roomType: RoomType, move: CameraMove): string {
  * endpoints that take a dedicated negative_prompt field.
  */
 export const CAMERA_NEGATIVE_PROMPT =
-  'Whip pans, snap zooms, speed ramps, or stop-start jitter. Object, wall, fixture, texture or architectural element is added, removed, replaced or altered. ' +
-  'New rooms or spaces - added kitchen, bathroom, hallway, driveway, parking lot, street, extension, furniture, appliances, counters, cabinetry, cars or vehicles; exiting through walls, image boundaries or border-crossing, revealing exterior spaces. ' +
-  'Geometry warping, slanted walls, curved vertical lines, fisheye lens or extreme distortion. ' +
-  'Flicker, shake, blur, out-of-focus, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures or unrealistic reflections. ' +
+  'Whip pans, snap zooms, speed ramps, or stop-start jitter. Man-made object, wall, fixture or architectural element added, removed, replaced or rearranged; scene geometry changed from the source photo. ' +
+  'New rooms or spaces - added kitchen, bathroom, hallway, doorway, door, driveway, parking lot, street, extension, furniture, appliances, counters, cabinetry, stairs, windows, cars or vehicles; exiting through walls, image boundaries or border-crossing, revealing exterior spaces. ' +
+  'Geometry warping, slanted walls, curved vertical lines, fisheye lens or extreme distortion; mirrors, glass and reflective surfaces warped; melted, bent or deformed beds, furniture, vases, décor or architecture. ' +
+  'Global flicker or strobing, shake, blur, out-of-focus, grain, noise, overexposure, underexposure, harsh shadows, unnatural lighting, plastic textures or unrealistic reflections. Static, lifeless scene with no ambient motion. ' +
   'Text, watermarks, logos, people, animals, clutter, or dirty surfaces.';
 
 /**
- * wan-25-preview has NO prompt-length limit, so prompts are never truncated.
- * (This used to be a 2000-char cap; fal silently clipped longer prompts on
- * Hailuo, so the prompts were rewritten to fit and the negatives — which ride
- * at the tail — got clipped off. With the cap gone the originals are restored
- * verbatim and the dedicated negative_prompt field carries the negatives too.)
+ * PROMPT-LENGTH NOTE (updated 2026-10-21): every AI tier is back on Hailuo,
+ * which silently clips prompts past 2000 chars — and the dormant cinematic
+ * prompts above exceed that. The live gentle prompts (lib/budgetVideoPrompts.ts)
+ * were authored well under the ceiling (~700–800 chars), so nothing shipped
+ * today truncates. If the cinematic deck is ever revived, it must be re-trimmed
+ * under 2000 chars first (the worker also hard-truncates at 2000 for Hailuo).
  */
 
 /**

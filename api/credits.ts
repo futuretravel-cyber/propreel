@@ -60,14 +60,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // unlimited credits as 'refund', 'bonus' or 'purchase'. Client-initiated
     // refunds now run through ?action=refund (verified against the ledger);
     // purchase/subscription credits are minted server-side by the Paystack
-    // paths; the only browser caller left is the admin grant button.
+    // paths; the only browser caller left is the admin grant dialog
+    // (AdminGiveCredits → Admin → Users → Give).
     if (req.method === 'POST' && action === 'add') {
       const gate = await requireAdminSession(req);
       if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
       const { user_id, amount, source, description, metadata, expires_at } = req.body;
-      if (!user_id || !amount || amount <= 0) {
-        return res.status(400).json({ error: 'Invalid request parameters' });
+      // Whole positive credits only — a fractional, zero or negative amount
+      // here is always a client bug or an abuse attempt, never a use case.
+      if (!user_id || typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0 || amount > 1_000_000) {
+        return res.status(400).json({ error: 'amount must be a whole number of credits between 1 and 1000000' });
       }
       if (source !== 'bonus') {
         return res.status(403).json({ error: 'Admin grants are limited to source "bonus"' });
@@ -78,7 +81,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amount,
         source,
         description || 'Credit addition',
-        metadata,
+        // Audit stamp mirrors admin_set_subscription's ADMIN_SUBSCRIPTION_CHANGE
+        // row: which admin did it, server-derived — the client cannot forge it.
+        { ...(metadata || {}), kind: 'ADMIN_CREDIT_GRANT', by: gate.user.email },
         expires_at
       );
 

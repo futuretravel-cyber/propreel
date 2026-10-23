@@ -4,7 +4,7 @@ import { track } from '../lib/analytics';
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { PLANS, SIGNUP_BONUS, PHONE_COUNTRY_CODES } from '../lib/constants';
-import { formatZar } from '../lib/utils';
+import { formatZar, creditListZar } from '../lib/utils';
 import { Check, ArrowRight, ArrowLeft, Sparkles, Building2, User, CreditCard, Shield, Mail, RefreshCw, AlertTriangle } from 'lucide-react';
 
 type Step = 'plan' | 'details' | 'payment' | 'confirm';
@@ -60,9 +60,13 @@ export default function SignupPage() {
   // Remember referral code from ?ref= across the multi-step flow
   const referralCode = searchParams.get('ref') || '';
   const [isAgency, setIsAgency] = useState(false);
-  // 7-day temporary account (individual agents only) — the standard 5-credit
-  // signup bonus doubles as their trial fuel; no card required.
-  const [startTrial, setStartTrial] = useState(true);
+  // FREE-ACCOUNT DEFAULT (2026-10-21): registration completes with NO
+  // subscription and NO trial clock — a permanent free account (the 5-credit
+  // signup bonus is its fuel). The opt-in on the details step is the only
+  // path to plan checkout, and ?plan= deep-links (pricing CTAs) pre-check it.
+  // Nothing here starts a new trial clock; the lib/trial.ts machinery still
+  // runs for rows that already carry one.
+  const [subscribeNow, setSubscribeNow] = useState(() => !!searchParams.get('plan'));
   const [dial, setDial] = useState('+27');
   const [formData, setFormData] = useState({
     fullName: '', email: inviteEmailParam, password: '', phone: '',
@@ -115,12 +119,13 @@ export default function SignupPage() {
   };
 
   const paymentUrl = `/payment?plan=${selectedPlan}&cycle=${cycle}&price=${price}`;
-  // Trial accounts skip checkout entirely — post-auth lands on the dashboard
-  // (they can subscribe later from the in-app banner or Billing).
-  // Agency-invited agents NEVER see a trial or payment page: no subscription,
-  // the confirmation link goes straight to their (agency-linked) dashboard.
-  const trialSelected = !isAgency && !invited && startTrial;
-  const postAuthUrl = invited || trialSelected ? '/dashboard' : paymentUrl;
+  // Free accounts (the default) skip checkout entirely — post-auth lands on
+  // the dashboard and they can subscribe later from Billing. Agency accounts
+  // always pay (the Agency plan funds the shared pool); agency-invited agents
+  // never see a payment page — the confirmation link goes straight to their
+  // (agency-linked) dashboard.
+  const subscribeSelected = !invited && (isAgency || subscribeNow);
+  const postAuthUrl = subscribeSelected ? paymentUrl : '/dashboard';
   // Combine the selected dial code with the number; if the user typed an
   // international number (+…) themselves, strip that prefix so it isn't
   // double-dialled.
@@ -135,9 +140,9 @@ export default function SignupPage() {
     setExistingAccount(false);
     setEmailFailed('');
     try {
-      // Where the confirmation-email link should land: straight on this
-      // plan's payment page, already signed in — or the dashboard for a trial.
-      // (Agency-invited agents always land on the dashboard — no payment.)
+      // Where the confirmation-email link should land: the selected plan's
+      // payment page for a subscribing signup, or the dashboard for a free
+      // account. (Agency-invited agents always land on the dashboard.)
       const emailRedirectTo = `${window.location.origin}${postAuthUrl}`;
       import('../lib/postAuth').then(m => m.setPostAuthRedirect(postAuthUrl));
       const result = await register({
@@ -147,7 +152,7 @@ export default function SignupPage() {
         phone: fullPhone,
         emailRedirectTo,
         agencyName: isAgency ? formData.companyName : formData.agencyName,
-        planId: invited ? 'STARTER' : selectedPlan as any,
+        planId: invited ? 'STARTER' : subscribeSelected ? (selectedPlan as any) : 'FREE',
         cycle,
         aiAcknowledged: formData.agreed,
         companyName: formData.companyName,
@@ -156,9 +161,10 @@ export default function SignupPage() {
         companyAddress: formData.companyAddress,
         referralCode: referralCode || undefined,
         enableTwoFactor: formData.twoStep,
-        startTrial: trialSelected || undefined,
+        // startTrial deliberately omitted: no NEW signup starts a 7-day
+        // temporary-account clock — free is permanent (2026-10-21).
       });
-      track('signup_completed', invited ? { plan: 'agency_invite' } : { plan: selectedPlan, cycle, trial: trialSelected });
+      track('signup_completed', invited ? { plan: 'agency_invite' } : { plan: selectedPlan, cycle, mode: subscribeSelected ? 'plan' : 'free' });
       if (result.needsConfirmation) {
         // Email confirmation required (mailer_autoconfirm=false): there is no
         // session yet, so we can't go to the payment page — show the
@@ -291,7 +297,7 @@ export default function SignupPage() {
                     <span className="text-3xl font-black text-white">{formatZar(cycle === 'ANNUAL' ? p.annualZar : p.monthlyZar)}</span>
                     <span className="text-ink-400 text-sm">/month</span>
                   </div>
-                  <p className="text-sm text-purple-400 font-semibold mt-2">{p.monthlyCredits} credits/month</p>
+                  <p className="text-sm text-purple-400 font-semibold mt-2">{p.monthlyCredits} credits/month ≈ {creditListZar(p.monthlyCredits)}</p>
                   <ul className="mt-4 space-y-2">
                     {p.features.slice(0, 4).map((f, i) => (
                       <li key={i} className="flex items-center gap-2 text-xs text-ink-300"><Check className="w-3 h-3 text-purple-400" /> {f}</li>
@@ -311,6 +317,26 @@ export default function SignupPage() {
                 Continue <ArrowRight className="w-5 h-5" />
               </button>
               <p className="mt-4 text-sm text-ink-400">
+                No card needed to start — you'll create a free account unless you choose to subscribe.
+              </p>
+
+              {/* Zero-risk entry — skip plan selection entirely and register
+                  as a permanent free account (subscribeNow stays false). */}
+              <div className="mt-4 max-w-xl mx-auto p-4 rounded-xl bg-purple-950/30 border border-purple-500/20 text-center">
+                <p className="text-sm text-ink-300">
+                  <span className="font-semibold text-white">Just exploring?</span>{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setIsAgency(false); setSelectedPlan('PROFESSIONAL'); setSubscribeNow(false); setError(''); setStep('details'); }}
+                    className="text-purple-400 hover:text-purple-300 font-medium underline"
+                  >
+                    Create a free account
+                  </button>{' '}
+                  — {SIGNUP_BONUS} welcome credits, no card required. Spend them on a real listing before you decide.
+                </p>
+              </div>
+
+              <p className="mt-2 text-sm text-ink-400">
                 Already have an account? <Link to="/login" className="text-purple-400 hover:text-purple-300">Sign in</Link>
               </p>
             </div>
@@ -402,10 +428,10 @@ export default function SignupPage() {
 
               {!isAgency && !invited && (
                 <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-purple-950/30 border border-purple-500/20">
-                  <input type="checkbox" checked={startTrial} onChange={e => setStartTrial(e.target.checked)} className="mt-1 w-4 h-4 rounded" />
+                  <input type="checkbox" checked={subscribeNow} onChange={e => setSubscribeNow(e.target.checked)} className="mt-1 w-4 h-4 rounded" />
                   <span className="text-xs text-ink-300">
-                    <span className="text-white font-semibold">Start my 7-day free trial.</span>{' '}
-                    Get {SIGNUP_BONUS} credits to test PropReel — no card needed. Daily reminders included; if you haven't subscribed by day 7 the temporary account is deleted (your work is kept 30 days in case you upgrade later).
+                    <span className="text-white font-semibold">Subscribe to {plan.name} now — {formatZar(price)}{cycle === 'ANNUAL' ? ' per month, billed annually' : ' per month'}.</span>{' '}
+                    You'll continue to secure Paystack checkout after creating your account. Leave this unchecked to create a free account — no card, {SIGNUP_BONUS} welcome credits, upgrade any time from Billing.
                   </span>
                 </label>
               )}
@@ -425,7 +451,7 @@ export default function SignupPage() {
 
               <div className="flex gap-3">
                 <button type="button" onClick={() => setStep('plan')} className="btn btn-secondary"><ArrowLeft className="w-4 h-4" /> Back</button>
-                <button type="submit" disabled={loading || (invited && !!inviteLoadError)} className="btn btn-primary flex-1">{loading ? 'Creating account...' : invited ? 'Create account & join agency' : trialSelected ? 'Start my free trial' : 'Continue to Payment'}</button>
+                <button type="submit" disabled={loading || (invited && !!inviteLoadError)} className="btn btn-primary flex-1">{loading ? 'Creating account...' : invited ? 'Create account & join agency' : subscribeSelected ? 'Continue to Payment' : 'Create free account'}</button>
               </div>
             </form>
 
@@ -472,10 +498,10 @@ export default function SignupPage() {
                     <li>You'll land on your dashboard, already linked to {inviteInfo?.agencyName || 'your agency'}</li>
                     <li>Credits come from the agency's shared pool — no payment page, no trial</li>
                   </>
-                ) : trialSelected ? (
+                ) : !subscribeSelected ? (
                   <>
-                    <li>You'll land on your dashboard with {SIGNUP_BONUS} free trial credits</li>
-                    <li>Upgrade any time from the trial banner — everything carries over</li>
+                    <li>You'll land on your dashboard with {SIGNUP_BONUS} free welcome credits</li>
+                    <li>No card needed — subscribe any time from Billing, whenever you're ready</li>
                   </>
                 ) : (
                   <>

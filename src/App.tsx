@@ -8,8 +8,9 @@ import MobileNav from './components/MobileNav';
 import UploadQueueNotifier from './components/UploadQueueNotifier';
 import AIDisclaimerGate from './components/AIDisclaimerGate';
 import AdminUserDetail from './components/AdminUserDetail';
+import AdminGiveCredits from './components/AdminGiveCredits';
 import { DashboardSkeleton, ProjectsSkeleton, useSimulatedLoading } from './components/Skeleton';
-import { useAuth, useCredit, AuthProvider, CreditProvider } from './context/AuthContext';
+import { useAuth, useCredit, AuthProvider, CreditProvider, isFreeTierUser } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
 import { SearchButton } from './components/GlobalSearch';
 import { TIERS, ORIENTATIONS, SA_LANGUAGES, DEFAULT_VOICE_LANGUAGE, voicesForLanguage, SOCIAL_PLATFORMS, TONES, PHOTO_PRESETS, STAGING_STYLES, ROOM_TYPES, REMOVAL_MODES, TWILIGHT_STYLES, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, PROVINCES, PROPERTY_TYPES } from './lib/constants';
@@ -23,16 +24,20 @@ import { geocodeAddress, findNearbyAmenities } from './lib/propertyListing';
 import { useStudioDraft, studioDraftKey, dataUrlToFile } from './lib/studioDrafts';
 import { useRepairDraftPhotos } from './lib/repairDraftPhotos';
 import { useReorderable } from './lib/reorder';
-import { formatZar, formatDate, formatRelative, wordCount, downloadText } from './lib/utils';
+import { formatZar, formatDate, formatRelative, wordCount, downloadText, creditListZar, creditValueZar } from './lib/utils';
 import type { PhotoMeta } from '../lib/videoPrompts';
-import { cameraPrompt, buildCameraPayload, movesForRoomType, CAMERA_MOVE_LABEL, ROOM_TYPE_LABEL } from '../lib/videoPrompts';
+import { movesForRoomType, CAMERA_MOVE_LABEL, ROOM_TYPE_LABEL } from '../lib/videoPrompts';
+import { buildBudgetCameraPayload } from '../lib/budgetVideoPrompts';
 import { TIERS as VIDEO_TIERS, imagesForDuration } from '../lib/videoTiers';
 import { playRenderComplete } from './lib/renderSound';
 import { useApprovedReviews } from './lib/useReviews';
 import { useActivity } from './lib/useActivity';
 import { useRenderProgress, typicalVideoSeconds } from './lib/useRenderProgress';
 import { useFlashHead } from './lib/useFlashHead';
-import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC, DESCRIPTION_CREDITS as DESCRIPTION_RENDER_COST, SOCIAL_POST_CREDITS as SOCIAL_POST_COST, scriptCreditsForDuration } from '../lib/renderPricing';
+import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC, DESCRIPTION_CREDITS as DESCRIPTION_RENDER_COST, SOCIAL_POST_CREDITS as SOCIAL_POST_COST, scriptCreditsForDuration, CREDIT_PACK_RAND, rerenderClipCredits } from '../lib/renderPricing';
+import { pollRenderJob, pollRerender } from './lib/renderPoll';
+import type { RenderClip } from './lib/renderPoll';
+import ClipReviewPanel from './components/ClipReviewPanel';
 import { useVoicePreview } from './lib/useVoicePreview';
 import { useVoiceoverLanguageCheck, type VoiceoverLanguageCheck } from './lib/useVoiceoverLanguageCheck';
 import LanguageMismatchBanner from './components/LanguageMismatchBanner';
@@ -47,7 +52,7 @@ import {
   Search, Filter, ArrowRight, Globe, Phone, Mail, MapPin, ChevronDown, ChevronLeft,
   Monitor, Smartphone, Mic, Camera, Palette, Sun, Cloud, Moon as MoonIcon, Bell,
   FileText, XCircle, Music, User, Keyboard, Tag, HelpCircle, FolderOpen,
-  GraduationCap
+  GraduationCap, PiggyBank
 } from 'lucide-react';
 
 import { lazy, Suspense, type ComponentProps } from 'react';
@@ -83,6 +88,14 @@ const CreditSystemDashboard = lazy(() => import('./components/CreditSystemDashbo
 const AdminIntegrations = lazy(() => import('./components/AdminIntegrations'));
 const AdminApiKeysBase = lazy(() => import('./components/AdminApiKeys'));
 const NotificationCenter = lazy(() => import('./components/NotificationCenter'));
+// Free-tier out-of-credits conversion nudge (modal → plans).
+const LowCreditNudge = lazy(() => import('./components/LowCreditNudge'));
+
+// SA decimal comma for the marketing rate copy ("R1,50/credit") — the
+// Intl en-ZA currency style renders a dot in some browsers.
+const zarComma = (n: number) => n.toFixed(2).replace('.', ',');
+// Same style, but compact whole rands ("R75"), cents only when they exist.
+const zarCommaCompact = (n: number) => n.toFixed(2).replace(/\.00$/, '').replace('.', ',');
 const OnboardingTutorialBase = lazy(() => import('./components/OnboardingTutorial'));
 const HelpModalBase = lazy(() => import('./components/HelpModal'));
 
@@ -300,6 +313,13 @@ function PricingPage() {
     user
       ? `/payment?plan=${planId}&cycle=${cycle}&price=${price}`
       : `/register?plan=${planId}&cycle=${cycle}`;
+  // Plan bundle economics derived from PLANS: what each credit costs on the
+  // monthly ladder vs the R1.50 top-up rate — the "plans are cheaper per
+  // credit" line can never drift from what checkout actually charges.
+  const planRates = PLANS.map(p => p.monthlyZar / p.monthlyCredits);
+  const rateLo = Math.min(...planRates);
+  const rateHi = Math.max(...planRates);
+  const bundleSavingPct = Math.round((1 - rateLo / CREDIT_PACK_RAND) * 100);
   return (
     <PublicLayout>
       <section className="py-20 bg-gradient-to-b from-purple-50 to-white">
@@ -307,10 +327,16 @@ function PricingPage() {
           <div className="text-center mb-12">
             <h1 className="text-4xl sm:text-5xl font-black text-gray-900">Simple, Transparent Pricing</h1>
             <p className="mt-4 text-lg text-gray-600">All prices include VAT. Cancel anytime.</p>
+            <p className="mt-2 text-sm text-gray-500">
+              New here? <Link to="/register" className="text-purple-700 hover:text-purple-800 font-medium">Start free with {SIGNUP_BONUS} welcome credits</Link> — no card needed, upgrade any time.
+            </p>
             <div className="mt-8 inline-flex items-center gap-3 bg-gray-100 rounded-full p-1">
               <button onClick={() => { track('pricing_toggle', { to: 'monthly' }); setAnnual(false); }} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${!annual ? 'bg-white shadow text-purple-700' : 'text-gray-600'}`}>Monthly</button>
               <button onClick={() => { track('pricing_toggle', { to: 'annual' }); setAnnual(true); }} className={`px-5 py-2 rounded-full text-sm font-semibold transition ${annual ? 'bg-white shadow text-purple-700' : 'text-gray-600'}`}>Annual <span className="text-green-600 text-xs">Save 15%</span></button>
             </div>
+            <p className="mt-6 text-sm text-gray-500">
+              Every plan bundles credits at <span className="font-semibold text-gray-700">R{rateLo.toFixed(2)}–R{rateHi.toFixed(2)} each</span> — up to {bundleSavingPct}% below the R{CREDIT_PACK_RAND.toFixed(2)}/credit top-up rate. From {PLANS[0].monthlyCredits} to {PLANS[PLANS.length - 1].monthlyCredits.toLocaleString('en-ZA')} credits a month.
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {PLANS.map(plan => {
@@ -324,7 +350,7 @@ function PricingPage() {
                     <span className="text-4xl font-black text-gray-900">{formatZar(price)}</span>
                     <span className="text-gray-500 text-sm">/month</span>
                   </div>
-                  <p className="text-sm text-purple-700 font-semibold mt-2">{plan.monthlyCredits} credits/month</p>
+                  <p className="text-sm text-purple-700 font-semibold mt-2">{plan.monthlyCredits.toLocaleString('en-ZA')} credits/month = {creditValueZar(plan.monthlyCredits)}</p>
                   <ul className="mt-6 space-y-3">
                     {plan.features.map((f, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
@@ -339,7 +365,16 @@ function PricingPage() {
               );
             })}
           </div>
-          <p className="text-center text-sm text-gray-500 mt-8">All prices include VAT. Custom credit top-ups available at R1/credit (min R50).</p>
+          <p className="text-center text-sm text-gray-500 mt-8">All prices include VAT. Custom credit top-ups available at R{zarComma(CREDIT_PACK_RAND)}/credit (min R{zarCommaCompact(50 * CREDIT_PACK_RAND)}).</p>
+
+          {/* Free-signup path — the zero-risk entry for undecided visitors */}
+          <div className="mt-6 max-w-2xl mx-auto text-center bg-purple-50 border border-purple-200 rounded-xl p-4">
+            <p className="text-sm text-gray-700">
+              <span className="font-semibold">Just exploring?</span>{' '}
+              <Link to="/register" className="text-purple-700 hover:text-purple-800 font-medium">Create a free account</Link>{' '}
+              — {SIGNUP_BONUS} welcome credits, no card required. Spend them on a real listing before you decide.
+            </p>
+          </div>
           
           {/* Credit Policy Summary */}
           <div className="mt-12 max-w-3xl mx-auto">
@@ -420,7 +455,7 @@ function AboutPage() {
           <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
             <div><p className="text-3xl font-black text-purple-700">27</p><p className="text-gray-600">AI Photo Presets</p></div>
             <div><p className="text-3xl font-black text-purple-700">4</p><p className="text-gray-600">AI Video Tiers</p></div>
-            <div><p className="text-3xl font-black text-purple-700">R1</p><p className="text-gray-600">Per Credit, VAT Included</p></div>
+            <div><p className="text-3xl font-black text-purple-700">R1.50</p><p className="text-gray-600">Per Credit, VAT Included</p></div>
           </div>
         </div>
       </section>
@@ -812,16 +847,40 @@ function RegisterPage() {
 
 function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, balance, logout, isAdmin, lowCreditWarning, acknowledgeLowCredit } = useAuth();
+  // Free-tier conversion nudge surfaces (banner + LowCreditNudge modal) use
+  // the same eligibility rule as AuthContext.lowCreditWarning.
+  const isFreeTier = isFreeTierUser(user);
   const { unreadCount, stats } = useActivity(user?.id);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   // Top-left profile picture menu (profile / settings / billing / sign out)
   const [profileMenu, setProfileMenu] = useState(false);
+  // Container for trigger + dropdown — used to close on outside pointer-down
+  // (touch devices never fire mouseleave, so hover-close alone can't do it).
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
   // Close the profile menu whenever the route changes.
   useEffect(() => { setProfileMenu(false); }, [location.pathname]);
+
+  // Outside click/tap and Escape close the menu (standard menu behavior).
+  useEffect(() => {
+    if (!profileMenu) return;
+    const onPointerDown = (e: Event) => {
+      const el = profileMenuRef.current;
+      if (el && !el.contains(e.target as Node)) setProfileMenu(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setProfileMenu(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [profileMenu]);
 
   // App-wide low-credit banner (20/10/5% of plan allowance) — acknowledged
   // per session via lastLowCreditWarnedAt so it stays visible until acted on.
@@ -856,6 +915,10 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     // Social Media used to be a sub-tab under Property Description — it now
     // earns its own sidebar destination.
     { path: '/dashboard/social', icon: <Share2 className="w-5 h-5" />, label: 'Social Media' },
+    // The gentle-motion studio: same render pipeline as Video Generator but
+    // on the Budget tier only (Hailuo-02 standard, 30s/5 photos, no
+    // voiceover or avatar) — placed between Social and the main generator.
+    { path: '/dashboard/budget-video', icon: <PiggyBank className="w-5 h-5" />, label: 'Budget AI Video' },
     { path: '/dashboard/video', icon: <Video className="w-5 h-5" />, label: 'Video Generator' },
     { path: '/dashboard/credits', icon: <Zap className="w-5 h-5" />, label: 'Credits' },
     { path: '/dashboard/listings', icon: <List className="w-5 h-5" />, label: 'Listings' },
@@ -909,7 +972,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
                   <Crown className="w-4 h-4 text-yellow-400" />
                   <span className="text-sm font-semibold text-white">Upgrade to Pro</span>
                 </div>
-                <p className="text-xs text-ink-400 mt-1">1,300 credits • Priority queue</p>
+                <p className="text-xs text-ink-400 mt-1">{(PLANS.find(pl => pl.id === 'PREMIUM')?.monthlyCredits ?? 0).toLocaleString('en-ZA')} credits • Priority queue</p>
               </Link>
             )}
             <div className="card-dark p-3 mb-3">
@@ -977,8 +1040,12 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div className="badge badge-brand">
               <Zap className="w-3 h-3" /> {balance.total} credits
             </div>
-            {/* Profile picture — top-right account menu */}
-            <div className="relative" onMouseLeave={() => setProfileMenu(false)}>
+            {/* Profile picture — top-right account menu.
+                pb-2 + top-full bridges the 8px trigger→menu gap INSIDE this
+                box: without it the gap belonged to neither element, mouseleave
+                fired mid-crossing and the menu vanished before the pointer
+                arrived (the reported "closes as I move to click it"). */}
+            <div className="relative pb-2" ref={profileMenuRef} onMouseLeave={() => setProfileMenu(false)}>
               <button
                 onClick={() => setProfileMenu(m => !m)}
                 className="flex items-center gap-2 p-1 pr-2 rounded-full hover:bg-white/5 transition"
@@ -997,7 +1064,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <ChevronDown className={`w-4 h-4 text-ink-400 transition ${profileMenu ? 'rotate-180' : ''}`} />
               </button>
               {profileMenu && (
-                <div role="menu" className="absolute right-0 mt-2 w-56 bg-ink-900 border border-white/10 rounded-xl shadow-xl py-1 z-50">
+                <div role="menu" className="absolute right-0 top-full w-56 bg-ink-900 border border-white/10 rounded-xl shadow-xl py-1 z-50">
                   <div className="px-3 py-2 border-b border-white/5">
                     <p className="text-sm text-white font-medium truncate">{user?.fullName}</p>
                     <p className="text-xs text-ink-500 truncate">{user?.email}</p>
@@ -1022,6 +1089,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main id="main-content" className="flex-1 p-4 lg:p-8 pb-28 lg:pb-8 overflow-y-auto">
+          <LowCreditNudge />
           {bannerVisible && (
             <div className={`mb-4 rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in ${
               lowCreditWarning === 'critical' ? 'bg-red-950/60 border-red-500/40' :
@@ -1032,15 +1100,28 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <AlertTriangle className={`w-5 h-5 shrink-0 ${lowCreditWarning === 'critical' ? 'text-red-300' : lowCreditWarning === 'warning' ? 'text-yellow-300' : 'text-blue-300'}`} />
                 <div>
                   <p className={`text-sm font-semibold ${lowCreditWarning === 'critical' ? 'text-red-300' : lowCreditWarning === 'warning' ? 'text-yellow-300' : 'text-blue-300'}`}>
-                    {lowCreditWarning === 'critical' ? 'Critical: less than 5% of your monthly credits remain' :
-                     lowCreditWarning === 'warning' ? 'Low credit warning: below 10% of your monthly allowance' :
-                     'Heads up: credits below 20% of your monthly allowance'}
+                    {isFreeTier ? (
+                      lowCreditWarning === 'critical' ? "You're out of credits — your free welcome credits are used up" :
+                      lowCreditWarning === 'warning' ? 'Almost out of free credits' :
+                      'Your free credits are running low'
+                    ) : (
+                      lowCreditWarning === 'critical' ? 'Critical: less than 5% of your monthly credits remain' :
+                      lowCreditWarning === 'warning' ? 'Low credit warning: below 10% of your monthly allowance' :
+                      'Heads up: credits below 20% of your monthly allowance'
+                    )}
                   </p>
                   <p className="text-xs text-ink-400">{balance.personal} credits left{balance.agency > 0 ? ` + ${balance.agency} agency pool` : ''}</p>
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => navigate('/dashboard/credits')} className="btn btn-primary text-xs py-2 px-3">Recharge Now</button>
+                {isFreeTier ? (
+                  <>
+                    <button onClick={() => navigate('/pricing')} className="btn btn-primary text-xs py-2 px-3 whitespace-nowrap">View plans</button>
+                    <button onClick={() => navigate('/payment?topup=true&amount=50')} className="btn btn-ghost text-xs py-2 px-3 whitespace-nowrap">Buy credits</button>
+                  </>
+                ) : (
+                  <button onClick={() => navigate('/dashboard/credits')} className="btn btn-primary text-xs py-2 px-3">Recharge Now</button>
+                )}
                 <button onClick={acknowledgeLowCredit} className="btn btn-ghost text-xs py-2 px-2" aria-label="Dismiss low credit warning"><X className="w-4 h-4" /></button>
               </div>              </div>
             )}
@@ -2485,6 +2566,14 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
   const [shareOpen, setShareOpen] = useState(false);
   // Elapsed-vs-typical progress for the reel render (typical scales with clip count)
   const reelProgress = useRenderProgress(typicalVideoSeconds(uploadedImages.length || 1));
+  // ── PER-CLIP REVIEW (Option 2, 2026-10-23) ──────────────────────────────
+  // Set when generation finishes but assembly has NOT run: the worker parked
+  // the job at `clips_ready` with every clip playable. The panel re-rolls bad
+  // clips (paid per clip) and only then stitches. `projectId` is captured
+  // from generateReel's local — that closure is gone once it returns.
+  const [clipReview, setClipReview] = useState<{ recordId: string; clips: RenderClip[]; projectId?: string } | null>(null);
+  const [rerollingIndex, setRerollingIndex] = useState<number | null>(null);
+  const [assemblingReview, setAssemblingReview] = useState(false);
 
   // The tier catalog is the shared one (lib/videoTiers) — the same table the
   // server prices renders from, so the UI's credits/images/durations can
@@ -2868,12 +2957,24 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
             config_index: configIndex,
             orientation,
             images: uploadedImages,
-            photo_meta: buildCameraPayload(uploadedImages, photoMeta),
+            // 2026-10-21 ENGINE UNIFICATION: every AI tier renders on
+            // MiniMax Hailuo-02 standard with the GENTLE Budget prompts —
+            // the client's A/B verdict was that Wan's bold deck warped
+            // geometry and invented rooms while the Budget reels came back
+            // clean. The same buildBudgetCameraPayload the Budget tab sends
+            // rides `image_prompts` (the worker's highest-precedence prompt
+            // field), so the text is byte-identical across every tier. The
+            // old `photo_meta` cinematic mapping is deliberately not sent.
+            image_prompts: buildBudgetCameraPayload(uploadedImages, photoMeta),
             voiceover_text: avatarUrl ? '' : (noNarration ? '' : script),
             voice_id: voice,
             language,
             include_agent_branding: branding,
             audio: false,
+            // PER-CLIP REVIEW (Option 2): AI tiers pause at `clips_ready`
+            // before assembly so the agent watches and re-rolls each clip.
+            // ESSENTIAL (local FFmpeg) has no clips and ignores the flag.
+            review: true,
             music_url: selectedMusic || undefined,
             branding: brandingPayload,
           }),
@@ -2895,54 +2996,35 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       track('render_started', { tier, orientation });
 
       // 5) Poll /render_status until terminal (ESSENTIAL renders synchronously
-      // and return video_url immediately)
+      // and return video_url immediately). The loop itself lives in
+      // lib/renderPoll — ONE state machine for every render, both tabs,
+      // including the 2026-10-23 review gate (`clips_ready`).
       let finalUrl: string | null = result?.video_url || null;
       let measuredDuration: number | undefined;
       let thumbUrl: string | undefined;
       if (!finalUrl && result?.record_id) {
-        // 25 min: measured end-to-end renders land ~14 min (5 MiniMax clips +
-        // assembly); the old 12-minute deadline expired first and fell through
-        // to the success toast with no video URL.
-        const deadline = Date.now() + 25 * 60 * 1000;
-        // A worker restart mid-job can leave the status object missing (404).
-        // Tolerate those: keep polling across a bounded outage window instead
-        // of letting a single 404 end the wait.
-        let unknownSince = 0;
-        const UNKNOWN_GRACE_MS = 120_000;
-        while (Date.now() < deadline) {
-          if (cancelRequestedRef.current) { wasCancelled = true; break; }
-          await new Promise(r => setTimeout(r, 5000));
-          try {
-            const pollRes = await fetch(`${RENDER_ENDPOINT}/render_status?record_id=${encodeURIComponent(result.record_id)}`, {
-              headers: await workerHeaders(),
-              signal: AbortSignal.timeout(30_000),
-            });
-            if (pollRes.status === 404) {
-              // Unknown record: could be cold pre-spawn lag or post-restart
-              // loss — grace-window it, then treat as failed so a refund runs.
-              if (!unknownSince) unknownSince = Date.now();
-              else if (Date.now() - unknownSince > UNKNOWN_GRACE_MS) {
-                throw new Error('The render service lost this job before it started — your charge is being refunded. Please try again.');
-              }
-              continue;
-            }
-            unknownSince = 0;
-            const s = await pollRes.json();
-            setRenderStatus(String(s.status || '').toLowerCase());
-            if (s.status === 'completed' && s.video_url) {
-              finalUrl = s.video_url;
-              if (s.duration_seconds) measuredDuration = Number(s.duration_seconds);
-              if (s.thumbnail_url) thumbUrl = String(s.thumbnail_url);
-              break;
-            }
-            if (s.status === 'cancelled') { wasCancelled = true; break; }
-            if (s.status === 'failed') {
-              throw new Error(s.error || 'Render failed');
-            }
-          } catch (e) {
-            if (e instanceof Error && e.message !== 'Failed to fetch') throw e;
-          }
+        const outcome = await pollRenderJob(result.record_id, {
+          endpoint: RENDER_ENDPOINT,
+          isCancelled: () => cancelRequestedRef.current,
+          onStatus: setRenderStatus,
+        });
+        if (outcome.kind === 'cancelled') { wasCancelled = true; throw new Error('Render cancelled'); }
+        if (outcome.kind === 'review') {
+          // PER-CLIP REVIEW GATE (Option 2): every clip exists, the reel is
+          // NOT assembled. Park the wizard on Step 8 with the review panel —
+          // the render charge stands (generation really happened), so return
+          // BEFORE the catch path: no refund, no FAILED row.
+          setClipReview({ recordId: result.record_id, clips: outcome.clips, projectId: projectId ?? undefined });
+          track('render_review_entered', { tier });
+          setGenerating(false);
+          reelProgress.stop();
+          setCancelling(false);
+          toast.info('Every clip is ready — watch them below, re-roll any that look wrong, then create the final video.', 'Review your clips');
+          return;
         }
+        finalUrl = outcome.url;
+        measuredDuration = outcome.duration;
+        thumbUrl = outcome.thumb;
       }
       if (wasCancelled) throw new Error('Render cancelled');
       if (!finalUrl) {
@@ -2990,6 +3072,204 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
         toast.error(error.message || 'Failed to generate video — credits refunded', 'Error');
       }
     }
+  };
+
+  // ── PER-CLIP REVIEW actions (Option 2) ────────────────────────────────
+  // Re-roll price for THIS tier/config — the clip's share of the tier price
+  // (server-priced by lib/renderPricing; the same number the mint charges).
+  const rerollCredits = rerenderClipCredits(tier, configIndex);
+
+  /** The reel exists: player, READY project row, fanfare. `pid` is the
+   *  project row the review captured — generateReel's local is long gone. */
+  const finalizeRender = (o: { url: string; duration?: number; thumb?: string }, pid?: string | null) => {
+    setLastRenderUrl(o.url);
+    if (user && pid && o.url) {
+      PropReelAPI.updateProject(user.id, pid, {
+        status: 'READY',
+        videoUrl: o.url,
+        ...(o.duration ? { durationSeconds: o.duration } : {}),
+        ...(o.thumb ? { thumbnailUrl: o.thumb } : {}),
+      }).catch(() => {});
+    }
+    setGenerating(false);
+    reelProgress.stop();
+    setCancelling(false);
+    playRenderComplete();
+    toast.success('Video rendered successfully!', 'Render Complete');
+  };
+
+  /**
+   * One verdict path for "the job left the review without us": finalize on
+   * `completed`; on cancel/failure fail the row + refund the render charge
+   * (server-idempotent — a deduction is never reversed twice); report
+   * 'reviewing' when the job is still parked at `clips_ready` so callers
+   * keep the panel open instead of failing a live review.
+   */
+  const handleReviewEnded = async (
+    recordId: string,
+    pid?: string | null,
+    fallbackMessage?: string
+  ): Promise<'completed' | 'cancelled' | 'failed' | 'reviewing'> => {
+    const st = await fetch(
+      `${RENDER_ENDPOINT}/render_status?record_id=${encodeURIComponent(recordId)}`,
+      { headers: await workerHeaders(), signal: AbortSignal.timeout(15_000) }
+    ).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (st?.status === 'clips_ready') return 'reviewing';
+    if (st?.status === 'completed' && st.video_url) {
+      setClipReview(null);
+      finalizeRender({
+        url: String(st.video_url),
+        duration: st.duration_seconds ? Number(st.duration_seconds) : undefined,
+        thumb: st.thumbnail_url ? String(st.thumbnail_url) : undefined,
+      }, pid);
+      return 'completed';
+    }
+    setClipReview(null);
+    if (user && pid) PropReelAPI.updateProject(user.id, pid, { status: 'FAILED' }).catch(() => {});
+    try { await refundCredits('render'); } catch { /* best-effort */ }
+    setGenerating(false);
+    reelProgress.stop();
+    setCancelling(false);
+    if (st?.status === 'cancelled') {
+      toast.info('Render cancelled — your credits were refunded.', 'Render Cancelled');
+      return 'cancelled';
+    }
+    toast.error(fallbackMessage || 'Failed to generate video — credits refunded', 'Error');
+    return 'failed';
+  };
+
+  /**
+   * Re-roll ONE clip: paid rerender mint → POST /rerender_clip → bounded
+   * watch of the job's marker (lib/renderPoll). Every non-success verdict
+   * refunds the re-roll charge, and the worker keeps the OLD clip on
+   * failure — a failed re-roll can never break the review or cost twice.
+   */
+  const handleRerender = async (index: number, promptOverride?: string) => {
+    if (!clipReview || rerollingIndex !== null || assemblingReview) return;
+    const { recordId, clips, projectId: pid } = clipReview;
+    const previous = clips[index]?.rerendered_at;
+    setRerollingIndex(index);
+    let charged = false;
+    try {
+      const mint = await jobHeaders('rerender', {
+        tier,
+        configIndex,
+        metadata: { recordId, clipIndex: index },
+        pool: (user?.agencyPoolCredits ?? 0) > 0 ? 'agency' : 'personal',
+      });
+      charged = true;
+      const res = await fetch(`${RENDER_ENDPOINT}/rerender_clip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...mint },
+        body: JSON.stringify({ record_id: recordId, clip_index: index, ...(promptOverride ? { prompt: promptOverride } : {}) }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'The re-roll could not start');
+      }
+      const verdict = await pollRerender({
+        endpoint: RENDER_ENDPOINT,
+        recordId,
+        clipIndex: index,
+        previousRerenderedAt: previous,
+      });
+      if (verdict.kind === 'done') {
+        setClipReview(prev => (prev && prev.recordId === recordId ? { ...prev, clips: verdict.clips } : prev));
+        void refresh();
+        track('clip_rerolled', { tier, clip_index: index });
+        toast.success(`Clip ${index + 1} came back fresh — watch it below, then create the final video when every clip looks right.`, 'Clip re-rolled');
+        return;
+      }
+      const message = verdict.kind === 'error'
+        ? verdict.message
+        : `The render moved on (${verdict.status}) — the re-roll could not be applied.`;
+      if (charged) { try { await refundCredits('rerender'); } catch { /* best-effort */ } }
+      const state = await handleReviewEnded(recordId, pid, message);
+      if (state === 'reviewing') toast.error(message, 'Re-roll not completed');
+    } catch (e: any) {
+      if (charged) { try { await refundCredits('rerender'); } catch { /* best-effort */ } }
+      const message = e?.message || 'The re-roll could not start';
+      const state = await handleReviewEnded(recordId, pid, message);
+      if (state === 'reviewing') toast.error(message, 'Re-roll not completed');
+    } finally {
+      setRerollingIndex(null);
+    }
+  };
+
+  /**
+   * Finish the review: assemble the CURRENT clips (free — the original
+   * render charge already paid for this exact reel) and poll to a verdict
+   * through the SAME shared loop the first phase used. The existing Cancel
+   * button works here too: it flips cancelRequestedRef and the loop returns
+   * `cancelled` into the same refund path.
+   */
+  const assembleReviewedReel = async () => {
+    if (!clipReview || assemblingReview || rerollingIndex !== null) return;
+    const { recordId, projectId: pid } = clipReview;
+    setAssemblingReview(true);
+    try {
+      const res = await fetch(`${RENDER_ENDPOINT}/assemble_reel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+        body: JSON.stringify({ record_id: recordId }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Could not start creating the final video');
+      }
+      track('render_assembled', { tier });
+      setClipReview(null);
+      setGenerating(true);
+      setRenderStatus('processing');
+      reelProgress.start();
+      const outcome = await pollRenderJob(recordId, {
+        endpoint: RENDER_ENDPOINT,
+        isCancelled: () => cancelRequestedRef.current,
+        onStatus: setRenderStatus,
+      });
+      if (outcome.kind === 'cancelled') throw new Error('Render cancelled');
+      if (outcome.kind === 'review') {
+        // Defensive: the resume path passes review=False so assembly can't
+        // pause — but never lose a live review if the worker ever says so.
+        setClipReview({ recordId, clips: outcome.clips, projectId: pid });
+        setGenerating(false);
+        reelProgress.stop();
+        return;
+      }
+      finalizeRender(outcome, pid);
+    } catch (e: any) {
+      const message = e?.message || 'The final video could not be created — credits refunded';
+      const state = await handleReviewEnded(recordId, pid, message);
+      if (state === 'reviewing') toast.error(message, 'Assembly not started');
+    } finally {
+      setAssemblingReview(false);
+    }
+  };
+
+  /** Cancel from the review panel — same contract as cancel during
+   *  generation: tell the worker (best-effort), fail the row, refund the
+   *  render charge. Re-roll charges stand — those fal calls really ran. */
+  const cancelReviewedRender = async () => {
+    if (!clipReview) return;
+    const { recordId, projectId: pid } = clipReview;
+    setCancelling(true);
+    try {
+      await fetch(`${RENDER_ENDPOINT}/cancel_render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+        body: JSON.stringify({ record_id: recordId }),
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch { /* best-effort — the review can be abandoned either way */ }
+    setClipReview(null);
+    if (user && pid) PropReelAPI.updateProject(user.id, pid, { status: 'FAILED' }).catch(() => {});
+    try { await refundCredits('render'); } catch { /* best-effort */ }
+    setGenerating(false);
+    reelProgress.stop();
+    setCancelling(false);
+    toast.info('Render cancelled — your credits were refunded.', 'Render Cancelled');
   };
 
   // Avatar add-on is priced per 10s of narration from the CURRENT script —
@@ -3156,7 +3436,11 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           </button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {TIERS.map(t => {
+          {/* BUDGET renders from its own studio tab (gentle Hailuo-02 motion,
+              no voiceover/avatar wizard) — it is priced from the same
+              lib/videoTiers table like every tier, but does not belong in
+              this picker. */}
+          {TIERS.filter(t => t.id !== 'BUDGET').map(t => {
             const minCredits = Math.min(...t.configurations.map(c => c.credits));
             const maxCredits = Math.max(...t.configurations.map(c => c.credits));
             const creditRange = minCredits === maxCredits ? `${minCredits}` : `${minCredits}-${maxCredits}`;
@@ -3186,8 +3470,7 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
               <p className={`font-bold ${configIndex === idx ? 'text-purple-300' : 'text-white'}`}>
                 {config.duration}s Video
               </p>
-              <p className="text-xs text-ink-400 mt-1">{config.images} images</p>
-              <p className="text-sm font-semibold text-purple-400 mt-2">{config.credits} credits</p>
+              <p className="text-xs text-ink-400 mt-1">{config.images} images</p>                  <p className="text-sm font-semibold text-purple-400 mt-2">{config.credits} credits ≈ {creditListZar(config.credits)}</p>
             </button>
           ))}
         </div>
@@ -3626,6 +3909,9 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
       {/* Step 8 — Render / Video Player */}
       {step === 7 && (
       <div className="space-y-3">
+        {/* While clips await review the Generate button steps aside for the
+            panel — a second render must not start over a live paused job. */}
+        {!clipReview && (
         <button 
           onClick={() => guardAIRender(generateReel)} 
           disabled={generating} 
@@ -3637,6 +3923,19 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
             <><Play className="w-5 h-5" /> Generate Video ({totalCredits} credits)</>
           )}
         </button>
+        )}
+        {!generating && clipReview && (
+          <ClipReviewPanel
+            clips={clipReview.clips}
+            rerenderCredits={rerollCredits}
+            busyIndex={rerollingIndex}
+            assembling={assemblingReview}
+            cancelling={cancelling}
+            onRerender={handleRerender}
+            onAssemble={assembleReviewedReel}
+            onCancel={cancelReviewedRender}
+          />
+        )}
         {generating && (
           <RenderProgressBar
             progress={reelProgress}
@@ -3742,6 +4041,932 @@ function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [],
           onClose={() => setShareOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BUDGET AI VIDEO — the gentle-motion tier (MiniMax Hailuo-02 standard)
+// ═══════════════════════════════════════════════════════════════════════════
+// A second, slimmer render studio on the SAME pipeline as VideoTab, pinned
+// to the BUDGET tier only: 512p or 768p generation, 30s from 5 photos, and
+// deliberately NO voiceover step, NO AI Avatar step and NO listing-details
+// form (they exist to ground a narration budget never has). The gentleness
+// promise is stated before credits can be spent — page subtitle, the amber
+// box on Step 1, and the config cards — because calmer motion IS the tier's
+// product decision, not a side effect. Per-photo camera prompts come from
+// lib/budgetVideoPrompts.ts and ride the request's `image_prompts` field,
+// which the worker's AI path consumes with precedence over its A/B/C deck.
+const BUDGET_TIER_ID = 'BUDGET';
+
+function BudgetVideoTab() {
+  const { user, refundCredits, refresh } = useCredit();
+  const toast = useToast();
+  const uploadWait = useUploadWait();
+  const uploadQueue = useUploadQueue('budget');
+  // The single tier this studio renders — catalog-driven so its prices can
+  // never drift from the job_token charge (lib/videoTiers → lib/renderPricing).
+  const budgetTier = VIDEO_TIERS.find(t => t.id === BUDGET_TIER_ID);
+  const [configIndex, setConfigIndex] = useState(0);
+  // Config-level resolution: the two cards ARE the 512p/768p choice — the
+  // only tier where the agent picks fal resolution instead of duration.
+  const selectedConfig = budgetTier?.configurations[configIndex];
+  const [orientation, setOrientation] = useState('LANDSCAPE');
+  const [branding, setBranding] = useState(true);
+  // The default Agent Branding profile drives the initial toggle state
+  useEffect(() => {
+    const def = user?.agentProfiles?.find(p => p.isDefault);
+    if (def && typeof def.includeBranding === 'boolean') setBranding(def.includeBranding);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.agentProfiles]);
+  const [selectedMusic, setSelectedMusic] = useState<string | null>(null);
+  const [musicTracks, setMusicTracks] = useState<Array<{ id: string; name: string; genre: string; url: string }>>([]);
+  useEffect(() => {
+    fetch('/api/music')
+      .then(r => r.json())
+      .then(d => setMusicTracks(d.tracks || []))
+      .catch(() => setMusicTracks([]));
+  }, []);
+  // Separate IndexedDB drafts from the main wizard — an agent drafting a
+  // budget reel and a cinematic reel in one session never cross-contaminate.
+  const [uploadedImages, setUploadedImages] = useStudioDraft<string[]>(studioDraftKey(user?.id, 'budget:images'), []);
+  const draftKey = studioDraftKey(user?.id, 'budget:images');
+  const budgetPhotoRepair = useRepairDraftPhotos(draftKey, uploadedImages, setUploadedImages);
+  const userFacingPhoto = (src: string) => budgetPhotoRepair.display[src] || src;
+  const budgetOrder = useReorderable(setUploadedImages);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [photoDrag, setPhotoDrag] = useState(false);
+  const photosInputRef = useRef<HTMLInputElement>(null);
+  // Per-photo (roomType, move) tags — the same taxonomy the main Photos step
+  // speaks, but resolved through the GENTLE prompt library. Gates leaving the
+  // Photos step exactly like VideoTab's does.
+  const [photoMeta, setPhotoMeta] = useStudioDraft<Record<string, PhotoMeta>>(studioDraftKey(user?.id, 'budget:photoMeta'), {});
+  const setPhotoMetaFor = (url: string, patch: Partial<PhotoMeta>) =>
+    setPhotoMeta(prev => {
+      const prior = prev[url];
+      // Explicit precedence (patch > existing > default) — see VideoTab's
+      // identical helper for why object-spread was wrong here.
+      const roomType = patch.roomType ?? prior?.roomType ?? 'interior';
+      const move = patch.move ?? prior?.move ?? 'in';
+      return { ...prev, [url]: { roomType, move } };
+    });
+  // Backlog drain — photos uploaded while this route was unmounted land here.
+  useEffect(() => {
+    const urls = drainBacklog('budget');
+    if (urls.length) setUploadedImages(prev => [...prev, ...urls].slice(0, selectedConfig?.images ?? 5));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadQueue, setUploadedImages]);
+  const handlePhotos = (list: FileList | null) => {
+    if (!list || !list.length) return;
+    const room = (selectedConfig?.images ?? 5) - uploadedImages.length - uploadQueue.pending;
+    if (room <= 0) {
+      toast.error(`A budget reel takes ${selectedConfig?.images ?? 5} photos — remove one first`, 'Photo limit reached');
+      return;
+    }
+    setUploadingPhotos(true);
+    enqueueImagesForAI(list, user?.id, room, {
+      scope: 'budget',
+    }).finally(() => {
+      setUploadingPhotos(false);
+      if (photosInputRef.current) photosInputRef.current.value = '';
+    });
+  };
+  const [generating, setGenerating] = useState(false);
+  const [lastRenderUrl, setLastRenderUrl] = useState<string | null>(null);
+  const [renderStatus, setRenderStatus] = useState('');
+  // Cancel plumbing — same refs-as-flags contract as VideoTab's poll loop.
+  const cancelRequestedRef = useRef(false);
+  const recordIdRef = useRef<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  // Elapsed-vs-typical progress — budget is always 30s, but the helper
+  // scales with clip count so the bar's expectation tracks the real job.
+  const reelProgress = useRenderProgress(typicalVideoSeconds(uploadedImages.length || 1));
+  // ── PER-CLIP REVIEW (Option 2, 2026-10-23) — same gate as the main tab.
+  // The worker parks AI-tier renders at `clips_ready`; the panel re-rolls
+  // bad clips (paid per clip) and only then stitches the reel.
+  const [clipReview, setClipReview] = useState<{ recordId: string; clips: RenderClip[]; projectId?: string } | null>(null);
+  const [rerollingIndex, setRerollingIndex] = useState<number | null>(null);
+  const [assemblingReview, setAssemblingReview] = useState(false);
+
+  // No avatar phase exists here (budget has no add-on), so cancel is one
+  // worker call — the poll loop stops on its next tick and the catch path
+  // refunds whatever actually landed.
+  const cancelRender = async () => {
+    if (cancelRequestedRef.current) return;
+    cancelRequestedRef.current = true;
+    setCancelling(true);
+    const id = recordIdRef.current;
+    if (!id) return;
+    try {
+      await fetch(`${RENDER_ENDPOINT}/cancel_render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+        body: JSON.stringify({ record_id: id }),
+      });
+    } catch { /* best-effort — polling stops either way */ }
+  };
+
+  // ── PER-CLIP REVIEW actions (Option 2, budget) ────────────────────────
+  const rerollCredits = rerenderClipCredits(BUDGET_TIER_ID, configIndex);
+
+  /** Budget twin of VideoTab's finalize: player + READY row + fanfare. */
+  const finalizeRender = (o: { url: string; duration?: number; thumb?: string }, pid?: string | null) => {
+    setLastRenderUrl(o.url);
+    if (user && pid && o.url) {
+      PropReelAPI.updateProject(user.id, pid, {
+        status: 'READY',
+        videoUrl: o.url,
+        ...(o.duration ? { durationSeconds: o.duration } : {}),
+        ...(o.thumb ? { thumbnailUrl: o.thumb } : {}),
+      }).catch(() => {});
+    }
+    setGenerating(false);
+    reelProgress.stop();
+    setCancelling(false);
+    playRenderComplete();
+    toast.success('Budget reel rendered successfully!', 'Render Complete');
+  };
+
+  /** Shared verdict for "the job left the review without us" — mirrors
+   *  VideoTab's handleReviewEnded exactly (finalize / fail+refund / still
+   *  parked at `clips_ready`), so both tabs behave the same. */
+  const handleReviewEnded = async (
+    recordId: string,
+    pid?: string | null,
+    fallbackMessage?: string
+  ): Promise<'completed' | 'cancelled' | 'failed' | 'reviewing'> => {
+    const st = await fetch(
+      `${RENDER_ENDPOINT}/render_status?record_id=${encodeURIComponent(recordId)}`,
+      { headers: await workerHeaders(), signal: AbortSignal.timeout(15_000) }
+    ).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (st?.status === 'clips_ready') return 'reviewing';
+    if (st?.status === 'completed' && st.video_url) {
+      setClipReview(null);
+      finalizeRender({
+        url: String(st.video_url),
+        duration: st.duration_seconds ? Number(st.duration_seconds) : undefined,
+        thumb: st.thumbnail_url ? String(st.thumbnail_url) : undefined,
+      }, pid);
+      return 'completed';
+    }
+    setClipReview(null);
+    if (user && pid) PropReelAPI.updateProject(user.id, pid, { status: 'FAILED' }).catch(() => {});
+    try { await refundCredits('render'); } catch { /* best-effort */ }
+    setGenerating(false);
+    reelProgress.stop();
+    setCancelling(false);
+    if (st?.status === 'cancelled') {
+      toast.info('Render cancelled — your credits were refunded.', 'Render Cancelled');
+      return 'cancelled';
+    }
+    toast.error(fallbackMessage || 'Failed to generate video — credits refunded', 'Error');
+    return 'failed';
+  };
+
+  /** Re-roll ONE budget clip: paid mint → /rerender_clip → bounded marker
+   *  watch. Non-success refunds the charge; the old clip always stays. */
+  const handleRerender = async (index: number, promptOverride?: string) => {
+    if (!clipReview || rerollingIndex !== null || assemblingReview) return;
+    const { recordId, clips, projectId: pid } = clipReview;
+    const previous = clips[index]?.rerendered_at;
+    setRerollingIndex(index);
+    let charged = false;
+    try {
+      const mint = await jobHeaders('rerender', {
+        tier: BUDGET_TIER_ID,
+        configIndex,
+        metadata: { recordId, clipIndex: index },
+        pool: (user?.agencyPoolCredits ?? 0) > 0 ? 'agency' : 'personal',
+      });
+      charged = true;
+      const res = await fetch(`${RENDER_ENDPOINT}/rerender_clip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...mint },
+        body: JSON.stringify({ record_id: recordId, clip_index: index, ...(promptOverride ? { prompt: promptOverride } : {}) }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'The re-roll could not start');
+      }
+      const verdict = await pollRerender({
+        endpoint: RENDER_ENDPOINT,
+        recordId,
+        clipIndex: index,
+        previousRerenderedAt: previous,
+      });
+      if (verdict.kind === 'done') {
+        setClipReview(prev => (prev && prev.recordId === recordId ? { ...prev, clips: verdict.clips } : prev));
+        void refresh();
+        track('clip_rerolled', { tier: BUDGET_TIER_ID, clip_index: index });
+        toast.success(`Clip ${index + 1} came back fresh — watch it below, then create the final video when every clip looks right.`, 'Clip re-rolled');
+        return;
+      }
+      const message = verdict.kind === 'error'
+        ? verdict.message
+        : `The render moved on (${verdict.status}) — the re-roll could not be applied.`;
+      if (charged) { try { await refundCredits('rerender'); } catch { /* best-effort */ } }
+      const state = await handleReviewEnded(recordId, pid, message);
+      if (state === 'reviewing') toast.error(message, 'Re-roll not completed');
+    } catch (e: any) {
+      if (charged) { try { await refundCredits('rerender'); } catch { /* best-effort */ } }
+      const message = e?.message || 'The re-roll could not start';
+      const state = await handleReviewEnded(recordId, pid, message);
+      if (state === 'reviewing') toast.error(message, 'Re-roll not completed');
+    } finally {
+      setRerollingIndex(null);
+    }
+  };
+
+  /** Assemble the reviewed clips (free — the render charge paid for this
+   *  reel) and poll through the SAME shared loop. The tab's Cancel button
+   *  works during assembly via cancelRequestedRef. */
+  const assembleReviewedReel = async () => {
+    if (!clipReview || assemblingReview || rerollingIndex !== null) return;
+    const { recordId, projectId: pid } = clipReview;
+    setAssemblingReview(true);
+    try {
+      const res = await fetch(`${RENDER_ENDPOINT}/assemble_reel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+        body: JSON.stringify({ record_id: recordId }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Could not start creating the final video');
+      }
+      track('render_assembled', { tier: BUDGET_TIER_ID });
+      setClipReview(null);
+      setGenerating(true);
+      setRenderStatus('processing');
+      reelProgress.start();
+      const outcome = await pollRenderJob(recordId, {
+        endpoint: RENDER_ENDPOINT,
+        isCancelled: () => cancelRequestedRef.current,
+        onStatus: setRenderStatus,
+      });
+      if (outcome.kind === 'cancelled') throw new Error('Render cancelled');
+      if (outcome.kind === 'review') {
+        setClipReview({ recordId, clips: outcome.clips, projectId: pid });
+        setGenerating(false);
+        reelProgress.stop();
+        return;
+      }
+      finalizeRender(outcome, pid);
+    } catch (e: any) {
+      const message = e?.message || 'The final video could not be created — credits refunded';
+      const state = await handleReviewEnded(recordId, pid, message);
+      if (state === 'reviewing') toast.error(message, 'Assembly not started');
+    } finally {
+      setAssemblingReview(false);
+    }
+  };
+
+  /** Cancel from the review panel — worker cancel, FAILED row, render charge
+   *  refunded (re-roll charges stand: those fal calls really ran). */
+  const cancelReviewedRender = async () => {
+    if (!clipReview) return;
+    const { recordId, projectId: pid } = clipReview;
+    setCancelling(true);
+    try {
+      await fetch(`${RENDER_ENDPOINT}/cancel_render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await workerHeaders()) },
+        body: JSON.stringify({ record_id: recordId }),
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch { /* best-effort — the review can be abandoned either way */ }
+    setClipReview(null);
+    if (user && pid) PropReelAPI.updateProject(user.id, pid, { status: 'FAILED' }).catch(() => {});
+    try { await refundCredits('render'); } catch { /* best-effort */ }
+    setGenerating(false);
+    reelProgress.stop();
+    setCancelling(false);
+    toast.info('Render cancelled — your credits were refunded.', 'Render Cancelled');
+  };
+
+  const generateReel = async () => {
+    if (!budgetTier || !selectedConfig) return;
+    setGenerating(true);
+    reelProgress.start();
+    const recordId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    recordIdRef.current = recordId;
+    cancelRequestedRef.current = false; // the flag belongs to THIS render only
+    setCancelling(false);
+    // Hoisted out of the try: the catch path fails the project record so the
+    // nightly reaper (PROCESSING rows only) can never refund it a second time.
+    let projectId: string | null = null;
+    let wasCancelled = false;
+    // Refund only if THIS deduction actually landed — a mint that failed
+    // (not enough credits) must not add credits to the balance.
+    let charged = false;
+
+    try {
+      // 1) Project record first — a budget reel is still a real render row.
+      if (user) {
+        try {
+          const project = await PropReelAPI.createProject({
+            userId: user.id,
+            title: 'Budget Property Video',
+            status: 'PROCESSING',
+            videoTier: BUDGET_TIER_ID,
+            durationSeconds: selectedConfig.duration,
+            jobId: recordId,
+            creditsSpent: selectedConfig.credits,
+          } as any);
+          projectId = project.id;
+        } catch { /* non-fatal — render can still proceed */ }
+      }
+
+      // 2) Pay at mint time: the server prices from lib/videoTiers' BUDGET
+      //    configs (20⚡ 512p / 34⚡ 768p) and hands back a single-use token
+      //    the worker refuses to render without.
+      const usePool = (user?.agencyPoolCredits ?? 0) > 0;
+      const jobToken = await jobHeaders('render', {
+        tier: BUDGET_TIER_ID,
+        configIndex,
+        metadata: { tier: BUDGET_TIER_ID, duration: selectedConfig.duration, recordId },
+        pool: usePool ? 'agency' : 'personal',
+      });
+      charged = true;
+      void refresh(); // the balance display — the charge landed server-side
+
+      const brandProfile = user?.agentProfiles?.find(p => p.isDefault) || user?.agentProfiles?.[0];
+      const contactLine = brandProfile
+        ? [brandProfile.fullName, brandProfile.phone, brandProfile.email].filter(Boolean).join(' · ')
+        : '';
+      const hostedPhoto = brandProfile?.photoUrl && !brandProfile.photoUrl.startsWith('data:') ? brandProfile.photoUrl : undefined;
+      const brandingPayload = branding ? {
+        photo_url: hostedPhoto,
+        logo_url: brandProfile?.logoUrl || undefined,
+        contact_line: contactLine || undefined,
+      } : undefined;
+
+      // 3) Start the async render job (bounded — a hung POST on a Modal cold
+      //    container used to leave the spinner in dead-air for the deadline).
+      if (cancelRequestedRef.current) { wasCancelled = true; throw new Error('Render cancelled'); }
+      const START_TIMEOUT_MS = 45_000;
+      let response: Response;
+      try {
+        response = await fetch(`${RENDER_ENDPOINT}/render_video`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...jobToken },
+          body: JSON.stringify({
+            record_id: recordId,
+            tier: BUDGET_TIER_ID,
+            config_index: configIndex,
+            orientation,
+            images: uploadedImages,
+            // The gentle prompts ride `image_prompts` — the field the worker's
+            // AI path reads (prompt per image, precedence over its deck).
+            // photo_meta in that request model carries roomType/move, NOT
+            // prompt text, so it is deliberately not sent here.
+            image_prompts: buildBudgetCameraPayload(uploadedImages, photoMeta),
+            // Silent by design: no voiceover, no avatar — but a selected
+            // music track still beds under the cuts (the worker mixes it
+            // for silent AI reels).
+            voiceover_text: '',
+            include_agent_branding: branding,
+            audio: false,
+            // PER-CLIP REVIEW (Option 2): pause at `clips_ready` before
+            // assembly so the agent watches and re-rolls each clip.
+            review: true,
+            music_url: selectedMusic || undefined,
+            branding: brandingPayload,
+          }),
+          signal: AbortSignal.timeout(START_TIMEOUT_MS),
+        });
+      } catch (e: any) {
+        if (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+          throw new Error('The render service did not respond while starting — your charge is being refunded; try again in a minute.');
+        }
+        throw e;
+      }
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to start budget video generation');
+      }
+
+      const result = await response.json();
+      track('render_started', { tier: BUDGET_TIER_ID, orientation });      // 4) Poll /render_status until terminal (the worker may still answer
+      // synchronously for a finished job). One shared state machine with the
+      // main wizard — lib/renderPoll owns the review gate for BOTH tabs.
+      let finalUrl: string | null = result?.video_url || null;
+      let measuredDuration: number | undefined;
+      let thumbUrl: string | undefined;
+      if (!finalUrl && result?.record_id) {
+        const outcome = await pollRenderJob(result.record_id, {
+          endpoint: RENDER_ENDPOINT,
+          isCancelled: () => cancelRequestedRef.current,
+          onStatus: setRenderStatus,
+        });
+        if (outcome.kind === 'cancelled') { wasCancelled = true; throw new Error('Render cancelled'); }
+        if (outcome.kind === 'review') {
+          // PER-CLIP REVIEW GATE (Option 2): clips exist, reel not assembled.
+          // The render charge stands (generation happened) — return BEFORE
+          // the catch path: no refund, no FAILED row.
+          setClipReview({ recordId: result.record_id, clips: outcome.clips, projectId: projectId ?? undefined });
+          track('render_review_entered', { tier: BUDGET_TIER_ID });
+          setGenerating(false);
+          reelProgress.stop();
+          setCancelling(false);
+          toast.info('Every clip is ready — watch them below, re-roll any that look wrong, then create the final video.', 'Review your clips');
+          return;
+        }
+        finalUrl = outcome.url;
+        measuredDuration = outcome.duration;
+        thumbUrl = outcome.thumb;
+      }
+      if (wasCancelled) throw new Error('Render cancelled');
+      if (!finalUrl) {
+        // Never report success without a video — refund instead.
+        throw new Error('The render did not finish within 25 minutes — your credits were refunded. Please try again from the Studio.');
+      }
+      setLastRenderUrl(finalUrl);
+
+      // 5) Finalize the project record
+      if (user && projectId && finalUrl) {
+        PropReelAPI.updateProject(user.id, projectId, {
+          status: 'READY',
+          videoUrl: finalUrl,
+          ...(measuredDuration ? { durationSeconds: measuredDuration } : {}),
+          ...(thumbUrl ? { thumbnailUrl: thumbUrl } : {}),
+        }).catch(() => {});
+      }
+
+      setGenerating(false);
+      reelProgress.stop();
+      setCancelling(false);
+      playRenderComplete();
+      toast.success('Budget reel rendered successfully!', 'Render Complete');
+    } catch (error: any) {
+      console.error('Error generating budget video:', error);
+      // Fail the record FIRST: the nightly reaper only refunds PROCESSING
+      // rows, so once this lands the refund below is the only one that runs.
+      if (user && projectId) {
+        PropReelAPI.updateProject(user.id, projectId, { status: 'FAILED' }).catch(() => {});
+      }
+      if (charged) {
+        try {
+          await refundCredits('render');
+        } catch { /* best-effort */ }
+      }
+      setGenerating(false);
+      reelProgress.stop();
+      setCancelling(false);
+      if (wasCancelled) {
+        toast.info('Render cancelled — your credits were refunded.', 'Render Cancelled');
+      } else {
+        toast.error(error.message || 'Failed to generate video — credits refunded', 'Error');
+      }
+    }
+  };
+
+  // ── 5-step wizard — the main flow minus voiceover, avatar and listing
+  // details (those steps exist only to ground a narration budget never has).
+  const WIZARD_STEPS = [
+    { id: 'config', label: 'Resolution & Price' },
+    { id: 'orientation', label: 'Orientation' },
+    { id: 'photos', label: 'Photos' },
+    { id: 'extras', label: 'Music & Branding' },
+    { id: 'render', label: 'Render' },
+  ];
+  const [step, setStep] = useState(0);
+  // Every photo must carry room type + camera move before rendering, same
+  // gate as the main wizard — the gentle prompts are per-photo by design.
+  const photosMissingMeta = step === 2
+    ? uploadedImages.filter(u => { const m = photoMeta[u]; return !m || !m.roomType || !m.move; }).length
+    : 0;
+  const canNext = step !== 2 || (uploadedImages.length > 0 && photosMissingMeta === 0);
+  const nextStep = () => { if (step < WIZARD_STEPS.length - 1 && canNext) setStep(step + 1); };
+  const prevStep = () => setStep(s => Math.max(0, s - 1));
+
+  if (!budgetTier || !selectedConfig) {
+    return <p className="text-sm text-ink-400">The Budget tier is missing from the price catalog — please reload the page. If it persists, contact support.</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-white flex items-center gap-2"><PiggyBank className="w-5 h-5 text-purple-400" /> Budget AI Video</h2>
+
+      {/* Wizard steps — same numbered layout as the Video Generator flow */}
+      <div className="flex items-center">
+        {WIZARD_STEPS.map((s, i) => (
+          <div key={s.id} className={`flex items-center ${i > 0 ? 'flex-1' : ''}`}>
+            {i > 0 && <div className={`h-0.5 flex-1 mx-2 ${i <= step ? 'bg-purple-600' : 'bg-white/10'}`} />}
+            <div className="flex flex-col items-center gap-1">
+              <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                i < step ? 'bg-purple-700 text-white' : i === step ? 'bg-purple-700/30 border border-purple-500 text-white' : 'bg-white/10 text-ink-400'
+              }`}>
+                {i < step ? <Check className="w-4 h-4" /> : i + 1}
+              </span>
+              <span className={`text-[11px] hidden sm:block ${i === step ? 'text-white' : 'text-ink-500'}`}>{s.label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Step 1 — Resolution & Price, with the motion disclaimer front and
+          center: the agent must understand the trade BEFORE credits move. */}
+      {step === 0 && (
+      <div className="space-y-4">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 flex gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-200/90 leading-relaxed">
+            <p className="font-semibold text-amber-300">Gentler motion — that is the point</p>
+            <p className="mt-1">
+              Budget reels are a slower, calmer camera pace with noticeably less movement than the Video Generator's cinematic tiers. There is no voiceover and no AI avatar on this tier — it is photos, gentle motion and optional music and branding. For bold walk-throughs and dramatic fly-throughs, use the <Link to="/dashboard/video" className="underline hover:text-amber-200">Video Generator</Link> instead.
+            </p>
+          </div>
+        </div>
+        <div>
+          <label className="label">Resolution & Price</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {budgetTier.configurations.map((config, idx) => (
+              <button
+                key={idx}
+                onClick={() => setConfigIndex(idx)}
+                className={`p-5 rounded-xl text-left transition ${configIndex === idx ? 'bg-purple-700/20 border border-purple-500/30' : 'bg-white/5 hover:bg-white/10'}`}
+              >
+                <p className={`text-2xl font-bold ${configIndex === idx ? 'text-purple-300' : 'text-white'}`}>{config.resolution}</p>
+                <p className="text-xs text-ink-400 mt-1">{config.duration}s video from {config.images} photos — gentle Hailuo-02 motion, no voiceover</p>
+                <p className="text-sm font-semibold text-purple-400 mt-2">{config.credits} credits</p>
+                {configIndex === idx && (user?.credits ?? 0) < config.credits && !((user?.agencyPoolCredits ?? 0) > 0) && (
+                  <p className="text-xs text-amber-400/90 mt-2">You have ⚡{user?.credits ?? 0} — <Link to="/dashboard/credits" className="underline hover:text-amber-300">top up</Link> before rendering.</p>
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-ink-500 mt-2">
+            Budget reels are always {selectedConfig.duration}s from {selectedConfig.images} photos — the only choice is how sharp the source generation is.
+          </p>
+        </div>
+      </div>
+      )}
+
+      {/* Step 2 — Orientation */}
+      {step === 1 && (
+      <div>
+        <div className="flex items-center justify-between">
+          <label className="label">Orientation</label>
+          <button
+            type="button"
+            onClick={() => { setOrientation('LANDSCAPE'); toast.info('Orientation reset to Landscape', 'Step 2'); }}
+            className="text-xs text-ink-400 hover:text-red-400"
+          >
+            Clear
+          </button>
+        </div>
+        <div className="flex gap-3">
+          {ORIENTATIONS.map(o => (
+            <button key={o.id} onClick={() => setOrientation(o.id)} className={`flex items-center gap-3 px-6 py-3 rounded-xl transition ${orientation === o.id ? 'bg-purple-700/20 border border-purple-500/30 text-purple-300' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
+              <span className="text-xl">{o.icon}</span>
+              <div className="text-left">
+                <p className="font-medium text-sm">{o.label}</p>
+                <p className="text-xs text-ink-400">{o.ratio}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+        {ORIENTATION_PHOTO_TIP[orientation] && (
+          <p className="text-xs text-ink-400 mt-3 leading-relaxed">
+            {ORIENTATION_PHOTO_TIP[orientation]}
+          </p>
+        )}
+      </div>
+      )}
+
+      {/* Step 3 — Photos + per-photo camera tags (the gentle prompts) */}
+      {step === 2 && (
+      <div>
+        <div className="flex items-center justify-between">
+          <label className="label">Property Photos ({uploadedImages.length} / {selectedConfig.images})</label>
+          {uploadedImages.length > 0 && (
+            <button onClick={() => { setUploadedImages([]); setPhotoMeta({}); }} className="text-xs text-ink-400 hover:text-red-400">Clear all</button>
+          )}
+        </div>
+        <input
+          ref={photosInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="sr-only"
+          onChange={e => handlePhotos(e.target.files)}
+        />
+        <div
+          className={`border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer ${photoDrag ? 'border-purple-500 bg-purple-500/10' : 'border-white/10 hover:border-purple-500/30'}`}
+          onClick={() => photosInputRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); setPhotoDrag(true); }}
+          onDragLeave={() => setPhotoDrag(false)}
+          onDrop={e => { e.preventDefault(); e.stopPropagation(); setPhotoDrag(false); handlePhotos(e.dataTransfer.files); }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && photosInputRef.current?.click()}
+          aria-label="Upload property photos"
+        >
+          <Image className="w-8 h-8 text-ink-400 mx-auto mb-2" />
+          <p className="text-ink-400 text-sm">
+            {uploadingPhotos || uploadQueue.pending > 0 ? uploadStatusText(uploadQueue, uploadWait) : uploadedImages.length ? 'Add more photos' : 'Drop photos here or click to upload'}
+          </p>
+          <p className="text-ink-500 text-xs mt-1">Up to {selectedConfig.images} photos for the 30s budget reel — JPEG/PNG/WEBP up to 25MB</p>
+        </div>
+        {uploadedImages.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+            {uploadedImages.map((src, i) => (
+              <div key={src} className={budgetOrder.dragClass(i, 'relative group')} {...budgetOrder.dragProps(i)}>
+                <img src={userFacingPhoto(src)} alt={`Photo ${i + 1}`} className="w-full aspect-[4/3] object-cover rounded-lg border border-white/10 pointer-events-none" draggable={false} />
+                <span className="absolute top-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">{i + 1}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); setUploadedImages(prev => prev.filter((_, idx) => idx !== i)); }}
+                  className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition"
+                  aria-label={`Remove photo ${i + 1}`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+                {/* Per-photo camera metadata — the gentle prompt is picked from
+                    it. Same taxonomy as the main Photos step: EXTERIOR also
+                    gets the pull-back (Zoom out); INTERIOR never does. */}
+                <div className="mt-2 space-y-2 rounded-lg bg-black/40 p-2">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Photo is from a</span>
+                    <div className="flex gap-1 mt-1">
+                      {(['interior', 'exterior'] as const).map(rt => (
+                        <button
+                          key={rt}
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setPhotoMetaFor(src, { roomType: rt, move: 'in' }); }}
+                          className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition ${(photoMeta[src]?.roomType ?? 'interior') === rt ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+                        >
+                          {ROOM_TYPE_LABEL[rt]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Camera move</span>
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      {movesForRoomType(photoMeta[src]?.roomType ?? 'interior').map(mv => (
+                        <button
+                          key={mv}
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setPhotoMetaFor(src, { move: mv }); }}
+                          className={`rounded px-2 py-1 text-[11px] font-medium transition ${(photoMeta[src]?.move ?? 'in') === mv ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+                        >
+                          {CAMERA_MOVE_LABEL[mv]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* Step 4 — Music & Branding (same enhancements as the main flow —
+          music now genuinely mixes on a silent AI reel) */}
+      {step === 3 && (
+      <div className="space-y-6">
+        <div>
+          <label className="label flex items-center gap-2">
+            <Music className="w-4 h-4 text-purple-400" />
+            Background Music (Optional)
+          </label>
+          <div className="bg-ink-800/50 rounded-xl p-4">
+            {musicTracks.length === 0 ? (
+              <p className="text-sm text-ink-400">No music tracks available yet — your administrator can upload tracks in Admin → Music Library.</p>
+            ) : (
+              <select
+                className="input"
+                value={selectedMusic || ''}
+                onChange={(e) => setSelectedMusic(e.target.value || null)}
+              >
+                <option value="">No background music</option>
+                {musicTracks.map(t => (
+                  <option key={t.id} value={t.url}>{t.name} ({t.genre})</option>
+                ))}
+              </select>
+            )}
+            {selectedMusic && musicTracks.some((t) => t.url === selectedMusic) && (
+              <div className="mt-3">
+                <audio
+                  key={selectedMusic}
+                  controls
+                  preload="none"
+                  src={selectedMusic}
+                  aria-label="Preview the selected background music"
+                  className="w-full"
+                />
+                <p className="text-xs text-ink-500 mt-1">
+                  Preview — this is how the track will sound under your reel.
+                </p>
+              </div>
+            )}
+            <p className="text-xs text-ink-500 mt-2">
+              Budget reels are silent by design (no voiceover), so the selected track plays under the whole reel. Music tracks are managed by administrators.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="label">Enhancements</label>
+            {(branding || selectedMusic) && (
+              <button
+                type="button"
+                onClick={() => { setBranding(false); setSelectedMusic(null); toast.info('Enhancements cleared — branding & music off', 'Step 4'); }}
+                className="text-xs text-ink-400 hover:text-red-400"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setBranding(!branding)}
+              aria-pressed={branding}
+              className={`p-4 rounded-xl text-left transition min-h-[44px] ${branding ? 'bg-purple-700/25 border border-purple-500/50' : 'bg-white/5 border border-transparent hover:bg-white/10'}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-semibold ${branding ? 'text-purple-300' : 'text-ink-300'}`}>Agent Profile Branding</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${branding ? 'bg-purple-600 text-white' : 'bg-white/10 text-ink-400'}`}>{branding ? 'INCLUDED' : 'OFF'}</span>
+              </div>
+              <p className="text-xs text-ink-500 mt-1">Profile picture, agency logo & contact details on the reel</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedMusic(selectedMusic ? null : (musicTracks[0]?.url || 'default'))}
+              aria-pressed={!!selectedMusic}
+              disabled={musicTracks.length === 0}
+              className={`p-4 rounded-xl text-left transition min-h-[44px] disabled:opacity-40 ${selectedMusic ? 'bg-purple-700/25 border border-purple-500/50' : 'bg-white/5 border border-transparent hover:bg-white/10'}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-semibold ${selectedMusic ? 'text-purple-300' : 'text-ink-300'}`}>Music Track</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${selectedMusic ? 'bg-purple-600 text-white' : 'bg-white/10 text-ink-400'}`}>{selectedMusic ? 'INCLUDED' : 'OFF'}</span>
+              </div>
+              <p className="text-xs text-ink-500 mt-1">{musicTracks.length === 0 ? 'No tracks uploaded yet' : selectedMusic ? 'Tap to remove — choose specific track above' : 'Tap to include — pick the track above'}</p>
+            </button>
+          </div>
+        </div>
+      </div>
+      )}
+
+      {step === 2 && !canNext && (
+        <p className="text-xs text-amber-400/90 text-center">
+          {uploadedImages.length === 0
+            ? 'Add at least one property photo to continue — a reel needs images to render.'
+            : `Tag every photo with a room type (Interior / Exterior) and a camera move before continuing — ${photosMissingMeta} photo${photosMissingMeta === 1 ? '' : 's'} still untagged.`}
+        </p>
+      )}
+
+      {/* Step 5 — Render / Video Player */}
+      {step === 4 && (
+      <div className="space-y-3">
+        {/* Review gate: Generate steps aside while clips await review. */}
+        {!clipReview && (
+        <button
+          onClick={() => guardAIRender(generateReel)}
+          disabled={generating}
+          className="btn btn-primary w-full text-lg py-4"
+        >
+          {generating ? (
+            <><RefreshCw className="w-5 h-5 animate-spin" /> Generating Video...</>
+          ) : (
+            <><Play className="w-5 h-5" /> Generate Video ({selectedConfig.credits} credits)</>
+          )}
+        </button>
+        )}
+        {!generating && clipReview && (
+          <ClipReviewPanel
+            clips={clipReview.clips}
+            rerenderCredits={rerollCredits}
+            busyIndex={rerollingIndex}
+            assembling={assemblingReview}
+            cancelling={cancelling}
+            onRerender={handleRerender}
+            onAssemble={assembleReviewedReel}
+            onCancel={cancelReviewedRender}
+          />
+        )}
+        {generating && (
+          <RenderProgressBar
+            progress={reelProgress}
+            stage={renderStatus === 'processing' ? 'processing' : renderStatus === 'queued' ? 'queued' : ''}
+            label="Rendering your budget reel"
+          />
+        )}
+        {generating && (
+          <button
+            type="button"
+            onClick={cancelRender}
+            disabled={cancelling}
+            className="btn btn-secondary w-full min-h-[48px] text-red-300 hover:text-red-200 border border-red-500/30"
+          >
+            {cancelling ? (
+              <><RefreshCw className="w-4 h-4 animate-spin" /> Cancelling… saving your credits</>
+            ) : (
+              <><X className="w-4 h-4" /> Cancel render — unused credits come back</>
+            )}
+          </button>
+        )}
+        {!generating && (user?.credits ?? 0) < selectedConfig.credits && !((user?.agencyPoolCredits ?? 0) > 0) && (
+          <p className="text-xs text-amber-400/90 text-center">
+            You have ⚡{user?.credits ?? 0} — this render costs ⚡{selectedConfig.credits}. <Link to="/dashboard/credits" className="underline hover:text-amber-300">Top up</Link> before generating.
+          </p>
+        )}
+        {!generating && (
+          <p className="text-xs text-ink-400 text-center">
+            {selectedConfig.duration}s reel from {uploadedImages.length || selectedConfig.images} photo{(uploadedImages.length || selectedConfig.images) === 1 ? '' : 's'} at {selectedConfig.resolution} · gentle, slower motion — no voiceover or avatar{selectedMusic ? ' · music included' : ''}{branding ? ' · agent branding included' : ''}
+          </p>
+        )}
+        {!generating && lastRenderUrl && (
+          <div className="flex items-center justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => { setLastRenderUrl(null); setShareOpen(false); toast.info('Finished video cleared from this page — it stays in Projects', 'Step 5'); }}
+              className="text-xs text-ink-400 hover:text-red-400"
+            >
+              Clear video
+            </button>
+          </div>
+        )}
+        {!generating && lastRenderUrl && (
+          <div className="rounded-xl overflow-hidden border border-white/10 bg-black">
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              controls
+              playsInline
+              src={lastRenderUrl}
+              className="w-full max-h-[420px]"
+              aria-label="Rendered video preview"
+            />
+          </div>
+        )}
+        {!generating && lastRenderUrl && (
+          <button
+            onClick={() => setShareOpen(true)}
+            className="btn btn-primary w-full min-h-[48px]"
+          >
+            <Share2 className="w-4 h-4" /> Share to social media
+          </button>
+        )}
+      </div>
+      )}
+
+      {/* Wizard nav — Back / Next (the photos gate on step 3 blocks Next) */}
+      <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
+        <button
+          type="button"
+          onClick={prevStep}
+          disabled={step === 0 || generating}
+          className="btn btn-ghost min-h-[44px] px-4 disabled:opacity-40"
+        >
+          ← Back
+        </button>
+        <span className="text-xs text-ink-500">Step {step + 1} of {WIZARD_STEPS.length} — {WIZARD_STEPS[step].label}</span>
+        {step < WIZARD_STEPS.length - 1 ? (
+          <button
+            type="button"
+            onClick={nextStep}
+            disabled={!canNext}
+            className="btn btn-primary min-h-[44px] px-6 disabled:opacity-40"
+            title={canNext ? undefined : 'Add at least one property photo to continue'}
+          >
+            Next →
+          </button>
+        ) : <div className="w-24" />}
+      </div>
+      {shareOpen && lastRenderUrl && (
+        <ShareSheet
+          videoUrl={lastRenderUrl}
+          caption=""
+          hashtags={['PropertyForSale', 'SouthAfrica', 'RealEstate']}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Budget AI Video page — same chrome as the other tool pages.
+function BudgetVideoPage() {
+  const loading = useSimulatedLoading(300);
+  if (loading) return <DashboardSkeleton />;
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <TrialDeadlineModal />
+      <ToolPageHeader
+        title="Budget AI Video"
+        subtitle="A calm 30-second reel from 5 photos — motion at a slower, gentler pace than the Video Generator, generated at 512p or 768p. No voiceover or avatar on this tier."
+      />
+      <div className="card-dark p-6">
+        <ErrorBoundary label="Budget AI Video"><BudgetVideoTab /></ErrorBoundary>
+      </div>
     </div>
   );
 }
@@ -4477,10 +5702,10 @@ function PnlAnalyst({ data }: { data: any }) {
 
 function AdminUsers() {
   const { user } = useCredit();
-  const toast = useToast();
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [detailUser, setDetailUser] = useState<any>(null);
+  const [giveUser, setGiveUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -4491,20 +5716,6 @@ function AdminUsers() {
       .catch(() => setUsers([]))
       .finally(() => setLoading(false));
   }, [user?.email]);
-
-  const grant = async (userId: string) => {
-    try {
-      await fetch('/api/credits?action=add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, amount: 100, source: 'bonus', description: 'Admin grant' }),
-      });
-      toast.success('Granted 100 credits');
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, credits: (u.credits || 0) + 100 } : u));
-    } catch {
-      toast.error('Grant failed');
-    }
-  };
 
   const shown = users.filter(u =>
     !search || u.email?.toLowerCase().includes(search.toLowerCase()) || u.fullName?.toLowerCase().includes(search.toLowerCase())
@@ -4522,6 +5733,18 @@ function AdminUsers() {
           onUpdated={u => {
             setDetailUser(u);
             setUsers(prev => prev.map(x => (x.id === u.id ? { ...x, ...u } : x)));
+          }}
+        />
+      )}
+      {/* Custom-amount grant — the server reports the real new balance, and
+          both the row and an open detail modal pick it up from there. */}
+      {giveUser && (
+        <AdminGiveCredits
+          user={giveUser}
+          onClose={() => setGiveUser(null)}
+          onGranted={(id, newBalance) => {
+            setUsers(prev => prev.map(u => (u.id === id ? { ...u, credits: newBalance } : u)));
+            setDetailUser((prev: any) => (prev && prev.id === id ? { ...prev, credits: newBalance } : prev));
           }}
         />
       )}
@@ -4566,7 +5789,7 @@ function AdminUsers() {
                 <td className="px-3 py-3 text-sm text-white">{m.credits}</td>
                 <td className="px-3 py-3 text-xs text-ink-400">{m.createdAt ? new Date(m.createdAt).toLocaleDateString() : '—'}</td>
                 <td className="px-3 py-3">
-                  <button onClick={() => grant(m.id)} className="btn btn-ghost text-xs py-1"><Plus className="w-3 h-3" /> +100</button> <button onClick={() => setDetailUser(m)} className="btn btn-ghost text-xs py-1">Details</button>
+                  <button onClick={() => setGiveUser(m)} className="btn btn-ghost text-xs py-1"><Plus className="w-3 h-3" /> Give</button> <button onClick={() => setDetailUser(m)} className="btn btn-ghost text-xs py-1">Details</button>
                 </td>
               </tr>
             ))}
@@ -4919,6 +6142,7 @@ function AppRoutes() {
       <Route path="/dashboard/photo-editor" element={<RequireAuth><DashboardLayout><PhotoEditorPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/description" element={<RequireAuth><DashboardLayout><DescriptionPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/social" element={<RequireAuth><DashboardLayout><SocialMediaPage /></DashboardLayout></RequireAuth>} />
+      <Route path="/dashboard/budget-video" element={<RequireAuth><DashboardLayout><BudgetVideoPage /></DashboardLayout></RequireAuth>} />
       <Route path="/dashboard/video" element={<RequireAuth><DashboardLayout><VideoGeneratorPage /></DashboardLayout></RequireAuth>} />
       {/* Billing moved into Credits; Notifications moved into Settings */}
       <Route path="/dashboard/billing" element={<Navigate to="/dashboard/credits?tab=billing" replace />} />

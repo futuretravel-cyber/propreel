@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X, Search, ChevronDown, MessageCircle, BookOpen } from 'lucide-react';
-import { TIERS } from '../../lib/renderPricing';
+import { TIERS, CREDIT_PACK_RAND } from '../../lib/renderPricing';
 
 interface FaqItem {
   q: string;
@@ -19,10 +19,9 @@ const allTierCredits = TIERS.flatMap((t) => t.configurations.map((c) => c.credit
 const tierCreditSpan = `${Math.min(...allTierCredits)}–${Math.max(...allTierCredits)}`;
 
 const FAQS: FaqItem[] = [
-  { category: 'Getting Started', q: 'How do credits work?', a: `Every action in PropReel uses credits: AI photo edits cost 2 credits, video tiers cost ${tierCreditSpan} credits depending on tier (${tierCreditRanges}), and AI Avatar talking-head videos are billed 2 credits per 10 seconds of narration (90-second cap). You get 5 free credits on signup, and plan credits renew monthly. FIFO expiry: oldest credits are spent first.` },
+  { category: 'Getting Started', q: 'How do credits work?', a: `Every action in PropReel uses credits: AI photo edits cost 2 credits, video tiers cost ${tierCreditSpan} credits depending on tier (${tierCreditRanges}), and AI Avatar talking-head videos are billed 2 credits per 10 seconds of narration (90-second cap). You get 5 free credits on signup, and plan credits renew monthly — every credit is listed at R1.50, so a balance always shows its Rand worth. FIFO expiry: oldest credits are spent first.` },
   { category: 'Getting Started', q: 'How do I create my first video?', a: 'Open the Video Generator and follow the 8 steps: add a property description, pick a video tier (start with Essential to try it out), upload your photos, choose orientation and a voice, then hit Generate on the last step. Your video usually renders in a few minutes and appears under Projects when ready.' },
-  { category: 'Getting Started', q: 'What are project templates?', a: 'Templates pre-fill property type, tier, and style defaults so you can move faster. Find them via the Templates button on the Projects page — options include Family Home, Luxury Villa, Apartment, Commercial, Vacant Land, and New Development.' },
-  { category: 'Credits & Billing', q: 'How do I top up credits?', a: 'Go to Dashboard → Credits, pick a bundle or a custom amount (minimum R50), and pay securely with Paystack using card, EFT, or SnapScan. Credits are added the moment your payment is confirmed.' },
+  { category: 'Getting Started', q: 'What are project templates?', a: 'Templates pre-fill property type, tier, and style defaults so you can move faster. Find them via the Templates button on the Projects page — options include Family Home, Luxury Villa, Apartment, Commercial, Vacant Land, and New Development.' },      { category: 'Credits & Billing', q: 'How do I top up credits?', a: `Go to Dashboard → Credits, pick a bundle or a custom amount (minimum 50 credits — R${50 * CREDIT_PACK_RAND}), and pay securely with Paystack using card, EFT, or SnapScan. Credits are added the moment your payment is confirmed.` },
   { category: 'Credits & Billing', q: 'Do unused credits roll over?', a: 'Plan credits expire at the end of each billing month. Purchased credit bundles last 12 months. We always spend your oldest credits first, and you can see exactly what expires when on Credits → Billing under Credit Expiry Timeline.' },
   { category: 'Credits & Billing', q: 'Can I cancel anytime?', a: 'Yes — no contracts. Cancel from Credits → Billing → Manage Subscription; your plan stays active until the end of the paid period, then moves to the free tier. See our Refund Policy for details.' },
   { category: 'Videos & Renders', q: 'My render failed. What now?', a: 'Open the failed project and press Retry, or contact support if the problem persists.' },

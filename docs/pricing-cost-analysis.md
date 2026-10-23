@@ -1,6 +1,6 @@
 # Cost vs Price = Profit — per-service rundown (Oct 2026)
 
-**Assumption: 1 credit = R1** (credit packs sell at parity; plans at R129/130 ≈ R0.99/credit).
+**Assumption: 1 credit = R1.50 retail (list value)** since the 2026-10-19 reprice (top-up packs charge R1.50/credit cash via `CREDIT_PACK_RAND` in `lib/renderPricing.ts` since the 2026-10-21 parity reprice; plans bundle ≈R1.10–1.17/credit since the final 2026-10-21 ladder — Starter 110, Professional 520, Premium 1 150, Agency 4 300 credits at unchanged prices).
 
 ## Source prices (verified from vendor pages, 13 Oct 2026)
 
@@ -10,13 +10,20 @@
 | fal.ai | FLUX.1 Fill [pro] (`flux-pro/v1/fill`) — billed per megapixel, rounded up | $0.05/MP |
 | fal.ai | Flux Pro Erase (`flux-pro/v1/erase`) | $0.03 first MP + $0.004/extra MP |
 | fal.ai | MiniMax Hailuo-02 [standard] image-to-video — 512p | ~$0.017/sec |
-| fal.ai | MiniMax Hailuo-02 [standard] image-to-video — 768p ("720p" in our UI) | $0.045/sec |
+| fal.ai | MiniMax Hailuo-02 [standard] image-to-video — 768p | $0.045/sec |
+| Modal | A100-80GB running FlashVSR (self-hosted upscale, Premium only) | $2.50/h ≈ **$0.0033 per upscaled video-second** (bench run 14) |
 | fal.ai | FlashHead lip-sync (`flashhead/audio-to-video`) | $0.005/sec of output |
 | fal.ai | Mouse-1 OpenRouter route (Grok 4.7 via OpenRouter) | differ: $2/M in, $6/M out |
 | Narakeet | TTS narration audio | $0.20/audio-minute ($6/30 min pack) |
 | Modal | CPU compute | $0.0236/vCPU-hour (FFmpeg renders are pennies) |
 
 FX: **$1 = R16.55** (Xe mid-market, 13 Oct 2026). Provider prices can change — recheck quarterly.
+
+Engine note (2026-10-21): **wan-25-preview is gone** — its reels warped
+geometry and invented rooms (client A/B against the Budget reels), so all
+AI tiers generate on MiniMax Hailuo-02 standard, the Budget engine (see
+the engine unification below). Kling 2.6 Pro stays a dormant alternate.
+Wan's rates are dropped from this table.
 
 ## Unit-cost drivers
 
@@ -26,6 +33,9 @@ FX: **$1 = R16.55** (Xe mid-market, 13 Oct 2026). Provider prices can change —
 - **Two-stage staging**: 2 × Kontext = $0.08 = **R1.32**
 - **Gro text call**: plain description ≈ 3k in + 700 out tokens ≈ $0.010 = **R0.17**; with ~5 vision photos ≈ 10k in ≈ $0.025 = **R0.42** (photos ≈ 1–2k input tokens each)
 - **Narakeet**: $0.20/min = **R3.31/min** ($0.0033/sec)
+- **Hailuo-02 standard 512p generation**: ~$0.017/sec = **R0.28/sec** (Social; worst case $0.02/s = R0.33/s — fal only publishes ~$0.017/s)
+- **Hailuo-02 standard 768p generation**: $0.045/sec = **R0.75/sec** (Cinematic, Premium gen, Budget 768p)
+- **FlashVSR upscale (Premium only)**: ~$0.0033/video-sec = **R0.055/sec** — Hailuo has no 1080p rung, so Premium's 768p clips upscale to 1080p; Social and Cinematic deliver native (no hop)
 - **FlashHead + TTS**: $0.005 + $0.0033 per sec of narration = $0.0083/sec = **R0.137/sec**
 - **Modal FFmpeg (local render + upscale + branding)**: call it **R0.30–R0.60** per render at most
 - **Caveat**: text calls route through fal's OpenRouter integration — fal may add a markup on top of list token prices (not published); treat text costs as ±50%.
@@ -34,47 +44,71 @@ FX: **$1 = R16.55** (Xe mid-market, 13 Oct 2026). Provider prices can change —
 
 ### Video Generator (per render)
 
-| Tier | Render | Price (R) | Provider cost (R) | Profit (R) | Margin |
+**Methodology (rebuilt 2026-10-19, engine rows refreshed 2026-10-21).**
+COGS = full variable cost per reel: fal generation + FlashVSR upscale
+(Premium only) + Narakeet voiceover (≈ reel length at 2.4 words/sec) +
+Modal assembly (R0.45, midpoint of R0.30–0.60). Every row is the
+like-for-like full variable cost. FX $1 = R16.55. **1 credit = R1.50
+retail** (repriced 2026-10-19) — the Price column below is credits ×
+R1.50; credits are the live catalog (`lib/videoTiers.ts`, mirrored in the
+worker's `TIER_CONFIGS`), a Rand-anchored ladder rounded up to the next
+whole credit.
+
+| Tier | Render | Price (R) | COGS (R) | Profit (R) | Margin |
 |---|---|---:|---:|---:|---:|
-| Essential | 30s, 6 imgs | 5 | ~2.0 (mostly Narakeet) | 3.0 | 60% |
-| Essential | 60s, 12 imgs | 10 | ~3.6 | 6.4 | 64% |
-| Social (512p) | 30s | 30 | 8.4 | 21.6 | 72% |
-| Social (512p) | 50s | 50 | 16.9 | 33.1 | 66% |
-| Social (512p) | 90s | 80 | 30.3 | 49.7 | 62% |
-| Cinematic (768p) | 30s | 40 | 22.3 | 17.7 | **44%** |
-| Cinematic (768p) | 60s | 75 | 44.7 | 30.3 | **40%** ← repriced 2026-10-13 |
-| Cinematic (768p) | 90s | 105 | 67.0 | 38.0 | **36%** ← repriced 2026-10-13 |
-| Premium — Kling 2.6 Pro (engine changed 2026-10-14; see below) | 30s | 85 | 28.9 | 56.1 | **54%** |
-| Premium — Kling 2.6 Pro | 60s | 170 | 57.9 | 112.1 | **55%** |
-| Premium — Kling 2.6 Pro | 90s | 250 | 86.8 | 163.2 | **54%** |
+| Essential (local FFmpeg 1080p) | 30s, 6 imgs | 7.50 (5 ⚡) | 2.10 | 5.40 | 72% |
+| Essential | 60s, 12 imgs | 15.00 (10 ⚡) | 3.76 | 11.24 | 75% |
+| Social (Hailuo 512p, native) | 30s, 6 imgs | 51.00 (34 ⚡) | 10.55 | 40.45 | **79%** |
+| Social | 60s, 12 imgs | 90.00 (60 ⚡) | 20.64 | 69.36 | **77%** |
+| Social | 90s, 18 imgs | 133.50 (89 ⚡) | 30.74 | 102.76 | **77%** |
+| Cinematic (Hailuo 768p, native) | 30s, 6 imgs | 70.50 (47 ⚡) | 24.45 | 46.05 | **65%** |
+| Cinematic | 60s, 12 imgs | 94.50 (63 ⚡) | 48.45 | 46.05 | **49%** |
+| Cinematic | 90s, 18 imgs | 142.50 (95 ⚡) | 72.45 | 70.05 | **49%** |
+| Premium (Hailuo 768p + FlashVSR → 1080p) | 30s, 6 imgs | 90.00 (60 ⚡) | 26.10 | 63.90 | **71%** |
+| Premium | 60s, 12 imgs | 120.00 (80 ⚡) | 51.75 | 68.25 | **57%** |
+| Premium | 90s, 18 imgs | 150.00 (100 ⚡) | 77.40 | 72.60 | **48%** |
 
-#### Premium engine change (2026-10-14) — margin simulation of 85/170/250
+**Every video SKU clears the 40% floor with room to spare** — and the
+2026-10-21 engine unification IMPROVED every AI margin versus the wan
+ladder (Social 47/41/40% → 79/77/77%, Cinematic 60/40/41% → 65/49/49%,
+Premium 68/53/43% → 71/57/48%): Hailuo's per-second rates sit below
+wan's at every rung ($0.017/s vs $0.05/s; $0.045/s vs $0.10/s), and
+Cinematic no longer pays an upscale hop at all. Credit prices are
+UNCHANGED — the whole gain drops to margin. Caveat: the Social 512p rate
+is fal's approximate ~$0.017/s; at a worst case $0.02/s, Social's 30s
+rung is 76% — still far clear of the floor.
 
-The tier moved off Hailuo-02 standard 768p + ffmpeg upscale onto
-**Kling 2.6 Pro image-to-video** (`fal-ai/kling-video/v2.6/pro/image-to-video`) —
-a different flagship family with **native 1080p** output, so the 768p→1080p
-ffmpeg stretch stage is gone entirely. Kling's schema takes **5s or 10s clips
-only** (no 6s), and its price is flat per-second across resolutions
-($0.07/s no-audio; there is no cheaper Kling "Standard" tier, and
-Kling 2.5 Turbo Pro is also flat at $0.07/s), so 720p Kling would cost the
-same as 1080p Kling — that is exactly why Cinematic stays on Hailuo at
-$0.045/s rather than paying a premium engine's premium price for 720p.
+#### Engine unification (2026-10-21) — Hailuo-02 standard serves every AI tier
 
-Simulation inputs: FX $1 = R16.55, credit retail ≈ R0.99 (pack parity),
-COGS units at ~$0.0605 ≈ 1 credit (same convention as the Cinematic rows).
+wan-25-preview is gone: its reels warped geometry and invented rooms
+(client A/B against the Budget reels, same day), so every AI tier now
+generates on **MiniMax Hailuo-02 standard** with the Budget deck's gentle
+per-photo prompts (`lib/budgetVideoPrompts.ts`, byte-identical text):
 
-| Length (clips) | Ring 5s clips ($0.35/clip) | 10s clips cut to 6s ($0.70/clip) |
-|---|---|---|
-| 30s (5 clips) | COGS R28.2 → **28.6 ⚡ → margin 54%** at 85 ⚡ | COGS R56.3 → 57.3 ⚡ → **9%** at 85 ⚡ (below floor) |
-| 60s (10 clips) | COGS R56.3 → 57.3 ⚡ → **55%** at 170 ⚡ | R112.7 → 114.7 ⚡ → 9% |
-| 90s (15 clips) | COGS R84.5 → 85.9 ⚡ → **54%** at 250 ⚡ | R169.0 → 172.0 ⚡ → 7% |
+| tier | fal gen rate | delivery | upscale |
+|---|---|---|---|
+| Social | 512p @ ~$0.017/s | 512p native on the 1080p canvas | — |
+| Cinematic | 768p @ $0.045/s | 768p native on the 1080p canvas | — |
+| Premium | 768p @ $0.045/s | FlashVSR → 1080p (~$0.0033/video-s) | only tier with a hop |
+| Budget | 512p/768p per config | same 1080p canvas | — |
 
-Decision: ship **5s Kling clips** with the assembler slow-stretching each
-5s source to its 6s share of the reel (a slow cinematic dolly re-timed to
-~0.83× reads as continuous motion; a `-stream_loop` replay would paste a
-mid-shot backwards seam) — that keeps COGS at $0.35/clip and makes the
-85/170/250 reprice honest. If a 10s Kling clip is ever preferred (no
-stretch), the honest prices are ~130/260/390 ⚡, not 85/170/250.
+Hailuo standard has no 1080p rung, so Premium is the one tier that still
+justifies the self-hosted upscale: 768p gen + FlashVSR = **≈$0.048/s
+all-in**, versus $0.08/s for native-1080p Hailuo Pro (≈40% cheaper) and
+far below wan's retired $0.15/s 1080p. Social and Cinematic deliver
+their native rungs on the standard 1080p canvas (lanczos normalize) —
+normalizing 768p up adds no real detail, so the hop would be pure cost.
+All reels assemble on 1920×1080 / 1080×1920. Kill-switch
+(`FLASHVSR_UPSCALE=0`) ships Premium 768p content on the 1080p canvas.
+
+History: the catalog ran Hailuo 512p/768p (Social/Cinematic) and Kling
+2.6 Pro (Premium) until 2026-10-18, then wan-25-preview at 480p +
+FlashVSR for all three tiers 2026-10-18→21. The Budget tier (2026-10-20)
+is what proved the gentle Hailuo prompts superior; the 2026-10-21 A/B
+made them the standard for every tier. Catalog repriced three times on
+2026-10-19 (flat 1 ⚡/sec, then the R1.50 ladder 34/47/67, 47/60/80,
+60/80/100, then the same-day floor raise: Social 60/90s → 60/89,
+Cinematic 60/90s → 63/95; Essential unchanged 5/10).
 
 ### AI Avatar (FlashHead) — priced flat at 8 credits
 
@@ -135,6 +169,19 @@ upload can land on the 4K row. Levers, best first:
 Until one of those lands, treat 2 ⚡ as **17%–67%**. Do not drop to 1 ⚡:
 at 4K a single render is already R1.66 of a R2.00 price.
 
+### BUDGET tier (added 2026-10-20) — gentle Hailuo-02 motion
+
+A deliberate "calmer motion" product (slower pace, less dramatic camera travel — the client's prompt library in `lib/budgetVideoPrompts.ts` says so explicitly) at fal's cheapest AI rates — and since the 2026-10-21 engine unification its engine AND prompts serve every AI tier (see above); Budget remains the only tier whose CONFIGS pick the fal resolution (512p/768p). One length only — **30s from 5 photos** (5 × 6s clips, the assembler's exact share) — no voiceover (no Narakeet cost), no avatar, no FlashVSR hop; clips pad/scale onto the standard 1080p AI delivery canvas by lanczos.
+
+FX $1=R16.55; assembly/infra ≈R0.45/render (Modal ffmpeg share); no voiceover/avatar line items.
+
+| Config | fal rate | fal cost (30s) | COGS (R) | Floor price (40%) | Shipped price | Margin |
+|---|---:|---:|---:|---:|---:|---:|
+| 512p | ~$0.017/s | $0.51 | ~8.89 | 10⚡ | **20⚡** (R30.00) | 70.4% |
+| 768p | $0.045/s | $1.35 | ~22.79 | 26⚡ | **34⚡** (R51.00) | 55.3% |
+
+Launched 2026-10-20 on the floor (10/26⚡) and repriced the same day on the client's call to **20⚡ / 34⚡** — both now sit well clear of the floor, which also absorbs the 512p-rate uncertainty (fal only publishes ~$0.017/s for Hailuo 512p; at a worst-case $0.02/s the 20⚡ rung still clears 65%). Ladder position: Essential 5⚡ < **Budget 20/34⚡** ≤ Social 34⚡ (the 768p rung now matches Social 30s' price — budget's differentiator there is the calm motion and no voiceover, not the price).
+
 ### AI text (Grok 4.7 via fal/OpenRouter)
 
 | Service | Price (R) | Cost (R) | Profit (R) | Margin |
@@ -163,11 +210,14 @@ S3+CloudFront media (30-day retention), Vercel functions, Modal idle (~free at s
 
 ## Pricing suggestions
 
-1. **Fix the Avatar pricing first** — it is the only service that can lose money. Price it per 10s of narration (TTS output duration already measured in `narakeet_seconds`): **2 credits per 10s** ⇒ cost ≈R0.137/s = R1.37/10s against R2/10s ⇒ ~31% margin minimum, or **1.5→2 rounded** and a **90s hard cap** as belt-and-braces.
-2. **Cinematic 90s is the worst large-ticket margin (26%)** — bump 90s from 90 → **105** and 60s from 70 → **75**, or re-price to a clean "R7.5 per 10s of 768p video" rule (30s→45, 60s→90, 90s→135 to keep round numbers with Premium at +15). **→ Changed 2026-10-13: 60s = 75, 90s = 105 (lib/renderPricing TIERS; margins 40% / 36%).**
-3. **Premium margins are healthy (55–62%)** — leave as-is; it's your best upsell.
-4. **Social 512p margins are fat (62–72%)** — leaves room for promo/growth; keep.
+1. **Avatar is back above the floor** — repriced 2026-10-19 to **2 credits per 10s**: at R1.50/credit that is R3.00 against R1.37 of FlashHead + TTS (~55% margin). The R1.50 ladder's brief 1cr rate sat at ~9%, under the floor; restored the same day, matching what the client copy always said.
+2. **Cinematic floored 2026-10-19 (resolved)** — the R70/90/120 ladder briefly priced 60s/90s at 37%/29%; the same-day floor raise moved them to the floor prices **63cr / 95cr** (R94.50/R142.50) — now 40/41%.
+3. **Premium is the healthiest AI tier** (68/53/43%) — leave as-is; best absolute profit per render (R61–65).
+4. **Social floored 2026-10-19 (resolved)** — 30s healed at 47% by the R1.50 ladder; 60/90s briefly sat at 24%/21% until the same-day floor raise moved them to **60cr / 89cr** (R90.00/R133.50) — now 41/40%.
 5. **Text services are profitable but fragile margins on vision calls** — Description's 58% (photos attached) is acceptable; if Grok rates or fal markup rise, 1→1.5 credits for photo-descriptions is the lever.
 6. **Cut Fill Pro cost 5×**: request ~1MP output (1024×768) instead of 1920×1080 in `_fill_pro`, cranking the brush-staging margin from 38% to ~83%; the browser upscales nothing — editors take the gradient well. OR price brush staging at 5 credits instead. **→ Changed 2026-10-13 (shipped differently): `image_size` is now 1280×720 (~0.92MP → billed 1MP) in `_fill_pro` — deployed and e2e-verified: two masked fill calls ran at $0.10 total, the stored frame is still 1920×1080 via `_fit_image_bytes`, and texture quality holds at 4× zoom on a real Unsplash interior (scripts/fill_1mp_test.py).**
-7. **Blended-margin floor**: keep every SKU ≥ 40% gross margin; today only Cinematic 90s (26%) and long-narration Avatar breach it.
-8. **Worst-case plan economics**: a Professional (600 credits/month, R589) spent exclusively on Cinematic 90s costs you 600 × 74c = R445 (COGS 76% of revenue — survivable but tight); a typical mix (Social + Essential + edits) runs COGS ~25–35%. Consider the Cinematic bump above to keep worst-case below 70%.
+7. **Blended-margin floor**: keep every SKU ≥ 40% gross margin. After the 2026-10-19 fixes (avatar back to 2cr/10s, long reels floored) **no core catalog SKU breaches it**. Watch items outside the core ladder: 4K Furniture Removal (17%) and Fill Pro brush staging (38%).
+8. **Worst-case plan economics (rebuilt after the 2026-10-19 floor raise + Starter trim)** — worst single-SKU spend per plan/billing mode, at the floored catalog: Professional annual **+4.6%** (100% Social 60s), Premium annual **+5.5%** (100% Cinematic 60s), Agency **+10.4%**, and Starter **+22.9%** annual / +34.3% monthly after trimming it 130 → **115 credits** (the trim fixed the one below-cost cell: 130⚡ annual Starter spent entirely on Cinematic 60s sold 2 reels for R113.38 against R110 — −3.1%). No cell sells below cost anymore; the thin annual cells assume 100% of credits burned on one mid-tier SKU, which no real mix does — trim Professional/Premium allotments if that corner ever matters.
+
+   **REBUILT 2026-10-21 — the numbers above are wan-era COGS** (computed 2026-10-19, before the engine unification; the "R113.38 for 2 reels" = 2 × R56.69 wan Cinematic 60s — on Hailuo that burn costs R96.90). Against the FINAL 2026-10-21 allotments (110/520/1150/4300, prices unchanged), worst single-SKU burns (fractional Premium-90s R0.774/credit, (revenue−COGS)/COGS): Starter annual 110⚡ → R85.1 vs R110 → **+29%** (monthly +51%); Professional annual 520⚡ → R402.5 vs R560 → **+39%** (monthly +46%); Premium annual 1150⚡ → R890 vs R1200 → **+35%** (monthly +43%); Agency 4300⚡ → R3328 vs R5000 → **+50%**. Blended realistic mixes (edits/text/Social/Budget ≈ R0.45/credit) clear ~55–62%. Plan rates ≈R1.10–1.17 sit 22–26% under the R1.50 list value **and** the R1.50 top-up pack cash rate (packs repriced to parity 2026-10-21) — see the pack-vs-plan note in credit-pricing-runbook.md. An interim ladder the same day (130/650/1400/5500) was superseded by these numbers.
+9. **Budget tier repriced above the floor on launch day (2026-10-20)** — launched at the floor (10⚡/26⚡, 40.7%/41.6%) and moved to **20⚡ (512p) / 34⚡ (768p)** on the client's call the same day: 70.4%/55.3% at retail, and the cushion means the ~$0.017/s 512p-rate uncertainty (worst case ~$0.02/s → R10.38 COGS) can no longer breach the floor. At plan rates (≈R0.99/credit) the rungs run ~41%/~27% — above where the rest of the ladder sits at plan rate. Confirm the 512p rate on the first post-launch fal statement anyway; only a >$0.03/s surprise would force a reprice at these prices.

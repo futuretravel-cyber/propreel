@@ -21,7 +21,11 @@ type EventName =
   | 'trial_upgrade_clicked'
   | 'trial_converted'
   | 'trial_studio_modal_shown'
-  | 'trial_studio_upgrade_clicked';
+  | 'trial_studio_upgrade_clicked'
+  // PER-CLIP REVIEW (Option 2, 2026-10-23): the review gate's three beats
+  | 'render_review_entered'
+  | 'clip_rerolled'
+  | 'render_assembled';
 
 declare global {
   interface Window {

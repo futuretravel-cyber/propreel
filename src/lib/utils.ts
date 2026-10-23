@@ -1,4 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
+import { CREDIT_LIST_RAND } from './constants';
 
 export function cn(...inputs: ClassValue[]) {
   return inputs.filter(Boolean).join(' ');
@@ -12,6 +13,22 @@ export const formatZar = (n: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n || 0);
+
+/**
+ * Rand LIST value of a credit balance (1 credit = R1.50 list —
+ * CREDIT_LIST_RAND in lib/constants). Pricing UI shows these so customers
+ * see the Rand worth of credits; it is the valuation anchor, not the
+ * cash price of a top-up pack.
+ */
+export const creditListZar = (credits: number) => formatZar((credits || 0) * CREDIT_LIST_RAND);
+
+/**
+ * Compact rand value of credits ("R165") — for copy that reads
+ * "110 credits/month = R165" next to a credit count. Whole rands by
+ * default; cents only when a product of the ladder produces them.
+ */
+export const creditValueZar = (credits: number) =>
+  `R${new Intl.NumberFormat('en-ZA', { maximumFractionDigits: 2 }).format((credits || 0) * CREDIT_LIST_RAND)}`;
 
 export const formatDate = (d: string | Date) => {
   if (!d) return '—';

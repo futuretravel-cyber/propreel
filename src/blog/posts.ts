@@ -142,7 +142,7 @@ const POSTS: BlogPost[] = [
         type: 'p',
         text: 'Ignore vanity metrics. Track three things monthly: direct messages from posts, viewing requests attributed to a specific listing post, and how many enquiries mention seeing "the video". If a format never produces one of those three after a month, stop making it.',
       },
-      { type: 'note', text: 'The fastest way to raise your posting floor: attach a video to every listing. [See the pricing](/pricing) — from R1 per credit, no subscription required.' },
+      { type: 'note', text: 'The fastest way to raise your posting floor: attach a video to every listing. [See the pricing](/pricing) — from R1.50 per credit, no subscription required.' },
     ],
   },
   {
@@ -161,7 +161,7 @@ const POSTS: BlogPost[] = [
       {
         type: 'ul',
         items: [
-          '**Cost:** physical staging is a monthly rental plus delivery, styling and collection; virtual staging is a once-off per-photo cost — on PropReel it is charged in credits at R1 each.',
+          '**Cost:** physical staging is a monthly rental plus delivery, styling and collection; virtual staging is a once-off per-photo cost — on PropReel it is charged in credits at R1,50 each.',
           '**Speed:** virtual results land in minutes; physical staging books days or weeks ahead.',
           '**What it is for:** physical staging helps buyers *feel* a home during an in-person viewing. Virtual staging helps them *click* on the listing in the first place.',
           '**Honest caveat:** virtual staging cannot furnish a viewing. Budget it as a marketing layer, not a substitute for a well-presented show day.',

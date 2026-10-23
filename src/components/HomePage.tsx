@@ -10,8 +10,11 @@ import { useTheme } from '../lib/theme';
 import { track } from '../lib/analytics';
 import { SmartImage, BeforeAfterSlider } from './SmartMedia';
 import { useApprovedReviews } from '../lib/useReviews';
+import { SIGNUP_BONUS, PLANS } from '../lib/constants';
 
-const SIGNUP_BONUS = 5;
+// Hero stats read the live ladder (PLANS) so marketing counts can't drift
+// from what signup/billing actually charge.
+const STARTER_PLAN = PLANS.find(p => p.id === 'STARTER');
 
 const IMG = {
   hero: 'hero-cape-town',
@@ -26,8 +29,9 @@ const IMG = {
 
 const img = (base: string, w: number) => `/images/${base}-${w}.webp`;
 
-// Drop a real render at public/media/showreel.mp4 to enable the hero background video.
-const SHOWREEL_SRC: string | undefined = undefined;
+// Hero background showreel: public/media/showreel.mp4 — 1920×1080, 30 s,
+// ~2.6 MB (compressed to the media/README <3 MB spec), muted autoplay loop.
+const SHOWREEL_SRC: string | undefined = '/media/showreel.mp4';
 
 /* ── Scroll-reveal helper ─────────────────────────────────────────── */
 function Reveal({ children, delay = 0, y = 28, className = '' }: { children: React.ReactNode; delay?: number; y?: number; className?: string }) {
@@ -64,7 +68,7 @@ function Hero() {
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
         <Reveal>
           <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 text-sm font-semibold text-purple-300 mb-8">
-            <Sparkles className="w-4 h-4" /> {SIGNUP_BONUS} Free Credits on Signup
+            <Sparkles className="w-4 h-4" /> {SIGNUP_BONUS} Free Credits on Signup — No Card Needed
           </div>
         </Reveal>
         <Reveal delay={0.08}>
@@ -93,14 +97,17 @@ function Hero() {
               View Pricing
             </Link>
           </div>
+          <p className="mt-4 text-sm text-ink-400">
+            No credit card needed — your {SIGNUP_BONUS} free credits cover your first 30-second reel.
+          </p>
         </Reveal>
         <Reveal delay={0.32}>
           <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto">
             {[
               { label: 'AI Video Tiers', value: '4' },
               { label: 'AI Photo Presets', value: '27' },
-              { label: 'Free Credits on Signup', value: '5' },
-              { label: 'ZAR Pricing', value: 'R1/cr' },
+              { label: 'Free Credits on Signup', value: String(SIGNUP_BONUS) },
+              { label: `Starter plan — ${STARTER_PLAN?.monthlyCredits ?? '—'} credits/mo`, value: `R${STARTER_PLAN?.monthlyZar ?? '—'}` },
             ].map(s => (
               <div key={s.label} className="glass rounded-2xl px-4 py-5">
                 <p className="text-2xl sm:text-3xl font-black text-purple-300">{s.value}</p>
@@ -249,7 +256,7 @@ function VisualShowcase() {
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 to-transparent" />
               <div className="absolute bottom-0 p-4">
                 <h3 className="font-bold text-white">Sandton Apartment</h3>
-                <p className="text-ink-400 text-xs">Social tier reel · 480p</p>
+                <p className="text-ink-400 text-xs">Social tier reel · 512p</p>
               </div>
             </div>
           </BentoCard>
@@ -529,7 +536,7 @@ function FinalCta() {
       <div className="relative max-w-4xl mx-auto px-4 text-center">
         <Reveal>
           <h2 className="text-3xl sm:text-5xl font-black text-white">Ready to Transform Your Listings?</h2>
-          <p className="mt-4 text-lg text-purple-200/80">Start free — your first 5 credits are on us.</p>
+          <p className="mt-4 text-lg text-purple-200/80">Start free — your first {SIGNUP_BONUS} credits are on us, no card needed.</p>
           <div className="mt-10">
             <Link to="/register" className="btn bg-white text-purple-900 hover:bg-purple-50 text-lg px-10 py-4 font-bold min-h-[52px] animate-pulse-soft">
               Get {SIGNUP_BONUS} Free Credits <ArrowRight className="w-5 h-5" />

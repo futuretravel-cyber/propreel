@@ -151,9 +151,12 @@ async function main() {
   r = await call('/api/users?action=auth_login', { method: 'POST', body: { email: EMAIL, password: 'WrongPass999!' } });
   check('wrong password → 401', r.res.status === 401, r.json);
 
-  // 8) duplicate register → 409
+  // 8) duplicate register — since the L-2 anti-enumeration hardening
+  // (api/users.ts, committed 2026-10-15) the answer for ANY existing
+  // confirmed address is byte-identical to a fresh signup: 201 +
+  // needsConfirmation (the "account exists" signal goes to the mailbox).
   r = await call('/api/users?action=auth_register', { method: 'POST', body: { email: EMAIL, password: 'TestPass123!', fullName: 'Auto Test', planId: 'STARTER', cycle: 'MONTHLY' } });
-  check('re-register verified email → 409', r.res.status === 409, r.json);
+  check('re-register verified email → 201 needsConfirmation (anti-enumeration)', r.res.status === 201 && r.json.needsConfirmation === true, r.json);
   // …and the futuretravel email send SUCCEEDS (account address), so it
   // proves the full email path — then its account gets cleaned up below.
   const futuretravelEmail = 'futuretravel@gmail.com';
@@ -172,9 +175,10 @@ async function main() {
   r = await call('/api/users?action=auth_login', { method: 'POST', body: { email: EMAIL, password: 'NewPass456!' } });
   check('new password → 200', r.res.status === 200 && !!r.cookie, r.json);
 
-  // 10) auth_register on an existing verified email → 409
+  // 10) auth_register on an existing verified email → same
+  // anti-enumeration answer (201 + needsConfirmation, never 409)
   r = await call('/api/users?action=auth_register', { method: 'POST', body: { email: futuretravelEmail, password: 'TestPass123!', fullName: 'X', planId: 'STARTER', cycle: 'MONTHLY' } });
-  check('register existing verified email → 409', r.res.status === 409, r.json);
+  check('register existing verified email → 201 needsConfirmation (anti-enumeration)', r.res.status === 201 && r.json.needsConfirmation === true, r.json);
   void ftRow;
 
   // cleanup test user — every trace (row, tokens, sessions, ledger)

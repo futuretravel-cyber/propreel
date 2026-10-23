@@ -8,12 +8,17 @@ const EnhancedBilling = lazy(() => import('./EnhancedBilling'));
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar, formatDate } from '../lib/utils';
-import { PLANS } from '../lib/constants';
+import { PLANS, CREDIT_PACK_RAND } from '../lib/constants';
 import {
   Zap, AlertTriangle, TrendingUp, CreditCard, Gift, Settings,
   Clock, ArrowUpRight, ArrowDownRight, Check, X, Sparkles,
   Crown, Shield, Plus, Minus, RefreshCw, Download
 } from 'lucide-react';
+
+// Premium's monthly credit count — read from PLANS so marketing strings can
+// never drift from the ladder again (they were hardcoded "1,300" until
+// 2026-10-21).
+const PREMIUM_CREDITS = PLANS.find(pl => pl.id === 'PREMIUM')?.monthlyCredits ?? 0;
 
 export default function CreditSystemDashboard() {
   const { user, balance, lowCreditWarning, acknowledgeLowCredit, purchaseCredits, setAutoTopup, giftCredits, upgradePlan, isAdmin } = useCredit();
@@ -51,8 +56,8 @@ export default function CreditSystemDashboard() {
       }
       toast.success(
         typeof result.chargedZar === 'number'
-          ? `Upgraded to Premium — R${result.chargedZar} charged, 1,300 credits added`
-          : 'Upgraded to Premium — 1,300 credits added',
+          ? `Upgraded to Premium — R${result.chargedZar} charged, ${PREMIUM_CREDITS} credits added`
+          : `Upgraded to Premium — ${PREMIUM_CREDITS} credits added`,
         'Upgrade Complete!'
       );
     } catch (err: any) {
@@ -92,7 +97,7 @@ export default function CreditSystemDashboard() {
   }, [user?.email]);
   useEffect(() => { if (isAdmin && user?.email) loadAudit(); }, [isAdmin, user?.email, loadAudit]);
 
-  const allowance = user?.subscription?.planId === 'STARTER' ? 130 :
+  const allowance = user?.subscription?.planId === 'STARTER' ? 115 :
                     user?.subscription?.planId === 'PROFESSIONAL' ? 600 :
                     user?.subscription?.planId === 'PREMIUM' ? 1300 :
                     user?.subscription?.planId === 'AGENCY' ? 5000 : 0;
@@ -213,7 +218,7 @@ export default function CreditSystemDashboard() {
               <Crown className="w-8 h-8 text-yellow-400" />
               <div>
                 <h3 className="text-lg font-bold text-white">Upgrade to Premium</h3>
-                <p className="text-ink-400 text-sm">Get 1,300 credits/month, fastest render queue, and priority support</p>
+                <p className="text-ink-400 text-sm">Get {PREMIUM_CREDITS} credits/month, fastest render queue, and priority support</p>
               </div>
             </div>
             <button onClick={handleUpgradeNow} disabled={upgrading} className="btn btn-primary disabled:opacity-60">
@@ -325,9 +330,9 @@ export default function CreditSystemDashboard() {
             <div className="bg-ink-800/50 rounded-xl p-4">
               <div className="flex justify-between text-sm">
                 <span className="text-ink-400">Price</span>
-                <span className="text-white font-bold text-xl">{formatZar(topupAmount)}</span>
+                <span className="text-white font-bold text-xl">{formatZar(topupAmount * CREDIT_PACK_RAND)}</span>
               </div>
-              <p className="text-xs text-ink-500 mt-1">R1 per credit • Credits expire after 365 days</p>
+              <p className="text-xs text-ink-500 mt-1">R{CREDIT_PACK_RAND.toFixed(2)} per credit • Credits expire after 365 days</p>
             </div>
             <div className="flex gap-3">
               <button onClick={() => setShowTopup(false)} className="btn btn-secondary flex-1">Cancel</button>
@@ -338,7 +343,7 @@ export default function CreditSystemDashboard() {
                 }}
                 className="btn btn-primary flex-1"
               >
-                <CreditCard className="w-4 h-4" /> Pay {formatZar(topupAmount)}
+                <CreditCard className="w-4 h-4" /> Pay {formatZar(topupAmount * CREDIT_PACK_RAND)}
               </button>
             </div>
           </div>

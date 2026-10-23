@@ -178,13 +178,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Add credits — eventId (Paystack's unique data.id) makes the ledger row
     // idempotent, mirroring the webhook path.
+    //
+    // GRANT THE CREDIT COUNT, not the paid Rands: initialize stamps
+    // metadata.credits (since 2026-10-21 packs charge credits × 1.50). The
+    // `amount` fallback keeps pre-ratelimit references (R1/credit) exact.
+    const creditsGranted = Number(result.data.metadata?.credits) || amount;
     const eventId = result.data.id != null ? `ps_${result.data.id}` : undefined;
     const { addCredits } = await import('../../lib/userService');
     const addResult = await addCredits(
       userId,
-      amount,
+      creditsGranted,
       'purchase',
-      `Credit purchase: R${amount}`,
+      `Credit purchase: R${amount} (${creditsGranted} credits)`,
       { paystackReference: reference, paystackTransactionCode: result.data.transaction_code, via: 'verify' },
       new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       eventId
@@ -228,8 +233,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         userName: payer?.fullName || '',
         userEmail: payer?.email || email || '',
         amountZar: amount,
-        credits: amount,
-        description: `PropReel credit top-up (${amount} credits)`,
+        credits: creditsGranted,
+        description: `PropReel credit top-up (${creditsGranted} credits)`,
         paidAt: new Date().toISOString(),
         userId,
       });
@@ -242,7 +247,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       success: true,
       reference,
-      credits_added: amount,
+      credits_added: creditsGranted,
       new_balance: user?.credits || 0,
     });
   } catch (error) {

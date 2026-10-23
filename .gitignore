@@ -38,6 +38,8 @@ lerna-debug.log*
 # Secrets (NEVER commit)
 *.pem
 *.key
+.vercel_env_prod
+_ui_cookie.json
 
 # Modal configuration
 .modal/

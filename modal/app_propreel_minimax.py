@@ -195,6 +195,11 @@ JOB_ENDPOINT_SCOPE = {
     "/edit_image": "edit",
     "/flashhead": "flashhead",
     "/generate_flashhead_video": "flashhead",
+    # Per-clip re-roll of a review-paused render — a real fal call, so it
+    # carries its own paid single-use token (priced per tier clip-share by
+    # lib/renderPricing jobCredits('rerender')). /assemble_reel is NOT here:
+    # assembly was already paid by the original render charge.
+    "/rerender_clip": "rerender",
 }
 
 
@@ -781,6 +786,15 @@ class RenderVideoRequest(BaseModel):
     # rides along: photo top-left, logo top-right, contact line at the
     # bottom. use_avatar swaps the agent photo for the AI-avatar headshot.
     branding: Optional[dict] = None  # {photo_url, logo_url, contact_line, use_avatar}
+    # 2026-10-23 PER-CLIP REVIEW (Option 2): when true, an AI-tier render
+    # generates every clip, uploads them to OUR S3, then PAUSES at status
+    # `clips_ready` with the per-clip URLs so the agent can watch each clip
+    # and re-roll the bad ones (/rerender_clip) before assembling the reel
+    # (/assemble_reel). Assembly (narration, music, branding) is unchanged
+    # and runs exactly once — the review gate only splits the SAME paid job
+    # in two, so no extra charge lands at assembly. Ignored for ESSENTIAL
+    # (local FFmpeg render — no clips to review).
+    review: bool = False
 
 class CancelRenderRequest(BaseModel):
     # render record_id or flashhead job_id — both live in the jobs/ store
@@ -794,6 +808,31 @@ class FlashHeadRequest(BaseModel):
     voice: str = "Aria"
     language: str = "en-ZA"  # BCP-47 voiceover language (11 official SA languages)
     stability: float = 0.5
+
+class RerenderClipRequest(BaseModel):
+    """Re-roll ONE clip of a review-paused render (paid, scope=rerender).
+
+    Regenerates the clip with the SAME prompt the original render resolved
+    for that photo (stored in the job's review context) — a fresh fal call
+    is a fresh seed, which is exactly the "same shot, better result" the
+    agent is paying for. The clip keeps its slot; only its URL changes.
+    """
+    record_id: str
+    clip_index: int
+    # Camera-move reselection (2026-10-23): when the agent picked a
+    # different move in the review panel, the FULL replacement prompt rides
+    # here — same trust model as the render request's image_prompts (the
+    # browser builds it from lib/budgetVideoPrompts). Absent/empty ⇒ replay
+    # the clip's stored prompt byte-for-byte.
+    prompt: Optional[str] = None
+
+class AssembleReelRequest(BaseModel):
+    """Finish a review-paused render: concat the CURRENT clips and run the
+    full post pipeline (avatar, narration, music, branding, endcard,
+    thumbnail). Free with a v1 token — the original render charge already
+    paid for the finished reel; the gate is the job's `clips_ready` state,
+    which only a paid render can reach."""
+    record_id: str
 
 class EditImageRequest(BaseModel):
     image_url: str
@@ -2832,6 +2871,8 @@ def render_video(
     photo_meta: list[dict] | None = None,
     branding: dict | None = None,
     use_avatar: bool = False,
+    review: bool = False,
+    clips_override: list[str] | None = None,
 ) -> dict:
     """
     Render a property video based on the provided parameters.
@@ -2848,6 +2889,14 @@ def render_video(
             narrator natively speaks it (Narakeet native voice)
         include_agent_branding: Whether to include agent branding
         music_url: Optional background music URL
+        review: Pause after clip generation at status `clips_ready` with the
+            per-clip S3 URLs stored in the job record, so the agent can watch
+            each clip and re-roll bad ones before assembly (Option 2). Only
+            the AI tiers honour it — ESSENTIAL renders in one FFmpeg pass.
+        clips_override: Resume path (/assemble_reel): these clip URLs replace
+            generation entirely — assembly, narration, branding and the rest
+            of the tail run on exactly these clips. Also how a re-rolled clip
+            re-enters the pipeline.
     
     Returns:
         Dictionary with video URL and metadata
@@ -2971,7 +3020,10 @@ def render_video(
         })
         # .map fans one tuple out per Modal container (all run concurrently);
         # each clip still retries independently (retries=2 on the function).
-        video_clips = list(generate_ai_video_clip.map(
+        # ASSEMBLE-RESUME (/assemble_reel): clips_override carries the clips
+        # the agent reviewed (and possibly re-rolled) — reuse exactly those,
+        # skipping fal generation entirely.
+        video_clips = list(clips_override) if clips_override is not None else list(generate_ai_video_clip.map(
             [
                 (image_url, prompt, ai_resolution, clip_seconds, engine)
                 for image_url, prompt in zip(images, prompts)
@@ -2989,7 +3041,7 @@ def render_video(
         # on ANY upscale failure keep the native 768p clip so a paid render
         # never dies here — the assembler's lanczos normalize lifts it onto
         # the 1080p canvas regardless of source resolution.
-        if _flashvsr_enabled() and engine != ENG_KLING26 and resolution == "1080p":
+        if _flashvsr_enabled() and clips_override is None and engine != ENG_KLING26 and resolution == "1080p":
             portrait = (orientation == "PORTRAIT")
             try:
                 _fv = modal.Function.from_name(FLASHVSR_APP, FLASHVSR_FN)
@@ -3023,6 +3075,67 @@ def render_video(
                 # Cross-app call itself failed (app not deployed, name typo,
                 # Modal auth) — keep the native 768p clips and continue.
                 print(f"FlashVSR upscale hop unavailable — using native 768p clips: {_fe}")
+
+        # ── PER-CLIP REVIEW PAUSE (Option 2) ─────────────────────────────────
+        # The agent asked to watch every generated clip before the reel is
+        # stitched: a bad clip (fire on the chair, invented room, …) gets
+        # re-rolled HERE instead of being discovered in the finished video.
+        # Re-host each fal clip on OUR S3 first — fal media URLs expire and
+        # the review can sit indefinitely (clips also fall under the 30-day
+        # retention purge under renders/). The record stores everything the
+        # resume needs: per-clip prompts (byte-identical re-rolls) plus the
+        # full render context for /assemble_reel.
+        if review and clips_override is None:
+            import boto3 as _b3r
+            _up = _b3r.client('s3', region_name=S3_REGION)
+            clip_entries = []
+            for i, u in enumerate(video_clips):
+                _key = f"renders/{record_id}/clips/{i}.mp4"
+                _up.put_object(
+                    Bucket=S3_BUCKET, Key=_key,
+                    Body=fetch_media(u, timeout=300),
+                    ContentType='video/mp4',
+                )
+                clip_entries.append({
+                    "index": i,
+                    "image_url": images[i],
+                    "clip_url": f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{_key}",
+                    "prompt": prompts[i],
+                })
+            _write_job_status(record_id, "clips_ready", {
+                "kind": "render",
+                "tier": tier,
+                "progress": 50,
+                "clips": clip_entries,
+                "review": {
+                    "tier": tier,
+                    "config_index": config_index,
+                    "orientation": orientation,
+                    "images": images,
+                    "voiceover_text": voiceover_text,
+                    "voice_id": voice_id,
+                    "language": language,
+                    "include_agent_branding": include_agent_branding,
+                    "music_url": music_url,
+                    "image_prompts": image_prompts,
+                    "photo_meta": photo_meta,
+                    "branding": branding,
+                    "use_avatar": use_avatar,
+                    "ai_resolution": ai_resolution,
+                    "clip_seconds": clip_seconds,
+                    "engine": engine,
+                    "resolution": resolution,
+                    "flashvsr": bool(_flashvsr_enabled() and engine != ENG_KLING26 and resolution == "1080p"),
+                },
+            })
+            print(f"Review pause: {len(clip_entries)} clips ready for {record_id}")
+            return {
+                "record_id": record_id,
+                "status": "clips_ready",
+                "tier": tier,
+                "clips": clip_entries,
+                "credits_used": config['credits'],
+            }
 
         # Concatenate video clips — the paid clips are ALWAYS used now.
         # Assembly runs on its own container (ffmpeg work, not fal spend) so
@@ -3312,6 +3425,103 @@ def render_video_failed(record_id: str, error: str):
     _write_job_status(record_id, "failed", {"error": error[:400]})
 
 
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, retries=0)
+async def rerender_clip_job(record_id: str, clip_index: int, prompt: str | None = None) -> None:
+    """Re-roll ONE clip of a review-paused render (Option 2).
+
+    Regenerates clips[clip_index] with the prompt this call resolves: the
+    agent's camera-move RESELECTION when one was sent (`prompt` — the review
+    panel rebuilds it from the same gentle deck the render used), otherwise
+    the SAME prompt the original render resolved for that photo (a fresh fal
+    call is a fresh seed — same shot, better result). Optionally runs the
+    FlashVSR hop when the review context
+    says the reel is on the Premium delivery path, re-hosts the new clip on
+    OUR S3 under the same key, and updates the record — WITHOUT ever leaving
+    `clips_ready`. The record's `rerender` marker ({index, at, ok, error}) is
+    what the client's bounded poll watches for; a failure keeps the OLD clip
+    and records why, so a paid re-roll can never strand the review.
+
+    Cancellation-safe: the final write re-reads the record and is dropped by
+    _write_job_status if the agent cancelled (or assembled) meanwhile — no
+    rewind of a terminal state.
+    """
+    status = _read_job_status(record_id)
+    if not status or status.get("status") != "clips_ready":
+        print(f"rerender {record_id}[{clip_index}]: not awaiting review — skipping")
+        return
+    clips = status.get("clips") or []
+    review = status.get("review") or {}
+    if not (0 <= clip_index < len(clips)) or not review:
+        print(f"rerender {record_id}[{clip_index}]: bad index or missing review context")
+        return
+    entry = clips[clip_index]
+    # Move reselection wins; blank/absent ⇒ replay the stored prompt exactly.
+    new_prompt = (prompt or "").strip() or entry.get("prompt") or ""
+    marker = {
+        "index": clip_index,
+        "at": __import__('datetime').datetime.utcnow().isoformat(),
+    }
+    try:
+        _ensure_not_cancelled(record_id)  # never spend fal credits on a cancelled review
+        if not new_prompt:
+            raise RuntimeError("no prompt available for this clip")
+        new_url = generate_ai_video_clip.remote(
+            entry["image_url"], new_prompt,
+            review["ai_resolution"], int(review["clip_seconds"]), review["engine"],
+        )
+        if not new_url:
+            raise RuntimeError("clip generation returned an empty URL")
+        # Premium delivery path: the stored clips are upscaled — a re-rolled
+        # clip must match, or the reel mixes 768p segments with 1080p ones.
+        # Per-clip fallback on failure: ship the native clip (same contract
+        # as the batch hop — a paid re-roll never dies on the upscale).
+        if review.get("flashvsr"):
+            try:
+                _fv = modal.Function.from_name(FLASHVSR_APP, FLASHVSR_FN)
+                up = await _fv.remote.aio(
+                    new_url, review["resolution"],
+                    review.get("orientation") == "PORTRAIT",
+                )
+                if isinstance(up, dict) and up.get("url"):
+                    new_url = up["url"]
+                else:
+                    print(f"rerender {record_id}[{clip_index}]: upscale returned no URL — keeping native")
+            except Exception as _fe:
+                print(f"rerender {record_id}[{clip_index}]: upscale failed — keeping native: {_fe}")
+        # Re-host on OUR S3 under the SAME key (falcon URLs expire; review
+        # length is unbounded; retention purges renders/ nightly).
+        _s3().put_object(
+            Bucket=S3_BUCKET,
+            Key=f"renders/{record_id}/clips/{clip_index}.mp4",
+            Body=fetch_media(new_url, timeout=300),
+            ContentType='video/mp4',
+        )
+        hosted = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/renders/{record_id}/clips/{clip_index}.mp4"
+        latest = _read_job_status(record_id)  # re-check: review may have moved on
+        if not latest or latest.get("status") != "clips_ready":
+            print(f"rerender {record_id}[{clip_index}]: review ended mid-flight — dropping update")
+            return
+        clips[clip_index]["clip_url"] = hosted
+        clips[clip_index]["prompt"] = new_prompt  # truthful for the next re-roll
+        clips[clip_index]["rerendered_at"] = marker["at"]
+        _write_job_status(record_id, "clips_ready", {
+            **latest,
+            "clips": clips,
+            "rerender": {**marker, "ok": True},
+        })
+        print(f"rerender {record_id}: clip {clip_index} replaced → {hosted}")
+    except Exception as e:
+        print(f"rerender {record_id}[{clip_index}] failed: {type(e).__name__}: {e}")
+        latest = _read_job_status(record_id)
+        if latest and latest.get("status") == "clips_ready":
+            # Keep the OLD clip — the review continues; the client refunds
+            # the re-roll charge on this marker.
+            _write_job_status(record_id, "clips_ready", {
+                **latest,
+                "rerender": {**marker, "ok": False, "error": str(e)[:200]},
+            })
+
+
 @app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=3600, retries=0)
 async def render_video_job(
     record_id: str,
@@ -3328,6 +3538,8 @@ async def render_video_job(
     photo_meta: list[dict] | None = None,
     branding: dict | None = None,
     use_avatar: bool = False,
+    review: bool = False,
+    clips_override: list[str] | None = None,
 ) -> None:
     """Spawn target for POST /render_video: awaits the retried render and —
     ONLY once every Modal retry is exhausted — flips the job to `failed`.
@@ -3359,7 +3571,9 @@ async def render_video_job(
             image_prompts=image_prompts,
             photo_meta=photo_meta,
             branding=branding,
-            use_avatar=use_avatar
+            use_avatar=use_avatar,
+            review=review,
+            clips_override=clips_override,
         )
     except Exception as e:
         print(f"❌ Render {record_id} failed after retries: {type(e).__name__}: {e}")
@@ -4332,6 +4546,7 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
                     photo_meta=request.photo_meta,
                     branding=request.branding,
                     use_avatar=bool((request.branding or {}).get("use_avatar")),
+                    review=bool(request.review),
                 )
             except Exception as e:
                 # Same contract as the async path: a crashed render must land
@@ -4367,6 +4582,7 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
                 photo_meta=request.photo_meta,
                 branding=request.branding,
                 use_avatar=bool((request.branding or {}).get("use_avatar")),
+                review=bool(request.review),
             )
         except Exception as spawn_err:
             render_video_failed(request.record_id, f"spawn failed: {type(spawn_err).__name__}: {str(spawn_err)[:300]}")
@@ -4413,7 +4629,128 @@ async def api_render_status(record_id: str):
     status = _read_job_status(record_id)
     if status is None:
         raise HTTPException(status_code=404, detail=f"Unknown record_id: {record_id}")
-    return presign_urls(status)
+    out = presign_urls(status)
+    if isinstance(out, dict):
+        # `review` is the server-only resume context for /assemble_reel (full
+        # render args + prompts, ~tens of KB) — the browser only needs
+        # `clips` + `rerender` + progress, so keep it out of every 5s poll.
+        out.pop("review", None)
+    return out
+
+@web_app.post("/rerender_clip")
+async def api_rerender_clip(request: RerenderClipRequest, raw_request: Request):
+    """Re-roll ONE clip of a review-paused render (paid scope=rerender).
+
+    Claims the paid single-use token FIRST (a real fal call is about to
+    spend money), then spawns the re-roll and answers immediately — the
+    client polls /render_status for the `rerender` marker / new clip_url.
+    The job stays in `clips_ready` throughout, so the review never breaks.
+    """
+    # Claim outside the blanket try: 401/409/503 must not become a 500.
+    _claim_job_token(raw_request)
+    status = _read_job_status(request.record_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Unknown record_id: {request.record_id}")
+    if status.get("status") != "clips_ready":
+        raise HTTPException(status_code=409, detail="This render is not awaiting clip review (already assembled, cancelled or failed).")
+    clips = status.get("clips") or []
+    if not (0 <= request.clip_index < len(clips)):
+        raise HTTPException(status_code=400, detail=f"clip_index out of range (0..{len(clips) - 1}).")
+    if not status.get("review"):
+        raise HTTPException(status_code=409, detail="Review context missing — cannot re-roll this render.")
+    # Optional move-reselection prompt: bounded and non-blank. The render
+    # request already trusts client-built prompts (image_prompts), so this is
+    # the same surface — only sanity limits apply.
+    prompt_override = (request.prompt or "").strip()
+    if request.prompt is not None and not prompt_override:
+        raise HTTPException(status_code=400, detail="prompt must be non-empty when provided.")
+    if len(prompt_override) > 4000:
+        raise HTTPException(status_code=400, detail="prompt is too long (4000 chars max).")
+    # Reserve the slot: one re-roll at a time per record (client serialises
+    # too, but a double-submit must not run two fal calls on one token).
+    in_flight = status.get("rerender")
+    if in_flight and in_flight.get("at") and not in_flight.get("done", True):
+        raise HTTPException(status_code=409, detail="A re-roll for this clip is already running.")
+    _write_job_status(request.record_id, "clips_ready", {
+        **status,
+        "rerender": {"index": request.clip_index,
+                     "at": __import__('datetime').datetime.utcnow().isoformat(),
+                     "done": False},
+    })
+    try:
+        await rerender_clip_job.spawn.aio(request.record_id, request.clip_index, prompt_override or None)
+    except Exception as spawn_err:
+        # Token burnt but no job — clear the reservation so review continues.
+        _write_job_status(request.record_id, "clips_ready", {
+            **(_read_job_status(request.record_id) or status),
+            "rerender": None,
+        })
+        raise HTTPException(status_code=502, detail=f"Re-roll could not start — the charge will be refunded automatically. ({type(spawn_err).__name__})")
+    return {
+        "record_id": request.record_id,
+        "clip_index": request.clip_index,
+        "status": "rerendering",
+        "poll_url": f"/render_status?record_id={request.record_id}",
+    }
+
+@web_app.post("/assemble_reel")
+async def api_assemble_reel(request: AssembleReelRequest, raw_request: Request):
+    """Finish a review-paused render — concat the CURRENT clips, run the full
+    post pipeline (avatar, narration, music, branding, endcard, thumbnail),
+    publish `completed`.
+
+    FREE with a v1 worker token: the original /render_video claim already
+    charged the full tier price for this exact reel — assembly is where that
+    charge pays out. The gate is the job's `clips_ready` state (reachable
+    only through a paid render) plus the record's review context.
+    """
+    status = _read_job_status(request.record_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Unknown record_id: {request.record_id}")
+    if status.get("status") != "clips_ready":
+        raise HTTPException(status_code=409, detail="This render is not awaiting assembly (already assembled, cancelled or failed).")
+    review = status.get("review")
+    clips = sorted(status.get("clips") or [], key=lambda c: c.get("index", 0))
+    if not review or not clips:
+        raise HTTPException(status_code=409, detail="Review context missing — please render again.")
+    if any(not c.get("clip_url") for c in clips):
+        raise HTTPException(status_code=409, detail="A clip is still being re-rolled — wait for it to finish, then assemble.")
+    # Flip out of clips_ready BEFORE spawning: the transition is the lock
+    # against double-assembly (second caller reads `processing` → 409).
+    _write_job_status(request.record_id, "processing", {
+        "kind": "render", "tier": review["tier"], "progress": 60,
+        "note": "assembling reviewed clips",
+    })
+    try:
+        await render_video_job.spawn.aio(
+            record_id=request.record_id,
+            tier=review["tier"],
+            config_index=review["config_index"],
+            orientation=review["orientation"],
+            images=review["images"],
+            voiceover_text=review.get("voiceover_text") or "",
+            voice_id=review.get("voice_id") or "Joanna",
+            language=review.get("language") or "en-ZA",
+            include_agent_branding=bool(review.get("include_agent_branding", True)),
+            music_url=review.get("music_url"),
+            image_prompts=review.get("image_prompts"),
+            photo_meta=review.get("photo_meta"),
+            branding=review.get("branding"),
+            use_avatar=bool(review.get("use_avatar")),
+            review=False,
+            clips_override=[c["clip_url"] for c in clips],
+        )
+    except Exception as spawn_err:
+        # Token for the ORIGINAL render was already spent long ago; if the
+        # spawn fails the job must not freeze — mark failed (client refunds).
+        render_video_failed(request.record_id, f"assemble spawn failed: {type(spawn_err).__name__}: {str(spawn_err)[:300]}")
+        raise HTTPException(status_code=502, detail=f"Assembly could not be started — the job is marked failed so the charge auto-refunds. ({type(spawn_err).__name__})")
+    return {
+        "record_id": request.record_id,
+        "status": "processing",
+        "poll_url": f"/render_status?record_id={request.record_id}",
+        "message": "Assembling reviewed clips — poll /render_status for completion.",
+    }
 
 @web_app.post("/generate_flashhead_video")
 async def api_generate_flashhead_video(request: FlashHeadRequest, raw_request: Request):

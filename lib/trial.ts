@@ -1,5 +1,10 @@
 /**
- * Temporary ("trial") accounts — opt-in at signup, valid 7 days.
+ * Temporary ("trial") accounts — valid 7 days. DORMANT FOR NEW SIGNUPS as of
+ * 2026-10-21: the signup UI now creates permanent FREE accounts (no trial
+ * clock, no subscription) and no longer offers a trial, so nothing starts a
+ * new clock. This module's full lifecycle still runs for rows that already
+ * carry one — reminders, day-7 sweep, soft-lock, purge — kept intact on
+ * purpose (admin-created trials and pre-existing rows behave as before).
  *
  * Lifecycle:
  *   1. auth_register with startTrial → user row gets trialExpiresAt = now + 7d

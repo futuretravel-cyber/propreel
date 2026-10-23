@@ -2,6 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser } from '../../lib/userService';
 import { initializePayment } from '../../lib/paystack';
 import { requireOwner } from '../../lib/auth';
+import { CREDIT_PACK_RAND } from '../../lib/renderPricing';
 
 /**
  * Initialize a Paystack credit purchase.
@@ -16,10 +17,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { user_id, credits, email, pool } = req.body;
 
-    // Validate input
+    // Validate input (50 credits × CREDIT_PACK_RAND is the cash minimum)
     if (!user_id || !credits || credits < 50 || !email) {
       return res.status(400).json({
-        error: 'Invalid request. Minimum purchase is 50 credits (R50).'
+        error: `Invalid request. Minimum purchase is 50 credits (R${50 * CREDIT_PACK_RAND}).`
       });
     }
     const gate = await requireOwner(req, user_id);
@@ -37,8 +38,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Email does not match user account' });
     }
 
-    // Initialize Paystack payment
-    const paymentData = await initializePayment(email, credits, {
+    // Initialize Paystack payment — charge Rands at the pack rate; the
+    // GRANT side (verify/webhook) reads metadata.credits (the count), never
+    // this Rand amount, so the two can never drift apart.
+    const chargeZar = Math.round(credits * CREDIT_PACK_RAND);
+    const paymentData = await initializePayment(email, chargeZar, {
       user_id,
       credits,
       // 'agency_pool' purchases land in the shared agency pool on charge.success

@@ -17,7 +17,7 @@ export interface CreditDeductRequest {
 export interface CreditRefundRequest {
   user_id: string;
   /** Which charge this reverses — the SERVER decides the amount (never the client) */
-  scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'script';
+  scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'script' | 'rerender';
 }
 
 export interface CreditTransferRequest {

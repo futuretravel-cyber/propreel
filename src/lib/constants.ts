@@ -115,7 +115,15 @@ export const SA_LANGUAGES: VoiceLanguage[] = [
   {
     id: 'en-ZA',
     label: 'English',
+    // SA accents restored alongside the trimmed US/UK set — the worker's
+    // NARAKEET_VOICES['en-ZA'] still accepts exactly these four SA ids
+    // (piet/amy are NOT in the worker's list; adding them would let the
+    // picker offer a voice the server silently swaps for aletta).
     voices: [
+      { id: 'aletta', label: 'Aletta — SA Female' },
+      { id: 'charlize', label: 'Charlize — SA Female' },
+      { id: 'hilda', label: 'Hilda — SA Female' },
+      { id: 'riaan', label: 'Riaan — SA Male' },
       { id: 'joanna', label: 'Joanna — US Female' },
       { id: 'sarah', label: 'Sarah — US Female' },
       { id: 'brian', label: 'Brian — UK Male' },
