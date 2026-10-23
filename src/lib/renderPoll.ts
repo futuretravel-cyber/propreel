@@ -152,7 +152,12 @@ export interface RerenderPollOptions {
   /** Client's known `rerendered_at` for this clip BEFORE this re-roll —
    *  a stale marker from a previous re-roll must never count as success. */
   previousRerenderedAt?: string;
-  /** fal clip gen + optional upscale: 4 minutes default, refunds after. */
+  /** fal clip gen + optional upscale. Budget: a native clip is ~40-90s, but a
+   *  PREMIUM re-roll then blocks on the FlashVSR GPU upscale, whose A100
+   *  container is often cold when you re-roll right after the render (the
+   *  container caps at 6 and scales back after 2 idle minutes), so the real
+   *  wall can reach 9-10 min: cold-start image pull + model load + queue.
+   *  12 min clears that with headroom and still bounds the refund. */
   timeoutMs?: number;
 }
 
@@ -164,7 +169,7 @@ export interface RerenderPollOptions {
  * and the record's leaving `clips_ready` are verdicts.
  */
 export async function pollRerender(opts: RerenderPollOptions): Promise<RerenderPollOutcome> {
-  const deadline = Date.now() + (opts.timeoutMs ?? 4 * 60_000);
+  const deadline = Date.now() + (opts.timeoutMs ?? 12 * 60_000);
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 3000));
     let s: any;
@@ -203,8 +208,12 @@ export async function pollRerender(opts: RerenderPollOptions): Promise<RerenderP
     // another tab). The re-roll's result can no longer land in this review.
     return { kind: 'terminal', status: String(s.status || 'unknown'), error: s.error };
   }
+  // Hit the budget without a verdict: the worker's re-roll job runs detached
+  // (up to its own 15-min Modal timeout) and usually lands shortly after this
+  // gives up — so say what's true (still running) rather than "failed", which
+  // used to send agents to re-roll a clip that was about to replace itself.
   return {
     kind: 'error',
-    message: 'The re-roll took too long — your re-roll credits were refunded. The original clip is unchanged.',
+    message: 'This re-roll is taking unusually long (a Premium clip re-rolls through a GPU upscale that can cold-start). It is likely still running server-side and may land in the next few minutes — your re-roll credits were refunded; if the clip does not update, roll it again.',
   };
 }
