@@ -26,11 +26,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Extract credit amount from metadata
     const amount = Math.round((result.data.amount || 0) / 100); // Convert from kobo
-    const email = result.data.customer_email;
 
-    // Find user by email in our users table (webhook-style local lookup)
-    let userId: string | undefined;
-    {
+    // Resolve the payer exactly like the charge.success webhook does: OUR
+    // stamped metadata.user_id FIRST (Paystack echoes custom metadata
+    // verbatim, so it survives any provider field-shape change), then the
+    // customer email as fallback for references minted without it.
+    //
+    // 2026-10-23 live fix: the verify RESPONSE carries no top-level
+    // `customer_email` (only webhook payloads do), so the old email-first
+    // lookup ran getUserByEmail(undefined) → `email.toLowerCase()` TypeError
+    // → 500 on every poll: the charge was captured at Paystack but the UI
+    // could never confirm it. metadata.user_id exists on every reference
+    // initialize has minted since the ZAR pack change.
+    let userId: string | undefined =
+      typeof result.data.metadata?.user_id === 'string' ? result.data.metadata.user_id : undefined;
+    const email = result.data.customer?.email || result.data.customer_email;
+    if (!userId && email) {
       const { getUserByEmail } = await import('../../lib/userService');
       const user = await getUserByEmail(email);
       userId = user?.id;

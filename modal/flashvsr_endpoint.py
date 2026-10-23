@@ -310,20 +310,40 @@ def _upscale_one(input_video_url: str, target_resolution: str = "1080p",
     timeout=900,
     retries=2,
     min_containers=0,
-    max_containers=20,
-    scaledown_window=300,
+    # 2026-10-23 QUOTA FIX: the render fans this function out ONE CALL PER
+    # CLIP (.map), and the workspace cap is 10 GPUs — the old 20-container
+    # ceiling meant two overlapping reels (or one 12-photo reel plus idle
+    # stragglers) tripped Modal's GPU-limit email and throttling. Six is a
+    # deliberate ceiling under the cap: a 12-clip reel upscaling in two
+    # waves costs ~one extra inference of wall-clock instead of a quota
+    # breach, and calls beyond the ceiling QUEUE (they never fail).
+    max_containers=6,
+    # Idle A100s still count against the GPU quota AND bill per second —
+    # 120s (was 300s) releases them right after a reel's last clip.
+    scaledown_window=120,
 )
 def flashvsr_upscale_video(input_video_url: str, target_resolution: str = "1080p",
                            portrait: bool = False) -> dict:
     """Upscale one clip to the delivery resolution (public entrypoint).
 
     render_video uses flashvsr_upscale_video.map so N clips upscale
-    concurrently, each container loading the pipeline once.
+    concurrently (bounded by max_containers=6), each container loading the
+    pipeline once.
     """
     return _upscale_one(input_video_url, target_resolution, portrait)
 
 
-@app.function(image=flashvsr_image, secrets=[AWS_SECRET], gpu=GPU, timeout=1800)
+@app.function(
+    image=flashvsr_image,
+    secrets=[AWS_SECRET],
+    gpu=GPU,
+    timeout=1800,
+    min_containers=0,
+    # Same quota posture as the per-clip entrypoint above: at most two batch
+    # containers alive at once (one render ≈ one GPU), fast release after.
+    max_containers=2,
+    scaledown_window=120,
+)
 def flashvsr_upscale_batch(input_video_urls: list, target_resolution: str = "1080p",
                            portrait: bool = False) -> list:
     """Upscale N clips sequentially in ONE container (single model load).
