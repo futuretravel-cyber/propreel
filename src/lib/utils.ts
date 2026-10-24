@@ -102,3 +102,28 @@ export async function downloadRemoteFile(fileUrl: string, fallbackName?: string)
 }
 
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
+
+// SA decimal comma for the marketing rate copy ("R1,50/credit") — the
+// Intl en-ZA currency style renders a dot in some browsers.
+export const zarComma = (n: number) => n.toFixed(2).replace('.', ',');
+// Same style, but compact whole rands ("R75"), cents only when they exist.
+export const zarCommaCompact = (n: number) => n.toFixed(2).replace(/\.00$/, '').replace('.', ',');
+
+/**
+ * Serialise rows to RFC-4180 CSV and download it. Cell values are quoted
+ * when needed; formula-injection characters (=+-@) are prefixed with a
+ * quote so Excel treats them as text. Used by the admin CSV exports.
+ */
+export function toCsv(rows: Array<Record<string, unknown>>, columns?: string[]): string {
+  const cols = columns && columns.length ? columns : Object.keys(rows[0] || {});
+  const cell = (v: unknown) => {
+    let s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+    if (/^[=+\-@]/.test(s)) s = `'${s}`;
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [cols.map(cell).join(','), ...rows.map(r => cols.map(c => cell(r[c])).join(','))].join('\r\n');
+}
+
+export function downloadCsv(filename: string, rows: Array<Record<string, unknown>>, columns?: string[]): void {
+  downloadText(filename, toCsv(rows, columns));
+}

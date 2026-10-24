@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar, formatDate, creditListZar } from '../lib/utils';
-import { PLANS, TIERS, CREDIT_PACK_RAND } from '../lib/constants';
+import { PLANS, TIERS, CREDIT_PACK_RAND, SIGNUP_BONUS } from '../lib/constants';
 import { PropReelAPI, CreditReportData, ReferralStats } from '../lib/api';
 import { BackendAPI } from '../lib/backendAPI';
 import { track } from '../lib/analytics';
@@ -80,13 +80,13 @@ export default function EnhancedBilling() {
 
   // Share targets for the referral link (WhatsApp first — it is how SA agents share)
   const refLink = user ? `${window.location.origin}/register?ref=${user.id}` : '';
-  const shareMsg = 'Get 5 free credits on PropReel — AI property videos for estate agents:';
+  const shareMsg = `Get ${SIGNUP_BONUS} free credits on PropReel — AI property videos for estate agents:`;
   const shareTargets: Array<{ id: string; label: string; icon: typeof Users; url: () => string }> = [
     { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, url: () => `https://wa.me/?text=${encodeURIComponent(`${shareMsg}\n${refLink}`)}` },
     { id: 'facebook', label: 'Facebook', icon: Facebook, url: () => `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(refLink)}` },
     { id: 'x', label: 'X', icon: Twitter, url: () => `https://twitter.com/intent/tweet?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent(shareMsg)}` },
     { id: 'linkedin', label: 'LinkedIn', icon: Linkedin, url: () => `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(refLink)}` },
-    { id: 'email', label: 'Email', icon: Mail, url: () => `mailto:?subject=${encodeURIComponent('5 free credits on PropReel')}&body=${encodeURIComponent(`${shareMsg}\n\n${refLink}`)}` },
+    { id: 'email', label: 'Email', icon: Mail, url: () => `mailto:?subject=${encodeURIComponent(`${SIGNUP_BONUS} free credits on PropReel`)}&body=${encodeURIComponent(`${shareMsg}\n\n${refLink}`)}` },
   ];
   const shareReferral = (t: typeof shareTargets[number]) => {
     track('share_clicked', { platform: `referral_${t.id}` });
@@ -364,7 +364,7 @@ export default function EnhancedBilling() {
                   </h3>
                   <p className="text-xs text-ink-400 mt-1">
                     Share your link: they get <span className="text-purple-300 font-semibold">5 bonus credits</span> on signup,
-                    and you get <span className="text-purple-300 font-semibold">5 credits</span> the moment they make their first purchase.
+                    and you get <span className="text-purple-300 font-semibold">{SIGNUP_BONUS} credits</span> the moment they make their first purchase.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

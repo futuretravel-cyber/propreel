@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // client-supplied ?email= would let anyone read the pending queue.
       const { requireAdminSession } = await import('../lib/auth');
       const gate = await requireAdminSession(req);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
       const { scanItems } = await import('../lib/db');
       const all = await scanItems<any>(TABLES.SETTINGS, { limit: 300 });
       const pending = all
@@ -62,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // may read them — same gate as referral_stats below.
       const { requireOwner } = await import('../lib/auth');
       const gate = await requireOwner(req, userId);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
       const me = await getUser(userId);
       if (!me) return res.status(404).json({ error: 'User not found' });
       if (!me.agencyId) return res.status(200).json({ success: true, members: [{ id: me.id, fullName: me.fullName, email: me.email, credits: me.credits ?? 0, role: me.role || 'AGENT', avatar: 'ME', createdAt: me.createdAt }], agencyName: null, invites: [] });
@@ -202,7 +202,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const existing = await getItem<{ id: string; count: number }>(TABLES.SETTINGS, { id: limitKey });
       if (existing && existing.count >= 1) {
         return res.status(429).json({
+          ok: false,
           error: 'You have already used your free preview today. Create an account for 5 free credits!',
+          code: 'RATE_LIMITED',
         });
       }
       await putItem(TABLES.SETTINGS, {
@@ -278,12 +280,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Session-gated admin action — the body carries no identity fields.
       const { requireAdminSession } = await import('../lib/auth');
       const gate = await requireAdminSession(req);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
       if (!reviewId) return res.status(400).json({ error: 'reviewId is required' });
       const { updateItem } = await import('../lib/db');
       await updateItem(TABLES.SETTINGS, { id: reviewId }, {
         status: approve ? 'approved' : 'rejected',
         featured: Boolean(featured),
+      });
+      // Admin audit trail (audit §11) — server-derived actor, best-effort.
+      const { recordAdminAction } = await import('../lib/adminAudit');
+      await recordAdminAction({
+        by: gate.user.email,
+        action: 'REVIEW_MODERATED',
+        target: reviewId,
+        detail: `${approve ? 'Approved' : 'Rejected'} review${featured ? ' (featured)' : ''}`,
       });
       return res.status(200).json({ success: true });
     }

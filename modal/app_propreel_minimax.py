@@ -121,13 +121,16 @@ def _parse_token(value: Optional[str]):
         # the enum closed here used to 401 every Property Description call
         # (agent-visible symptom: "unknown job scope — your credit was
         # refunded") even though the credit was charged and the run was paid.
-        if not scope or not scope.isalnum() or len(scope) > 32:
+        # Scopes are the API's job scopes — 'social_post' / 'social_pack'
+        # carry an underscore, which str.isalnum() rejects: every paid social
+        # caption/pack generation 401'd here AFTER the credit was charged.
+        if not scope or len(scope) > 32 or not all(c.isalnum() or c == "_" for c in scope):
             return None, "unknown job scope"
         msg = f"v2.{exp_s}.{uid}.{scope}"
         version = 2
     elif len(parts) == 6 and parts[0] == "v3":
         _, exp_s, uid, scope, script_hash, sig = parts
-        if not scope or not scope.isalnum() or len(scope) > 32:
+        if not scope or len(scope) > 32 or not all(c.isalnum() or c == "_" for c in scope):
             return None, "unknown job scope"
         if len(script_hash) != 16 or any(c not in "0123456789abcdef" for c in script_hash):
             return None, "malformed token script hash"
@@ -3847,6 +3850,22 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
             "features), mention what you can see in any attached photos, use 1-3 emojis, and end "
             "with 4-6 local hashtags (#PropertyForSale #CapeTown style). Never invent facts."
         ),
+        # Full social pack (audit §9): ONE generation covering every platform
+        # the agency posts to. platform_brief lists each platform id with its
+        # character limit and style rules; the reply is minified JSON mapping
+        # platform id -> caption so the client can slot each one straight into
+        # its preview card. JSON only — no fences, no commentary.
+        "social_pack": (
+            "You are a social media copywriter for a South African estate agency. Write ONE post "
+            "caption for EACH platform listed in platform_brief, for the property described in the "
+            "provided fields. Every caption must use the exact facts provided (beds, baths, price in "
+            "ZAR with the decimal system, key features), mention what you can see in any attached "
+            "photos, and never invent facts. Each caption MUST respect its platform's character limit "
+            "and style rules from platform_brief. Reply with ONLY minified JSON mapping each platform "
+            "id to its caption string — no code fences, no commentary, no extra keys: "
+            "{\"instagram\":\"...\",\"facebook\":\"...\",\"whatsapp\":\"...\",\"linkedin\":\"...\","
+            "\"twitter\":\"...\",\"tiktok\":\"...\",\"newsletter\":\"...\"}"
+        ),
         "video_script": (
             "You are a real estate video scriptwriter. Write a spoken voiceover script for a property "
             "tour video, grounded in the LISTING DETAILS and the ATTACHED PHOTOS the agent uploaded "
@@ -3875,6 +3894,18 @@ def generate_text_fn(kind: str, fields: dict, images: list | None = None) -> str
         ),
     }
     system = system_prompts.get(kind, system_prompts["description"])
+    # Property descriptions in any of SA's 11 official languages (audit §8):
+    # the frontend sends `language` / `language_label` with description
+    # requests. English keeps the stock prompt; anything else gets a hard
+    # language rule like the video scripts have always had.
+    if kind == "description":
+        desc_lang_label = str(fields.get("language_label") or "").strip()
+        if desc_lang_label and desc_lang_label.lower() != "english":
+            system += (
+                f" Write the ENTIRE description in {desc_lang_label} — every sentence including "
+                f"the closing line. Keep property names, suburbs, street names, numbers and prices "
+                f"exactly as written; never translate a proper noun."
+            )
     # The narrator speaks the SELECTED language (one of SA's 11 official
     # languages), so the AI-written script must be in it too. The frontend
     # sends `language` / `language_label` / `target_words` / `duration_seconds`
@@ -5014,7 +5045,7 @@ class FlashHeadJobRequest(BaseModel):
 
 
 class GenerateTextRequest(BaseModel):
-    kind: str  # description | social_caption | video_script | language_check | translate
+    kind: str  # description | social_caption | social_pack | video_script | language_check | translate
     fields: dict = {}
     images: list[str] = []  # optional photo URLs for Grok vision
 

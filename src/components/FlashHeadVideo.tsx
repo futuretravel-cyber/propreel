@@ -3,6 +3,7 @@ import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, AlertCircle, Sp
 import { useFlashHead } from '../lib/useFlashHead';
 import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../../lib/renderPricing';
 import { useCredit } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { useRenderProgress, typicalFlashheadSeconds } from '../lib/useRenderProgress';
 import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
 import RenderProgressBar from './RenderProgressBar';
@@ -44,6 +45,7 @@ interface FlashHeadVideoProps {
  */
 export default function FlashHeadVideo({ initialScript = '', onScriptChange, onVideoGenerated, profileImage = null, profileImageReady = true, onProfileImageChange, language = DEFAULT_VOICE_LANGUAGE, onLanguageChange, langCheck }: FlashHeadVideoProps) {
   const { user } = useCredit() as any;
+  const confirm = useConfirm();
   const { generate, busy, stage, error, setError, jobStatus, cancel, cancelling } = useFlashHead();
   const [file, setFile] = useState<File | null>(null);
   // The picked headshot and its branding/hosted source survive full page
@@ -358,7 +360,21 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
 
       {/* Generate */}
       <div className="space-y-3">
-        <button onClick={() => guardAIRender(run)} disabled={!canRun} className="btn btn-primary w-full text-lg py-4">
+        {/* Paid action: disclose cost + balance before spending, the same
+            pattern as the AI Write confirmation. */}
+        <button
+          onClick={() => {
+            const balance = user?.credits ?? 0;
+            confirm(
+              `This AI Avatar video costs ${avatarCost} credits for ~${Math.round(narrationSecs)}s of narration (2 credits per 10 seconds).\n\nYou have ${balance} credit${balance === 1 ? '' : 's'}. A failed render is refunded automatically.\n\nGenerate now?`,
+              { title: 'Generate AI Avatar Video?', confirmLabel: 'Generate' },
+            ).then((ok) => {
+              if (ok) void guardAIRender(run);
+            });
+          }}
+          disabled={!canRun}
+          className="btn btn-primary w-full text-lg py-4"
+        >
           {busy ? (
             <><Loader2 className="w-5 h-5 animate-spin" /> {stageLabel || 'Working…'}</>
           ) : resultUrl ? (
@@ -367,6 +383,11 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
             <><Sparkles className="w-5 h-5" /> Generate AI Avatar Video ({avatarCost ?? '—'} credits)</>
           )}
         </button>
+        {!busy && (
+          <p className="text-xs text-ink-500 text-center">
+            Your balance: <span className="text-white font-semibold tabular-nums">{user?.credits ?? 0} ⚡</span> · {avatarCost ?? '—'} ⚡ is charged when the render starts.
+          </p>
+        )}
         <RenderProgressBar
           progress={progress}
           stage={stage === 'rendering' ? (jobStatus === 'processing' ? 'processing' : 'queued') : ''}

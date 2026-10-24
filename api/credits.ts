@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'user_id is required' });
       }
       const gate = await requireOwner(req, userId);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const days = parseInt(period) || 30;
       const report = await getCreditReport(userId, days);
@@ -64,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // (AdminGiveCredits → Admin → Users → Give).
     if (req.method === 'POST' && action === 'add') {
       const gate = await requireAdminSession(req);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const { user_id, amount, source, description, metadata, expires_at } = req.body;
       // Whole positive credits only — a fractional, zero or negative amount
@@ -86,6 +86,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         { ...(metadata || {}), kind: 'ADMIN_CREDIT_GRANT', by: gate.user.email },
         expires_at
       );
+
+      // Admin audit trail (audit §11) — server-derived actor, best-effort.
+      const { recordAdminAction } = await import('../lib/adminAudit');
+      await recordAdminAction({
+        by: gate.user.email,
+        action: 'CREDIT_GRANT',
+        target: user_id,
+        detail: `Granted ${amount} credits (${source})${description ? ` — ${description}` : ''}`,
+      });
 
       return res.status(200).json({
         success: true,
@@ -109,7 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Unknown refund scope' });
       }
       const gate = await requireOwner(req, user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const result = await refundDeduction(user_id, scope);
       if (!result.success) {
@@ -131,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Invalid request parameters' });
       }
       const gate = await requireOwner(req, user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       // ── Server-priced kinds: the client cannot choose the amount ─────
       // Product calls are minted (job_token, renderPricing-priced). This
@@ -139,8 +148,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // modified client deducting differently gets a 400, never a ledger
       // row (the renderPricing import is the same table UI shows).
       const kind = String(metadata?.kind || '');
-      if (kind === 'PROPERTY_DESCRIPTION' || kind === 'SOCIAL_POST') {
-        const expected = jobCredits(kind === 'PROPERTY_DESCRIPTION' ? 'description' : 'social_post');
+      if (kind === 'PROPERTY_DESCRIPTION' || kind === 'SOCIAL_POST' || kind === 'SOCIAL_PACK') {
+        const expected = jobCredits(kind === 'PROPERTY_DESCRIPTION' ? 'description' : kind === 'SOCIAL_PACK' ? 'social_pack' : 'social_post');
         if (expected == null || amount !== expected) {
           return res.status(400).json({
             error: `This charge is priced server-side — the client cannot choose the amount`,
@@ -155,9 +164,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const result = await deductCredits(user_id, amount, reason || 'Credit deduction', metadata, pool === 'agency' ? 'agency' : 'personal');
 
       if (!result.success) {
-        const isLimit = (result.error || '').includes('Monthly credit limit reached');
+        const isLimit = result.code === 'MONTHLY_LIMIT_REACHED';
         return res.status(isLimit ? 402 : 400).json({
+          ok: false,
           error: result.error || 'Failed to deduct credits',
+          code: result.code || 'INTERNAL',
           current_balance: result.newBalance,
           ...(isLimit ? { limit_reached: true } : {}),
         });
@@ -179,7 +190,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Invalid request parameters' });
       }
       const gate = await requireOwner(req, from_user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       if (from_user_id === to_user_id) {
         return res.status(400).json({ error: 'Cannot transfer to yourself' });
@@ -189,14 +200,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const toUser = await getUser(to_user_id);
 
       if (!fromUser) {
-        return res.status(404).json({ error: 'Sender not found' });
+        return res.status(404).json({ ok: false, error: 'Sender not found', code: 'NOT_FOUND' });
       }
       if (!toUser) {
-        return res.status(404).json({ error: 'Recipient not found' });
+        return res.status(404).json({ ok: false, error: 'Recipient not found', code: 'NOT_FOUND' });
       }
       if (fromUser.credits < amount) {
         return res.status(400).json({
+          ok: false,
           error: 'Insufficient credits',
+          code: 'INSUFFICIENT_CREDITS',
           current_balance: fromUser.credits,
           required: amount,
         });
@@ -206,7 +219,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // ledger rows are written by transferCredits.
       const result = await transferCredits(from_user_id, to_user_id, amount, reason || 'Credit transfer');
       if (!result.success) {
-        return res.status(400).json({ error: result.error });
+        return res.status(400).json({ ok: false, error: result.error, code: result.code || 'INTERNAL' });
       }
 
       const receiver = await getUser(to_user_id);
@@ -236,13 +249,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Invalid request parameters' });
       }
       const gate = await requireOwner(req, from_user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const fromUser = await getUser(from_user_id);
-      if (!fromUser) return res.status(404).json({ error: 'Sender not found' });
+      if (!fromUser) return res.status(404).json({ ok: false, error: 'Sender not found', code: 'NOT_FOUND' });
       if (fromUser.credits < amount) {
         return res.status(400).json({
+          ok: false,
           error: 'Insufficient credits',
+          code: 'INSUFFICIENT_CREDITS',
           current_balance: fromUser.credits,
           required: amount,
         });

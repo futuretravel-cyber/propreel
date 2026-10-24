@@ -4,11 +4,26 @@ import { useImageEdit } from '../lib/useImageEdit';
 import { useRenderProgress, TYPICAL_IMAGE_EDIT_SECONDS } from '../lib/useRenderProgress';
 import RenderProgressBar from './RenderProgressBar';
 import { useCredit } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { useStudioDraft, studioDraftKey, dataUrlToFile } from '../lib/studioDrafts';
 import { useUploadWait } from '../lib/api';
 import { guardAIRender } from '../lib/aiDisclaimer';
 import { downloadRemoteFile } from '../lib/utils';
 import { RETENTION_DAYS } from '../lib/constants';
+import { IMAGE_EDIT_CREDITS, STAGING_EDIT_CREDITS, isStagingPreset } from '../../lib/renderPricing';
+
+interface BatchItem {
+  file: File;
+  preview: string;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  resultUrl?: string;
+  error?: string;
+}
+
+/** Agents shoot ~20 photos per listing (audit §7) — one queue entry per
+ *  photo, same preset, run sequentially through the same per-photo
+ *  charge/refund pipeline as the single-photo flow. */
+const BATCH_LIMIT = 20;
 
 interface ImageWorkbenchProps {
   presetId: string;
@@ -30,6 +45,7 @@ interface ImageWorkbenchProps {
  */
 export default function ImageWorkbench({ presetId, draftSlot, strength, guidanceScale, customPrompt, ctaLabel, emptyHint, accept = 'image/*' }: ImageWorkbenchProps) {
   const { user } = useCredit() as any;
+  const confirm = useConfirm();
   // The picked image and its render result persist across full page reloads —
   // `file` is rebuilt from the restored data URL on demand (it's not
   // structured-serialisable in a way we can rely on across sessions).
@@ -38,6 +54,11 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
   const [resultUrl, setResultUrl] = useStudioDraft<string | null>(studioDraftKey(user?.id, `workbench:${draftSlot}:result`), null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Batch mode (audit §7): queue the same preset across many photos.
+  const [batch, setBatch] = useState<BatchItem[]>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const batchInputRef = useRef<HTMLInputElement>(null);
+  const unitCost = isStagingPreset(presetId) ? STAGING_EDIT_CREDITS : IMAGE_EDIT_CREDITS;
   const { edit, busy, stage, error, setError } = useImageEdit();
   const uploadWait = useUploadWait();
   // Every image tool renders whole-photo since 2026-10-16: Virtual Staging
@@ -97,6 +118,40 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
       // CORS or network edge cases — degrade to the old open-in-tab flow
       window.open(resultUrl, '_blank', 'noopener');
     }
+  };
+
+  const addBatchFiles = (list: FileList | null) => {
+    if (!list || !list.length) return;
+    const room = BATCH_LIMIT - batch.length;
+    if (room <= 0) { setError(`Up to ${BATCH_LIMIT} photos per batch`); return; }
+    const accepted: BatchItem[] = [];
+    for (const f of Array.from(list).slice(0, room)) {
+      const looksImage = f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|avif|bmp|gif)$/i.test(f.name);
+      if (!looksImage || f.size > 25 * 1024 * 1024) continue;
+      accepted.push({ file: f, preview: URL.createObjectURL(f), status: 'queued' });
+    }
+    if (accepted.length) setBatch(prev => [...prev, ...accepted]);
+  };
+
+  // Sequential on purpose: one render at a time keeps Modal pressure sane and
+  // preserves the per-photo credit check/refund semantics inside edit().
+  const runBatch = async () => {
+    setBatchRunning(true);
+    for (let i = 0; i < batch.length; i++) {
+      const item = batch[i];
+      if (item.status === 'done') continue;
+      const patch = (p: Partial<BatchItem>) =>
+        setBatch(prev => prev.map((b, idx) => (idx === i ? { ...b, ...p } : b)));
+      patch({ status: 'running', error: undefined });
+      try {
+        const res = await edit({ file: item.file, presetId, strength, guidanceScale, customPrompt });
+        if (res) patch({ status: 'done', resultUrl: res.imageUrl });
+        else patch({ status: 'failed', error: 'Render failed' });
+      } catch (e: any) {
+        patch({ status: 'failed', error: e?.message || 'Render failed' });
+      }
+    }
+    setBatchRunning(false);
   };
 
   return (
@@ -182,7 +237,21 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
       {preview && (
         <div className="space-y-3">
           <div className="flex gap-3">
-            <button onClick={() => guardAIRender(run)} disabled={busy} className="btn btn-primary flex-1 min-h-[48px]">
+            {/* Paid action: disclose cost + balance before spending, the
+                same pattern as the AI Write confirmation. */}
+            <button
+              onClick={() => {
+                const balance = user?.credits ?? 0;
+                confirm(
+                  `This render costs ${unitCost} credits.\n\nYou have ${balance} credit${balance === 1 ? '' : 's'}. A failed render is refunded automatically.\n\nGenerate now?`,
+                  { title: 'Generate image?', confirmLabel: 'Generate' },
+                ).then((ok) => {
+                  if (ok) void guardAIRender(run);
+                });
+              }}
+              disabled={busy}
+              className="btn btn-primary flex-1 min-h-[48px]"
+            >
               {busy ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> {stageLabel}</>
               ) : (
@@ -200,6 +269,9 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
               </>
             )}
           </div>
+          <p className="text-xs text-ink-500">
+            Your balance: <span className="text-white font-semibold tabular-nums">{user?.credits ?? 0} ⚡</span> · {unitCost} ⚡ is charged when the render starts.
+          </p>
           {/* Own row: as a flex sibling the bar was squeezed into whatever
               width the buttons left, so the progress read as a thin stripe. */}
           <RenderProgressBar
@@ -214,6 +286,92 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
           )}
         </div>
       )}
+
+      {/* ── Batch mode (audit §7): the same preset across many photos ──────
+          One queue entry per photo, run one at a time through the same
+          per-photo charge/refund pipeline as the single-photo flow above. */}
+      <div className="rounded-xl border border-white/10 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-white">Batch edit</p>
+            <p className="text-xs text-ink-500">Apply this preset to up to {BATCH_LIMIT} photos — ⚡{unitCost} credits each, charged per photo as it renders.</p>
+          </div>
+          <div className="flex gap-2">
+            <input
+              ref={batchInputRef}
+              type="file"
+              accept={accept}
+              multiple
+              className="sr-only"
+              onChange={e => { addBatchFiles(e.target.files); e.target.value = ''; }}
+            />
+            <button onClick={() => batchInputRef.current?.click()} disabled={batchRunning} className="btn btn-secondary text-sm min-h-[40px]">
+              Add photos
+            </button>
+            {batch.length > 0 && (
+              <button
+                onClick={() => {
+                  const n = batch.filter(b => b.status !== 'done').length;
+                  const total = unitCost * n;
+                  confirm(
+                    `This batch renders ${n} photo${n === 1 ? '' : 's'} at ${unitCost} credits each — ${total} credits total${n > 1 ? ', charged per photo as each one renders' : ''}.\n\nYou have ${user?.credits ?? 0} credits. Failed renders are refunded automatically.\n\nRun batch?`,
+                    { title: 'Run batch?', confirmLabel: 'Run batch' },
+                  ).then((ok) => {
+                    if (ok) void guardAIRender(runBatch);
+                  });
+                }}
+                disabled={batchRunning || batch.every(b => b.status === 'done')}
+                className="btn btn-primary text-sm min-h-[40px]"
+              >
+                {batchRunning ? <><Loader2 className="w-4 h-4 animate-spin" /> Running batch…</> : <><Zap className="w-4 h-4" /> Run batch · ⚡{unitCost * batch.filter(b => b.status !== 'done').length}</>}
+              </button>
+            )}
+          </div>
+        </div>
+        {batch.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {batch.map((item, i) => (
+              <div key={`${item.file.name}-${i}`} className="rounded-lg border border-white/10 overflow-hidden bg-ink-900/60">
+                <div className="relative">
+                  <img src={item.resultUrl || item.preview} alt={item.file.name} className="w-full aspect-square object-cover" />
+                  {item.status === 'running' && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 animate-spin text-purple-300" />
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setBatch(prev => prev.filter((_, idx) => idx !== i))}
+                    disabled={batchRunning || item.status === 'running'}
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-600 transition disabled:opacity-40"
+                    aria-label={`Remove ${item.file.name} from batch`}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="p-2">
+                  <p className="text-[10px] text-ink-400 truncate" title={item.file.name}>{item.file.name}</p>
+                  <p className={`text-[10px] flex items-center gap-1 ${item.status === 'done' ? 'text-green-400' : item.status === 'failed' ? 'text-red-400' : item.status === 'running' ? 'text-purple-300' : 'text-ink-500'}`}>
+                    {item.status === 'done' ? 'Done' : item.status === 'failed' ? (item.error || 'Failed') : item.status === 'running' ? 'Rendering…' : 'Queued'}
+                  </p>
+                  {item.resultUrl && (
+                    <button
+                      onClick={() => downloadRemoteFile(item.resultUrl!).catch(() => window.open(item.resultUrl!, '_blank', 'noopener'))}
+                      className="mt-1 w-full btn btn-ghost text-[10px] px-2 py-1"
+                    >
+                      <Download className="w-3 h-3" /> Download
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {batch.length > 0 && (
+          <p className="text-xs text-ink-500">
+            {batch.filter(b => b.status === 'done').length} done · {batch.filter(b => b.status === 'failed').length} failed · {batch.filter(b => b.status === 'queued').length} queued — edited images are kept for {RETENTION_DAYS} days.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

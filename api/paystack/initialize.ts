@@ -24,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
     const gate = await requireOwner(req, user_id);
-    if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
     // Get user from DynamoDB (source of truth for accounts)
     const user = await getUser(user_id);

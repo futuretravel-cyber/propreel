@@ -409,28 +409,43 @@ export function ListingWizard({ onClose, onSaved, initial }: { onClose: () => vo
     setStep(s => Math.min(3, s + 1));
   };
 
+  // Portal-shaped exports (same conventions as DescriptionTab):
+  // Property24 — compact, one heading line + price/specs + body, no bullets.
+  // Private Property — labelled sections, bulleted features, clear closing.
+  // These used to be byte-identical apart from the filename.
   const portalText = (portal: 'property24' | 'privateproperty') => {
-    const head =
-      portal === 'property24'
-        ? `${d.propertyType.toUpperCase()} FOR SALE — ${[d.suburb, d.city].filter(Boolean).join(', ')}`
-        : `${d.propertyType} for sale in ${d.suburb || d.city || 'South Africa'}`;
+    const price = d.price ? `R ${Number(d.price).toLocaleString('en-ZA')}` : '';
     const specs = [
       d.beds && `${d.beds} bed`,
       d.baths && `${d.baths} bath`,
       d.garages && `${d.garages} garage`,
       d.erf && `Erf ${d.erf} m²`,
       d.floor && `Floor ${d.floor} m²`,
-    ].filter(Boolean).join(' | ');
-    return [
-      head,
-      d.price ? `Asking price: R ${Number(d.price).toLocaleString('en-ZA')}` : '',
-      specs,
-      fullAddress ? `Address: ${fullAddress}` : '',
-      '',
-      description,
-      d.features.length ? `\nKey features: ${d.features.join(', ')}` : '',
-      `\nListed by ${user?.fullName || ''} — ${user?.email || ''}`,
-    ].filter(l => l !== null).join('\n');
+    ].filter(Boolean) as string[];
+    const lines =
+      portal === 'property24'
+        ? [
+            `${d.propertyType.toUpperCase()} FOR SALE — ${[d.suburb, d.city].filter(Boolean).join(', ')}`,
+            price ? `Asking price: ${price}` : '',
+            specs.join(' | '),
+            fullAddress ? `Address: ${fullAddress}` : '',
+            '',
+            description,
+            d.features.length ? `\nKey features: ${d.features.join(', ')}` : '',
+            `\nListed by ${user?.fullName || ''} — ${user?.email || ''}`,
+          ]
+        : [
+            `${d.propertyType} for sale in ${d.suburb || d.city || 'South Africa'}`,
+            '',
+            `Price: ${price || 'On request'}`,
+            fullAddress ? `Address: ${fullAddress}` : '',
+            ...specs.map(s => `• ${s}`),
+            '',
+            description,
+            d.features.length ? `\nFeatures:\n${d.features.map(f => `• ${f}`).join('\n')}` : '',
+            `\nContact ${user?.fullName || ''} — ${user?.email || ''}`,
+          ];
+    return lines.filter(l => l !== null && l !== undefined).join('\n');
   };
 
   const saveListing = async () => {

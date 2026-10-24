@@ -86,3 +86,15 @@ scripts/__pycache__/
 
 # Build artifacts
 tsconfig.tsbuildinfo
+
+# Scratch probes / session artifacts (this machine only — never commit)
+.repro_tmp/
+.tmp_*/
+.tmp_*.json
+.tmp_drill_logs.txt
+__pycache__/
+out/
+anchor_dump.txt
+chunk_1.txt
+fill_1mp_*
+modal/_*

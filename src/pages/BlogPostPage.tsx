@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, CalendarDays, Clock, Tag } from 'lucide-react';
 import { PublicLayout } from '../components/PublicLayout';
 import { getAllPosts, getPost, readingMinutes, type Block } from '../blog/posts';
+import { SIGNUP_BONUS } from '../lib/constants';
 
 const fmt = new Intl.DateTimeFormat('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -153,7 +154,7 @@ export default function BlogPostPage() {
             </p>
             <div className="flex flex-wrap gap-3 mt-4">
               <Link to="/register" className="btn btn-primary inline-flex items-center gap-2">
-                Start free — 5 credits <ArrowRight className="w-4 h-4" />
+                Start free — your first {SIGNUP_BONUS} credits are on us, no card needed <ArrowRight className="w-4 h-4" />
               </Link>
               <Link to="/pricing" className="btn bg-white border border-gray-300 text-gray-800 hover:bg-gray-50 inline-flex items-center">
                 See pricing

@@ -125,15 +125,9 @@ export function BeforeAfterSlider({
  */
 export function ShowreelVideo({ src, poster, className = '' }: { src?: string; poster: string; className?: string }) {
   if (!src) {
-    // No showreel asset yet — show poster with a play affordance placeholder
-    return (
-      <div className={`relative ${className}`}>
-        <img src={poster} alt="Property video preview" className="w-full aspect-video object-cover" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-white/90 text-sm bg-black/50 px-3 py-1.5 rounded-full">Showreel coming soon</span>
-        </div>
-      </div>
-    );
+    // No showreel asset yet — show the photo clean. A "coming soon" overlay
+    // advertises an unfinished product to prospective buyers.
+    return <img src={poster} alt="Property" className={`w-full aspect-video object-cover ${className}`} />;
   }
   return (
     <video

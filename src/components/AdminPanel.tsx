@@ -19,6 +19,75 @@ import AdminUpdateMode from './AdminUpdateMode';
 import AdminUserDetail from './AdminUserDetail';
 import AdminGiveCredits from './AdminGiveCredits';
 import CurrencyInput from './CurrencyInput';
+import { downloadCsv } from '../lib/utils';
+
+/** Small download-as-CSV chip for the admin tables (audit §11: finance asks
+ *  for CSV the moment a table exists). Rows are exported as-is. */
+function CsvExportButton({ filename, rows, columns }: { filename: string; rows: Array<Record<string, unknown>>; columns?: string[] }) {
+  return (
+    <button
+      onClick={() => downloadCsv(filename, rows, columns)}
+      disabled={!rows.length}
+      className="btn btn-ghost text-xs px-2 py-1 min-h-[32px] disabled:opacity-40"
+      title={`Download ${rows.length} rows as CSV`}
+    >
+      <Download className="w-3 h-3" /> CSV ({rows.length})
+    </button>
+  );
+}
+
+// Admin: the platform action log — credit grants, subscription/role changes,
+// review moderation and update-mode toggles (audit §11). Server-written only.
+function AdminAuditLog() {
+  const [events, setEvents] = useState<any[] | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    fetch('/api/users?action=admin_audit_log')
+      .then(r => { if (!r.ok) throw new Error('Admin access required'); return r.json(); })
+      .then(d => setEvents(d.events || []))
+      .catch(e => { setError(e.message); setEvents([]); });
+  }, []);
+
+  if (error) return <p className="text-sm text-red-400">{error}</p>;
+  if (!events) return <p className="text-sm text-ink-400">Loading the audit log…</p>;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-white">Admin audit log</h3>
+          <p className="text-xs text-ink-500">Credit grants, subscription and role changes, review moderation, update-mode toggles — written server-side with the acting admin.</p>
+        </div>
+        <CsvExportButton filename="admin-audit-log.csv" rows={events} columns={['createdAt', 'action', 'by', 'target', 'detail']} />
+      </div>
+      {events.length === 0 ? (
+        <p className="text-sm text-ink-400">No admin actions recorded yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">When</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Action</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Admin</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map(e => (
+                <tr key={e.id} className="border-b border-white/5">
+                  <td className="px-3 py-2 text-ink-300 whitespace-nowrap">{e.createdAt ? new Date(e.createdAt).toLocaleString('en-ZA') : ''}</td>
+                  <td className="px-3 py-2 text-white font-medium whitespace-nowrap">{e.action}</td>
+                  <td className="px-3 py-2 text-ink-300">{e.by}</td>
+                  <td className="px-3 py-2 text-ink-300">{e.detail}{e.target ? <span className="text-xs text-ink-500 ml-2">{e.target}</span> : null}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ADMIN
@@ -55,6 +124,7 @@ const ADMIN_SECTIONS: { label: string; tabs: { key: string; label: string }[] }[
       { key: 'settings', label: 'Settings' },
       { key: 'api-keys', label: 'API Keys' },
       { key: 'update-mode', label: 'Maintenance' },
+      { key: 'audit', label: 'Audit log' },
     ],
   },
 ];
@@ -92,6 +162,7 @@ export default function AdminPage() {
       </div>
       <div className="card-dark p-6">
         {tab === 'overview' && <AdminOverview />}
+        {tab === 'audit' && <AdminAuditLog />}
         {tab === 'pnl' && <AdminPnl />}
         {tab === 'ops' && <AdminNarakeetOps />}
         {tab === 'users' && <AdminUsers />}
@@ -125,6 +196,10 @@ function AdminAgencies() {
   if (!agencies) return <p className="text-sm text-ink-400">Loading agencies…</p>;
   if (agencies.length === 0) return <p className="text-sm text-ink-400">No agencies created yet.</p>;
   return (
+    <div className="space-y-3">
+    <div className="flex justify-end">
+      <CsvExportButton filename="propreel-agencies.csv" rows={agencies} columns={['id', 'name', 'ownerEmail', 'memberCount', 'memberLimit', 'poolCredits', 'createdAt']} />
+    </div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
@@ -150,6 +225,7 @@ function AdminAgencies() {
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }
@@ -322,6 +398,16 @@ function AdminNarakeetOps() {
 
   const langLabel = (code: string) => SA_LANGUAGES.find(l => l.id === code)?.label || code;
   const kindLabel = (kind: string) => (kind === 'flashhead' ? 'Avatar' : 'Reel');
+  // Render ops CSV — the per-render rows behind the tiles (audit §11).
+  const opsRows = (data?.recent || []).map((r: any) => ({
+    jobId: r.jobId || r.recordId || '',
+    kind: r.kind || '',
+    language: r.language || '',
+    seconds: r.seconds ?? '',
+    minutes: r.minutes ?? '',
+    estCostUsd: r.minutes != null ? (r.minutes * (data?.usdPerMinute || 0)).toFixed(4) : '',
+    at: r.at || r.createdAt || '',
+  }));
   const t = data?.totals;
   const tiles = t ? [
     { label: 'Narration minutes', value: t.minutes.toFixed(1), sub: `billed audio (${Math.round(t.seconds)}s)` },
@@ -340,6 +426,7 @@ function AdminNarakeetOps() {
           {[7, 30, 90].map(d => (
             <button key={d} onClick={() => setDays(d)} className={`tab-pill ${days === d ? 'tab-pill-active' : ''}`}>{d}d</button>
           ))}
+          <CsvExportButton filename={`propreel-render-ops-${days}d.csv`} rows={opsRows} columns={['jobId', 'kind', 'language', 'seconds', 'minutes', 'estCostUsd', 'at']} />
           <button onClick={() => setDays(v => v)} disabled={loading} className="text-xs text-purple-400 hover:text-purple-300" aria-label="Refresh report">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -549,9 +636,25 @@ function AdminPnl() {
             ? <span className="badge badge-success">FINALIZED</span>
             : s?.inProgress && <span className="badge badge-warning">IN PROGRESS</span>}
         </div>
-        <button onClick={downloadPdf} disabled={!s || pdfBusy} className="btn btn-primary text-sm">
-          <Download className="w-4 h-4" /> {pdfBusy ? 'Generating…' : 'Download PDF'}
-        </button>
+        <div className="flex items-center gap-2">
+          <CsvExportButton
+            filename={`propreel-pnl-${month}.csv`}
+            rows={s ? [
+              { line: 'Subscription revenue', amount: s.revenue.subscription },
+              { line: 'Credit top-ups (one-off)', amount: s.revenue.topups },
+              { line: 'Refunds & adjustments', amount: s.revenue.refunds },
+              { line: 'Total revenue', amount: s.revenue.total },
+              { line: 'Recognised revenue @ R1.00/credit', amount: s.usage.recognizedRevenue },
+              ...s.expenses.items.map((i: any) => ({ line: `Expense — ${i.label}`, amount: -Math.abs(i.amount), category: i.category, note: i.note || '' })),
+              { line: 'Total expenses', amount: -s.expenses.total },
+              { line: 'Net profit (cash)', amount: s.net.cash },
+            ] : []}
+            columns={['line', 'amount', 'category', 'note']}
+          />
+          <button onClick={downloadPdf} disabled={!s || pdfBusy} className="btn btn-primary text-sm">
+            <Download className="w-4 h-4" /> {pdfBusy ? 'Generating…' : 'Download PDF'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="bg-red-950/30 border border-red-500/30 rounded-xl p-4 text-sm text-red-300">{error}</div>}
@@ -826,6 +929,11 @@ function AdminUsers() {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <input className="input max-w-xs" placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} />
+        <CsvExportButton
+          filename="propreel-users.csv"
+          rows={shown}
+          columns={['id', 'email', 'fullName', 'role', 'credits', 'agencyId', 'createdAt', 'lastActiveAt']}
+        />
       </div>
       {detailUser && (
         <AdminUserDetail

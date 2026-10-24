@@ -83,7 +83,7 @@ export default function LowCreditNudge() {
           You're out of credits
         </h2>
         <p className="text-ink-400 text-sm mb-1">
-          Your {SIGNUP_BONUS} free welcome credits have been used up — nice work getting
+          Your {SIGNUP_BONUS} free credits have been used up — nice work getting
           your first listings on video.
         </p>
         <p className="text-ink-400 text-sm mb-5">

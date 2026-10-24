@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CalendarDays, Clock, Newspaper } from 'lucide-react';
 import { PublicLayout } from '../components/PublicLayout';
 import { getAllPosts, readingMinutes } from '../blog/posts';
+import { SIGNUP_BONUS } from '../lib/constants';
 
 const fmt = new Intl.DateTimeFormat('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -60,7 +61,7 @@ export default function BlogIndexPage() {
               Turn your next listing’s photos into a narrated property video — free to try.
             </p>
             <Link to="/register" className="btn btn-primary mt-4 inline-flex items-center gap-2">
-              Start free — 5 credits <ArrowRight className="w-4 h-4" />
+              Start free — your first {SIGNUP_BONUS} credits are on us, no card needed <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>

@@ -163,6 +163,69 @@ export async function queryItems<T>(tableName: string, keyCondition: any, option
   }
 }
 
+/**
+ * Query a secondary index — same shape as queryItems but targeted at a GSI.
+ * Throws on a missing index (ResourceNotFoundException) so callers that can
+ * fall back to a scan (sessions before the userId-index existed) may.
+ */
+export async function queryIndex<T>(
+  tableName: string,
+  indexName: string,
+  keyCondition: { expression: string; values: Record<string, any>; names?: Record<string, string> },
+  options?: { limit?: number; scanIndexForward?: boolean }
+): Promise<T[]> {
+  const params: any = {
+    TableName: tableName,
+    IndexName: indexName,
+    KeyConditionExpression: keyCondition.expression,
+    ExpressionAttributeValues: keyCondition.values || {},
+  };
+  const names = keyCondition.names || {};
+  if (Object.keys(names).length > 0) params.ExpressionAttributeNames = { ...names };
+  if (Object.keys(params.ExpressionAttributeValues).length === 0) delete params.ExpressionAttributeValues;
+  if (options?.limit) params.Limit = options.limit;
+  if (options?.scanIndexForward !== undefined) params.ScanIndexForward = options.scanIndexForward;
+
+  // Deliberately NOT wrapped in a catch: a missing index must surface to the
+  // caller so it can fall back to the old scan path rather than silently
+  // treat "no index" as "no rows" (which would skip session revocations).
+  const out: T[] = [];
+  let exclusiveStartKey: Record<string, any> | undefined;
+  do {
+    const page: any = { ...params };
+    if (exclusiveStartKey) page.ExclusiveStartKey = exclusiveStartKey;
+    const result = await docClient.send(new QueryCommand(page));
+    out.push(...((result.Items as T[]) || []));
+    exclusiveStartKey = result.LastEvaluatedKey;
+    if (options?.limit && out.length >= options.limit) break;
+  } while (exclusiveStartKey);
+  return options?.limit ? out.slice(0, options.limit) : out;
+}
+
+/**
+ * Paginated scan — every page is read (or `maxItems` rows), so admin
+ * stats/ledger reads see the whole table instead of the first 1 MB page.
+ * Prefer queryIndex/queryItems for keyed lookups; this is the O(table) path.
+ */
+export async function scanAll<T>(tableName: string, options?: { filter?: any; maxItems?: number }): Promise<T[]> {
+  const out: T[] = [];
+  let exclusiveStartKey: Record<string, any> | undefined;
+  do {
+    const page: any = { TableName: tableName };
+    if (options?.filter) {
+      page.FilterExpression = options.filter.expression;
+      if (options.filter.names) page.ExpressionAttributeNames = options.filter.names;
+      if (options.filter.values) page.ExpressionAttributeValues = options.filter.values;
+    }
+    if (exclusiveStartKey) page.ExclusiveStartKey = exclusiveStartKey;
+    const result = await docClient.send(new ScanCommand(page));
+    out.push(...((result.Items as T[]) || []));
+    exclusiveStartKey = result.LastEvaluatedKey;
+    if (options?.maxItems && out.length >= options.maxItems) break;
+  } while (exclusiveStartKey);
+  return options?.maxItems ? out.slice(0, options.maxItems) : out;
+}
+
 export async function scanItems<T>(tableName: string, options?: { filter?: any; limit?: number }): Promise<T[]> {
   const params: any = {
     TableName: tableName,

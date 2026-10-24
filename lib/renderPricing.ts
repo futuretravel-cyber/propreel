@@ -141,11 +141,15 @@ export function isStagingPreset(presetId: string | undefined | null): boolean {
  *  priced server-side below, so a modified client cannot choose what it
  *  pays (the old client-sent ?action=deduct amount is gone).
  */
-export type JobScope = 'render' | 'flashhead' | 'edit' | 'script' | 'description' | 'social_post' | 'rerender';
+export type JobScope = 'render' | 'flashhead' | 'edit' | 'script' | 'description' | 'social_post' | 'social_pack' | 'rerender';
 /** AI text tools — fixed prices, previously client constants sent as the
  *  deduct amount; now dollar-priced here so server and UI share one source. */
 export const DESCRIPTION_CREDITS = 1;
 export const SOCIAL_POST_CREDITS = 2;
+/** Full social pack — captions for ALL 7 platforms in one generation
+ *  (audit §9). Bundled below 7×SOCIAL_POST_CREDITS because agents market a
+ *  listing across every channel, not one platform at a time. */
+export const SOCIAL_PACK_CREDITS = 5;
 
 /**
  * Price of re-rolling ONE clip of a review-paused render (Option 2 — the
@@ -188,6 +192,7 @@ export function jobCredits(
   if (scope === 'script') return scriptCreditsForDuration(args.duration);
   if (scope === 'description') return DESCRIPTION_CREDITS;
   if (scope === 'social_post') return SOCIAL_POST_CREDITS;
+  if (scope === 'social_pack') return SOCIAL_PACK_CREDITS;
   if (scope === 'edit') {
     // Every edit category (staging, removal, twilight, photo editor) runs
     // the same whole-image flare pass and prices at the base rate. The

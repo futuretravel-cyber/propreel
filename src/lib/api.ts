@@ -91,16 +91,21 @@ export interface ReferralStats {
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({} as any));
-    if (res.status === 429) throw new RateLimitedError(parseRetryAfter(res, err), err.error);
-    throw new Error(err.error || `Request failed (${res.status})`);
+    if (res.status === 429) throw new RateLimitedError(parseRetryAfter(res, err), err.error, err.code);
+    throw toApiError(res, err);
   }
   return res.json() as Promise<T>;
 }
 
 /** Map a failed API response to the right Error (429 → RateLimitedError). */
 export function toApiError(res: Response, body: any): Error {
-  if (res.status === 429) return new RateLimitedError(parseRetryAfter(res, body), body?.error);
-  return new Error(body?.error || `Request failed (${res.status})`);
+  if (res.status === 429) return new RateLimitedError(parseRetryAfter(res, body), body?.error, body?.code);
+  const err: any = new Error(body?.error || `Request failed (${res.status})`);
+  // Machine-readable branch key from the standard { ok, error, code } shape —
+  // callers switch on this instead of matching message text.
+  err.code = body?.code;
+  err.status = res.status;
+  return err;
 }
 
 // ── Rate-limit awareness (429 from the upload actions) ─────────────────
@@ -113,16 +118,22 @@ export function toApiError(res: Response, body: any): Error {
 export class RateLimitedError extends Error {
   /** seconds until the per-user window resets */
   readonly retryAfterSec: number;
-  constructor(retryAfterSec: number, message?: string) {
+  readonly code: string;
+  constructor(retryAfterSec: number, message?: string, code?: string) {
     super(message || `Upload limit reached — try again in ${retryAfterSec}s`);
     this.name = 'RateLimitedError';
     this.retryAfterSec = retryAfterSec;
+    this.code = code || 'RATE_LIMITED';
   }
 }
 
 function parseRetryAfter(res: Response, body: any): number {
   const header = Number(res.headers.get('retry-after'));
   if (Number.isFinite(header) && header > 0) return Math.min(300, Math.ceil(header));
+  // Standard 429 body carries retryAfterSec directly; the regex below is the
+  // legacy fallback for older deployments.
+  const explicit = Number(body?.retryAfterSec);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.min(300, Math.ceil(explicit));
   const match = /in (\d+)s/.exec(String(body?.error || ''));
   return match ? Math.min(300, Number(match[1])) : 60;
 }
@@ -326,7 +337,7 @@ export const PropReelAPI = {
 
   // ── AI text generation (Grok via Modal's OpenRouter route) ──────────────
   async generateText(
-    kind: 'description' | 'social_caption' | 'video_script' | 'language_check' | 'translate',
+    kind: 'description' | 'social_caption' | 'social_pack' | 'video_script' | 'language_check' | 'translate',
     fields: Record<string, any>,
     images: string[] = [],
     /** Optional extra auth headers — the paid video_script path sends the
@@ -351,7 +362,7 @@ export const PropReelAPI = {
     // under the wall guarantees every long call settles with our actionable
     // timeout message instead of that opaque browser error.
     const limit = timeoutMs ?? (
-      kind === 'description' || kind === 'video_script' || kind === 'social_caption' ? 145_000
+      kind === 'description' || kind === 'video_script' || kind === 'social_caption' || kind === 'social_pack' ? 145_000
       : 75_000 // language_check / translate are one-shot LLM calls
     );
     const { workerHeaders } = await import('./workerAuth');

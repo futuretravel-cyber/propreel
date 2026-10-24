@@ -66,7 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Invalid cycle' });
       }
       const gate = await requireOwner(req, user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const user = await getUser(user_id);
       if (!user) {
@@ -112,7 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Invalid cycle' });
       }
       const gate = await requireOwner(req, user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const user = await getUser(user_id);
       if (!user) {
@@ -182,7 +182,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'user_id is required' });
       }
       const gate = await requireOwner(req, user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const hasActive = await hasActiveSubscription(user_id);
       if (!hasActive) {
@@ -226,7 +226,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Invalid cycle' });
       }
       const gate = await requireOwner(req, user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const user = await getUser(user_id);
       if (!user) return res.status(404).json({ error: 'User not found' });
@@ -348,7 +348,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // audit-log view shows who did what.
     if (action === 'admin_set_subscription') {
       const gate = await requireAdminSession(req);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const body = req.body || {};
       const userId: string = body.user_id;
@@ -485,6 +485,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           paystack,
           reason,
         },
+      });
+
+      // Admin audit trail (audit §11) — server-derived actor, best-effort.
+      const { recordAdminAction } = await import('../lib/adminAudit');
+      await recordAdminAction({
+        by: gate.user.email,
+        action: 'SUBSCRIPTION_CHANGE',
+        target: userId,
+        detail: removing
+          ? `Removed subscription${reason ? ` — ${reason}` : ''}`
+          : `Set ${appliedPlan} (${cycle}) ${status}${creditsAllocated ? ` +${creditsAllocated} credits` : ''}${reason ? ` — ${reason}` : ''}`,
       });
 
       const fresh = await getUser(userId);

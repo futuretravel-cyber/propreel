@@ -12,6 +12,7 @@
  */
 
 import { AI_DISCLAIMER_TEXT, fnv1a } from './aiDisclaimer';
+import { CREDIT_ROLLOVER_RULE, CREDIT_EXPIRY_RULE, CREDIT_TOPUP_RULE } from '../../lib/creditPolicy';
 
 /** An inline run inside a paragraph or list item: plain text, a link, or bold. */
 export type TermsInline = string | { text: string; to?: string; strong?: boolean };
@@ -119,14 +120,14 @@ export const TERMS_SECTIONS: TermsSection[] = [
         type: 'p',
         parts: [
           { text: 'Subscription Plans:', strong: true },
-          'Monthly and annual subscription plans include a set number of credits. Unused subscription credits roll over to the next month but expire at your next renewal date.',
+          `Monthly and annual subscription plans include a set number of credits. ${CREDIT_ROLLOVER_RULE} ${CREDIT_EXPIRY_RULE}`,
         ],
       },
       {
         type: 'p',
         parts: [
           { text: 'Purchased Credits:', strong: true },
-          'Credits purchased as top-ups are non-refundable but never expire as long as your account remains active (365 days of inactivity will result in expiry).',
+          `Credits purchased as top-ups are non-refundable. ${CREDIT_TOPUP_RULE}`,
         ],
       },
       {

@@ -113,33 +113,12 @@ export default function CollaborationPanel({ projectId }: { projectId: string })
       {/* Share Tab */}
       {activeTab === 'share' && (
         <div className="p-6 space-y-6">
-          {/* Invite by Email */}
+          {/* Invite by Email — coming soon. There is no email sending behind
+              this yet, so the form and its send button stay hidden until one
+              exists (a button that sends nothing is worse than no button). */}
           <div>
             <h3 className="text-sm font-semibold text-white mb-3">Invite by Email</h3>
-            <div className="flex gap-2">
-              <input
-                type="email"
-                className="input flex-1"
-                placeholder="colleague@agency.co.za"
-                value={shareEmail}
-                onChange={(e) => setShareEmail(e.target.value)}
-                disabled
-              />
-              <select
-                className="input max-w-[140px]"
-                value={sharePermission}
-                onChange={(e) => setSharePermission(e.target.value as any)}
-                disabled
-              >
-                <option value="view">Can view</option>
-                <option value="edit">Can edit</option>
-                <option value="admin">Admin</option>
-              </select>
-              <button disabled className="btn btn-primary">
-                <Send className="w-4 h-4" /> Invite
-              </button>
-            </div>
-            <p className="text-xs text-white/50 mt-2">Email invitations aren't available yet. Use a share link below instead.</p>
+            <p className="text-xs text-white/50">Coming soon — email invitations aren't available yet. Use a share link below instead.</p>
           </div>
 
           {/* Share Links */}

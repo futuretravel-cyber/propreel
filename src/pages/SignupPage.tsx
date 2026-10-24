@@ -331,8 +331,7 @@ export default function SignupPage() {
                     className="text-purple-400 hover:text-purple-300 font-medium underline"
                   >
                     Create a free account
-                  </button>{' '}
-                  — {SIGNUP_BONUS} welcome credits, no card required. Spend them on a real listing before you decide.
+                  </button>{' '}                   — {SIGNUP_BONUS} free credits, no card needed. Spend them on a real listing before you decide.
                 </p>
               </div>
 
@@ -431,7 +430,7 @@ export default function SignupPage() {
                   <input type="checkbox" checked={subscribeNow} onChange={e => setSubscribeNow(e.target.checked)} className="mt-1 w-4 h-4 rounded" />
                   <span className="text-xs text-ink-300">
                     <span className="text-white font-semibold">Subscribe to {plan.name} now — {formatZar(price)}{cycle === 'ANNUAL' ? ' per month, billed annually' : ' per month'}.</span>{' '}
-                    You'll continue to secure Paystack checkout after creating your account. Leave this unchecked to create a free account — no card, {SIGNUP_BONUS} welcome credits, upgrade any time from Billing.
+                    You'll continue to secure Paystack checkout after creating your account. Leave this unchecked to create a free account — no card, {SIGNUP_BONUS} free credits, upgrade any time from Billing.
                   </span>
                 </label>
               )}
@@ -500,7 +499,7 @@ export default function SignupPage() {
                   </>
                 ) : !subscribeSelected ? (
                   <>
-                    <li>You'll land on your dashboard with {SIGNUP_BONUS} free welcome credits</li>
+                    <li>You'll land on your dashboard with {SIGNUP_BONUS} free credits</li>
                     <li>No card needed — subscribe any time from Billing, whenever you're ready</li>
                   </>
                 ) : (

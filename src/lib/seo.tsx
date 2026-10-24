@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { CREDIT_PACK_RAND } from '../../lib/renderPricing';
+import { SIGNUP_BONUS } from './constants';
 
 /**
  * Per-route SEO for the SPA. Crawlers get the same index.html for every URL,
@@ -23,12 +25,12 @@ const ROUTES: Record<string, SeoEntry> = {
   '/': {
     title: `PropReel — Create Stunning Property Videos Instantly with AI`,
     description:
-      'PropReel turns your property photos into cinematic, narrated listing reels in minutes. Built for South African estate agents. 5 Free Credits on Signup.',
+      `PropReel turns your property photos into cinematic, narrated listing reels in minutes. Built for South African estate agents. Start free — your first ${SIGNUP_BONUS} credits are on us, no card needed.`,
   },
   '/pricing': {
     title: `Pricing — Pay per video in ZAR | ${SUFFIX}`,
     description:
-      'Simple credit-based pricing for South African estate agents. From R1.50 per credit. No subscriptions required — buy credits, render reels, pay only for what you use.',
+      `Simple credit-based pricing for South African estate agents. From R${CREDIT_PACK_RAND.toFixed(2)} per credit. No subscriptions required — buy credits, render reels, pay only for what you use.`,
   },
   '/reviews': {
     title: `Reviews — What SA estate agents say | ${SUFFIX}`,
@@ -44,6 +46,11 @@ const ROUTES: Record<string, SeoEntry> = {
     title: `Contact us | ${SUFFIX}`,
     description:
       'Get in touch with the PropReel team — questions about credits, rendering, billing or partnerships for South African estate agents.',
+  },
+  '/faq': {
+    title: `FAQ — Credits, renders, storage and billing | ${SUFFIX}`,
+    description:
+      'Answers to the questions South African estate agents ask about PropReel: how credits work, what each render costs, how long media is kept, billing and subscriptions.',
   },
   '/tutorial': {
     title: `Tutorial — How to make a property reel | ${SUFFIX}`,
@@ -64,14 +71,14 @@ const ROUTES: Record<string, SeoEntry> = {
     description: 'Sign in to your PropReel account to create and manage property video reels.',
   },
   '/register': {
-    title: `Sign up free — 5 credits | ${SUFFIX}`,
+    title: `Sign up free — ${SIGNUP_BONUS} credits | ${SUFFIX}`,
     description:
-      'Create a free PropReel account and get 5 credits instantly. Turn property photos into cinematic listing reels in minutes.',
+      `Create a free PropReel account and get ${SIGNUP_BONUS} credits instantly. Turn property photos into cinematic listing reels in minutes.`,
   },
   '/signup': {
-    title: `Sign up free — 5 credits | ${SUFFIX}`,
+    title: `Sign up free — ${SIGNUP_BONUS} credits | ${SUFFIX}`,
     description:
-      'Create a free PropReel account and get 5 credits instantly. Turn property photos into cinematic listing reels in minutes.',
+      `Create a free PropReel account and get ${SIGNUP_BONUS} credits instantly. Turn property photos into cinematic listing reels in minutes.`,
   },
   '/terms': { title: `Terms of Service | ${SUFFIX}`, description: 'Terms of Service for the PropReel platform.' },
   '/privacy': { title: `Privacy Policy | ${SUFFIX}`, description: 'How PropReel collects, uses and protects your personal information (POPIA).' },

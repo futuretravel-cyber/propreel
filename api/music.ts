@@ -64,13 +64,13 @@ function publicUrl(key: string) {
  * otherwise mint presigned audio URLs or delete tracks. A claimed
  * user_id, when present, must match the signed-in session.
  */
-async function requireAdmin(req: VercelRequest): Promise<{ ok: boolean; error?: string; userId?: string }> {
+async function requireAdmin(req: VercelRequest): Promise<{ ok: boolean; error?: string; code?: 'SIGN_IN_REQUIRED' | 'ADMIN_REQUIRED'; userId?: string }> {
   const sessionUser = await getSessionUser(getTokenFromRequest(req));
-  if (!sessionUser) return { ok: false, error: 'Sign in required' };
+  if (!sessionUser) return { ok: false, error: 'Sign in required', code: 'SIGN_IN_REQUIRED' };
   const claimed = (req.query.user_id as string) || req.body?.user_id;
-  if (claimed && claimed !== sessionUser.id) return { ok: false, error: 'Sign in required' };
+  if (claimed && claimed !== sessionUser.id) return { ok: false, error: 'Sign in required', code: 'SIGN_IN_REQUIRED' };
   const { isAdminActor } = await import('../lib/auth');
-  if (!isAdminActor(sessionUser)) return { ok: false, error: 'Admin access required' };
+  if (!isAdminActor(sessionUser)) return { ok: false, error: 'Admin access required', code: 'ADMIN_REQUIRED' };
   return { ok: true, userId: sessionUser.id };
 }
 
@@ -86,8 +86,9 @@ const VERIFY_LIMIT = 80;     // S3 HEAD/GET/COPY verifications per window
 
 /** 429 with Retry-After — shared by every rate-limited action below. */
 function tooManyUploads(res: VercelResponse, retryAfterSec: number) {
-  res.setHeader('Retry-After', String(Math.max(1, retryAfterSec)));
-  return res.status(429).json({ error: `Upload limit reached — try again in ${Math.max(1, retryAfterSec)}s` });
+  const wait = Math.max(1, retryAfterSec);
+  res.setHeader('Retry-After', String(wait));
+  return res.status(429).json({ ok: false, error: `Upload limit reached — try again in ${wait}s`, code: 'RATE_LIMITED', retryAfterSec: wait });
 }
 
 type AudioCheck =
@@ -252,7 +253,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (isAudioKey) {
         const admin = await requireAdmin(req);
-        if (!admin.ok) return res.status(403).json({ error: admin.error });
+        if (!admin.ok) return res.status(403).json({ ok: false, error: admin.error, code: admin.code || 'ADMIN_REQUIRED' });
         const v = await verifyAudioObject(key);
         if (!v.ok) return res.status(v.status).json({ error: v.error });
         if (v.storedType !== v.contentType) await setContentType(key, v.contentType);
@@ -365,7 +366,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // size lands in the signature, so the PUT itself is capped).
     if (req.method === 'POST' && req.query.action === 'tutorial_upload') {
       const admin = await requireAdmin(req);
-      if (!admin.ok) return res.status(403).json({ error: admin.error });
+      if (!admin.ok) return res.status(403).json({ ok: false, error: admin.error, code: admin.code || 'ADMIN_REQUIRED' });
       const rl = await consumeRateLimit('presign', String(admin.userId), PRESIGN_LIMIT, RATE_WINDOW_SEC);
       if (!rl.allowed) return tooManyUploads(res, rl.retryAfterSec);
 
@@ -393,7 +394,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── POST /api/music?action=tutorial_verify — binary video check ────
     if (req.method === 'POST' && req.query.action === 'tutorial_verify') {
       const admin = await requireAdmin(req);
-      if (!admin.ok) return res.status(403).json({ error: admin.error });
+      if (!admin.ok) return res.status(403).json({ ok: false, error: admin.error, code: admin.code || 'ADMIN_REQUIRED' });
       const rl = await consumeRateLimit('verify', String(admin.userId), VERIFY_LIMIT, RATE_WINDOW_SEC);
       if (!rl.allowed) return tooManyUploads(res, rl.retryAfterSec);
       const key = req.body?.key;
@@ -409,7 +410,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── POST /api/music?action=tutorial_register — publish metadata ─────
     if (req.method === 'POST' && req.query.action === 'tutorial_register') {
       const admin = await requireAdmin(req);
-      if (!admin.ok) return res.status(403).json({ error: admin.error });
+      if (!admin.ok) return res.status(403).json({ ok: false, error: admin.error, code: admin.code || 'ADMIN_REQUIRED' });
       const { title, category, description, language, s3Key, durationSeconds } = req.body || {};
       if (!title || !category || !s3Key) {
         return res.status(400).json({ error: 'title, category and s3Key are required' });
@@ -443,7 +444,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── POST /api/music?action=upload — presigned PUT ────────────────
     if (req.method === 'POST' && req.query.action === 'upload') {
       const admin = await requireAdmin(req);
-      if (!admin.ok) return res.status(403).json({ error: admin.error });
+      if (!admin.ok) return res.status(403).json({ ok: false, error: admin.error, code: admin.code || 'ADMIN_REQUIRED' });
       // Same per-user presign budget as the image path (shared scope),
       // keyed by the SESSION identity — not the claimed user_id.
       const rlAudio = await consumeRateLimit('presign', String(admin.userId), PRESIGN_LIMIT, RATE_WINDOW_SEC);
@@ -478,7 +479,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── POST /api/music — register uploaded track ────────────────────
     if (req.method === 'POST') {
       const admin = await requireAdmin(req);
-      if (!admin.ok) return res.status(403).json({ error: admin.error });
+      if (!admin.ok) return res.status(403).json({ ok: false, error: admin.error, code: admin.code || 'ADMIN_REQUIRED' });
 
       const { name, genre, s3Key, durationSeconds } = req.body || {};
       if (!name || !genre || !s3Key) return res.status(400).json({ error: 'name, genre and s3Key are required' });
@@ -509,7 +510,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── DELETE /api/music?id=xxx [&action=tutorial] ─────────────────
     if (req.method === 'DELETE') {
       const admin = await requireAdmin(req);
-      if (!admin.ok) return res.status(403).json({ error: admin.error });
+      if (!admin.ok) return res.status(403).json({ ok: false, error: admin.error, code: admin.code || 'ADMIN_REQUIRED' });
 
       const id = req.query.id as string;
       if (!id) return res.status(400).json({ error: 'id required' });

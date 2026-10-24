@@ -52,7 +52,7 @@ export async function workerHeaders(): Promise<Record<string, string>> {
   }
 }
 
-export type JobScope = 'render' | 'flashhead' | 'edit' | 'script' | 'description' | 'social_post' | 'rerender';
+export type JobScope = 'render' | 'flashhead' | 'edit' | 'script' | 'description' | 'social_post' | 'social_pack' | 'rerender';
 
 export interface JobMintOptions {
   tier?: string;
@@ -110,7 +110,12 @@ export async function jobHeaders(scope: JobScope, opts: JobMintOptions = {}): Pr
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.token) {
-    throw new Error(data?.error || `Could not start the job (${res.status})`);
+    const err: any = new Error(data?.error || `Could not start the job (${res.status})`);
+    // Standard { ok, error, code } body — callers branch on code (e.g.
+    // INSUFFICIENT_CREDITS → top-up prompt) instead of matching message text.
+    err.code = data?.code;
+    err.status = res.status;
+    throw err;
   }
   return { [HEADER]: data.token as string };
 }

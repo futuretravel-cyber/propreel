@@ -85,7 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const userId = req.method === 'GET' ? (req.query.user_id as string) : req.body?.user_id;
     if (!userId) return res.status(400).json({ error: 'Missing user_id' });
     const gate = await requireOwner(req, userId);
-    if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
     const user = await getUser(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -161,7 +161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const userId = req.query.user_id as string;
       if (!userId) return res.status(400).json({ error: 'Missing user_id' });
       const gate = await requireOwner(req, userId);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
       const user = await getUser(userId);
       if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -206,7 +206,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const id = req.query.id as string;
       if (!userId || !id) return res.status(400).json({ error: 'Missing user_id or id' });
       const gate = await requireOwner(req, userId);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const [user, owned] = await Promise.all([
         getUser(userId),
@@ -357,7 +357,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const userId = req.query.user_id as string;
       if (!userId) return res.status(400).json({ error: 'Missing user_id' });
       const gate = await requireOwner(req, userId);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const projects = await queryItems<ProjectRecord>(TABLES.PROJECTS, {
         expression: 'userId = :u',
@@ -377,7 +377,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const owner = b.user_id || b.userId;
       if (!owner) return res.status(400).json({ error: 'Missing user_id' });
       const gate = await requireOwner(req, owner);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const user = await getUser(owner);
       if (!user) return res.status(404).json({ error: 'User not found' });
@@ -393,7 +393,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (chargeNow) {
         const r = await deductCredits(owner, NEW_LISTING_COST, 'New listing', { kind: 'NEW_LISTING' });
         if (!r.success) {
-          return res.status(402).json({ error: `Not enough credits — a new listing costs ${NEW_LISTING_COST} credits` });
+          return res.status(402).json({ ok: false, error: `Not enough credits — a new listing costs ${NEW_LISTING_COST} credits`, code: 'INSUFFICIENT_CREDITS' });
         }
         charged = true;
       }
@@ -449,7 +449,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { user_id, id, updates } = req.body || {};
       if (!user_id || !id) return res.status(400).json({ error: 'Missing user_id or id' });
       const gate = await requireOwner(req, user_id);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const existing = await queryItems<ProjectRecord>(TABLES.PROJECTS, {
         expression: 'userId = :u AND id = :i',
@@ -477,7 +477,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (clean.marketStatus === 'ACTIVE' && existing[0].marketStatus === 'DRAFT' && existing[0].listingFeeCharged === false) {
         const r = await deductCredits(user_id, NEW_LISTING_COST, 'New listing', { kind: 'NEW_LISTING' });
         if (!r.success) {
-          return res.status(402).json({ error: `Not enough credits — a new listing costs ${NEW_LISTING_COST} credits` });
+          return res.status(402).json({ ok: false, error: `Not enough credits — a new listing costs ${NEW_LISTING_COST} credits`, code: 'INSUFFICIENT_CREDITS' });
         }
         clean.listingFeeCharged = true;
       }
@@ -498,7 +498,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const id = req.query.id as string;
       if (!userId || !id) return res.status(400).json({ error: 'Missing user_id or id' });
       const gate = await requireOwner(req, userId);
-      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
       const ok = await deleteItem(TABLES.PROJECTS, { userId, id });
       return res.status(ok ? 200 : 500).json({ success: ok });

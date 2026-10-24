@@ -26,7 +26,7 @@
  * and api/* import THIS, never the reverse. Session revocation is done here
  * with raw db calls for the same reason.
  */
-import { updateItem, queryItems, scanItems, deleteItem, TABLES } from './db';
+import { updateItem, queryItems, queryIndex, scanItems, deleteItem, TABLES } from './db';
 import type { User } from './userService';
 import { sendEmail, trialReminderTemplate, trialEndedTemplate } from './email';
 
@@ -88,10 +88,18 @@ export function trialDaysLeft(user: User & TrialFields): number {
  *  to keep this module free of imports auth.ts needs — no cycle). */
 async function revokeSessions(userId: string): Promise<void> {
   try {
-    const rows = await scanItems<{ id: string }>(TABLES.SESSIONS, {
-      filter: { expression: 'userId = :u', values: { ':u': userId } },
-      limit: 500,
-    });
+    // userId-index GSI keeps this O(user's sessions); the scan is only a
+    // fallback for accounts where the index hasn't been created yet.
+    let rows: { id: string }[];
+    try {
+      rows = await queryIndex<{ id: string }>(TABLES.SESSIONS, 'userId-index',
+        { expression: 'userId = :u', values: { ':u': userId } }, { limit: 500 });
+    } catch {
+      rows = await scanItems<{ id: string }>(TABLES.SESSIONS, {
+        filter: { expression: 'userId = :u', values: { ':u': userId } },
+        limit: 500,
+      });
+    }
     for (const r of rows) await deleteItem(TABLES.SESSIONS, { id: r.id }).catch(() => {});
   } catch (e) {
     console.error('trial revokeSessions failed:', e);

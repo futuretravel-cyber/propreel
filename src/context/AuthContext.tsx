@@ -152,7 +152,7 @@ interface CreditContextType {
   acknowledgeLowCredit: () => void;
   deductCredits: (amount: number, reason: string, metadata?: any, pool?: 'personal' | 'agency') => Promise<boolean>;
   /** Reverse ONE real charge after a failure — the server picks the amount */
-  refundCredits: (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'script' | 'rerender') => Promise<boolean>;
+  refundCredits: (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'social_pack' | 'script' | 'rerender') => Promise<boolean>;
 }
 
 export interface RegisterData {
@@ -449,7 +449,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  const refundCredits = useCallback(async (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'script' | 'rerender'): Promise<boolean> => {
+  const refundCredits = useCallback(async (scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'social_pack' | 'script' | 'rerender'): Promise<boolean> => {
     if (!user) return false;
 
     try {

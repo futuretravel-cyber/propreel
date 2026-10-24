@@ -38,3 +38,62 @@ jobs:
 
     - name: Build project
       run: npm run build
+
+  # Browser smoke: admin access control + audit log (scripts/admin_ui_smoke.ts).
+  # Drives real Chromium against the deployed site: signed-out /admin bounces
+  # to /login, a signed-in NON-admin is bounced to /dashboard, the admin gets
+  # in and exports one audit-log CSV. Read-only against the admin account; the
+  # non-admin identity is a throwaway AGENT the smoke deletes afterwards.
+  #
+  # Secrets (Settings → Secrets and variables → Actions):
+  #   E2E_ACCOUNT_PASSWORD       password of the admin walkthrough account
+  #   E2E_ACCOUNT_EMAIL          optional (defaults to futuretravel@gmail.com)
+  #   E2E_NONADMIN_ACCOUNT_EMAIL / E2E_NONADMIN_ACCOUNT_PASSWORD
+  #                              optional non-admin pair — without it the smoke
+  #                              provisions a throwaway AGENT itself, which
+  #                              then needs the AWS_* secrets (the same ones
+  #                              scripts/_ui_session.ts uses)
+  admin-ui-smoke:
+    name: Admin UI smoke
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      E2E_ACCOUNT_EMAIL: ${{ secrets.E2E_ACCOUNT_EMAIL }}
+      E2E_ACCOUNT_PASSWORD: ${{ secrets.E2E_ACCOUNT_PASSWORD }}
+      E2E_SESSION_COOKIE: ${{ secrets.E2E_SESSION_COOKIE }}
+      E2E_NONADMIN_ACCOUNT_EMAIL: ${{ secrets.E2E_NONADMIN_ACCOUNT_EMAIL }}
+      E2E_NONADMIN_ACCOUNT_PASSWORD: ${{ secrets.E2E_NONADMIN_ACCOUNT_PASSWORD }}
+      E2E_NONADMIN_SESSION_COOKIE: ${{ secrets.E2E_NONADMIN_SESSION_COOKIE }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      # Point vars.E2E_BASE at a Vercel preview origin to smoke a specific
+      # deployment; defaults to production.
+      E2E_BASE: ${{ vars.E2E_BASE || 'https://www.propreel.co.za' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install Playwright Chromium
+      run: npx playwright install --with-deps chromium
+
+    # The smoke exits 2 with instructions when no identity is configured;
+    # skipping here keeps forks/PRs without secrets green instead of red.
+    - name: Run admin UI smoke
+      if: ${{ env.E2E_ACCOUNT_PASSWORD != '' || env.E2E_SESSION_COOKIE != '' }}
+      run: npm run e2e:admin-ui
+
+    - name: Notice when smoke credentials are not configured
+      if: ${{ env.E2E_ACCOUNT_PASSWORD == '' && env.E2E_SESSION_COOKIE == '' }}
+      run: echo "::warning::admin-ui-smoke skipped — set the E2E_ACCOUNT_PASSWORD secret (see the job comment) to enable it"

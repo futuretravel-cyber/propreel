@@ -7,6 +7,9 @@
  * descriptions via dynamic import so this never lands in the main bundle.
  */
 
+import { CREDIT_PACK_RAND } from '../../lib/renderPricing';
+import { SIGNUP_BONUS } from '../lib/constants';
+
 export type Block =
   | { type: 'p' | 'h2' | 'h3' | 'quote' | 'note'; text: string }
   | { type: 'ul' | 'ol'; items: string[] };
@@ -87,7 +90,7 @@ const POSTS: BlogPost[] = [
         type: 'p',
         text: 'You already have the photos. [Watch the 3-minute tutorial](/tutorial), then render your first property reel — or browse [what agents say](/reviews) after they started shipping video with every listing.',
       },
-      { type: 'note', text: 'Want the shortcut? PropReel turns listing photos into a narrated, cinematic reel in about the time it takes to write the listing description. [Start free with 5 credits](/register).' },
+      { type: 'note', text: `Want the shortcut? PropReel turns listing photos into a narrated, cinematic reel in about the time it takes to write the listing description. [Start free — your first ${SIGNUP_BONUS} credits are on us, no card needed](/register).` },
     ],
   },
   {
@@ -142,7 +145,7 @@ const POSTS: BlogPost[] = [
         type: 'p',
         text: 'Ignore vanity metrics. Track three things monthly: direct messages from posts, viewing requests attributed to a specific listing post, and how many enquiries mention seeing "the video". If a format never produces one of those three after a month, stop making it.',
       },
-      { type: 'note', text: 'The fastest way to raise your posting floor: attach a video to every listing. [See the pricing](/pricing) — from R1.50 per credit, no subscription required.' },
+      { type: 'note', text: `The fastest way to raise your posting floor: attach a video to every listing. [See the pricing](/pricing) — from R${CREDIT_PACK_RAND.toFixed(2)} per credit, no subscription required.` },
     ],
   },
   {
@@ -161,7 +164,7 @@ const POSTS: BlogPost[] = [
       {
         type: 'ul',
         items: [
-          '**Cost:** physical staging is a monthly rental plus delivery, styling and collection; virtual staging is a once-off per-photo cost — on PropReel it is charged in credits at R1,50 each.',
+          `**Cost:** physical staging is a monthly rental plus delivery, styling and collection; virtual staging is a once-off per-photo cost — on PropReel it is charged in credits at R${String(CREDIT_PACK_RAND).replace('.', ',')} each.`,
           '**Speed:** virtual results land in minutes; physical staging books days or weeks ahead.',
           '**What it is for:** physical staging helps buyers *feel* a home during an in-person viewing. Virtual staging helps them *click* on the listing in the first place.',
           '**Honest caveat:** virtual staging cannot furnish a viewing. Budget it as a marketing layer, not a substitute for a well-presented show day.',

@@ -41,10 +41,15 @@ import { TIERS, jobCredits, SCRIPT_CREDITS, scriptCreditsForDuration, IMAGE_EDIT
 
 // ── Config ────────────────────────────────────────────────────────────────
 const EMAIL = process.env.E2E_ACCOUNT_EMAIL || 'futuretravel@gmail.com';
-const PASSWORD = process.env.E2E_ACCOUNT_PASSWORD; // REQUIRED — never store a password in source
-if (!PASSWORD && process.env.PRICING_E2E_ENGINE_ONLY !== '1') {
+const PASSWORD = process.env.E2E_ACCOUNT_PASSWORD; // never store a password in source
+// Alternative to the password (same as scripts/admin_ui_smoke.ts): a minted
+// session cookie from scripts/_ui_session.ts — lets CI/agents run credential-
+// less without ever handling the account password.
+const SESSION_COOKIE = process.env.E2E_SESSION_COOKIE;
+if (!PASSWORD && !SESSION_COOKIE && process.env.PRICING_E2E_ENGINE_ONLY !== '1') {
   console.error('Set E2E_ACCOUNT_PASSWORD=<password of the e2e account>' +
-    ' (or PRICING_E2E_ENGINE_ONLY=1 to verify the pricing table without credentials)');
+    ' (or E2E_SESSION_COOKIE=propreel_session=… minted via scripts/_ui_session.ts' +
+    ' — or PRICING_E2E_ENGINE_ONLY=1 to verify the pricing table without credentials)');
   process.exit(2);
 }
 const BASE = process.env.E2E_BASE || 'https://www.propreel.co.za';
@@ -124,15 +129,25 @@ function enginePhase() {
 // ── 1) Auth + live pricing config ─────────────────────────────────────────
 async function loginPhase() {
   console.log('\n── 1) Auth + live pricing config ──');
-  const a = await call('/api/users?action=auth_login', { method: 'POST', body: { email: EMAIL, password: PASSWORD } });
-  cookie = getCookie(a);
-  check('login → 200 + session cookie', a.status === 200 && !!cookie, a.status);
+  if (SESSION_COOKIE) {
+    cookie = SESSION_COOKIE.startsWith('propreel_session=') ? SESSION_COOKIE : `propreel_session=${SESSION_COOKIE}`;
+    check('using minted session cookie (E2E_SESSION_COOKIE)', true);
+  } else {
+    const a = await call('/api/users?action=auth_login', { method: 'POST', body: { email: EMAIL, password: PASSWORD } });
+    cookie = getCookie(a);
+    check('login → 200 + session cookie', a.status === 200 && !!cookie, a.status);
+  }
   const s = await call('/api/users?action=auth_session', { cookie });
   userId = s.json?.user?.id;
   check('session identifies the account', !!userId, s.json?.user?.email);
 
   const p = await call('/api/subscriptions?action=pricing');
-  const plans = p.json?.pricing?.plans || {};
+  // pricing_config returns plans as an ARRAY of rows (id + monthlyCredits);
+  // index it by id so the allowance asserts below can find them.
+  const rawPlans = p.json?.pricing?.plans || {};
+  const plans: Record<string, any> = Array.isArray(rawPlans)
+    ? Object.fromEntries(rawPlans.map((r: any) => [r.id ?? r.planId ?? r.plan_id, r]))
+    : rawPlans;
   for (const [id, expected] of Object.entries(EXPECTED_PLAN_CREDITS)) {
     const row = plans[id];
     if (!row) { check(`pricing plan ${id} present`, false, 'missing from DB pricing_config'); continue; }

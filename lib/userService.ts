@@ -4,6 +4,7 @@
  */
 
 import { getItem, putItem, putItemIfNotExists, updateItem, queryItems, scanItems, decrementIfEnough, incrementValue, TABLES } from './db';
+import type { ApiErrorCode } from './apiError';
 import { CREDIT_TTL_DAYS } from './creditPolicy';
 
 export interface CreditExpiry {
@@ -278,13 +279,23 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<Us
 }
 
 // Deduct credits from user
+//
+// `code` on failure is the machine-readable branch key (lib/apiError.ts) so
+// API routes and the client never string-match these messages.
+export interface DeductResult {
+  success: boolean;
+  newBalance: number;
+  error?: string;
+  code?: Extract<ApiErrorCode, 'TRIAL_LOCKED' | 'MONTHLY_LIMIT_REACHED' | 'INSUFFICIENT_CREDITS' | 'INSUFFICIENT_AGENCY_POOL' | 'NOT_FOUND'>;
+}
+
 export async function deductCredits(
   userId: string,
   amount: number,
   reason: string,
   metadata?: Record<string, any>,
   pool?: 'personal' | 'agency'
-): Promise<{ success: boolean; newBalance: number; error?: string }> {
+): Promise<DeductResult> {
   // Fully atomic server-side decrement: DynamoDB evaluates
   // `balance = balance - :amount WHERE balance >= :amount` on the CURRENT
   // item, so concurrent requests can never double-spend or go negative.
@@ -306,6 +317,7 @@ export async function deductCredits(
         success: false,
         newBalance: spendUser.credits,
         error: 'Your free trial has ended — subscribe to a plan to keep rendering.',
+        code: 'TRIAL_LOCKED',
       };
     }
 
@@ -315,7 +327,7 @@ export async function deductCredits(
     const { checkAgentLimit } = await import('./agency');
     const limitError = await checkAgentLimit(userId, amount);
     if (limitError) {
-      return { success: false, newBalance: 0, error: limitError };
+      return { success: false, newBalance: 0, error: limitError, code: 'MONTHLY_LIMIT_REACHED' };
     }
 
     // Agency-pool spends draw from the SHARED agency row (lib/agency holds
@@ -336,7 +348,7 @@ export async function deductCredits(
     if (newBalance == null) {
       // Row missing or balance insufficient — mirror the DynamoDB semantics
       const user = await getUser(userId);
-      if (!user) return { success: false, newBalance: 0, error: 'User not found' };
+      if (!user) return { success: false, newBalance: 0, error: 'User not found', code: 'NOT_FOUND' };
       if (useAgencyPool) {
         const { getAgency } = await import('./agency');
         const agency = user.agencyId ? await getAgency(user.agencyId) : null;
@@ -344,9 +356,10 @@ export async function deductCredits(
           success: false,
           newBalance: agency?.poolCredits ?? user.agencyPoolCredits ?? 0,
           error: 'Insufficient agency pool credits',
+          code: 'INSUFFICIENT_AGENCY_POOL',
         };
       }
-      return { success: false, newBalance: user.credits, error: 'Insufficient credits' };
+      return { success: false, newBalance: user.credits, error: 'Insufficient credits', code: 'INSUFFICIENT_CREDITS' };
     }
 
     await recordTransaction({
@@ -361,7 +374,7 @@ export async function deductCredits(
   } catch (error: any) {
     if (error?.name === 'ConditionalCheckFailedException') {
       const user = await getUser(userId);
-      if (!user) return { success: false, newBalance: 0, error: 'User not found' };
+      if (!user) return { success: false, newBalance: 0, error: 'User not found', code: 'NOT_FOUND' };
       if (useAgencyPool) {
         const { getAgency } = await import('./agency');
         const agency = user.agencyId ? await getAgency(user.agencyId) : null;
@@ -369,9 +382,10 @@ export async function deductCredits(
           success: false,
           newBalance: agency?.poolCredits ?? user.agencyPoolCredits ?? 0,
           error: 'Insufficient agency pool credits',
+          code: 'INSUFFICIENT_AGENCY_POOL',
         };
       }
-      return { success: false, newBalance: user.credits, error: 'Insufficient credits' };
+      return { success: false, newBalance: user.credits, error: 'Insufficient credits', code: 'INSUFFICIENT_CREDITS' };
     }
     throw error;
   }
@@ -509,6 +523,7 @@ const REFUND_MATCHERS: Record<string, (t: CreditTransaction) => boolean> = {
   edit: t => t.metadata?.scope === 'edit' || t.metadata?.kind === 'IMAGE_EDIT' || t.description.startsWith('Image edit'),
   description: t => t.metadata?.kind === 'PROPERTY_DESCRIPTION' || t.description === 'Property description',
   social_post: t => t.metadata?.kind === 'SOCIAL_POST' || t.description === 'Social media post',
+  social_pack: t => t.metadata?.kind === 'SOCIAL_PACK' || t.description === 'Social media pack (all platforms)',
   script: t => t.metadata?.scope === 'script' || t.description === 'AI Writer voiceover script',
   // Per-clip re-roll inside the post-render review (Option 2) — charged by
   // job_token with scope=rerender, so it has its own matcher like render.
@@ -611,7 +626,7 @@ export async function transferCredits(
   toUserId: string,
   amount: number,
   reason?: string
-): Promise<{ success: boolean; newBalance: number; error?: string }> {
+): Promise<DeductResult> {
   const linkId = `xfer_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const deduct = await deductCredits(fromUserId, amount, reason || 'Credit transfer sent', {
@@ -634,8 +649,8 @@ export async function transferCredits(
     // Roll back — receiver vanished mid-transfer
     await addCredits(fromUserId, amount, 'refund', 'Transfer reversed — recipient not found', { kind: 'TRANSFER_REVERSAL', linkId });
     return { success: false, newBalance: deduct.newBalance, error: 'Recipient not found' };
-  }
-  await updateUser(toUserId, { credits: receiver.credits + amount });
+  }    await updateUser(toUserId, { credits: receiver.credits + amount });
+
 
   return { success: true, newBalance: deduct.newBalance };
 }

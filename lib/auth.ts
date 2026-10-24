@@ -15,7 +15,8 @@
  */
 
 import crypto from 'crypto';
-import { getItem, putItem, deleteItem, updateItem, scanItems, TABLES } from './db';
+import { getItem, putItem, deleteItem, updateItem, scanItems, queryIndex, TABLES } from './db';
+import type { ApiErrorCode } from './apiError';
 import type { User } from './userService';
 
 export const SESSION_COOKIE = 'propreel_session';
@@ -136,10 +137,18 @@ export async function deleteSession(token: string | undefined | null): Promise<v
 /** Invalidate every session for a user (password reset, account deletion). */
 export async function deleteSessionsForUser(userId: string): Promise<void> {
   try {
-    const rows = await scanItems<SessionRow>(TABLES.SESSIONS, {
-      filter: { expression: 'userId = :u', values: { ':u': userId } },
-      limit: 500,
-    });
+    // userId-index GSI keeps this O(user's sessions); the scan is only a
+    // fallback for accounts where the index hasn't been created yet.
+    let rows: SessionRow[];
+    try {
+      rows = await queryIndex<SessionRow>(TABLES.SESSIONS, 'userId-index',
+        { expression: 'userId = :u', values: { ':u': userId } }, { limit: 500 });
+    } catch {
+      rows = await scanItems<SessionRow>(TABLES.SESSIONS, {
+        filter: { expression: 'userId = :u', values: { ':u': userId } },
+        limit: 500,
+      });
+    }
     for (const r of rows) await deleteItem(TABLES.SESSIONS, { id: r.id }).catch(() => {});
   } catch (e) {
     console.error('deleteSessionsForUser failed:', e);
@@ -292,7 +301,7 @@ export function isAdminEmail(email: string | undefined | null): boolean {
 
 export type SessionGate =
   | { ok: true; user: User }
-  | { ok: false; status: 401 | 403; error: string };
+  | { ok: false; status: 401 | 403; error: string; code: Extract<ApiErrorCode, 'SIGN_IN_REQUIRED' | 'NOT_ALLOWED' | 'ADMIN_REQUIRED'> };
 
 /** Signed-in user for this request, or null (never throws). */
 export async function sessionUser(req: any): Promise<User | null> {
@@ -316,9 +325,9 @@ export function isAdminActor(user: User | null | undefined): boolean {
  */
 export async function requireOwner(req: any, claimedUserId?: string | null): Promise<SessionGate> {
   const user = await sessionUser(req);
-  if (!user) return { ok: false, status: 401, error: 'Sign in required' };
+  if (!user) return { ok: false, status: 401, error: 'Sign in required', code: 'SIGN_IN_REQUIRED' };
   if (claimedUserId && user.id !== claimedUserId && !isAdminActor(user)) {
-    return { ok: false, status: 403, error: 'Not allowed' };
+    return { ok: false, status: 403, error: 'Not allowed', code: 'NOT_ALLOWED' };
   }
   return { ok: true, user };
 }
@@ -326,7 +335,7 @@ export async function requireOwner(req: any, claimedUserId?: string | null): Pro
 /** Require a platform-admin session (for admin dashboards and grants). */
 export async function requireAdminSession(req: any): Promise<SessionGate> {
   const user = await sessionUser(req);
-  if (!user) return { ok: false, status: 401, error: 'Sign in required' };
-  if (!isAdminActor(user)) return { ok: false, status: 403, error: 'Admin access required' };
+  if (!user) return { ok: false, status: 401, error: 'Sign in required', code: 'SIGN_IN_REQUIRED' };
+  if (!isAdminActor(user)) return { ok: false, status: 403, error: 'Admin access required', code: 'ADMIN_REQUIRED' };
   return { ok: true, user };
 }

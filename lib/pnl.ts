@@ -23,7 +23,7 @@
  * Editing an expense on a closed month invalidates both (the month re-opens).
  */
 
-import { TABLES, scanItems, getItem, putItem, deleteItem } from './db';
+import { TABLES, scanItems, scanAll, getItem, putItem, deleteItem } from './db';
 
 export const EXPENSE_CATEGORIES = [
   'fal.ai', 'Modal', 'AWS', 'Paystack', 'Marketing', 'Payroll', 'Software', 'Office', 'Other',
@@ -345,14 +345,15 @@ export async function buildPnlReport(month: string): Promise<PnlReport> {
   const monthSet = new Set(bucketMonths);
   const now = Date.now();
 
-  // One paginated scan of the ledger (event_index dedupe rows excluded
-  // server-side so DynamoDB pages properly until the limit is met).
+  // One fully paginated scan of the ledger (event_index dedupe rows excluded
+  // server-side). scanAll walks every DynamoDB page — a capped single scan
+  // would silently drop rows and understate revenue once the ledger grows.
   const [txs, users, plans] = await Promise.all([
-    scanItems<any>(TABLES.CREDIT_TRANSACTIONS, {
-      limit: 6000,
+    scanAll<any>(TABLES.CREDIT_TRANSACTIONS, {
+      maxItems: 50000,
       filter: { expression: '#t <> :ei', names: { '#t': 'type' }, values: { ':ei': 'event_index' } },
     }),
-    scanItems<any>(TABLES.USERS, { limit: 1000 }),
+    scanAll<any>(TABLES.USERS, { maxItems: 10000 }),
     (async () => {
       const { getPlans } = await import('./userService');
       return getPlans();
