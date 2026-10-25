@@ -151,6 +151,25 @@ def _nearest_128(n: int) -> int:
     return ((n + 127) // 128) * 128
 
 
+def _parse_fps(raw: str) -> float:
+    """Parse ffprobe's r_frame_rate ("30000/1001" or "25").
+
+    Security audit 2026-10-25 (L-4): this used to be `eval(_fps)` — and the
+    value is ffprobe output over a user-supplied video file. eval of anything
+    derived from an upload is one refactor away from RCE on the GPU host.
+    Unparseable values fall back to 24 fps exactly like the old try/except.
+    """
+    try:
+        text = str(raw or "").strip()
+        if "/" in text:
+            num_s, _, den_s = text.partition("/")
+            num, den = float(num_s), float(den_s)
+            return num / den if den else 24.0
+        return float(text) if text else 24.0
+    except Exception:
+        return 24.0
+
+
 def _upscale_one(input_video_url: str, target_resolution: str = "1080p",
                  portrait: bool = False) -> dict:
     """Upscale one clip to the delivery resolution. Shared by the single-video
@@ -182,10 +201,7 @@ def _upscale_one(input_video_url: str, target_resolution: str = "1080p",
          "-of", "csv=p=0", in_path], capture_output=True, text=True, check=True)
     _w, _h, _nb, _fps = (probe.stdout.strip().split(",") + ["0", "24"])[:4]
     src_w, src_h = int(_w), int(_h)
-    try:
-        fps = float(eval(_fps)) if "/" in _fps else float(_fps or 24)
-    except Exception:
-        fps = 24.0
+    fps = _parse_fps(_fps)
     if not _nb.isdigit():  # N/A — count real frames
         _c = subprocess.run(
             ["ffprobe", "-v", "error", "-select_streams", "v:0",

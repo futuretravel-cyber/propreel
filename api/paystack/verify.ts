@@ -1,6 +1,9 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyPayment } from '../../lib/paystack';
 import { getUser } from '../../lib/userService';
+import { sessionUser, requireOwner } from '../../lib/auth';
+import { consumeRateLimit } from '../../lib/rateLimit';
+import { tooMany } from '../../lib/userRoutes/shared';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -8,11 +11,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // ── Session gate (security audit 2026-10-25, H-1) ───────────────────
+    // This route used to be fully unauthenticated: anyone holding (or
+    // guessing) a Paystack reference could read the payer's credit balance
+    // and subscription and trigger state changes on their account. Identity
+    // now comes from the session cookie — the same rule as
+    // /api/paystack/initialize. The signature-authed webhook path is
+    // unaffected, so a buyer who never returns from hosted checkout is still
+    // credited there.
+    const actor = await sessionUser(req);
+    if (!actor) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sign in to confirm this payment. If you have already paid, your credits are applied automatically.',
+        code: 'SIGN_IN_REQUIRED',
+      });
+    }
+
     const { reference } = req.body;
 
     if (!reference) {
       return res.status(400).json({ error: 'Reference is required' });
     }
+
+    // Per-IP throttle BEFORE the Paystack lookup, so even a signed-in
+    // attacker cannot use this route as an unbounded reference oracle (or
+    // burn our Paystack API quota). The checkout callback makes one call.
+    const ip = String((req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown');
+    const ipRl = await consumeRateLimit('paystack_verify_ip', ip, 30, 600);
+    if (!ipRl.allowed) return tooMany(res, ipRl);
 
     // Verify with Paystack
     const result = await verifyPayment(reference);
@@ -54,6 +81,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         reference,
       });
     }
+
+    // ── Ownership gate (H-1): only the payer — or a platform admin — may
+    // confirm this reference. Everyone else gets 403 with NO billing state
+    // in the body (the responses below carry new_balance/subscription).
+    const gate = await requireOwner(req, userId);
+    if (!gate.ok) {
+      return res.status(gate.status).json({ success: false, error: gate.error, code: gate.code });
+    }
+
+    // Per-account throttle for the (authenticated, owned) confirm path.
+    const userRl = await consumeRateLimit('paystack_verify_user', userId, 60, 600);
+    if (!userRl.allowed) return tooMany(res, userRl);
 
     // ── Prorated plan upgrade (hosted-checkout branch) ────────────────
     // The plan switch is gated by an `upg_<reference>` marker in settings:

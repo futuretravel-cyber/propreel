@@ -1,6 +1,14 @@
 # PropReel — Deployment Status
 
-**Last updated:** 3 October 2026 — **Supabase fully retired**; AWS DynamoDB is the only database, auth is first-party (`lib/auth.ts`), emails via Resend (`lib/email.ts`)
+**Last updated:** 25 October 2026 — security-audit hardening deployed (Modal
+worker fail-closed auth + CORS allow-list, CSP without `'unsafe-inline'`, gated
+`/api/paystack/verify`, rate-limited `/api/leads`, no secret echo from admin
+API-keys). Details + live-verification log:
+[`docs/security-audit-2026-10-25.md`](security-audit-2026-10-25.md). Deployed
+from an isolated tree of the security fixes only — the in-progress
+listing-fetch / agency-logo work in the working tree is NOT live.
+
+Previous (3 October 2026): **Supabase fully retired**; AWS DynamoDB is the only database, auth is first-party (`lib/auth.ts`), emails via Resend (`lib/email.ts`)
 
 ## Production
 
@@ -36,6 +44,19 @@ credit_expiries, agencies, agency_members, reviews, projects, settings.
 Legacy (app no longer reads): propreel-credits, propreel-renders — do NOT delete.
 IAM: `propreel-app-user` with scoped policy `deploy/aws/propreel-ddb-policy.json`.
 Recreate anytime with `npm run create-tables` (idempotent).
+
+## 25 Oct 2026 — security hardening deployed (verified live)
+
+- Vercel production `propreel-5zkbhi8dj`: CSP `script-src` allowlist-only
+  (no `'unsafe-inline'`/`'unsafe-eval'`); the build now runs
+  `scripts/check-no-inline-scripts.mjs` after `vite build`, so a reintroduced
+  inline script fails the deploy instead of shipping.
+- Modal `propreel-render` + `propreel-flashvsr`: token auth is fail-closed
+  (paid/spend endpoints 401 without a valid token), CORS is an explicit
+  origin allow-list, ffprobe `eval()` removed.
+- Live-verified: 401s on anonymous `/api/paystack/verify`, `admin_api_keys`,
+  `agency_invite`; demo POST 202→429; production browser clean of CSP
+  violations with an injected inline script refused.
 
 ## Key fixes shipped during deploy
 

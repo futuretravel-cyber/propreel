@@ -82,6 +82,12 @@ scripts/_admin_api_key.txt
 
 # Scratch probes, A/B renders, test media, and pycache
 scripts/_*
+# …except the security regression suites (audit 2026-10-25): they are
+# permanent — CI runs them on every push (H-1 paystack gate, L-1/L-2
+# leads+admin hardening, M-1/L-3/L-4 Modal worker hardening).
+!scripts/_paystack_verify_gate_test.ts
+!scripts/_leads_admin_hardening_test.ts
+!scripts/_worker_hardening_test.py
 scripts/__pycache__/
 
 # Build artifacts

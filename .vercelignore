@@ -13,8 +13,12 @@ tsconfig.tsbuildinfo
 .env.*
 .vercel/
 
-# Local-only material: staging test scripts/artifacts, docs, CI config
-scripts/
+# Local-only material: staging test scripts/artifacts, docs, CI config.
+# `scripts/*` (not `scripts/`) so the CSP build guard can be re-included —
+# gitignore semantics cannot re-include a file under an excluded directory,
+# and `npm run build` runs the guard after `vite build` on the builder.
+scripts/*
+!scripts/check-no-inline-scripts.mjs
 docs/
 .github/
 .vscode/

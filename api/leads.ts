@@ -179,6 +179,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = (req.query.action as string) || '';
 
   try {
+    // ── Abuse throttle (security audit 2026-10-25, L-2) ──────────────────
+    // The demo/referral/review/contact POSTs are anonymous by design:
+    // 10 per action per IP per hour, on top of demo's stricter 1/day counter.
+    // The agency_* actions are session-gated below (and fire on every login /
+    // session restore) and review_moderate is admin-gated — all exempt.
+    if (['demo', 'referral', 'review', 'contact'].includes(action)) {
+      const { consumeRateLimit } = await import('../lib/rateLimit');
+      const { tooMany, clientIp } = await import('../lib/userRoutes/shared');
+      const rl = await consumeRateLimit('lead_post', `${action}:${clientIp(req)}`, 10, 3600);
+      if (!rl.allowed) return tooMany(res, rl);
+    }
+
     // ── POST /api/leads?action=demo ─────────────────────────────────
     if (action === 'demo') {
       const { listing_url, email } = req.body || {};
@@ -306,6 +318,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!inviter_user_id || !invite_email) {
         return res.status(400).json({ error: 'inviter_user_id and invite_email are required' });
       }
+      // Session gate (security audit 2026-10-25): this legacy route trusted
+      // the body's inviter_user_id, so ANY caller could add arbitrary users
+      // to an arbitrary agency. Only the inviter (or a platform admin) may.
+      const { requireOwner } = await import('../lib/auth');
+      const gate = await requireOwner(req, inviter_user_id);
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
       const inviter = await getUser(inviter_user_id);
       if (!inviter) return res.status(404).json({ error: 'Inviter not found' });
 
@@ -358,6 +376,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === 'agency_accept_pending') {
       const { user_id } = req.body || {};
       if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+      // Session gate (security audit 2026-10-25): the only caller is the
+      // signed-in user on login / session restore (AuthContext), so the
+      // body's user_id must be their own — anything else would join someone
+      // else to an agency without their session.
+      const { requireOwner } = await import('../lib/auth');
+      const gate = await requireOwner(req, user_id);
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
       const user = await getUser(user_id);
       if (!user) return res.status(404).json({ error: 'User not found' });
 

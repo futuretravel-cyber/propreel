@@ -13,7 +13,8 @@ interface LegResult {
   vercel: Array<{ key: string; result?: string; error?: string }>;
   modal: Array<{ secret: string; ok: boolean; via?: string; error?: string }>;
   redeploy: { ok: boolean; url?: string; error?: string } | null;
-  envLines: string;
+  /** Keys updated — the server never echoes submitted secret values (L-1). */
+  updatedKeys?: string[];
 }
 
 /**
@@ -69,7 +70,10 @@ export default function AdminApiKeys() {
       for (const v of (data.vercel || [])) legs.push(v.error ? (ok = false, `Vercel ${v.key}: ${v.error}`) : `Vercel ${v.key}: ${v.result}`);
       for (const m of (data.modal || [])) legs.push(m.ok ? `Modal ${m.secret}: updated (${m.via})` : (ok = false, `Modal ${m.secret}: ${m.error}`));
       if (data.redeploy) legs.push(data.redeploy.ok ? `Redeploying: ${data.redeploy.url}` : (ok = false, `Redeploy: ${data.redeploy.error}`));
-      setResults(r => ({ ...r, [serviceId]: { ok, text: legs.join(' · '), envLines: data.envLines } }));
+      // L-1: the server no longer echoes submitted secrets — compose the
+      // copyable .env block locally from the payload we just sent.
+      const envLines = Object.entries(payload).map(([k, v]) => `${k}=${v}`).join('\n');
+      setResults(r => ({ ...r, [serviceId]: { ok, text: legs.join(' · '), envLines } }));
       setValues(v => { const n = { ...v }; for (const k of Object.keys(payload)) n[k] = ''; return n; });
       if (ok) toast.success(`${spec.label} updated`); else toast.error(`${spec.label} updated with errors — see details`);
       load();

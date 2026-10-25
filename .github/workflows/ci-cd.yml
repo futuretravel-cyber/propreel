@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # The gate (typecheck, pricing guard, CSP guard, security regression
+  # suites) runs on EVERY push — any branch — not just main/develop.
   push:
-    branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
 
@@ -39,6 +40,41 @@ jobs:
     - name: Build project
       run: npm run build
 
+    # ── Security gate (audit 2026-10-25) ───────────────────────────────
+    # CSP guard (M-2): shipped HTML must contain no executable inline
+    # scripts / inline handlers / javascript: URLs, script-src must refuse
+    # 'unsafe-inline'/'unsafe-eval', and every inline <style> block must be
+    # hash-matched in style-src. Runs inside `npm run build` too; repeated
+    # here as a named check so a regression is unmistakable in the UI.
+    - name: CSP guard (no inline scripts, hashed styles)
+      run: node scripts/check-no-inline-scripts.mjs
+
+    # Hermetic regression suites: no network, no AWS, no Paystack, no Modal
+    # calls — modules are stubbed via require.cache / sys.modules and the
+    # real gate logic is what gets exercised. Red means a security gate
+    # regressed; fix the gate, never the test.
+    - name: "Security: Paystack verify gate (H-1)"
+      run: npx tsx scripts/_paystack_verify_gate_test.ts
+
+    - name: "Security: leads + admin API-keys hardening (L-1/L-2)"
+      run: npx tsx scripts/_leads_admin_hardening_test.ts
+
+    # Worker hardening (M-1 fail-closed auth, L-3 CORS, L-4 no eval) drives
+    # FastAPI TestClient + the parse helpers directly. Pinned to the exact
+    # versions the suites were verified against locally.
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install worker test deps
+      run: python -m pip install modal==1.5.5 fastapi==0.141.1 httpx==0.28.1
+
+    - name: "Security: Modal worker hardening (M-1/L-3/L-4)"
+      run: python scripts/_worker_hardening_test.py
+      env:
+        PYTHONUTF8: '1'
+
   # Browser smoke: admin access control + audit log (scripts/admin_ui_smoke.ts).
   # Drives real Chromium against the deployed site: signed-out /admin bounces
   # to /login, a signed-in NON-admin is bounced to /dashboard, the admin gets
@@ -56,6 +92,10 @@ jobs:
   admin-ui-smoke:
     name: Admin UI smoke
     needs: test
+    # The trigger now covers every branch push so the security gate runs
+    # everywhere; this LIVE production smoke keeps its original cadence
+    # (pushes to main/develop and PRs) instead of firing on every branch.
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

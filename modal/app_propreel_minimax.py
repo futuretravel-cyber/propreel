@@ -57,9 +57,40 @@ web_app = FastAPI(title="PropReel Render API", version="2.1.0")
 # Add CORS middleware
 from fastapi.middleware.cors import CORSMiddleware
 
+# Browser origins allowed to call the worker (security audit 2026-10-25, L-3).
+# The auth token travels in X-PropReel-Token, never in a cookie, but the old
+# allow_origins=["*"] invited ANY site to fire calls with a stolen token and
+# was an invalid combination with allow_credentials=True per the CORS spec.
+_ALLOWED_ORIGINS = [
+    "https://www.propreel.co.za",
+    "https://propreel.co.za",
+    "https://propreel-xi.vercel.app",   # canonical Vercel production alias
+    "http://localhost:3000",            # vite dev (npm run dev, strictPort 3000)
+    "http://127.0.0.1:3000",
+]
+
+
+def _origin_allowed(origin: str) -> bool:
+    """Strict allow-check for error responses (kept in lockstep with the
+    CORSMiddleware config below). Vercel preview deployments get random
+    subdomains; any localhost port is allowed for dev harnesses."""
+    if not origin:
+        return False
+    if origin in _ALLOWED_ORIGINS:
+        return True
+    if origin.startswith("https://") and origin.endswith(".vercel.app"):
+        return True
+    for base in ("http://localhost", "http://127.0.0.1"):
+        if origin == base or origin.startswith(base + ":"):
+            return True
+    return False
+
+
 web_app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (configure for production)
+    allow_origins=_ALLOWED_ORIGINS,
+    # Anchored so `x.vercel.app.evil.com` can never match.
+    allow_origin_regex=r"(https://[a-z0-9-]+\.vercel\.app|http://localhost(:\d+)?|http://127\.0\.0\.1(:\d+)?)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -70,8 +101,12 @@ web_app.add_middleware(
 # minted by the PropReel Vercel API (RENDER_API_TOKEN, shared via the
 # render-auth Modal secret). The browser holds only short-lived signed
 # tokens, so the worker URL in the public bundle is useless to scrapers.
-# If the secret is not configured the check is SKIPPED (loud warning) so a
-# deploy without the secret can never take renders down.
+# If the secret is not configured every tokened endpoint FAILS CLOSED with
+# 401 (security audit 2026-10-25, M-1) — only the allow-listed observability
+# paths below stay reachable. A missing secret can never turn the spend
+# endpoints (/render_video, /edit_image, /flashhead, /generate_text,
+# /tts_preview, …) into open access; the API mints no tokens without the
+# secret either, so legitimate traffic loses nothing here.
 _token_header = "X-PropReel-Token"
 # /admin/secret carries its own stronger gate (ADMIN_API_KEY bearer,
 # constant-time compared, allow-listed secret names) — exempt it here.
@@ -101,10 +136,15 @@ def _parse_token(value: Optional[str]):
     global _warned_no_secret
     secret = os.environ.get("RENDER_API_TOKEN", "")
     if not secret:
+        # Fail CLOSED (security audit 2026-10-25, M-1). With no signing secret
+        # every token is meaningless, so the old "anon" fallback — which made
+        # every tokened endpoint open to the world — is gone. _claim_job_token
+        # re-parses through here too, so the paid single-use claim is
+        # fail-closed as well.
         if not _warned_no_secret:
-            print("[auth] RENDER_API_TOKEN not set — worker auth DISABLED (open access)")
+            print("[auth] RENDER_API_TOKEN not set — worker auth is FAIL-CLOSED (all tokened endpoints reject)")
             _warned_no_secret = True
-        return {"version": 1, "uid": "anon", "scope": None, "exp": 0}, None
+        return None, "worker auth is not configured (RENDER_API_TOKEN missing)"
     if not value:
         return None, "missing X-PropReel-Token"
     parts = value.split(".")
@@ -206,6 +246,21 @@ JOB_ENDPOINT_SCOPE = {
 }
 
 
+def _cors_error_headers(request: Request) -> dict:
+    """ACAO headers for middleware error responses. This middleware wraps
+    CORSMiddleware, so its headers never reach these responses — mirror them
+    ourselves, but ONLY for origins we allow (the old blanket "*" handed any
+    site a readable error body)."""
+    origin = request.headers.get("origin") or ""
+    if _origin_allowed(origin):
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Vary": "Origin",
+        }
+    return {"Vary": "Origin"}
+
+
 @web_app.middleware("http")
 async def require_worker_token(request: Request, call_next):
     # OPTIONS is the CORS preflight (handled below by CORSMiddleware).
@@ -213,8 +268,7 @@ async def require_worker_token(request: Request, call_next):
         return await call_next(request)
     info, err = _parse_token(request.headers.get(_token_header))
     if err:
-        # This middleware wraps CORS, so mirror the CORS header ourselves.
-        return JSONResponse(status_code=401, content={"error": err}, headers={"Access-Control-Allow-Origin": "*"})
+        return JSONResponse(status_code=401, content={"error": err}, headers=_cors_error_headers(request))
     need = JOB_ENDPOINT_SCOPE.get(request.url.path)
     # v3 tokens are v2 plus the bound script hash (per-10s narration pricing)
     # — same single-use claim, so paid-job endpoints accept both versions.
@@ -222,7 +276,7 @@ async def require_worker_token(request: Request, call_next):
         return JSONResponse(
             status_code=403,
             content={"error": f"paid job token required for this endpoint (scope={need})"},
-            headers={"Access-Control-Allow-Origin": "*"},
+            headers=_cors_error_headers(request),
         )
     return await call_next(request)
 
@@ -1287,21 +1341,28 @@ def upscale_video(input_video_url: str, target_resolution: str = "1080p") -> str
 # zoompan expression (x, y, zoom over the clip's frame count).
 #
 # Amplitude: the first pass used ~10–13% zoom, which over a still frame reads
-# as "the video hardly moves" (agent-reported). These zoom bands (~1.0 →
-# 1.25+) with an explicit edge-to-edge lateral drift are visibly cinematic
-# without fisheye-ing the room.
+# as "the video hardly moves" (agent-reported). 2026-10-25: bands pushed to
+# the EXTREME end per request — every style now traverses its whole band
+# INSIDE one clip (ztravel/frames, not the old shared 0.09/frames which
+# never reached its own cap), and the bands run 1.0 → 1.35. The lateral pan
+# still sweeps edge-to-edge (that is its physical maximum — beyond it
+# zoompan would expose black), but at 1.30 zoom the sweep covers ~23% more
+# frame width per clip than the old 1.09 endpoint, so it reads visibly
+# faster. Smoothness is unchanged: the 4x master keeps integer snapping at
+# ±0.25 output px regardless of travel speed.
 ESSENTIAL_MOTION_STYLES = [
-    # A — decisive push-in from center ("dramatic focal push-in")
-    {"id": "A", "zoom": "min(zoom+{zrate},1.28)", "x": "iw/2-(iw/zoom/2)", "y": "ih/2-(ih/zoom/2)"},
-    # B — REAL left-to-right pan: the window sweeps across the frame ("tracking arc")
-    {"id": "B", "zoom": "min(zoom+{zrate},1.22)",
+    # A — fastest push-in from center: full 1.00 → 1.35 within the clip
+    {"id": "A", "zoom": "min(zoom+{zrate},1.35)", "ztravel": 0.35,
+     "x": "iw/2-(iw/zoom/2)", "y": "ih/2-(ih/zoom/2)"},
+    # B — fastest REAL left-to-right pan: window sweeps the full frame width
+    # (edge-to-edge = max travel) while zooming to 1.30 in the same clip
+    {"id": "B", "zoom": "min(zoom+{zrate},1.30)", "ztravel": 0.30,
      # start at the frame's left edge, travel to its right edge over the clip
      "x": "(iw-iw/zoom)*on/({frames}-1)", "y": "ih/2-(ih/zoom/2)"},
-    # C — top-to-bottom tilt with a strong pull-back reveal that ENDS on
-    # the full frame. The old decrement (zoom-{zrate}) decayed only
-    # ~0.09/clip from 1.25, so the photo stayed permanently cropped at
-    # ~1.16× — explicit interpolation reaches 1.00.
-    {"id": "C", "zoom": "if(eq(on,1),1.25,max(1.25-0.25*(on-1)/({frames}-1),1.0))",
+    # C — fastest pull-back reveal: strongest zoom-out band (1.35 → 1.00,
+    # explicit interpolation reaches 1.00 exactly) with the full
+    # top-to-bottom tilt in the same clip.
+    {"id": "C", "zoom": "if(eq(on,1),1.35,max(1.35-0.35*(on-1)/({frames}-1),1.0))",
      "x": "iw/2-(iw/zoom/2)", "y": "(ih-ih/zoom)*on/({frames}-1)"},
 ]
 
@@ -1321,7 +1382,9 @@ def _essential_kenburns_clip(
     see the note on the scale filter below."""
     import subprocess as _sp
     frames = max(int(round(seconds * fps)), 2)
-    zrate = 0.09 / frames  # steady zoom shared by every style band
+    # Per-style zoom travel: rate = travel/frames so each style completes its
+    # ENTIRE zoom band within this clip (extreme-motion pass 2026-10-25).
+    zrate = float(style.get("ztravel", 0.35)) / frames
     style_fmt = {
         "id": style["id"],
         "zoom": style["zoom"].format(zrate=f"{zrate:.6f}", frames=frames),
@@ -1342,7 +1405,7 @@ def _essential_kenburns_clip(
         # does NOT change: at z=1.0 zoompan's window is the whole master
         # (iw/zoom × ih/zoom), so the full photo — including the portrait
         # pillarbox bars — fills the frame exactly as before; the style
-        # bands still run z 1.0 → ≤1.28.
+        # bands still run z 1.0 → ≤1.35.
         f"scale={width * 4}:{height * 4}:force_original_aspect_ratio=increase,crop={width * 4}:{height * 4},"
         f"zoompan=z='{style_fmt['zoom']}':x='{style_fmt['x']}':y='{style_fmt['y']}':d={frames}:s={width}x{height}:fps={fps},"
         "format=yuv420p"

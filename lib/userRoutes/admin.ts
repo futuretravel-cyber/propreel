@@ -161,14 +161,17 @@ export async function adminApiKeysRoute(req: VercelRequest, res: VercelResponse)
     redeployResult = await triggerProductionRedeploy().catch((e: any) => ({ ok: false, error: e?.message || 'redeploy failed' }));
   }
 
-  const envLines = Object.entries(clean).map(([k, v]) => `${k}=${v}`).join('\n');
-
+  // Security audit 2026-10-25 (L-1): this response used to echo the submitted
+  // secret values back as copyable `envLines` — contradicting the "never
+  // re-returned" rule above. Values are write-only now: the admin panel
+  // composes the .env block locally from its own form state. Only the KEY
+  // names go back over the wire.
   return res.status(200).json({
     success: vercel.every(v => !v.error) && modal.every(m => m.ok),
     vercel,
     modal,
     redeploy: redeployResult,
-    envLines,
+    updatedKeys: Object.keys(clean),
   });
 }
 
