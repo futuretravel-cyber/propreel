@@ -931,12 +931,18 @@ export async function getCreditReport(userId: string, days = 30): Promise<{
   const since = new Date();
   since.setDate(since.getDate() - days);
 
+  // Newest-first, like every other ledger reader (getCreditTransactions,
+  // agency monthly usage, the allocate cron). The default ascending order
+  // made the fixed read cap and the API's slice(0, 100) drop the NEWEST
+  // rows — history silently stopped at some old date.
   const transactions = await queryItems<CreditTransaction>(TABLES.CREDIT_TRANSACTIONS, {
     expression: 'userId = :uid',
     values: { ':uid': userId },
-  }, { limit: 400 });
+  }, { limit: 400, scanIndexForward: false });
 
-  const filteredTransactions = transactions.filter(t => new Date(t.createdAt) >= since);
+  const filteredTransactions = transactions
+    .filter(t => new Date(t.createdAt) >= since)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return {
     currentBalance: user.credits,

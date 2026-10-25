@@ -50,6 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         total_credits_used: report.totalUsed,
         total_credits_purchased: report.totalPurchased,
         transaction_count: report.transactions.length,
+        // getCreditReport returns newest-first, so this cap keeps the most
+        // recent 100 rows (on an ascending list it used to cut the newest).
         transactions: report.transactions.slice(0, 100),
       });
     }
