@@ -6,6 +6,15 @@
  * DynamoDB, Paystack or the network. lib/auth is the REAL module so the
  * requireOwner gate logic itself is what gets exercised.
  *
+ * Portability note: a require.cache stub only reaches code that loads the
+ * module through require() / static import. verify.ts pulls lib/userService
+ * and lib/db via `await import()` on some paths (email lookup, ledger
+ * writes), and Node 20's ESM-CJS bridge exposes a synthetic cache entry as
+ * `default` only — so a future test that steers one of THOSE paths must not
+ * stub the module; run the real module against stubbed dependencies the way
+ * the L-1/L-2 suite handles lib/rateLimit. The paths covered here all load
+ * their stubs statically, so they behave identically on every Node and OS.
+ *
  * Covers:
  *   A. no session cookie            → 401, Paystack never queried
  *   B. signed-in, foreign reference → 403, no billing state in the body
