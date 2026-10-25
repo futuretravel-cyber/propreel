@@ -5,11 +5,20 @@
  *        implementing: both trusted the body's user id with no session check)
  *   L-1  /api/users?action=admin_api_keys never echoes submitted secret values
  *
- * Hermetic: lib/db, lib/userService and lib/rateLimit are replaced via
- * require.cache before the handlers load (tsx resolves dynamic import()
- * through the same cache — verified), so nothing touches AWS or the network.
- * lib/auth is the REAL module so the requireOwner gates themselves are what
- * gets exercised.
+ * Hermetic: lib/db and lib/userService are replaced via require.cache before
+ * the handlers load, so nothing touches AWS or the network. lib/auth and
+ * lib/rateLimit are the REAL modules so the requireOwner gates and the
+ * limiter itself are what gets exercised — the limiter is steered through the
+ * stubbed lib/db it calls (docClient.send = the atomic ADD guard).
+ *
+ * Note on the stubs: Node 20's ESM↔CJS bridge exposes a synthetic
+ * require.cache entry to `await import()` as `default` ONLY, so modules the
+ * handlers load via dynamic import() cannot be stubbed that way —
+ * `const { consumeRateLimit } = await import('../lib/rateLimit')` would
+ * destructure to undefined and the handler 500s ("consumeRateLimit is not a
+ * function" — exactly what CI's Node 20 showed while Node 24's interop hid
+ * it locally). Static require()s and real modules with stubbed dependencies
+ * behave identically on every Node.
  *
  * Run: npx tsx scripts/_leads_admin_hardening_test.ts
  */
@@ -52,6 +61,12 @@ stubModule('lib/db', {
       if (key.id === TOKEN_ADMIN) return { id: TOKEN_ADMIN, userId: 'user-admin', expiresAt: Math.floor(Date.now() / 1000) + 3600 };
     }
     if (table === 'users') return USERS[key.id] || null;
+    // Real consumeRateLimit's rollover probe: report an exhausted in-window
+    // counter when the scenario is throttled (same 3600s window math the
+    // handler passes to consumeRateLimit('lead_post', …, 10, 3600)).
+    if (rateBlocked && String(key?.id || '').startsWith('rl_')) {
+      return { id: key.id, windowStart: Math.floor(Date.now() / 1000 / 3600) * 3600, count: 999 };
+    }
     return null;
   },
   putItem: async (table: string, item: any) => { dbWrites.push({ table, item }); return item; },
@@ -61,7 +76,19 @@ stubModule('lib/db', {
   queryItems: async () => [],
   queryIndex: async () => [],
   putItemIfNotExists: async () => true,
-  docClient: { send: async () => ({}) },
+  // The real consumeRateLimit's atomic ADD guard: throw the exact DynamoDB
+  // conditional error when the scenario is throttled (→ block path), answer
+  // with an incremented counter otherwise (→ allowed, remaining = limit-1).
+  docClient: {
+    send: async () => {
+      if (rateBlocked) {
+        const err: any = new Error('The conditional request failed');
+        err.name = 'ConditionalCheckFailedException';
+        throw err;
+      }
+      return { Attributes: { count: 1 } };
+    },
+  },
 });
 
 stubModule('lib/userService', {
@@ -70,12 +97,8 @@ stubModule('lib/userService', {
   updateUser: async (id: string, updates: any) => { userUpdates.push({ id, updates }); },
 });
 
-stubModule('lib/rateLimit', {
-  consumeRateLimit: async () =>
-    rateBlocked
-      ? { allowed: false, remaining: 0, retryAfterSec: 60 }
-      : { allowed: true, remaining: 9, retryAfterSec: 0 },
-});
+// lib/rateLimit is NOT stubbed (see header): the real limiter runs against
+// the stubbed lib/db above, so `rateBlocked` steers its DynamoDB guard.
 
 const leadsHandler = require(resolve('api/leads')).default;
 const { adminApiKeysRoute } = require(resolve('lib/userRoutes/admin'));
