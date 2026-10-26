@@ -279,11 +279,11 @@ function VisualShowcase() {
 }
 
 /* ── Property showcase gallery — real SA listings, big and interactive ── */
-const SHOWCASE = [
-  { base: 'waterfront-villa', title: 'Waterfront Villa', place: 'Constantia, Cape Town', tag: 'Cinematic tier', badge: 'Drone + Golden Hour' },
-  { base: 'family-estate', title: 'Family Estate', place: 'Sandton, Johannesburg', tag: 'Premium tier', badge: 'Virtual Staging' },
-  { base: 'townhouse', title: 'Modern Townhouse', place: 'Umhlanga, Durban', tag: 'Essential tier', badge: 'AI Motion' },
-  { base: 'apartment', title: 'City Apartment', place: 'Sea Point, Cape Town', tag: 'Social tier', badge: 'Social Pack' },
+const SHOWCASE: Array<{ base: string; title: string; place: string; tag: string; badge: string; video?: string; videoPoster?: string }> = [
+  { base: 'waterfront-villa', title: 'Waterfront Villa', place: 'Constantia, Cape Town', tag: 'Cinematic tier', badge: 'Drone + Golden Hour', video: '/media/waterfront-villa.mp4', videoPoster: '/images/waterfront-villa-poster.webp' },
+  { base: 'cape-dutch-after', title: 'Family Estate', place: 'Sandton, Johannesburg', tag: 'Premium tier', badge: 'Virtual Staging', video: '/media/family-estate.mp4', videoPoster: '/images/family-estate-poster.webp' },
+  { base: 'townhouse', title: 'Modern Townhouse', place: 'Umhlanga, Durban', tag: 'Essential tier', badge: 'AI Motion', video: '/media/townhouse.mp4', videoPoster: '/images/townhouse-poster.webp' },
+  { base: 'twilight-blue-hour', title: 'City Apartment', place: 'Sea Point, Cape Town', tag: 'Social tier', badge: 'Social Pack', video: '/media/city-apartment.mp4', videoPoster: '/images/city-apartment-poster.webp' },
 ];
 
 function PropertyShowcase() {
@@ -303,14 +303,28 @@ function PropertyShowcase() {
                 transition={{ type: 'spring', stiffness: 260, damping: 20 }}
                 className="group relative rounded-3xl overflow-hidden glass h-[380px]"
               >
-                <img
-                  src={img(p.base, 800)}
-                  srcSet={`${img(p.base, 480)} 480w, ${img(p.base, 800)} 800w, ${img(p.base, 1200)} 1200w`}
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                  alt={`${p.title} — ${p.place}`}
-                  loading="lazy"
-                  className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-[900ms]"
-                />
+                {p.video ? (
+                  <video
+                    src={p.video}
+                    poster={p.videoPoster}
+                    aria-label={`${p.title} — ${p.place}`}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-[900ms]"
+                  />
+                ) : (
+                  <img
+                    src={img(p.base, 800)}
+                    srcSet={`${img(p.base, 480)} 480w, ${img(p.base, 800)} 800w, ${img(p.base, 1200)} 1200w`}
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                    alt={`${p.title} — ${p.place}`}
+                    loading="lazy"
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-[900ms]"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/30 to-transparent" />
                 {/* Tier tag + hover badge share one wrapping row — as separate
                     left/right absolute chips they overlapped on narrow cards
