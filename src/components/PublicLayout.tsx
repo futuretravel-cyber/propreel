@@ -20,7 +20,10 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             </div>
             <span className="font-bold text-xl text-glow">PropReel</span>
           </Link>
-          <div className="hidden md:flex items-center gap-8">
+          {/* Links + CTAs need lg to sit side-by-side without wrapping; at
+              md (tablet) the full nav crams the buttons into 2–3 line labels,
+              so tablets get the hamburger menu until lg. */}
+          <div className="hidden lg:flex items-center gap-8">
             <Link to="/pricing" className="text-sm font-medium text-ink-300 hover:text-white transition">Pricing</Link>
             <Link to="/blog" className="text-sm font-medium text-ink-300 hover:text-white transition">Blog</Link>
             <Link to="/reviews" className="text-sm font-medium text-ink-300 hover:text-white transition">Reviews</Link>
@@ -29,17 +32,17 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             <Link to="/contact" className="text-sm font-medium text-ink-300 hover:text-white transition">Contact</Link>
           </div>
           <div className="hidden md:flex items-center gap-3">
-            <Link to="/login" className="btn glass text-white min-h-[44px] flex items-center hover:bg-white/10">Log in</Link>
-            <Link to="/register" className="btn btn-neon min-h-[44px] flex items-center">Start Free — {SIGNUP_BONUS} Credits</Link>
+            <Link to="/login" className="btn glass text-white min-h-[44px] whitespace-nowrap flex items-center hover:bg-white/10">Log in</Link>
+            <Link to="/register" className="btn btn-neon min-h-[44px] whitespace-nowrap flex items-center">Start Free — {SIGNUP_BONUS} Credits</Link>
           </div>
-          <div className="flex items-center gap-1 md:hidden">
+          <div className="flex items-center gap-1 lg:hidden">
             <button onClick={() => setMenuOpen(!menuOpen)} className="p-3 -mr-2 min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}>
               {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
         {menuOpen && (
-          <div className="md:hidden border-t border-white/5 bg-ink-950/95 backdrop-blur-xl p-4 space-y-1">
+          <div className="lg:hidden border-t border-white/5 bg-ink-950/95 backdrop-blur-xl p-4 space-y-1">
             {[
               ['/pricing', 'Pricing'],
               ['/blog', 'Blog'],
@@ -60,7 +63,9 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
       <main id="main-content">{children}</main>
       <SupportWidgets />
       <MobileStickyCta />
-      <footer className="glass-strong border-t border-white/5 py-14 relative overflow-hidden">
+      {/* pb clears the mobile sticky CTA bar (fixed bottom, md:hidden) so it
+          never covers the copyright line when scrolled to the end. */}
+      <footer className="glass-strong border-t border-white/5 pt-14 pb-24 md:pb-14 relative overflow-hidden">
         {/* Faint grid + neon hairline so the footer feels part of the system */}
         <div className="absolute inset-0 bg-grid-fade opacity-30" />
         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />

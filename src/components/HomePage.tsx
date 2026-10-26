@@ -309,8 +309,13 @@ function PropertyShowcase() {
                   className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-[900ms]"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/30 to-transparent" />
-                <span className="absolute top-4 left-4 glass text-purple-300 text-xs font-bold px-3 py-1.5 rounded-full">{p.tag}</span>
-                <span className="absolute top-4 right-4 glass text-ink-200 text-xs px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">{p.badge}</span>
+                {/* Tier tag + hover badge share one wrapping row — as separate
+                    left/right absolute chips they overlapped on narrow cards
+                    (2-up at ~640px and again in the 4-up grid at lg). */}
+                <div className="absolute top-4 left-4 right-4 flex flex-wrap items-center justify-between gap-2">
+                  <span className="glass text-purple-300 text-xs font-bold px-3 py-1.5 rounded-full">{p.tag}</span>
+                  <span className="glass text-ink-200 text-xs px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">{p.badge}</span>
+                </div>
                 <div className="absolute bottom-0 p-5">
                   <h3 className="text-lg font-bold text-white">{p.title}</h3>
                   <p className="text-ink-400 text-sm">{p.place}</p>
@@ -407,7 +412,10 @@ function EditorDemo() {
           {badges.map((b, i) => (
             <motion.div
               key={b.label}
-              className="absolute z-10 glass-strong rounded-2xl px-4 py-3 flex items-center gap-3 shadow-2xl hidden md:flex"
+              /* lg (not md): at tablet width the max-w-4xl column fills the
+                 viewport, so the -4% offsets push these badges past the
+                 section's overflow-hidden edge and they get sliced off. */
+              className="absolute z-10 glass-strong rounded-2xl px-4 py-3 flex items-center gap-3 shadow-2xl hidden lg:flex"
               style={{
                 top: ['8%', '30%', '55%', '78%'][i],
                 [i % 2 === 0 ? 'left' : 'right']: '-4%',
