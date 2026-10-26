@@ -7,8 +7,9 @@ import { PropReelAPI } from '../lib/api';
 import {
   Users, Plus, Zap, TrendingUp, Mail, Settings,
   BarChart3, CheckCircle2, Send, Gift, Film, Download,
-  Building2, Clock, Mic,
+  Building2, Clock, Mic, Upload, Loader2,
 } from 'lucide-react';
+import { uploadImagesForAI } from '../lib/propertyListing';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -38,7 +39,7 @@ interface AgencyRecord {
   memberLimit: number;
   poolCredits: number;
   company?: Record<string, string | undefined>;
-  branding?: { reportLogoUrl?: string; reportHeaderColor?: string };
+  branding?: { reportLogoUrl?: string; reportHeaderColor?: string; logoUrl?: string };
   webhookUrl?: string;
   reports?: Array<{ month: string; url: string; generatedAt: string; totalCreditsUsed: number; agentCount: number }>;
   lastWebhook?: { url: string; status: string; at: string; detail?: string };
@@ -110,6 +111,8 @@ export default function EnhancedAgency() {
   const [giftTarget, setGiftTarget] = useState<AgencyMember | null>(null);
   const [giftAmount, setGiftAmount] = useState(50);
   const [settings, setSettings] = useState({ agencyName: user?.agencyName || '' });
+  const [logoUrl, setLogoUrl] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [poolAmount, setPoolAmount] = useState(500);
   const [poolLoading, setPoolLoading] = useState(false);
   const [limitEditing, setLimitEditing] = useState<AgencyMember | null>(null);
@@ -259,14 +262,36 @@ This removes their account, projects and sign-ins — it cannot be undone. The e
     }
   };
 
-  // Save agency settings (persists the agency name via the agency endpoint)
+  // Keep the logo draft in step with the saved record (every load() refresh)
+  useEffect(() => { setLogoUrl(agency?.branding?.logoUrl || ''); }, [agency]);
+
+  // Upload the agency logo to S3; the URL is persisted by saveSettings below.
+  const uploadAgencyLogo = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const [url] = await uploadImagesForAI([file] as unknown as FileList, user?.id, 1);
+      setLogoUrl(url);
+      toast.success('Logo uploaded — press Save Settings to apply');
+    } catch (e: any) {
+      toast.error(e.message || 'Logo upload failed');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  // Save agency settings (persists the agency name + logo via the agency endpoint)
   const saveSettings = async () => {
     if (!user?.id) return;
     try {
       const res = await fetch('/api/users?action=agency_settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, name: settings.agencyName }),
+        body: JSON.stringify({
+          user_id: user.id,
+          name: settings.agencyName,
+          branding: { logoUrl: logoUrl.trim() || null },
+        }),
       });
       if (!res.ok) throw new Error();
       toast.success('Agency settings saved', 'Settings Updated');
@@ -312,8 +337,17 @@ This removes their account, projects and sign-ins — it cannot be undone. The e
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Building2 className="w-6 h-6 text-purple-400" /> Agency Dashboard
+          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+            {agency?.branding?.logoUrl ? (
+              <img
+                src={agency.branding.logoUrl}
+                alt={`${agencyName || user?.agencyName || 'Agency'} logo`}
+                className="h-10 max-w-[160px] object-contain"
+              />
+            ) : (
+              <Building2 className="w-6 h-6 text-purple-400" />
+            )}
+            Agency Dashboard
           </h1>
           <p className="text-ink-400 mt-1">
             {agencyName || user?.agencyName || 'Agency'} • {members.length} of {agency?.memberLimit ?? maxAgents} agents
@@ -667,7 +701,35 @@ This removes their account, projects and sign-ins — it cannot be undone. The e
               placeholder="e.g. Cape Luxury Properties"
             />
             <p className="text-xs text-ink-500 mt-2">This name appears on your team's dashboards.</p>
-            <button onClick={saveSettings} className="btn btn-primary mt-4">
+
+            <label className="label block mt-6">Agency Logo</label>
+            <div className="flex items-center gap-4">
+              <div className="w-28 h-28 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center overflow-hidden shrink-0">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Agency logo" className="max-w-full max-h-full object-contain" />
+                ) : (
+                  <Building2 className="w-8 h-8 text-ink-500" />
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className={`btn btn-secondary text-sm cursor-pointer ${uploadingLogo ? 'opacity-60' : ''}`}>
+                  {uploadingLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload Logo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingLogo}
+                    onChange={(e) => { uploadAgencyLogo(e.target.files?.[0]); e.target.value = ''; }}
+                  />
+                </label>
+                {logoUrl && (
+                  <button onClick={() => setLogoUrl('')} className="btn btn-ghost text-xs block">Remove logo</button>
+                )}
+                <p className="text-xs text-ink-500">Appears in the top-left corner of the Agency Dashboard. PNG with transparency works best.</p>
+              </div>
+            </div>
+
+            <button onClick={saveSettings} className="btn btn-primary mt-6">
               <CheckCircle2 className="w-4 h-4" /> Save Settings
             </button>
           </div>

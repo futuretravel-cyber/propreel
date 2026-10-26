@@ -805,6 +805,25 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Agency white-label logo — top-left of the header, beside the search bar.
+  // agency_overview carries branding.logoUrl (saved in Agency Dashboard →
+  // Settings); fetched once per session, agencies without one keep the
+  // default header.
+  const [agencyLogo, setAgencyLogo] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setAgencyLogo(null);
+    if (!user?.id || !user.agencyId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/users?action=agency_overview&user_id=${encodeURIComponent(user.id)}`);
+        const data = await res.json();
+        if (!cancelled) setAgencyLogo(data?.agency?.branding?.logoUrl || null);
+      } catch { /* no logo — keep the default header */ }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.agencyId]);
+
   // Close the profile menu whenever the route changes.
   useEffect(() => { setProfileMenu(false); }, [location.pathname]);
 
@@ -981,6 +1000,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden text-ink-400 hover:text-white" aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'} aria-expanded={sidebarOpen}>
             <Menu className="w-6 h-6" />
           </button>
+          {agencyLogo && (
+            <img src={agencyLogo} alt={`${user?.agencyName || 'Agency'} logo`} className="h-12 max-w-[260px] object-contain" />
+          )}
           </div>
           <div className="flex items-center gap-4 ml-auto">
             <SearchButton />
