@@ -353,27 +353,27 @@ function ReviewsPage() {
   const { reviews, loading } = useApprovedReviews();
   return (
     <PublicLayout>
-      <section className="py-20 bg-gradient-to-b from-purple-50 to-white">
+      <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-4xl font-black text-gray-900 text-center">What Our Agents Say</h1>
-          <p className="text-center text-gray-600 mt-4">Verified reviews from paying South African estate agents.</p>
+          <h1 className="text-4xl font-black text-white text-center">What Our Agents Say</h1>
+          <p className="text-center text-ink-400 mt-4">Verified reviews from paying South African estate agents.</p>
           <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {loading && <p className="text-center text-gray-500 col-span-full">Loading reviews…</p>}
+            {loading && <p className="text-center text-ink-500 col-span-full">Loading reviews…</p>}
             {!loading && reviews.length === 0 && (
-              <p className="text-center text-gray-500 col-span-full">
-                No published reviews yet — be the first to <Link to="/register" className="text-purple-700 underline">share your experience</Link>.
+              <p className="text-center text-ink-500 col-span-full">
+                No published reviews yet — be the first to <Link to="/register" className="text-purple-400 underline hover:text-purple-300">share your experience</Link>.
               </p>
             )}
             {reviews.map(r => (
-              <div key={r.id} className="card-light p-6">
+              <div key={r.id} className="card-dark p-6">
                 <div className="flex gap-1 mb-3">
                   {Array.from({ length: r.rating }).map((_, i) => <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
                 </div>
-                <p className="text-gray-700 mb-4">"{r.comment}"</p>
-                <div className="border-t border-gray-100 pt-3">
-                  <p className="font-semibold text-gray-900 text-sm">{r.fullName}</p>
-                  <p className="text-gray-500 text-xs">{r.agency}</p>
-                  <p className="text-gray-400 text-xs mt-1">{formatDate(r.createdAt)}</p>
+                <p className="text-ink-200 mb-4">"{r.comment}"</p>
+                <div className="border-t border-white/5 pt-3">
+                  <p className="font-semibold text-white text-sm">{r.fullName}</p>
+                  <p className="text-ink-400 text-xs">{r.agency}</p>
+                  <p className="text-ink-500 text-xs mt-1">{formatDate(r.createdAt)}</p>
                 </div>
               </div>
             ))}
@@ -387,19 +387,19 @@ function ReviewsPage() {
 function AboutPage() {
   return (
     <PublicLayout>
-      <section className="py-20 bg-gradient-to-b from-purple-50 to-white">
+      <section className="py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-black text-gray-900">About PropReel</h1>
-          <p className="mt-6 text-lg text-gray-600 leading-relaxed">
+          <h1 className="text-4xl font-black text-white">About PropReel</h1>
+          <p className="mt-6 text-lg text-ink-400 leading-relaxed">
             PropReel was built to solve a simple problem: South African estate agents spend too much time and money creating marketing content for their listings. We use cutting-edge AI to turn your existing property photos into stunning videos, enhanced images, and compelling descriptions — in minutes, not days.
           </p>
-          <p className="mt-4 text-lg text-gray-600 leading-relaxed">
+          <p className="mt-4 text-lg text-ink-400 leading-relaxed">
             Our platform is designed specifically for the South African property market, with local voices, Rand pricing, and seamless integration with Property24 and Private Property portals.
           </p>
           <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div><p className="text-3xl font-black text-purple-700">27</p><p className="text-gray-600">AI Photo Presets</p></div>
-            <div><p className="text-3xl font-black text-purple-700">4</p><p className="text-gray-600">AI Video Tiers</p></div>
-            <div><p className="text-3xl font-black text-purple-700">R{zarComma(CREDIT_PACK_RAND)}</p><p className="text-gray-600">Per Credit, VAT Included</p></div>
+            <div><p className="text-3xl font-black text-purple-400">27</p><p className="text-ink-400">AI Photo Presets</p></div>
+            <div><p className="text-3xl font-black text-purple-400">4</p><p className="text-ink-400">AI Video Tiers</p></div>
+            <div><p className="text-3xl font-black text-purple-400">R{zarComma(CREDIT_PACK_RAND)}</p><p className="text-ink-400">Per Credit, VAT Included</p></div>
           </div>
         </div>
       </section>
@@ -411,23 +411,23 @@ function ContactPage() {
   const [sent, setSent] = useState(false);
   return (
     <PublicLayout>
-      <section className="py-20 bg-gradient-to-b from-purple-50 to-white">
+      <section className="py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-4xl font-black text-gray-900 text-center">Get in Touch</h1>
-          <p className="text-center text-gray-600 mt-4">We'd love to hear from you.</p>
+          <h1 className="text-4xl font-black text-white text-center">Get in Touch</h1>
+          <p className="text-center text-ink-400 mt-4">We'd love to hear from you.</p>
           <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-12">
             <div>
               <div className="space-y-6">
-                <div className="flex items-start gap-4"><Mail className="w-5 h-5 text-purple-700 mt-1" /><div><p className="font-semibold">Email</p><p className="text-gray-600">support@propreel.co.za</p></div></div>
-                <div className="flex items-start gap-4"><MapPin className="w-5 h-5 text-purple-700 mt-1" /><div><p className="font-semibold">Office</p><p className="text-gray-600">Cape Town, South Africa</p></div></div>
+                <div className="flex items-start gap-4"><Mail className="w-5 h-5 text-purple-400 mt-1" /><div><p className="font-semibold text-white">Email</p><p className="text-ink-400">support@propreel.co.za</p></div></div>
+                <div className="flex items-start gap-4"><MapPin className="w-5 h-5 text-purple-400 mt-1" /><div><p className="font-semibold text-white">Office</p><p className="text-ink-400">Cape Town, South Africa</p></div></div>
               </div>
             </div>
             <div>
               {sent ? (
-                <div className="card-light p-8 text-center">
+                <div className="card-dark p-8 text-center">
                   <Check className="w-12 h-12 text-green-500 mx-auto mb-4" />
-                  <h3 className="font-bold text-lg">Message Sent!</h3>
-                  <p className="text-gray-600 mt-2">We'll get back to you within 24 hours.</p>
+                  <h3 className="font-bold text-lg text-white">Message Sent!</h3>
+                  <p className="text-ink-400 mt-2">We'll get back to you within 24 hours.</p>
                 </div>
               ) : (
                 <form onSubmit={async (e) => {
@@ -449,9 +449,9 @@ function ContactPage() {
                     alert('Could not send your message — please email support@propreel.co.za directly.');
                   }
                 }} className="space-y-4">
-                  <div><label className="label text-gray-700">Name</label><input name="name" className="input-light" placeholder="Your name" required /></div>
-                  <div><label className="label text-gray-700">Email</label><input name="email" type="email" className="input-light" placeholder="you@example.com" required /></div>
-                  <div><label className="label text-gray-700">Message</label><textarea name="message" className="input-light min-h-[120px]" placeholder="How can we help?" required /></div>
+                  <div><label className="label text-ink-300">Name</label><input name="name" className="input" placeholder="Your name" required /></div>
+                  <div><label className="label text-ink-300">Email</label><input name="email" type="email" className="input" placeholder="you@example.com" required /></div>
+                  <div><label className="label text-ink-300">Message</label><textarea name="message" className="input min-h-[120px]" placeholder="How can we help?" required /></div>
                   <button type="submit" className="btn btn-primary w-full">Send Message</button>
                 </form>
               )}

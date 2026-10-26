@@ -21,7 +21,7 @@ import {
 function Inline({ part }: { part: TermsInline }) {
   if (typeof part === 'string') return <>{part}</>;
   if (part.to) {
-    return <Link to={part.to} className="text-purple-700 hover:text-purple-800 font-medium">{part.text}</Link>;
+    return <Link to={part.to} className="text-purple-400 hover:text-purple-300 font-medium">{part.text}</Link>;
   }
   if (part.strong) return <strong>{part.text}</strong>;
   return <>{part.text}</>;
@@ -41,10 +41,10 @@ function Parts({ parts, className }: { parts: TermsInline[]; className?: string 
 function Block({ block, isLast }: { block: TermsBlock; isLast: boolean }) {
   switch (block.type) {
     case 'p':
-      return <Parts parts={block.parts} className={`text-gray-700 leading-relaxed${isLast ? '' : ' mb-4'}`} />;
+      return <Parts parts={block.parts} className={`text-ink-300 leading-relaxed${isLast ? '' : ' mb-4'}`} />;
     case 'ul':
       return (
-        <ul className={`list-disc pl-6 text-gray-700 space-y-2${isLast ? '' : ' mb-4'}`}>
+        <ul className={`list-disc pl-6 text-ink-300 space-y-2${isLast ? '' : ' mb-4'}`}>
           {block.items.map((item, i) => (
             <li key={i}>
               {item.map((part, j) => (
@@ -56,22 +56,22 @@ function Block({ block, isLast }: { block: TermsBlock; isLast: boolean }) {
       );
     case 'aiNotice':
       return (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-4" role="note">
-          <p className="text-amber-900 font-semibold mb-2">{block.heading}</p>
-          <p className="text-amber-800 text-sm leading-relaxed">{block.text}</p>
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 mb-4" role="note">
+          <p className="text-amber-200 font-semibold mb-2">{block.heading}</p>
+          <p className="text-amber-200 text-sm leading-relaxed">{block.text}</p>
         </div>
       );
     case 'contact':
       return (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+        <div className="bg-white/5 border border-white/10 rounded-xl p-6">
           {block.entries.map((entry, i) => (
             <div key={entry.label} className={`flex items-start gap-3${i === 0 ? ' mb-3' : ''}`}>
               {entry.icon === 'mail'
-                ? <Mail className="w-5 h-5 text-purple-700 mt-0.5" />
-                : <Shield className="w-5 h-5 text-purple-700 mt-0.5" />}
+                ? <Mail className="w-5 h-5 text-purple-300 mt-0.5" />
+                : <Shield className="w-5 h-5 text-purple-300 mt-0.5" />}
               <div>
-                <p className="font-semibold text-gray-900">{entry.label}</p>
-                <p className="text-gray-700">{entry.value}</p>
+                <p className="font-semibold text-white">{entry.label}</p>
+                <p className="text-ink-300">{entry.value}</p>
               </div>
             </div>
           ))}
@@ -84,39 +84,39 @@ function Block({ block, isLast }: { block: TermsBlock; isLast: boolean }) {
 
 export default function TermsOfServicePage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-ink-950">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <Link to="/" className="inline-flex items-center gap-2 text-purple-700 hover:text-purple-800 mb-8">
+        <Link to="/" className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300 mb-8">
           <ArrowLeft className="w-4 h-4" /> Back to Home
         </Link>
 
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-            <FileText className="w-6 h-6 text-purple-700" />
+          <div className="w-12 h-12 rounded-xl bg-purple-500/15 flex items-center justify-center">
+            <FileText className="w-6 h-6 text-purple-300" />
           </div>
           <div>
-            <h1 className="text-4xl font-black text-gray-900">Terms of Service</h1>
-            <p className="text-sm text-gray-500 mt-1">Last updated: {TERMS_LAST_UPDATED}</p>
+            <h1 className="text-4xl font-black text-white">Terms of Service</h1>
+            <p className="text-sm text-ink-500 mt-1">Last updated: {TERMS_LAST_UPDATED}</p>
           </div>
         </div>
 
         <div className="prose prose-lg max-w-none">
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-6 mb-8">
-            <p className="text-purple-900 font-semibold mb-2">{TERMS_INTRO_NOTICE.heading}</p>
-            <Parts parts={TERMS_INTRO_NOTICE.parts} className="text-purple-800 text-sm" />
+          <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-6 mb-8">
+            <p className="text-purple-200 font-semibold mb-2">{TERMS_INTRO_NOTICE.heading}</p>
+            <Parts parts={TERMS_INTRO_NOTICE.parts} className="text-purple-200 text-sm" />
           </div>
 
           {TERMS_SECTIONS.map(section => (
             <section key={section.heading} className="mb-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">{section.heading}</h2>
+              <h2 className="text-2xl font-bold text-white mb-4">{section.heading}</h2>
               {section.blocks.map((block, i) => (
                 <Block key={i} block={block} isLast={i === section.blocks.length - 1} />
               ))}
             </section>
           ))}
 
-          <div className="border-t border-gray-200 pt-8 mt-12">
-            <p className="text-sm text-gray-500 text-center">{TERMS_FOOTER}</p>
+          <div className="border-t border-white/10 pt-8 mt-12">
+            <p className="text-sm text-ink-500 text-center">{TERMS_FOOTER}</p>
           </div>
         </div>
       </div>

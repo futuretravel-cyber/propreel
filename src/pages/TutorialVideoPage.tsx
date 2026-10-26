@@ -118,17 +118,17 @@ export default function TutorialVideoPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-ink-950">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <Link to="/" className="inline-flex items-center gap-2 text-purple-700 hover:text-purple-800 mb-8">
+        <Link to="/" className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300 mb-8">
           <ArrowLeft className="w-4 h-4" /> Back to Home
         </Link>
 
         <div className="text-center mb-12">
-          <h1 className="text-4xl sm:text-5xl font-black text-gray-900 mb-4">
+          <h1 className="text-4xl sm:text-5xl font-black text-white mb-4">
             PropReel Tutorials
           </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          <p className="text-lg text-ink-400 max-w-2xl mx-auto">
             Watch how every tool works — photo editing, staging, video reels, voiceovers and more —
             then follow the quick-start guide to create your first video.
           </p>
@@ -137,10 +137,10 @@ export default function TutorialVideoPage() {
         {/* ── Video library ───────────────────────────────────────────── */}
         <section id="videos" className="mb-16">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <div className="flex items-center gap-2 text-gray-900">
-              <GraduationCap className="w-5 h-5 text-purple-700" />
+            <div className="flex items-center gap-2 text-white">
+              <GraduationCap className="w-5 h-5 text-purple-300" />
               <h2 className="text-xl font-bold">Video tutorials</h2>
-              <span className="text-sm text-gray-500 font-normal">
+              <span className="text-sm text-ink-500 font-normal">
                 {filtered.length} {filtered.length === 1 ? 'video' : 'videos'}
               </span>
             </div>
@@ -153,7 +153,7 @@ export default function TutorialVideoPage() {
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                       c === category
                         ? 'bg-purple-700 text-white'
-                        : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                        : 'bg-white/5 text-ink-400 border border-white/10 hover:bg-white/10'
                     }`}
                   >
                     {c}
@@ -164,25 +164,25 @@ export default function TutorialVideoPage() {
           </div>
 
           {loading ? (
-            <p className="text-sm text-gray-500 flex items-center gap-2 py-8 justify-center">
+            <p className="text-sm text-ink-500 flex items-center gap-2 py-8 justify-center">
               <Loader2 className="w-4 h-4 animate-spin" /> Loading tutorials…
             </p>
           ) : failed ? (
             <div className="space-y-2 text-center py-8">
-              <p className="text-sm text-gray-500 flex items-center justify-center gap-2">
+              <p className="text-sm text-ink-500 flex items-center justify-center gap-2">
                 <AlertCircle className="w-4 h-4" /> Could not load the videos right now.
               </p>
               <button onClick={load} className="btn btn-secondary text-xs">Retry</button>
             </div>
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-8">
+            <p className="text-sm text-ink-500 text-center py-8">
               No tutorial videos{category !== ALL ? ` for ${category}` : ''} yet — the written
               guide below covers everything in the meantime.
             </p>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {filtered.map(v => (
-                <div key={v.id} className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                <div key={v.id} className="rounded-xl bg-white/5 border border-white/10 overflow-hidden hover:border-purple-500/40 transition">
                   <video
                     src={v.url}
                     controls
@@ -192,17 +192,17 @@ export default function TutorialVideoPage() {
                     aria-label={`Tutorial: ${v.title}`}
                   />
                   <div className="p-3.5 space-y-1">
-                    <p className="text-sm font-semibold text-gray-900 line-clamp-2">{v.title}</p>
-                    <p className="flex items-center gap-1.5 text-xs text-purple-700">
+                    <p className="text-sm font-semibold text-white line-clamp-2">{v.title}</p>
+                    <p className="flex items-center gap-1.5 text-xs text-purple-300">
                       <Video className="w-3.5 h-3.5" /> {v.category}
                       {fmtDur(v.durationSeconds) && (
-                        <span className="text-gray-400 flex items-center gap-1">
+                        <span className="text-ink-500 flex items-center gap-1">
                           · <Clock className="w-3 h-3" /> {fmtDur(v.durationSeconds)}
                         </span>
                       )}
                     </p>
                     {v.description && (
-                      <p className="text-xs text-gray-500 line-clamp-2">{v.description}</p>
+                      <p className="text-xs text-ink-500 line-clamp-2">{v.description}</p>
                     )}
                   </div>
                 </div>
@@ -211,12 +211,12 @@ export default function TutorialVideoPage() {
           )}
         </section>
 
-        <hr className="border-gray-200 mb-12" />
+        <hr className="border-white/10 mb-12" />
 
         {/* ── Written quick-start guide ───────────────────────────────── */}
         <div className="text-center mb-10">
-          <h2 className="text-3xl font-black text-gray-900 mb-3">Quick start in writing</h2>
-          <p className="text-gray-600 max-w-2xl mx-auto">
+          <h2 className="text-3xl font-black text-white mb-3">Quick start in writing</h2>
+          <p className="text-ink-400 max-w-2xl mx-auto">
             Follow this step-by-step guide to create your first stunning property video in under 20 minutes.
           </p>
         </div>
@@ -238,10 +238,10 @@ export default function TutorialVideoPage() {
         {/* Step Navigation */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
+            <h2 className="text-2xl font-bold text-white">
               Step {steps[currentStep].id} of {steps.length}
             </h2>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-ink-400">
               <Clock className="w-4 h-4" />
               <span>{steps[currentStep].duration}</span>
             </div>
@@ -258,7 +258,7 @@ export default function TutorialVideoPage() {
                     ? 'bg-purple-700'
                     : index < currentStep
                     ? 'bg-purple-300'
-                    : 'bg-gray-200'
+                    : 'bg-white/10'
                 }`}
                 aria-label={`Go to step ${step.id}: ${step.title}`}
               />
@@ -266,16 +266,16 @@ export default function TutorialVideoPage() {
           </div>
 
           {/* Current Step Content */}
-          <div className="bg-gradient-to-br from-purple-50 to-white border border-purple-200 rounded-2xl p-8 mb-8">
+          <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-8 mb-8">
             <div className="flex items-start gap-4 mb-4">
               <div className="w-12 h-12 rounded-xl bg-purple-700 flex items-center justify-center text-white flex-shrink-0">
                 {steps[currentStep].icon}
               </div>
               <div className="flex-1">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                <h3 className="text-2xl font-bold text-white mb-2">
                   Step {steps[currentStep].id}: {steps[currentStep].title}
                 </h3>
-                <p className="text-lg text-gray-700">
+                <p className="text-lg text-ink-300">
                   {steps[currentStep].description}
                 </p>
               </div>
@@ -309,7 +309,7 @@ export default function TutorialVideoPage() {
 
         {/* All Steps Overview */}
         <div className="mt-16">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+          <h2 className="text-2xl font-bold text-white mb-6 text-center">
             All Tutorial Steps
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -319,26 +319,26 @@ export default function TutorialVideoPage() {
                 onClick={() => setCurrentStep(index)}
                 className={`text-left p-6 rounded-xl border transition-all ${
                   currentStep === index
-                    ? 'bg-purple-50 border-purple-300 shadow-lg'
-                    : 'bg-white border-gray-200 hover:border-purple-200 hover:shadow-md'
+                    ? 'bg-purple-500/10 border-purple-500/40'
+                    : 'bg-white/5 border-white/10 hover:border-purple-500/40'
                 }`}
               >
                 <div className="flex items-start gap-3 mb-3">
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                    currentStep === index ? 'bg-purple-700 text-white' : 'bg-gray-100 text-gray-600'
+                    currentStep === index ? 'bg-purple-700 text-white' : 'bg-white/5 text-ink-400'
                   }`}>
                     {step.icon}
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-bold text-gray-900 mb-1">
+                    <h3 className="font-bold text-white mb-1">
                       Step {step.id}: {step.title}
                     </h3>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-ink-400">
                       {step.description}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+                <div className="flex items-center gap-2 text-xs text-ink-500">
                   <Clock className="w-3 h-3" />
                   <span>{step.duration}</span>
                 </div>
@@ -353,7 +353,7 @@ export default function TutorialVideoPage() {
           <p className="text-purple-100 mb-6 max-w-2xl mx-auto">
             Sign up now and get 5 free credits. Create your first property video in under 20 minutes!
           </p>
-          <Link to="/register" className="btn bg-white text-purple-700 hover:bg-purple-50 text-lg px-8 py-4">
+          <Link to="/register" className="btn bg-white text-ink-900 hover:bg-white/90 text-lg px-8 py-4">
             <Sparkles className="w-5 h-5" /> Start Free — 5 Credits
           </Link>
         </div>
