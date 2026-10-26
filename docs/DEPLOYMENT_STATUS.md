@@ -1,12 +1,16 @@
 # PropReel — Deployment Status
 
-**Last updated:** 25 October 2026 — security-audit hardening deployed (Modal
+**Last updated:** 26 October 2026 — full working tree deployed (listing-fetch
+import + cost display, agency white-label header logo, showcase gallery video
+reels, plus the dark-theme / language-gate / responsive / photo-swap commits).
+Vercel `propreel-72h14yymg`; Modal `propreel-render` redeployed and
+health-checked 200. The 25 October 2026 security-audit hardening (Modal
 worker fail-closed auth + CORS allow-list, CSP without `'unsafe-inline'`, gated
 `/api/paystack/verify`, rate-limited `/api/leads`, no secret echo from admin
 API-keys). Details + live-verification log:
 [`docs/security-audit-2026-10-25.md`](security-audit-2026-10-25.md). Deployed
 from an isolated tree of the security fixes only — the in-progress
-listing-fetch / agency-logo work in the working tree is NOT live.
+listing-fetch / agency-logo work was NOT live then — both went live 26 Oct.
 
 Previous (3 October 2026): **Supabase fully retired**; AWS DynamoDB is the only database, auth is first-party (`lib/auth.ts`), emails via Resend (`lib/email.ts`)
 
@@ -44,6 +48,19 @@ credit_expiries, agencies, agency_members, reviews, projects, settings.
 Legacy (app no longer reads): propreel-credits, propreel-renders — do NOT delete.
 IAM: `propreel-app-user` with scoped policy `deploy/aws/propreel-ddb-policy.json`.
 Recreate anytime with `npm run create-tables` (idempotent).
+
+## 26 Oct 2026 — full working tree deployed (verified live)
+
+- Vercel `propreel-72h14yymg`: `www.propreel.co.za` 200; the served bundle
+  references all four showcase reels; the 4 mp4s + 4 first-frame posters serve
+  200 with correct content types.
+- Ships: listing-fetch import + cost display (`/api/listing/extract`,
+  ListingLinkChip, CostHeader, Overview credits display), agency white-label
+  header logo, dark theme, Video Wizard language gate, tablet/mobile header +
+  showcase fixes, showcase photo swaps, showcase gallery video reels.
+- Modal `propreel-render` redeployed (health 200, v2.1.0); `propreel-flashvsr`
+  deploy skipped — no changes. quick-deploy.sh retired 11 superseded Vercel
+  deployments.
 
 ## 25 Oct 2026 — security hardening deployed (verified live)
 
