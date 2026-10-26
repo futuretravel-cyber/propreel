@@ -10,13 +10,15 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-ink-950 dark:bg-ink-950 text-white">
-      <nav className="sticky top-0 z-50 glass-strong border-b border-white/5">
+      <nav className="sticky top-0 z-50 glass-strong border-b border-white/5 relative">
+        {/* Neon hairline under the nav */}
+        <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-purple-400/70 to-transparent" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2 min-h-[44px]" aria-label="PropReel home">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-700 to-purple-500 flex items-center justify-center shadow-[0_0_18px_rgba(168,85,247,0.55)]">
               <img src="/images/logo-icon.png" alt="" className="w-full h-full object-cover" />
             </div>
-            <span className="font-bold text-xl">PropReel</span>
+            <span className="font-bold text-xl text-glow">PropReel</span>
           </Link>
           <div className="hidden md:flex items-center gap-8">
             <Link to="/pricing" className="text-sm font-medium text-ink-300 hover:text-white transition">Pricing</Link>
@@ -28,7 +30,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="hidden md:flex items-center gap-3">
             <Link to="/login" className="btn glass text-white min-h-[44px] flex items-center hover:bg-white/10">Log in</Link>
-            <Link to="/register" className="btn btn-primary min-h-[44px] flex items-center">Start Free — {SIGNUP_BONUS} Credits</Link>
+            <Link to="/register" className="btn btn-neon min-h-[44px] flex items-center">Start Free — {SIGNUP_BONUS} Credits</Link>
           </div>
           <div className="flex items-center gap-1 md:hidden">
             <button onClick={() => setMenuOpen(!menuOpen)} className="p-3 -mr-2 min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}>
@@ -58,8 +60,11 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
       <main id="main-content">{children}</main>
       <SupportWidgets />
       <MobileStickyCta />
-      <footer className="glass-strong border-t border-white/5 py-14">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <footer className="glass-strong border-t border-white/5 py-14 relative overflow-hidden">
+        {/* Faint grid + neon hairline so the footer feels part of the system */}
+        <div className="absolute inset-0 bg-grid-fade opacity-30" />
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">

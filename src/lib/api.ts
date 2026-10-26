@@ -302,7 +302,9 @@ export const PropReelAPI = {
     const creditsByFeature = { videoGeneration: 0, imageEditing: 0, flashHead: 0, other: 0 };
     for (const t of transactions) {
       if (t.amount >= 0) continue;
-      const reason = String(t.reason || '').toLowerCase();
+      // The ledger stores the deduction reason in `description` (see
+      // recordTransaction) — `reason` is kept for rows that carry it.
+      const reason = String(t.reason || t.description || '').toLowerCase();
       const cost = Math.abs(t.amount);
       if (reason.includes('flashhead')) creditsByFeature.flashHead += cost;
       else if (reason.includes('image edit') || reason.includes('photo')) creditsByFeature.imageEditing += cost;

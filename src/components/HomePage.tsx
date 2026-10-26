@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
-  Play, Sparkles, ArrowRight, Check, Star, Camera, Sofa, Trash2, MoonIcon,
+  Sparkles, ArrowRight, Check, Star, Camera, Sofa, Trash2, MoonIcon,
   Share2, FileText, Video, Mic, Wand2,
 } from 'lucide-react';
 import { PublicLayout } from './PublicLayout';
@@ -27,6 +27,10 @@ const IMG = {
   estate: 'family-estate',
   townhouse: 'townhouse',
   editor: 'ai-editor',
+  dashOverview: 'dashboard-overview',
+  dashNewListing: 'dashboard-new-listing',
+  dashProjects: 'dashboard-projects',
+  dashCredits: 'dashboard-credits',
 };
 
 const img = (base: string, w: number) => `/images/${base}-${w}.webp`;
@@ -65,6 +69,9 @@ function Hero() {
         )}
         <div className="absolute inset-0 bg-gradient-to-b from-ink-950/80 via-ink-950/70 to-ink-950 backdrop-blur-[6px]" />
         <div className="absolute inset-0 bg-grid-fade opacity-60" />
+        {/* Futuristic layers: drifting aurora glow + CRT scanlines */}
+        <div className="absolute inset-0 aurora opacity-70" />
+        <div className="absolute inset-0 scanlines" />
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
@@ -74,8 +81,8 @@ function Hero() {
           </div>
         </Reveal>
         <Reveal delay={0.08}>
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-white leading-[1.05] text-balance">
-            Create Stunning Property Videos <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-purple-300">Instantly with AI</span>
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-white leading-[1.05] text-balance drop-shadow-[0_0_30px_rgba(168,85,247,0.35)]">
+            Create Stunning Property Videos <span className="gradient-text-animated">Instantly with AI</span>
           </h1>
         </Reveal>
         <Reveal delay={0.16}>
@@ -111,8 +118,8 @@ function Hero() {
               { label: 'Free Credits on Signup', value: String(SIGNUP_BONUS) },
               { label: 'SA voiceover languages', value: String(SA_LANGUAGE_COUNT) },
             ].map(s => (
-              <div key={s.label} className="glass rounded-2xl px-4 py-5">
-                <p className="text-2xl sm:text-3xl font-black text-purple-300">{s.value}</p>
+              <div key={s.label} className="glass hud-frame rounded-2xl px-4 py-5">
+                <p className="text-2xl sm:text-3xl font-black gradient-text-animated">{s.value}</p>
                 <p className="text-xs sm:text-sm text-ink-400 mt-1">{s.label}</p>
               </div>
             ))}
@@ -416,53 +423,25 @@ function EditorDemo() {
             </motion.div>
           ))}
 
-          {/* Player mockup */}
+          {/* The real Studio — an actual dashboard screenshot, not a mockup */}
           <Reveal>
             <motion.div
               whileHover={{ scale: 1.01, rotateX: -1 }}
               transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-              className="glass-strong rounded-3xl p-3 shadow-[0_40px_120px_-30px_rgba(128,0,128,0.5)]"
+              className="device-frame neon-ring"
             >
-              <div className="rounded-2xl overflow-hidden bg-black relative aspect-video">
-                <img src={img(IMG.editor, 1200)} alt="PropReel Studio interface" className="w-full h-full object-cover opacity-90" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
-                {/* Fake studio chrome */}
-                <div className="absolute top-0 inset-x-0 flex items-center gap-2 px-4 py-2.5 bg-black/50 backdrop-blur">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
-                  <span className="ml-3 text-xs text-ink-300 font-medium">propreel.studio — AI Video Generator</span>
-                </div>
-                {/* Timeline */}
-                <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/90 to-transparent">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center cursor-pointer hover:bg-purple-500 transition">
-                      <Play className="w-4 h-4 text-white fill-white" />
-                    </div>
-                    <div className="flex-1 h-1.5 bg-white/15 rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-400"
-                        initial={{ width: '0%' }}
-                        whileInView={{ width: '68%' }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 2.2, ease: 'easeOut' }}
-                      />
-                    </div>
-                    <span className="text-xs text-ink-300 tabular-nums">0:20 / 0:30</span>
-                  </div>
-                  <div className="flex gap-1.5">
-                    {[42, 68, 30, 80, 55].map((w, i) => (
-                      <div key={i} className="h-8 rounded bg-white/10 border border-white/5 overflow-hidden flex-1">
-                        <motion.div
-                          className="h-full bg-purple-600/40"
-                          initial={{ width: 0 }}
-                          whileInView={{ width: `${w}%` }}
-                          viewport={{ once: true }}
-                          transition={{ duration: 1.2, delay: i * 0.12 }}
-                        />
-                      </div>
-                    ))}
-                  </div>
+              <div className="rounded-[0.9rem] overflow-hidden relative">
+                <img
+                  src={img(IMG.dashOverview, 1200)}
+                  srcSet={`${img(IMG.dashOverview, 480)} 480w, ${img(IMG.dashOverview, 800)} 800w, ${img(IMG.dashOverview, 1200)} 1200w`}
+                  sizes="(max-width: 1024px) 100vw, 860px"
+                  alt="The real PropReel dashboard — Studio overview with credits, projects and render status"
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute top-3 left-3 flex items-center gap-2 glass rounded-full px-3 py-1.5">
+                  <span className="w-2 h-2 rounded-full bg-cyan-300 animate-pulse-glow" />
+                  <span className="text-[11px] font-semibold text-cyan-200 tracking-wide">LIVE PRODUCT — NOT A MOCKUP</span>
                 </div>
               </div>
             </motion.div>
@@ -484,6 +463,58 @@ function EditorDemo() {
                 <div className="w-12 h-12 rounded-xl bg-purple-700/25 text-purple-300 flex items-center justify-center mb-4">{f.icon}</div>
                 <h3 className="font-bold text-lg text-white">{f.title}</h3>
                 <p className="mt-2 text-ink-400 text-sm">{f.desc}</p>
+              </motion.div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Inside PropReel — real screens from the live Studio ─────────── */
+const DASH_SHOTS = [
+  { base: 'dashboard-new-listing', tag: 'Listings', title: 'New listing wizard', desc: 'Address, specs and photos — portal-ready in four guided steps.' },
+  { base: 'dashboard-projects', tag: 'Media', title: 'Projects library', desc: 'Every reel, photo edit and social pack in one searchable grid.' },
+  { base: 'dashboard-credits', tag: 'Billing', title: 'Credits & billing', desc: 'Spend, expiry and top-ups — always transparent, never a surprise.' },
+];
+
+function InsidePropReel() {
+  return (
+    <section className="relative py-24 bg-ink-950 overflow-hidden">
+      <div className="absolute inset-0 aurora opacity-50" />
+      <div className="absolute inset-0 bg-grid-fade opacity-40" />
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <Reveal className="text-center mb-14">
+          <span className="badge badge-brand mb-4">Inside PropReel</span>
+          <h2 className="text-3xl sm:text-5xl font-black text-white text-glow">The Studio SA Agents Actually Work In</h2>
+          <p className="mt-4 text-lg text-ink-400 max-w-2xl mx-auto">
+            Real screens from the live product — captured from the dashboard itself. No mockups, no placeholders.
+          </p>
+        </Reveal>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {DASH_SHOTS.map((s, i) => (
+            <Reveal key={s.base} delay={i * 0.08}>
+              <motion.div
+                whileHover={{ y: -6 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+                className="device-frame hud-frame h-full"
+              >
+                <div className="rounded-[0.8rem] overflow-hidden">
+                  <img
+                    src={`/images/${s.base}-800.webp`}
+                    srcSet={`/images/${s.base}-480.webp 480w, /images/${s.base}-800.webp 800w, /images/${s.base}-1200.webp 1200w`}
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    alt={`${s.title} — real PropReel dashboard screen`}
+                    loading="lazy"
+                    className="w-full"
+                  />
+                </div>
+                <div className="px-2 pt-4 pb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">{s.tag}</span>
+                  <h3 className="mt-1 font-bold text-white">{s.title}</h3>
+                  <p className="mt-1 text-sm text-ink-400">{s.desc}</p>
+                </div>
               </motion.div>
             </Reveal>
           ))}
@@ -535,6 +566,7 @@ function FinalCta() {
     <section className="relative py-24 overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-purple-950 via-ink-950 to-ink-950" />
       <div className="absolute inset-0 bg-grid-fade opacity-40" />
+      <div className="absolute inset-0 aurora opacity-60" />
       <div className="relative max-w-4xl mx-auto px-4 text-center">
         <Reveal>
           <h2 className="text-3xl sm:text-5xl font-black text-white">Ready to Transform Your Listings?</h2>
@@ -561,6 +593,7 @@ export default function HomePage() {
       <PropertyShowcase />
       <HowItWorks />
       <EditorDemo />
+      <InsidePropReel />
       <SocialProof />
       <FinalCta />
     </PublicLayout>
