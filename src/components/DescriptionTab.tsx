@@ -15,6 +15,8 @@ import { useRepairDraftPhotos } from '../lib/repairDraftPhotos';
 import { useReorderable } from '../lib/reorder';
 import { formatZar, downloadText } from '../lib/utils';
 import { DESCRIPTION_CREDITS as DESCRIPTION_RENDER_COST } from '../../lib/renderPricing';
+import CostHeader from './CostHeader';
+import { creditListZar } from '../lib/utils';
 import { queueVideoRender } from '../lib/videoPrefill';
 import { Video, Image, Check, X, Zap, Sparkles, Download, Copy, RefreshCw, MapPin, FileText } from 'lucide-react';
 import { jobHeaders } from '../lib/workerAuth';
@@ -236,7 +238,7 @@ export function DescriptionTab() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="w-5 h-5 text-purple-400" /> Property Description</h2>
-        <span className="badge badge-brand" title="Charged when you generate; refunded automatically if it fails"><Zap className="w-3 h-3" /> ⚡{DESCRIPTION_RENDER_COST} credit per render · AI</span>
+        <span className="badge badge-brand" title="Charged when you generate; refunded automatically if it fails"><Zap className="w-3 h-3" /> {DESCRIPTION_RENDER_COST} credit per render · AI</span>
       </div>
 
       {/* Address + Google Maps confirmation */}
@@ -389,6 +391,13 @@ export function DescriptionTab() {
           </p>
         )}
       </div>
+
+      <CostHeader
+        costCredits={DESCRIPTION_RENDER_COST}
+        costLabel="Description render"
+        chargedWhen="Charged when you generate · refunded automatically if it fails"
+        randValue={creditListZar(DESCRIPTION_RENDER_COST)}
+      />
 
       <button onClick={() => guardAIRender(generate)} disabled={loading} className="btn btn-primary">
         {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating with AI…</> : <><Sparkles className="w-4 h-4" /> Generate Description · ⚡{DESCRIPTION_RENDER_COST}</>}

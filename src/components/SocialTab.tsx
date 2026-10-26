@@ -12,6 +12,8 @@ import { useRepairDraftPhotos } from '../lib/repairDraftPhotos';
 import { useReorderable } from '../lib/reorder';
 import { formatZar } from '../lib/utils';
 import { SOCIAL_POST_CREDITS as SOCIAL_POST_COST, SOCIAL_PACK_CREDITS as SOCIAL_PACK_COST } from '../../lib/renderPricing';
+import CostHeader from './CostHeader';
+import { creditListZar } from '../lib/utils';
 import { Image, Share2, ChevronRight, Check, X, Zap, Sparkles, AlertCircle, Copy, RefreshCw, ChevronLeft } from 'lucide-react';
 import { jobHeaders } from '../lib/workerAuth';
 import { CopyButton } from './ui';
@@ -248,6 +250,13 @@ export function SocialTab() {
         <h2 className="text-lg font-bold text-white flex items-center gap-2"><Share2 className="w-5 h-5 text-purple-400" /> Social Media Post Generator</h2>
         <span className="badge badge-brand" title="Charged when you generate; refunded automatically if it fails"><Zap className="w-3 h-3" /> ⚡{SOCIAL_POST_COST} per post · ⚡{SOCIAL_PACK_COST} for all 7 · AI</span>
       </div>
+
+      <CostHeader
+        costCredits={SOCIAL_POST_COST}
+        costLabel="Single post"
+        chargedWhen={`Charged when you generate · refunded automatically if it fails · full pack: ${SOCIAL_PACK_COST} credits for all 7`}
+        randValue={creditListZar(SOCIAL_POST_COST)}
+      />
 
       {/* Wizard steps — same layout as the New Listing flow */}
       <div className="flex items-center">

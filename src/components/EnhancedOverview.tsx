@@ -1,14 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { formatZar, formatRelative } from '../lib/utils';
-import { PropReelAPI, Project, CreditReportData } from '../lib/api';
-import { PLANS, RETENTION_DAYS } from '../lib/constants';
+import { formatZar, formatRelative, formatDate, creditListZar } from '../lib/utils';
+import { PropReelAPI, Project, CreditReportData, ReferralStats } from '../lib/api';
+import { PLANS, RETENTION_DAYS, SIGNUP_BONUS } from '../lib/constants';
+import { track } from '../lib/analytics';
 import UpgradeToProCTA from './UpgradeToProCTA';
 import {
   Video, Zap, List, Clock, ArrowUpRight, Activity,
   BarChart3, PieChart as PieIcon, ChevronRight, Loader2, Image as ImageIcon,
   Sparkles, X, FileText, Camera,
+  Users, MessageCircle, Facebook, Twitter, Linkedin, Mail,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -30,6 +32,120 @@ function StatCard({ label, value, sub, icon, accent }: { label: string; value: s
   );
 }
 
+// ─── Inline cost recap beside the credit badge ───────────────────────────
+// New users open the dashboard before any paid tool, so the first
+// "what does a credit cost" answer lives here, not only inside tool headers
+// or the billing page. Rand anchor because "5 credits — one Essential reel"
+// is meaningless without one for a visitor who has never seen ⚡.
+function CreditExplorerInline() {
+  return (
+    <span className="ml-3 hidden md:inline text-xs text-ink-400">
+      <span className="text-ink-500">What things cost — </span>
+      <Link to="/dashboard/credits" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">⚡1 / description</Link>
+      {' · '}
+      <Link to="/dashboard/credits" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">⚡2 / photo edit</Link>
+      {' · '}
+      <Link to="/dashboard/credits" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">⚡2 / social post</Link>
+      {' · '}
+      <Link to="/dashboard/credits" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">⚡2 / 10s avatar</Link>
+      {' · '}
+      <span className="text-ink-500">1 credit = R1,50</span>
+    </span>
+  );
+}
+
+// ─── Post-signup one-liner: the 5 free credits are for one Essential reel ──
+// The signup success toast says "you've received 5 credits"; this line
+// repeats it the moment the dashboard loads, plus the rand value, so the
+// very next action is obvious. Mirrors the FAQ hero line.
+function PostSignupCreditsLine() {
+  return (
+    <div className="card-dark p-4 flex items-center">
+    <p className="text-xs text-ink-400">
+      You have{' '}
+      <span className="text-white font-semibold tabular-nums">{SIGNUP_BONUS} free credits</span>{' '}
+      — enough for one Essential 30-second reel.{' '}
+      <Link to="/dashboard/video" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">
+        Open the Video Generator to use them
+      </Link>
+      {' '}— {creditListZar(SIGNUP_BONUS)} total.
+    </p>
+    </div>
+  );
+}
+
+// ─── Wallet-side referral card (summary of the billing page referral block) ──
+// The full "Give 5, get 5" card lives on the Billing overview tab. A smaller
+// version here catches users when they are looking at their balance, not
+// only when they are doing accounting.
+function ReferralSummaryCard({
+  stats,
+  loading,
+  shareReferral,
+  loadingShare,
+  shareTargets,
+}: {
+  stats: ReferralStats | null;
+  loading: boolean;
+  shareReferral: (t: { id: string; label: string; icon: React.ElementType; url: () => string }) => void;
+  loadingShare: boolean;
+  shareTargets: ReturnType<typeof shareTargetsOf>;
+}) {
+  if (loading) {
+    return (
+      <div className="card-dark p-4">
+        <p className="text-sm text-ink-400">Referral card loading…</p>
+      </div>
+    );
+  }
+  return (
+    <div className="card-dark p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <Users className="w-4 h-4 text-purple-400" /> Refer a friend — give 5, get 5
+        </h3>
+        <Link to="/dashboard/billing" className="text-xs text-purple-400 hover:text-purple-300">Full details</Link>
+      </div>
+      <p className="text-xs text-ink-400 mb-3">
+        They get 5 bonus credits on signup, and you get 5 credits the moment they make their first purchase.
+      </p>
+      <div className="flex items-center gap-4 text-xs mb-3">
+        <span className="text-ink-500">{stats?.signups ?? 0} signups</span>
+        <span className="text-ink-500">{stats?.activated ?? 0} activated</span>
+        {stats?.pending ? (
+          <span className="text-amber-400">{stats.pending} pending · {stats.pendingCredits} credits owed</span>
+        ) : null}
+        <span className="text-green-400">{stats?.earnedCredits ?? 0} earned</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {shareTargets.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => shareReferral(t)}
+            disabled={loadingShare}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 border border-white/5 text-ink-300 hover:bg-white/5 hover:text-white text-xs transition disabled:opacity-40"
+          >
+            <t.icon className="w-3.5 h-3.5" />
+            {t.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Share targets for the referral link (WhatsApp first — it is how SA agents share)
+function shareTargetsOf(signupBonus: number, refLink: string) {
+  const shareMsg = `Get ${signupBonus} free credits on PropReel — AI property videos for estate agents:`;
+  return [
+    { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, url: () => `https://wa.me/?text=${encodeURIComponent(`${shareMsg}\n${refLink}`)}` },
+    { id: 'facebook', label: 'Facebook', icon: Facebook, url: () => `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(refLink)}` },
+    { id: 'x', label: 'X', icon: Twitter, url: () => `https://twitter.com/intent/tweet?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent(shareMsg)}` },
+    { id: 'linkedin', label: 'LinkedIn', icon: Linkedin, url: () => `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(refLink)}` },
+    { id: 'email', label: 'Email', icon: Mail, url: () => `mailto:?subject=${encodeURIComponent(`${signupBonus} free credits on PropReel`)}&body=${encodeURIComponent(`${shareMsg}\n\n${refLink}`)}` },
+  ];
+}
+
 export default function EnhancedOverview() {
   const { user, balance } = useAuth();
   const navigate = useNavigate();
@@ -40,6 +156,10 @@ export default function EnhancedOverview() {
   // Post-payment welcome: PaymentPage lands here as /dashboard?welcome=1
   const [searchParams, setSearchParams] = useSearchParams();
   const [showWelcome, setShowWelcome] = useState(() => searchParams.get('welcome') === '1');
+  // Wallet-side referral card (summary of the Billing referral block)
+  const [refStats, setRefStats] = useState<ReferralStats | null>(null);
+  const [refStatsLoading, setRefStatsLoading] = useState(true);
+  const [shareLoading, setShareLoading] = useState(false);
 
   const dismissWelcome = () => {
     setShowWelcome(false);
@@ -78,6 +198,29 @@ export default function EnhancedOverview() {
     })();
     return () => { cancelled = true; };
   }, [user?.id]);
+
+  // Referral stats for the wallet-side card — non-critical, card renders without them
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+    setRefStatsLoading(true);
+    PropReelAPI.referralStats(user.id)
+      .then(s => { if (alive) setRefStats(s); })
+      .catch(() => { /* stats are non-critical */ })
+      .finally(() => { if (alive) setRefStatsLoading(false); });
+    return () => { alive = false; };
+  }, [user?.id]);
+
+  const refLink = user ? `${window.location.origin}/register?ref=${user.id}` : '';
+  const shareReferral = (t: { id: string; label: string; icon: React.ElementType; url: () => string }) => {
+    setShareLoading(true);
+    try {
+      track('share_clicked', { platform: `referral_${t.id}` });
+      window.open(t.url(), '_blank', 'noopener,width=640,height=560');
+    } finally {
+      setShareLoading(false);
+    }
+  };
 
   // Real derived stats
   const stats = useMemo(() => {
@@ -165,10 +308,23 @@ export default function EnhancedOverview() {
         </div>
         <div className="flex items-center gap-2">
           <span className="badge badge-brand"><Zap className="w-3 h-3" /> {balance.total} total credits</span>
+          <CreditExplorerInline />
         </div>
       </div>
 
       <UpgradeToProCTA />
+
+      {/* Post-signup credits line + wallet-side referral card */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <PostSignupCreditsLine />
+        <ReferralSummaryCard
+          stats={refStats}
+          loading={refStatsLoading}
+          shareReferral={shareReferral}
+          loadingShare={shareLoading}
+          shareTargets={shareTargetsOf(SIGNUP_BONUS, refLink)}
+        />
+      </div>
 
       {/* Stats Row — real numbers */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -327,7 +483,7 @@ export default function EnhancedOverview() {
               {sub?.currentPeriodEnd && (
                 <div className="flex justify-between border-t border-white/5 pt-2">
                   <span className="text-ink-400">Renews</span>
-                  <span className="text-white font-medium">{formatRelative(sub.currentPeriodEnd)}</span>
+                  <span className="text-white font-medium">{formatDate(sub.currentPeriodEnd)}</span>
                 </div>
               )}
               {sub?.nextChargeAmount ? (

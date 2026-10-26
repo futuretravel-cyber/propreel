@@ -1461,9 +1461,9 @@ function ToolPageHeader({ title, subtitle }: { title: string; subtitle: string }
       <Link
         to="/dashboard/credits"
         className="badge badge-brand hover:bg-white/10 transition"
-        title="Recharge credits"
+        title="Your credit balance — click to top up"
       >
-        <Zap className="w-3 h-3" /> {user?.credits ?? 0} credits
+        <Zap className="w-3 h-3" /> {user?.credits ?? 0} credits balance
       </Link>
     </div>
   );

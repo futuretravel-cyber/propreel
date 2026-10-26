@@ -11,6 +11,8 @@ import { guardAIRender } from '../lib/aiDisclaimer';
 import { downloadRemoteFile } from '../lib/utils';
 import { RETENTION_DAYS } from '../lib/constants';
 import { IMAGE_EDIT_CREDITS, STAGING_EDIT_CREDITS, isStagingPreset } from '../../lib/renderPricing';
+import CostHeader from './CostHeader';
+import { creditListZar } from '../lib/utils';
 
 interface BatchItem {
   file: File;
@@ -236,6 +238,13 @@ export default function ImageWorkbench({ presetId, draftSlot, strength, guidance
 
       {preview && (
         <div className="space-y-3">
+          <CostHeader
+            costCredits={unitCost}
+            costLabel={isStagingPreset(presetId) ? 'Virtual staging render' : 'Image edit render'}
+            chargedWhen="Charged when the render starts · refunded automatically if it fails · one credit = R1,50"
+            randValue={creditListZar(unitCost)}
+          />
+
           <div className="flex gap-3">
             {/* Paid action: disclose cost + balance before spending, the
                 same pattern as the AI Write confirmation. */}
