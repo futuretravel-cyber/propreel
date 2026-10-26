@@ -25,7 +25,10 @@ const IMG = {
   apartment: 'apartment',
   villa: 'waterfront-villa',
   estate: 'family-estate',
+  manorBefore: 'cape-dutch-before',
+  manorAfter: 'cape-dutch-after',
   townhouse: 'townhouse',
+  twilight: 'twilight-blue-hour',
   editor: 'ai-editor',
   dashOverview: 'dashboard-overview',
   dashNewListing: 'dashboard-new-listing',
@@ -237,7 +240,7 @@ function VisualShowcase() {
 
           <BentoCard delay={0.1}>
             <div className="relative h-44">
-              <img src={img(IMG.townhouse, 800)} alt="Twilight photography" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+              <img src={img(IMG.twilight, 800)} alt="Twilight photography" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 to-transparent" />
               <div className="absolute bottom-0 p-4">
                 <h3 className="font-bold text-white">Twilight Mode</h3>
@@ -249,11 +252,11 @@ function VisualShowcase() {
           <BentoCard className="md:col-span-2" delay={0.15}>
             <div className="grid grid-cols-2 h-full min-h-[200px]">
               <div className="relative">
-                <img src={img(IMG.estate, 800)} alt="Before AI" className="absolute inset-0 w-full h-full object-cover" />
+                <img src={img(IMG.manorBefore, 800)} alt="Before AI" className="absolute inset-0 w-full h-full object-cover" />
                 <span className="absolute top-3 left-3 bg-black/60 text-white text-xs font-semibold px-2.5 py-1 rounded-full">Before</span>
               </div>
               <div className="relative border-l border-white/10">
-                <img src={img(IMG.villa, 800)} alt="After AI" className="absolute inset-0 w-full h-full object-cover" />
+                <img src={img(IMG.manorAfter, 800)} alt="After AI" className="absolute inset-0 w-full h-full object-cover" />
                 <span className="absolute top-3 right-3 bg-purple-700 text-white text-xs font-semibold px-2.5 py-1 rounded-full">After</span>
               </div>
             </div>
