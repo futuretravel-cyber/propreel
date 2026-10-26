@@ -897,7 +897,15 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
   const photosMissingMeta = step === 3
     ? uploadedImages.filter(u => { const m = photoMeta[u]; return !m || !m.roomType || !m.move; }).length
     : 0;
-  const canNext = step !== 3 || (uploadedImages.length > 0 && photosMissingMeta === 0);
+  // "Next" stays locked while the script-language verdict is in flight —
+  // advancing during "Checking the script language…" could push a mismatch
+  // straight past the banner and into a paid render. The one-click
+  // translation locks it too: the rewrite arrives as one big paste that
+  // re-arms the check, so nothing may advance mid-rewrite.
+  const langChecking = langCheck.status === 'checking';
+  const langTranslating = langCheck.translating;
+  const langBusy = langChecking || langTranslating;
+  const canNext = !langBusy && (step !== 3 || (uploadedImages.length > 0 && photosMissingMeta === 0));
   const nextStep = () => { if (step < WIZARD_STEPS.length - 1 && canNext) setStep(step + 1); };
   const prevStep = () => setStep(s => Math.max(0, s - 1));
   // Listing details → Voiceover Script: arriving at the Voiceover step
@@ -1463,7 +1471,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
       </div>
       </>)}
 
-      {step === 3 && !canNext && (
+      {step === 3 && (uploadedImages.length === 0 || photosMissingMeta > 0) && (
         <p className="text-xs text-amber-400/90 text-center">
           {uploadedImages.length === 0
             ? 'Add at least one property photo to continue — a reel needs images to render.'
@@ -1619,7 +1627,8 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
         )}
       </div>
       )}
-      {/* Wizard nav — Back / Next (the photos gate on step 3 blocks Next) */}
+      {/* Wizard nav — Back / Next (the language check and the photos gate on
+          step 3 can each hold Next back) */}
       <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
         <button
           type="button"
@@ -1636,7 +1645,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
             onClick={nextStep}
             disabled={!canNext}
             className="btn btn-primary min-h-[44px] px-6 disabled:opacity-40"
-            title={canNext ? undefined : 'Add at least one property photo to continue'}
+            title={canNext ? undefined : langTranslating ? `Translating the script to ${langCheck.languageLabel}…` : langChecking ? 'Waiting for the script language check to finish…' : 'Add at least one property photo to continue'}
           >
             Next →
           </button>
