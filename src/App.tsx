@@ -794,7 +794,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Free-tier conversion nudge surfaces (banner + LowCreditNudge modal) use
   // the same eligibility rule as AuthContext.lowCreditWarning.
   const isFreeTier = isFreeTierUser(user);
-  const { unreadCount, stats } = useActivity(user?.id);
+  const { unreadCount, stats, loading: activityLoading } = useActivity(user?.id);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   // Top-left profile picture menu (profile / settings / billing / sign out)
@@ -930,8 +930,11 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
               <p className="text-2xl font-bold text-white">{balance.personal}</p>
               {balance.agency > 0 && <p className="text-xs text-ink-400">+ {balance.agency} agency pool</p>}
               <div className="mt-2 pt-2 border-t border-white/5">
-                <p className="text-xs text-ink-500">Used this week: {stats.used7d} credits</p>
-                <p className="text-xs text-ink-500">Used this month: {stats.used30d} credits</p>
+                {/* '…' while the ledger fetch runs — rendering 0 here claimed
+                    "no usage" before the numbers arrived (the same race made
+                    dashboard screenshots disagree with each other). */}
+                <p className="text-xs text-ink-500">Used this week: {!user?.id || activityLoading ? '…' : `${stats.used7d} credits`}</p>
+                <p className="text-xs text-ink-500">Used this month: {!user?.id || activityLoading ? '…' : `${stats.used30d} credits`}</p>
               </div>
             </div>
             <button 

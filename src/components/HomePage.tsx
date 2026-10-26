@@ -476,6 +476,7 @@ function EditorDemo() {
 const DASH_SHOTS = [
   { base: 'dashboard-new-listing', tag: 'Listings', title: 'New listing wizard', desc: 'Address, specs and photos — portal-ready in four guided steps.' },
   { base: 'dashboard-projects', tag: 'Media', title: 'Projects library', desc: 'Every reel, photo edit and social pack in one searchable grid.' },
+  { base: 'dashboard-listings', tag: 'Portfolio', title: 'Listings tab', desc: 'Live listings with prices, specs and status — your whole book at a glance.' },
   { base: 'dashboard-credits', tag: 'Billing', title: 'Credits & billing', desc: 'Spend, expiry and top-ups — always transparent, never a surprise.' },
 ];
 
@@ -492,7 +493,7 @@ function InsidePropReel() {
             Real screens from the live product — captured from the dashboard itself. No mockups, no placeholders.
           </p>
         </Reveal>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {DASH_SHOTS.map((s, i) => (
             <Reveal key={s.base} delay={i * 0.08}>
               <motion.div
@@ -504,7 +505,7 @@ function InsidePropReel() {
                   <img
                     src={`/images/${s.base}-800.webp`}
                     srcSet={`/images/${s.base}-480.webp 480w, /images/${s.base}-800.webp 800w, /images/${s.base}-1200.webp 1200w`}
-                    sizes="(max-width: 768px) 100vw, 33vw"
+                    sizes="(max-width: 640px) 100vw, 50vw"
                     alt={`${s.title} — real PropReel dashboard screen`}
                     loading="lazy"
                     className="w-full"
