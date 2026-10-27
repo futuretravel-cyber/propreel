@@ -5,16 +5,14 @@ interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
-  /** Alert-style dialog: only the confirm button (for warnings that just explain) */
-  alertOnly?: boolean;
 }
 
-type ConfirmFn = (message: string, options?: ConfirmOptions) => Promise<boolean>;
+type ConfirmFn = (message: string, options?: ConfirmOptions) => Promise<boolean | undefined>;
 
 interface PendingConfirm {
   message: string;
   options: ConfirmOptions;
-  resolve: (value: boolean) => void;
+  resolve: (value: boolean | undefined) => void;
 }
 
 const ConfirmContext = createContext<ConfirmFn | null>(null);
@@ -24,14 +22,16 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const pendingRef = useRef<PendingConfirm | null>(null);
 
   const confirm = useCallback<ConfirmFn>((message, options = {}) => {
-    return new Promise<boolean>((resolve) => {
+    return new Promise<boolean | undefined>((resolve) => {
       const next = { message, options, resolve };
       pendingRef.current = next;
       setPending(next);
     });
   }, []);
 
-  const close = (value: boolean) => {
+  // true/false = an explicit button choice; undefined = the dialog was
+  // dismissed (Escape/backdrop) without choosing.
+  const close = (value: boolean | undefined) => {
     const current = pendingRef.current;
     pendingRef.current = null;
     setPending(null);
@@ -44,7 +44,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {pending && (
         <div
           className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-          onClick={() => close(false)}
+          onClick={() => close(undefined)}
         >
           <div
             role="alertdialog"
@@ -54,7 +54,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') close(false);
+              if (e.key === 'Escape') close(undefined);
             }}
           >
             <h2 id="confirm-dialog-title" className="text-lg font-semibold text-white mb-2">
@@ -64,11 +64,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               {pending.message}
             </p>
             <div className="flex justify-end gap-3">
-              {!pending.options.alertOnly && (
-                <button type="button" className="btn btn-secondary" onClick={() => close(false)}>
-                  {pending.options.cancelLabel || 'Cancel'}
-                </button>
-              )}
+              <button type="button" className="btn btn-secondary" onClick={() => close(false)}>
+                {pending.options.cancelLabel || 'Cancel'}
+              </button>
               <button
                 type="button"
                 autoFocus

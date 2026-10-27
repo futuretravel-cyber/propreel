@@ -227,7 +227,20 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
     : stage === 'rendering' ? 'AI is generating your lip-sync video…'
     : '';
 
-  const canRun = (!!file || !!sourceUrl || !!preview) && !!script.trim() && !overCap && !busy && (user?.credits ?? 0) >= (avatarCost ?? Infinity);
+  // 2026-10-27: same mismatch gate as the Video wizard's Next — an
+  // unresolved script-vs-language mismatch never starts a paid render. The
+  // button stays pressable while only that gate is shut (dimmed +
+  // aria-disabled) so pressing it can explain the block in a warning dialog
+  // instead of silently doing nothing: the avatar speaks the script exactly
+  // as written, so a mismatched Voiceover Language + Voiceover Script
+  // produces mangled narration that destroys the video. "Translate to X" /
+  // "Keep as is" in the banner is the only unlock.
+  const langChecking = langCheck.status === 'checking';
+  const langTranslating = langCheck.translating;
+  const langBusy = langChecking || langTranslating;
+  const langMismatch = langCheck.status === 'mismatch';
+  const readyExceptLanguage = (!!file || !!sourceUrl || !!preview) && !!script.trim() && !overCap && !busy && (user?.credits ?? 0) >= (avatarCost ?? Infinity);
+  const canRun = readyExceptLanguage && !langBusy && !langMismatch;
 
   return (
     <div className="space-y-6">
@@ -364,6 +377,24 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
             pattern as the AI Write confirmation. */}
         <button
           onClick={() => {
+            // Same mismatch gate as the wizard's Next: pressing Generate
+            // while the mismatch is unresolved pops the warning dialog — the
+            // banner's "Translate to X" / "Keep as is" is the only unlock.
+            if (langMismatch) {
+              void confirm(
+                `Your Voiceover Language (${langCheck.languageLabel}) and your voiceover script (${langCheck.detectedLabel ?? 'another language'}) don\u2019t match, so the AI Avatar video can\u2019t render yet.\n\n` +
+                `The AI Avatar speaks the script exactly as written \u2014 there is no auto-translation \u2014 so a mismatched Voiceover Language and Voiceover Script produce a mangled voiceover that will destroy the video.\n\n` +
+                `Choose "Translate to ${langCheck.languageLabel}" to rewrite the script, or "Keep as is" to accept the risk.`,
+                { title: 'Voiceover Language does not match the script', confirmLabel: `Translate to ${langCheck.languageLabel}`, cancelLabel: 'Keep as is' }
+              ).then((choice) => {
+                // Explicit choice only: the buttons resolve the gate directly —
+                // Escape/backdrop closes without choosing (undefined) and leaves
+                // the gate shut.
+                if (choice === true) void langCheck.translate();
+                else if (choice === false) langCheck.dismiss();
+              });
+              return;
+            }
             const balance = user?.credits ?? 0;
             confirm(
               `This AI Avatar video costs ${avatarCost} credits for ~${Math.round(narrationSecs)}s of narration (2 credits per 10 seconds).\n\nYou have ${balance} credit${balance === 1 ? '' : 's'}. A failed render is refunded automatically.\n\nGenerate now?`,
@@ -372,8 +403,9 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
               if (ok) void guardAIRender(run);
             });
           }}
-          disabled={!canRun}
-          className="btn btn-primary w-full text-lg py-4"
+          disabled={!readyExceptLanguage || langBusy}
+          aria-disabled={!canRun}
+          className={`btn btn-primary w-full text-lg py-4${langMismatch && !langBusy && readyExceptLanguage ? ' opacity-60' : ''}`}
         >
           {busy ? (
             <><Loader2 className="w-5 h-5 animate-spin" /> {stageLabel || 'Working…'}</>
@@ -410,6 +442,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
         )}
         {!busy && !canRun && (
           <p className="text-xs text-ink-500 text-center">
+            {langMismatch && `Choose "Translate to ${langCheck.languageLabel}" or "Keep as is" under the voiceover script • `}
             {!file && !sourceUrl && 'Upload your profile picture • '}
             {!script.trim() && 'Add a voiceover script • '}
             {overCap && `Script over the ${FLASHHEAD_MAX_SECONDS}s cap • `}

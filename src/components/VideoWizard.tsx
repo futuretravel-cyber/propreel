@@ -922,9 +922,15 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
       void confirm(
         `Your Voiceover Language (${langCheck.languageLabel}) and your voiceover script (${langCheck.detectedLabel ?? 'another language'}) don\u2019t match, so you can\u2019t move on to the next step yet.\n\n` +
         `The narrator reads the script exactly as written \u2014 there is no auto-translation \u2014 so a mismatched Voiceover Language and Voiceover Script produce a mangled voiceover that will destroy the video.\n\n` +
-        `To continue, choose "Translate to ${langCheck.languageLabel}" or "Keep as is" under the Voiceover Script.`,
-        { title: 'Voiceover Language does not match the script', confirmLabel: 'Got it', alertOnly: true }
-      );
+        `Choose "Translate to ${langCheck.languageLabel}" to rewrite the script, or "Keep as is" to accept the risk.`,
+        { title: 'Voiceover Language does not match the script', confirmLabel: `Translate to ${langCheck.languageLabel}`, cancelLabel: 'Keep as is' }
+      ).then((choice) => {
+        // Explicit choice only: the buttons resolve the gate directly —
+        // Escape/backdrop closes without choosing (undefined) and leaves
+        // the gate shut.
+        if (choice === true) void langCheck.translate();
+        else if (choice === false) langCheck.dismiss();
+      });
       return;
     }
     setStep(step + 1);
