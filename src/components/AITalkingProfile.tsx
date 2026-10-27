@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { User, Upload, Sparkles, Zap, Info, Video, AlertCircle, AlertTriangle } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { useCredit } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
+import type { VoiceoverLanguageCheck } from '../lib/useVoiceoverLanguageCheck';
 import { useAvatarPhotoIssue } from '../lib/useAvatarPhotoIssue';
 import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../../lib/renderPricing';
 
@@ -11,6 +13,8 @@ interface AITalkingProfileProps {
   profileImage: string | null;
   onProfileImageChange: (image: string | null) => void;
   voiceoverScript: string;
+  /** Shared script-vs-language mismatch check (same gate as the wizard's Next) */
+  langCheck: VoiceoverLanguageCheck;
 }
 
 export default function AITalkingProfile({ 
@@ -18,9 +22,11 @@ export default function AITalkingProfile({
   onToggle, 
   profileImage, 
   onProfileImageChange,
-  voiceoverScript 
+  voiceoverScript,
+  langCheck,
 }: AITalkingProfileProps) {
   const toast = useToast();
+  const confirm = useConfirm();
   const { user } = useCredit();
   const [uploading, setUploading] = useState(false);
   // The +8-credit warning pops BEFORE the toggle flips on: selecting this
@@ -79,6 +85,24 @@ export default function AITalkingProfile({
     if (enabled) {
       onToggle(false);
       toast.info('AI Avatar Video disabled');
+      return;
+    }
+
+    // 2026-10-27: same mismatch gate as the wizard's Next — the avatar
+    // speaks the script exactly as written, so an unresolved
+    // script-vs-language mismatch refuses to enable the add-on. The dialog
+    // resolves the gate directly ("Translate to X" / "Keep as is");
+    // Escape/backdrop closes without choosing and leaves the gate shut.
+    if (langCheck.status === 'mismatch') {
+      void confirm(
+        `Your Voiceover Language (${langCheck.languageLabel}) and your voiceover script (${langCheck.detectedLabel ?? 'another language'}) don\u2019t match, so the AI Avatar Video can\u2019t be added yet.\n\n` +
+        `The AI Avatar speaks the script exactly as written \u2014 there is no auto-translation \u2014 so a mismatched Voiceover Language and Voiceover Script produce a mangled voiceover that will destroy the video.\n\n` +
+        `Choose "Translate to ${langCheck.languageLabel}" to rewrite the script, or "Keep as is" to accept the risk.`,
+        { title: 'Voiceover Language does not match the script', confirmLabel: `Translate to ${langCheck.languageLabel}`, cancelLabel: 'Keep as is' }
+      ).then((choice) => {
+        if (choice === true) void langCheck.translate();
+        else if (choice === false) langCheck.dismiss();
+      });
       return;
     }
 

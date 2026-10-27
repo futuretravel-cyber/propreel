@@ -1409,6 +1409,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
           profileImage={profileImage}
           onProfileImageChange={setProfileImage}
           voiceoverScript={script}
+          langCheck={langCheck}
         />
       </div>
 
