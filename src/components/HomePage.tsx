@@ -280,10 +280,10 @@ function VisualShowcase() {
 
 /* ── Property showcase gallery — real SA listings, big and interactive ── */
 const SHOWCASE: Array<{ base: string; title: string; place: string; tag: string; badge: string; video?: string; videoPoster?: string }> = [
-  { base: 'waterfront-villa', title: 'Waterfront Villa', place: 'Constantia, Cape Town', tag: 'Cinematic tier', badge: 'Drone + Golden Hour', video: '/media/waterfront-villa.mp4', videoPoster: '/images/waterfront-villa-poster.webp' },
-  { base: 'cape-dutch-after', title: 'Family Estate', place: 'Sandton, Johannesburg', tag: 'Premium tier', badge: 'Virtual Staging', video: '/media/family-estate.mp4', videoPoster: '/images/family-estate-poster.webp' },
-  { base: 'townhouse', title: 'Modern Townhouse', place: 'Umhlanga, Durban', tag: 'Essential tier', badge: 'AI Motion', video: '/media/townhouse.mp4', videoPoster: '/images/townhouse-poster.webp' },
-  { base: 'twilight-blue-hour', title: 'City Apartment', place: 'Sea Point, Cape Town', tag: 'Social tier', badge: 'Social Pack', video: '/media/city-apartment.mp4', videoPoster: '/images/city-apartment-poster.webp' },
+  { base: 'waterfront-villa', title: 'Family Estate', place: 'Constantia, Cape Town', tag: 'Cinematic tier', badge: 'Drone + Golden Hour', video: '/media/waterfront-villa.mp4', videoPoster: '/images/waterfront-villa-poster.webp' },
+  { base: 'cape-dutch-after', title: 'Wine Estate', place: 'Stellenbosch', tag: 'Premium tier', badge: 'Virtual Staging', video: '/media/family-estate.mp4', videoPoster: '/images/family-estate-poster.webp' },
+  { base: 'townhouse', title: 'Modern Townhouse', place: 'Umhlanga, Durban', tag: 'Budget tier', badge: 'AI Motion', video: '/media/townhouse.mp4', videoPoster: '/images/townhouse-poster.webp' },
+  { base: 'twilight-blue-hour', title: 'City Apartment', place: 'Sandton, Johannesburg', tag: 'Social tier', badge: 'Social Pack', video: '/media/city-apartment.mp4', videoPoster: '/images/city-apartment-poster.webp' },
 ];
 
 function PropertyShowcase() {
