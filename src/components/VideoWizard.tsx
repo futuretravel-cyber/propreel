@@ -905,8 +905,30 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
   const langChecking = langCheck.status === 'checking';
   const langTranslating = langCheck.translating;
   const langBusy = langChecking || langTranslating;
-  const canNext = !langBusy && (step !== 3 || (uploadedImages.length > 0 && photosMissingMeta === 0));
-  const nextStep = () => { if (step < WIZARD_STEPS.length - 1 && canNext) setStep(step + 1); };
+  // 2026-10-27: THIRD gate — an unresolved script-vs-language mismatch
+  // locks "Next" until the agent picks one of the banner's two options
+  // ("Translate to X" / "Keep as is"). Unlike the busy/photo gates the
+  // button stays PRESSABLE while this gate is shut (dimmed + aria-disabled),
+  // so pressing it can explain the block in a warning dialog instead of
+  // silently doing nothing: the narrator reads the script exactly as
+  // written, so a mismatched Voiceover Language + Voiceover Script produces
+  // mangled narration that destroys the video.
+  const langMismatch = langCheck.status === 'mismatch';
+  const photosBlocked = step === 3 && (uploadedImages.length === 0 || photosMissingMeta > 0);
+  const canNext = !langBusy && !langMismatch && !photosBlocked;
+  const nextStep = () => {
+    if (step >= WIZARD_STEPS.length - 1 || langBusy || photosBlocked) return;
+    if (langMismatch) {
+      void confirm(
+        `Your Voiceover Language (${langCheck.languageLabel}) and your voiceover script (${langCheck.detectedLabel ?? 'another language'}) don\u2019t match, so you can\u2019t move on to the next step yet.\n\n` +
+        `The narrator reads the script exactly as written \u2014 there is no auto-translation \u2014 so a mismatched Voiceover Language and Voiceover Script produce a mangled voiceover that will destroy the video.\n\n` +
+        `To continue, choose "Translate to ${langCheck.languageLabel}" or "Keep as is" under the Voiceover Script.`,
+        { title: 'Voiceover Language does not match the script', confirmLabel: 'Got it', alertOnly: true }
+      );
+      return;
+    }
+    setStep(step + 1);
+  };
   const prevStep = () => setStep(s => Math.max(0, s - 1));
   // Listing details → Voiceover Script: arriving at the Voiceover step
   // with an empty script box pre-fills it from the Step-1 Listing details
@@ -1643,9 +1665,10 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
           <button
             type="button"
             onClick={nextStep}
-            disabled={!canNext}
-            className="btn btn-primary min-h-[44px] px-6 disabled:opacity-40"
-            title={canNext ? undefined : langTranslating ? `Translating the script to ${langCheck.languageLabel}…` : langChecking ? 'Waiting for the script language check to finish…' : 'Add at least one property photo to continue'}
+            disabled={langBusy || photosBlocked}
+            aria-disabled={!canNext}
+            className={`btn btn-primary min-h-[44px] px-6 disabled:opacity-40${langMismatch && !langBusy && !photosBlocked ? ' opacity-60' : ''}`}
+            title={canNext ? undefined : langTranslating ? `Translating the script to ${langCheck.languageLabel}…` : langChecking ? 'Waiting for the script language check to finish…' : photosBlocked ? 'Add at least one property photo to continue' : `Choose "Translate to ${langCheck.languageLabel}" or "Keep as is" under the Voiceover Script to continue`}
           >
             Next →
           </button>

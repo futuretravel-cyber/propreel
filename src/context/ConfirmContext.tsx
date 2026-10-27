@@ -5,6 +5,8 @@ interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  /** Alert-style dialog: only the confirm button (for warnings that just explain) */
+  alertOnly?: boolean;
 }
 
 type ConfirmFn = (message: string, options?: ConfirmOptions) => Promise<boolean>;
@@ -62,9 +64,11 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               {pending.message}
             </p>
             <div className="flex justify-end gap-3">
-              <button type="button" className="btn btn-secondary" onClick={() => close(false)}>
-                {pending.options.cancelLabel || 'Cancel'}
-              </button>
+              {!pending.options.alertOnly && (
+                <button type="button" className="btn btn-secondary" onClick={() => close(false)}>
+                  {pending.options.cancelLabel || 'Cancel'}
+                </button>
+              )}
               <button
                 type="button"
                 autoFocus
