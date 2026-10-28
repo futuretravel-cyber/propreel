@@ -3,6 +3,8 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyPaystackSignature, jsonWithPythonSpaces, escapeNonAscii } from '../../lib/paystack';
 import { addCredits, createSubscription, getUser, allocateMonthlyCredits, updateUser } from '../../lib/userService';
 import { generateInvoicePdf } from '../../lib/invoice';
+import { clearDunningAndNotify } from '../../lib/dunning';
+import { sendEmail, paymentFailedTemplate } from '../../lib/email';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -220,19 +222,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
-        // Capture the card authorization + clear dunning (recovered payment)
+        // Capture the card authorization (dunning close is handled below)
         const authCode = data.authorization?.authorization_code;
         if (authCode) {
           try {
             await updateUser(userId, {
               paystackAuthorizationCode: authCode,
-              paymentFailure: undefined,
               pendingPlanUpgrade: undefined,
             } as any);
           } catch (authErr) {
             console.error('Auth code capture failed (non-fatal):', authErr);
           }
         }
+
+        // A captured payment IS dunning recovery: close the episode and send
+        // the "plan is active again" email (exactly-once per episode) — done
+        // outside the authCode gate so a successful payment can never leave an
+        // episode open (the sweep would otherwise keep retrying it and cancel
+        // the plan at day 21).
+        await clearDunningAndNotify(userId).catch(e => console.error('Dunning close failed (non-fatal):', e));
 
         return res.status(200).json({ success: true, plan_upgrade_applied: true, reference });
       }
@@ -261,11 +269,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const authCode = data.authorization?.authorization_code;
         if (authCode) {
           try {
-            await updateUser(userId, { paystackAuthorizationCode: authCode, paymentFailure: undefined } as any);
+            await updateUser(userId, { paystackAuthorizationCode: authCode } as any);
           } catch (authErr) {
             console.error('Auth code capture failed (non-fatal):', authErr);
           }
         }
+        // Payment captured = dunning recovery (see above): close + notify.
+        await clearDunningAndNotify(userId).catch(e => console.error('Dunning close failed (non-fatal):', e));
         return res.status(200).json({
           success: true,
           plan_activated: outcome.status === 'activated',
@@ -287,6 +297,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           } catch (allocErr) {
             console.error('Recurring invoice allocation failed (claim released for retry):', allocErr);
           }
+          // The renewal charge landing IS recovery when the user was in
+          // dunning (Paystack's own retry finally went through): close the
+          // episode and send the "active again" email — otherwise the sweep
+          // would keep retrying, and cancel at day 21, a plan that just paid.
+          await clearDunningAndNotify(recurringUser.id).catch(e => console.error('Dunning close failed (non-fatal):', e));
         } else {
           console.error(`Webhook: recurring charge ${reference} has no user for ${data.customer_email}`);
         }
@@ -355,13 +370,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const { updateUser } = await import('../../lib/userService');
           await updateUser(userId, {
             paystackAuthorizationCode: authCode,
-            paymentFailure: undefined,
           } as any);
           console.log(`Webhook: saved card authorization for user ${userId}`);
         } catch (authErr) {
           console.error('Auth code capture failed (non-fatal):', authErr);
         }
       }
+
+      // A captured payment closes any active dunning episode and emails the
+      // customer that their plan is active again (exactly-once per episode).
+      await clearDunningAndNotify(userId).catch(e => console.error('Dunning close failed (non-fatal):', e));
 
       // SA tax invoice PDF → S3 (never blocks crediting)
       try {
@@ -465,6 +483,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Allocate monthly credits (this also extends the period)
       const result = await allocateMonthlyCredits(userId);
 
+      // A renewal webhook is proof the plan paid: close any active dunning
+      // episode and send the "active again" email (exactly-once per episode;
+      // the paired charge.success may race this — the episode marker makes
+      // both deliveries safe).
+      await clearDunningAndNotify(userId).catch(e => console.error('Dunning close failed (non-fatal):', e));
+
       // SA tax invoice for the renewal charge — the amount the customer was
       // actually billed lives on the transaction Paystack references in the
       // payload; fall back to the plan's nextChargeAmount.
@@ -500,9 +524,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Payment failed — start/advance the dunning sequence. A nightly sweep
+    // Payment failed — start/advance the dunning sequence for
+    // subscription-scoped charges. A nightly sweep
     // (lib/dunning.ts) retries saved cards on day 1/3/7/14 and downgrades at
-    // day 21; reminder "emails" are logged (no email infra yet).
+    // day 21 with real day-N reminder emails. The customer is also told
+    // IMMEDIATELY below, at the first failure of a dunning episode.
     if (event === 'charge.failed' || event === 'invoice.payment_failed') {
       const data = payload.data;
       const email = data.customer?.email || data.customer_email;
@@ -515,6 +541,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const now = new Date().toISOString();
       const existing = user.paymentFailure;
+
+      // One-off purchase failures (credit packs, agency-pool top-ups, plan
+      // upgrade checkouts) must NOT enter dunning: the sweep would retry the
+      // saved card for nextChargeAmount, send renewal-failure notices and
+      // CANCEL THE PLAN AT DAY 21 — over a failed R75 top-up. Only
+      // subscription-scoped charges (renewal invoices, Paystack subscription
+      // charges, dunning retries) start/advance the sequence. Absent
+      // metadata is deliberately treated as subscription-scoped: missing a
+      // real renewal's dunning is worse than a spurious one.
+      const oneOffTypes = new Set(['credit_purchase', 'agency_pool_purchase', 'plan_upgrade', 'plan_upgrade_checkout']);
+      const purchaseType = String(data.metadata?.type || '');
+      const subscriptionScoped = event === 'invoice.payment_failed' || !oneOffTypes.has(purchaseType);
+      if (!subscriptionScoped) {
+        console.log(`[dunning] to=${user.email} one-off ${event} (type=${purchaseType}) reference=${data.reference || 'n/a'} — purchase failed, not starting dunning`);
+        return res.status(200).json({ success: true, event, dunning_started: false, one_off_purchase: true });
+      }
+
       await updateUser(user.id, {
         paymentFailure: {
           count: (existing?.count || 0) + 1,
@@ -524,7 +567,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
       } as any);
 
-      console.log(`[dunning-email] to=${user.email} subject="Your PropReel payment failed — please update your card" reference=${data.reference || 'n/a'}`);
+      // Immediate payment-failed email (Resend) — was a console.log
+      // placeholder until the nightly sweep got around to it. Sent only at
+      // the START of a dunning episode: Paystack pairs charge.failed with
+      // invoice.payment_failed and sweep retries fail here too — those must
+      // not re-email (the sweep's day-1/3/7/14 reminders cover the cadence).
+      // Send failures are logged, never fatal — the webhook must keep
+      // returning 200 or Paystack retries the event.
+      if (!existing?.firstFailedAt) {
+        try {
+          const failedZar = Math.round(Number(data.amount || 0) / 100) || Math.max(50, Math.round(user.subscription?.nextChargeAmount || 50));
+          const tpl = paymentFailedTemplate({
+            fullName: user.fullName || 'there',
+            planLabel: String(user.subscription?.planId || 'PropReel plan'),
+            amountZar: failedZar,
+            daysUnpaid: 0, // immediate → "just now", not "(day N)"
+            manageUrl: `${process.env.APP_URL || 'https://www.propreel.co.za'}/dashboard/billing`,
+          });
+          const sent = await sendEmail({ to: user.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+          console.log(`[dunning-email] to=${user.email} sent=${sent.ok ? 'yes' : `no (${sent.error})`} subject="${tpl.subject}" reference=${data.reference || 'n/a'}`);
+        } catch (mailErr: any) {
+          console.error('[dunning-email] immediate send failed (non-fatal):', mailErr?.message || mailErr);
+        }
+      } else {
+        console.log(`[dunning-email] to=${user.email} skipped (mid-episode since ${existing?.firstFailedAt}) reference=${data.reference || 'n/a'}`);
+      }
 
       return res.status(200).json({ success: true, event, dunning_started: true });
     }

@@ -350,9 +350,11 @@ export function upcomingBillingTemplate(rows: {
 }
 
 /**
- * Payment-failed notice — fired by the dunning sweep when a month's charge
- * could not be collected. Offers the one-click fix (add a card) that dunning
- * already retries automatically on day 1/3/7/14.
+ * Payment-failed notice — sent immediately when Paystack reports a failed
+ * subscription charge (charge.failed / invoice.payment_failed), and by the
+ * dunning sweep's day-1/3/7/14 reminders. Offers the one-click fix (add a
+ * card) that dunning already retries automatically. `daysUnpaid: 0` marks
+ * the immediate "just now" variant; the sweep passes the real unpaid day.
  */
 export function paymentFailedTemplate(rows: {
   fullName: string;
@@ -363,18 +365,76 @@ export function paymentFailedTemplate(rows: {
 }): { subject: string; html: string; text: string } {
   const first = rows.fullName.split(' ')[0] || 'there';
   const money = `R${rows.amountZar.toLocaleString('en-ZA')}`;
-  const day = Math.max(1, Math.round(rows.daysUnpaid));
-  const subject = `PropReel payment failed — R${money.slice(1)} needs a card update (day ${day})`;
+  const day = Math.round(rows.daysUnpaid);
+  const immediate = day <= 0;
+  const subject = immediate
+    ? `PropReel payment failed — R${money.slice(1)} needs a card update`
+    : `PropReel payment failed — R${money.slice(1)} needs a card update (day ${day})`;
   const html = layout(
     'Payment failed — update your card',
-    `<p>Hi ${first} — your ${rows.planLabel} renewal of <b>${money}</b> could not be collected (attempt day ${day}).</p>
+    `<p>Hi ${first} — your ${rows.planLabel} renewal of <b>${money}</b> could not be collected${immediate ? '' : ` (attempt day ${day})`}.</p>
      <p>We retry automatically on day 1, 3, 7, 14 and 21. Add or swap a card before then to keep your plan and credits active — no action means the plan is cancelled after day 21.</p>`,
     { url: rows.manageUrl, label: 'Update my card' }
   );
   const text = [
-    `Hi ${first} — your PropReel ${rows.planLabel} renewal of ${money} could not be collected (day ${day}).`,
+    `Hi ${first} — your PropReel ${rows.planLabel} renewal of ${money} could not be collected${immediate ? '' : ` (day ${day})`}.`,
     `We retry automatically on days 1/3/7/14/21; after day 21 the plan is cancelled.`,
     `Update your card: ${rows.manageUrl}`,
+  ].join('\n');
+  return { subject, html, text };
+}
+
+/**
+ * Payment recovered — sent when a dunning retry finally charges the saved
+ * card successfully. Confirms the plan is active again so the customer can
+ * stop worrying about cancellation.
+ */
+export function paymentRecoveredTemplate(rows: {
+  fullName: string;
+  planLabel: string;
+  amountZar: number;
+  manageUrl: string;
+}): { subject: string; html: string; text: string } {
+  const first = rows.fullName.split(' ')[0] || 'there';
+  const money = `R${rows.amountZar.toLocaleString('en-ZA')}`;
+  const subject = `Payment received — your PropReel ${rows.planLabel} plan is active again`;
+  const html = layout(
+    'Payment received — you are all set',
+    `<p>Hi ${first} — good news: we successfully collected <b>${money}</b> for your ${rows.planLabel} plan. Your subscription is active again and your credits continue with the cycle as usual.</p>
+     <p>No action is needed. If you'd like a different card charged for future renewals, you can swap it any time.</p>`,
+    { url: rows.manageUrl, label: 'Manage my billing' }
+  );
+  const text = [
+    `Hi ${first} — we successfully collected ${money} for your PropReel ${rows.planLabel} plan.`,
+    `Your subscription is active again and your credits continue with the cycle as usual — no action is needed.`,
+    `Manage your billing: ${rows.manageUrl}`,
+  ].join('\n');
+  return { subject, html, text };
+}
+
+/**
+ * Subscription cancelled after dunning exhausted (day 21) — one-shot notice
+ * at the moment of downgrade: what happened, that the card will not be
+ * charged again, and how to resubscribe.
+ */
+export function subscriptionCancelledTemplate(rows: {
+  fullName: string;
+  planLabel: string;
+  amountZar: number;
+  manageUrl: string;
+}): { subject: string; html: string; text: string } {
+  const first = rows.fullName.split(' ')[0] || 'there';
+  const money = `R${rows.amountZar.toLocaleString('en-ZA')}`;
+  const subject = 'Your PropReel subscription has been cancelled';
+  const html = layout(
+    'Your subscription has been cancelled',
+    `<p>Hi ${first} — after several attempts we were unable to collect the <b>${money}</b> renewal for your ${rows.planLabel} plan, so we have cancelled the subscription. Your card will not be charged again.</p>
+     <p>Your account, projects and branding are kept, along with any remaining credits (they still expire on their usual schedule). Resubscribe whenever you are ready and your plan is restored instantly.</p>`,
+    { url: rows.manageUrl, label: 'Resubscribe' }
+  );
+  const text = [
+    `Hi ${first} — we were unable to collect the ${money} renewal for your PropReel ${rows.planLabel} plan after several attempts, so the subscription has been cancelled. Your card will not be charged again.`,
+    `Your account, projects, branding and remaining credits are kept. Resubscribe to restore your plan: ${rows.manageUrl}`,
   ].join('\n');
   return { subject, html, text };
 }

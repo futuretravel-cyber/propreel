@@ -703,6 +703,23 @@ export async function createSubscription(
   // One expiry rule for every grant: 365 days from the moment it lands.
   const expiryDate = creditTtlIso();
 
+  // The activation grant IS this month's allocation: claim the same
+  // renew_<user>_<YYYY-MM> marker allocateMonthlyCredits races for, so the
+  // monthly cron (or a late renewal webhook inside the activation month)
+  // can never stack a second allowance on top of the one just activated.
+  // The claim's result is ignored on purpose — an existing claim (e.g. the
+  // cron already allocated this month before the customer re-subscribed)
+  // must not stop the activation grant the customer just paid for.
+  // Claim-then-grant like allocateMonthlyCredits: a claim write failure
+  // fails the activation, whose callers release their pay_<ref> marker and
+  // retry from the top.
+  await putItemIfNotExists(TABLES.SETTINGS, {
+    id: `renew_${userId}_${new Date().toISOString().slice(0, 7)}`,
+    type: 'renewal_allocation',
+    userId,
+    createdAt: new Date().toISOString(),
+  });
+
   // Update user with subscription and credits. A subscription converts a
   // temporary (trial) account into a normal one — every trial field is
   // removed (undefined = REMOVE in updateItem) so the sweep/reminders/lock

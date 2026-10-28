@@ -4,6 +4,7 @@ import { getUser } from '../../lib/userService';
 import { sessionUser, requireOwner } from '../../lib/auth';
 import { consumeRateLimit } from '../../lib/rateLimit';
 import { tooMany } from '../../lib/userRoutes/shared';
+import { clearDunningAndNotify } from '../../lib/dunning';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -123,20 +124,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.error('Verify: upgrade application failed (payment captured):', upErr);
         }
       }
-      // Capture the card + clear dunning/pending state (payment recovered)
+      // Capture the card (dunning close is handled below)
       const authCode = result.data.authorization?.authorization_code;
       if (authCode) {
         try {
           const { updateUser } = await import('../../lib/userService');
           await updateUser(userId, {
             paystackAuthorizationCode: authCode,
-            paymentFailure: undefined,
             pendingPlanUpgrade: undefined,
           } as any);
         } catch (authErr) {
           console.error('Auth code capture failed (non-fatal):', authErr);
         }
       }
+      // A captured payment IS dunning recovery: close the episode and send
+      // the "plan is active again" email (exactly-once per episode).
+      await clearDunningAndNotify(userId).catch(e => console.error('Dunning close failed (non-fatal):', e));
       const user = await getUser(userId);
       return res.status(200).json({
         success: true,
@@ -176,12 +179,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const { updateUser } = await import('../../lib/userService');
           await updateUser(userId, {
             paystackAuthorizationCode: authCode,
-            paymentFailure: undefined,
           } as any);
         } catch (authErr) {
           console.error('Auth code capture failed (non-fatal):', authErr);
         }
       }
+      // Payment captured = dunning recovery: close the episode and send the
+      // "active again" email (exactly-once per episode).
+      await clearDunningAndNotify(userId).catch(e => console.error('Dunning close failed (non-fatal):', e));
       const activatedUser = await getUser(userId);
       return res.status(200).json({
         success: true,
@@ -199,6 +204,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (result.data.plan && !result.data.metadata?.type) {
       const { allocateMonthlyCredits } = await import('../../lib/userService');
       const alloc = await allocateMonthlyCredits(userId).catch(() => null);
+      // A verified renewal charge = recovery when the user was in dunning:
+      // close the episode and send the "active again" email (exactly-once).
+      await clearDunningAndNotify(userId).catch(e => console.error('Dunning close failed (non-fatal):', e));
       const holder = await getUser(userId);
       return res.status(200).json({
         success: true,
@@ -259,20 +267,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { grantReferralPayout } = await import('../../lib/referral');
     await grantReferralPayout(userId);
 
-    // Capture the card authorization for auto-topup / dunning retries, and
-    // clear any dunning state (payment recovered via hosted checkout).
+    // Capture the card authorization for auto-topup / dunning retries
+    // (dunning close is handled below).
     const authCode = result.data.authorization?.authorization_code;
     if (authCode) {
       try {
         const { updateUser } = await import('../../lib/userService');
         await updateUser(userId, {
           paystackAuthorizationCode: authCode,
-          paymentFailure: undefined,
         } as any);
       } catch (authErr) {
         console.error('Auth code capture failed (non-fatal):', authErr);
       }
     }
+
+    // Payment recovered via hosted checkout: close any active dunning episode
+    // and send the "plan is active again" email (exactly-once per episode).
+    await clearDunningAndNotify(userId).catch(e => console.error('Dunning close failed (non-fatal):', e));
 
     // SA tax invoice PDF → S3 (never blocks the response)
     try {
