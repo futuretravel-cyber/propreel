@@ -23,6 +23,12 @@ export interface AgencyCompanyDetails {
 }
 
 export interface AgencyBranding {
+  /**
+   * White-label app logo (header + Agency Dashboard). Stored as the canonical
+   * raw bucket URL (rawS3Url on write, re-signed on read — frozen-presign
+   * discipline, see lib/userRoutes/agency.ts).
+   */
+  logoUrl?: string;
   /** https URL of the report-specific logo (separate from the app logo) */
   reportLogoUrl?: string;
   /** Hex header colour for reports, e.g. '#6b21a8' */

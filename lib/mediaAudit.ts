@@ -150,6 +150,14 @@ export function rowViolations(label: string, row: any): string[] {
     visit(`agentProfiles[${i}].photoUrl`, p.photoUrl);
     visit(`agentProfiles[${i}].logoUrl`, p.logoUrl);
   });
+  // Agency branding (TABLES.AGENCIES rows) — the white-label logo in the
+  // header and, in reportLogoUrl, a usually-external PDF logo. A foreign URL
+  // is ignored exactly like a listing photo; only our own objects are ruled
+  // on. (This field froze a presign once — the 2026-10-28 broken-logo bug.)
+  if (row?.branding && typeof row.branding === 'object') {
+    visit('branding.logoUrl', (row.branding as any).logoUrl);
+    visit('branding.reportLogoUrl', (row.branding as any).reportLogoUrl);
+  }
   return out;
 }
 
@@ -179,6 +187,7 @@ export async function auditStoredRows(): Promise<MediaCheck[]> {
 
   await scan('rows:projects', TABLES.PROJECTS, { limit: 1000 }, row => row?.id || 'row?');
   await scan('rows:users', TABLES.USERS, { limit: 1000 }, row => row?.id || 'row?');
+  await scan('rows:agencies', TABLES.AGENCIES, { limit: 200 }, row => row?.id || 'row?');
   await scan('rows:music', TABLES.SETTINGS, {
     limit: 500,
     filter: { expression: '#t = :mt', names: { '#t': 'type' }, values: { ':mt': 'music_track' } },
@@ -227,6 +236,9 @@ export async function auditApiResponses(
     ),
     get('api:user', `/api/users?id=${encodeURIComponent(opts.userId)}`),
     get('api:music', '/api/music'),
+    // agency_overview carries branding.logoUrl — the white-label header
+    // logo must come back signed + edge-hosted like every other media URL.
+    get('api:agency', `/api/users?action=agency_overview&user_id=${encodeURIComponent(opts.userId)}`),
   ]);
 
   // Parallel fetches push in completion order — sort so the report is stable.
