@@ -176,7 +176,6 @@ export default function CookiePolicyPage() {
               Some cookies are placed by third-party services we use:
             </p>
             <ul className="list-disc pl-6 text-ink-300 space-y-2 mb-4">
-              <li><strong>Supabase:</strong> Authentication and database services</li>
               <li><strong>Paystack:</strong> Payment processing</li>
               <li><strong>Google:</strong> Analytics and authentication (if using Google login)</li>
               <li><strong>Cloudflare:</strong> Security and performance</li>

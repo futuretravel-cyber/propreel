@@ -72,7 +72,7 @@ interface AgencyUsageData {
 interface AgencyProject {
   id: string;
   title: string;
-  kind?: 'REEL' | 'FLASHHEAD' | 'IMAGE' | 'SOCIAL';
+  kind?: 'REEL' | 'AVATAR' | 'IMAGE' | 'SOCIAL';
   status?: string;
   videoUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -500,7 +500,7 @@ This removes their account, projects and sign-ins — it cannot be undone. The e
             <div className="card-dark p-6">
               <p className="text-sm text-ink-400">Shared Agency Pool</p>
               <p className="text-4xl font-black text-purple-400 mt-1">{user?.agencyPoolCredits ?? 0}</p>
-              <p className="text-xs text-ink-400 mt-2">Spent first for tier render features (Essential → Premium) by every team member. Personal credits cover extras like FlashHead and photo edits.</p>
+              <p className="text-xs text-ink-400 mt-2">Spent first for tier render features (Essential → Premium) by every team member. Personal credits cover extras like AI Avatar Video and photo edits.</p>
             </div>
             <div className="card-dark p-6">
               <h3 className="font-semibold text-white mb-3 flex items-center gap-2"><Plus className="w-4 h-4 text-purple-400" /> Top Up Pool</h3>
@@ -1041,7 +1041,7 @@ function AgencyRenderHistory({ userId }: { userId: string }) {
   const [agencyName, setAgencyName] = useState<string | null>(null);
   const [authorized, setAuthorized] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [kindFilter, setKindFilter] = useState<'all' | 'REEL' | 'FLASHHEAD'>('all');
+  const [kindFilter, setKindFilter] = useState<'all' | 'REEL' | 'AVATAR'>('all');
   const [agentFilter, setAgentFilter] = useState('all');
   const [search, setSearch] = useState('');
 
@@ -1149,7 +1149,7 @@ function AgencyRenderHistory({ userId }: { userId: string }) {
       <div className="flex flex-wrap items-center gap-2">
         <input className="input max-w-xs" placeholder="Search titles…" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search agency renders" />
         <div className="flex items-center gap-1 px-1" role="group" aria-label="Filter by type">
-          {([['all', 'All'], ['REEL', 'Reels'], ['FLASHHEAD', 'AI Avatar Video']] as const).map(([k, label]) => (
+          {([['all', 'All'], ['REEL', 'Reels'], ['AVATAR', 'AI Avatar Video']] as const).map(([k, label]) => (
             <button key={k} onClick={() => setKindFilter(k)} className={`px-3 py-1 rounded-full text-xs font-medium transition ${kindFilter === k ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-400 hover:text-white border border-transparent'}`}>
               {label}
             </button>
@@ -1175,13 +1175,13 @@ function AgencyRenderHistory({ userId }: { userId: string }) {
               ) : p.videoUrl && p.status === 'READY' ? (
                 <video src={p.videoUrl} muted preload="metadata" className="w-full h-full object-cover" aria-hidden="true" />
               ) : (
-                <span className="text-lg">{p.kind === 'FLASHHEAD' ? '🎙️' : '🎬'}</span>
+                <span className="text-lg">{p.kind === 'AVATAR' ? '🎙️' : '🎬'}</span>
               )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-sm font-medium text-white truncate max-w-[280px]">{p.title}</p>
-                {p.kind === 'FLASHHEAD' ? (
+                {p.kind === 'AVATAR' ? (
                   <span className="badge badge-brand text-[10px] flex items-center gap-1"><Mic className="w-3 h-3" /> AI Avatar Video</span>
                 ) : (
                   <span className="badge badge-brand text-[10px]"><Film className="w-3 h-3 inline" /> Reel</span>

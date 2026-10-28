@@ -17,7 +17,7 @@ export interface CreditDeductRequest {
 export interface CreditRefundRequest {
   user_id: string;
   /** Which charge this reverses — the SERVER decides the amount (never the client) */
-  scope: 'render' | 'flashhead' | 'edit' | 'description' | 'social_post' | 'social_pack' | 'script' | 'rerender';
+  scope: 'render' | 'avatar' | 'edit' | 'description' | 'social_post' | 'social_pack' | 'script' | 'rerender' | 'translate';
 }
 
 export interface CreditTransferRequest {
@@ -78,7 +78,30 @@ export const BackendAPI = {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to deduct credits');
+      const err: any = new Error(error.error || 'Failed to deduct credits');
+      // Machine-readable branch key (lib/apiError.ts) + HTTP status, so
+      // callers can map INSUFFICIENT_CREDITS/402 to the low-credit flow
+      // instead of a generic error.
+      err.code = error.code;
+      err.status = response.status;
+      throw err;
+    }
+
+    return response.json();
+  },
+
+  /**
+   * What the NEXT Translate costs this account right now — the normal price,
+   * or free while the trial's free-translate allowance lasts. The mismatch
+   * banner reads this before the click so the cost is visible up front.
+   */
+  async translateQuote(userId: string) {
+    const response = await fetch(
+      `${API_BASE}/api/credits?action=translate_quote&user_id=${encodeURIComponent(userId)}`
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to load the translate price');
     }
 
     return response.json();

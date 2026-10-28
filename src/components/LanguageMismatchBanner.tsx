@@ -30,7 +30,7 @@ export default function LanguageMismatchBanner({ check }: { check: VoiceoverLang
               {check.translating
                 ? <RefreshCw className="w-3 h-3 animate-spin" />
                 : <Sparkles className="w-3 h-3" />}
-              {check.translating ? 'Translating…' : `Translate to ${check.languageLabel}`}
+              {check.translating ? 'Translating…' : `Translate to ${check.languageLabel} (${check.translateCostLabel})`}
             </button>
             <button
               type="button"

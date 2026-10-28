@@ -50,8 +50,8 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
   const [file, setFile] = useState<File | null>(null);
   // The picked headshot and its branding/hosted source survive full page
   // reloads; `file` is rebuilt from the restored data URL when rendering.
-  const [preview, setPreview, previewReady] = useStudioDraft<string | null>(studioDraftKey(user?.id, 'flashhead:preview'), null);
-  const [sourceUrl, setSourceUrl] = useStudioDraft<string | null>(studioDraftKey(user?.id, 'flashhead:source'), null);
+  const [preview, setPreview, previewReady] = useStudioDraft<string | null>(studioDraftKey(user?.id, 'avatar:preview'), null);
+  const [sourceUrl, setSourceUrl] = useStudioDraft<string | null>(studioDraftKey(user?.id, 'avatar:source'), null);
   // Current profile image from Agent Branding (default profile first), with
   // the account avatar as fallback
   const profiles: any[] = user?.agentProfiles || [];
@@ -341,7 +341,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
               onChange={e => updateScript(e.target.value)}
               placeholder="Welcome to this stunning family home in Constantia…"
             />
-            <p className="text-xs text-ink-500 mt-1">{script.trim() ? `${script.trim().split(/\s+/).length} words` : 'FlashHead speaks this text with your face'}</p>
+            <p className="text-xs text-ink-500 mt-1">{script.trim() ? `${script.trim().split(/\s+/).length} words` : 'Your AI avatar speaks this text with your face'}</p>
             <LanguageMismatchBanner check={langCheck} />
           </div>
           <div>
@@ -385,7 +385,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
                 `Your Voiceover Language (${langCheck.languageLabel}) and your voiceover script (${langCheck.detectedLabel ?? 'another language'}) don\u2019t match, so the AI Avatar video can\u2019t render yet.\n\n` +
                 `The AI Avatar speaks the script exactly as written \u2014 there is no auto-translation \u2014 so a mismatched Voiceover Language and Voiceover Script produce a mangled voiceover that will destroy the video.\n\n` +
                 `Choose "Translate to ${langCheck.languageLabel}" to rewrite the script, or "Keep as is" to accept the risk.`,
-                { title: 'Voiceover Language does not match the script', confirmLabel: `Translate to ${langCheck.languageLabel}`, cancelLabel: 'Keep as is' }
+                { title: 'Voiceover Language does not match the script', confirmLabel: `Translate to ${langCheck.languageLabel} (${langCheck.translateCostLabel})`, cancelLabel: 'Keep as is' }
               ).then((choice) => {
                 // Explicit choice only: the buttons resolve the gate directly —
                 // Escape/backdrop closes without choosing (undefined) and leaves

@@ -142,5 +142,48 @@ src = open(os.path.join(os.path.dirname(__file__), "..", "modal", "flashvsr_endp
 # own docstring — an actual call site has no backtick before it.
 check("eval() call gone from flashvsr source", re.search(r"(?<!`)eval\(", src) is None)
 
+# ── 6. avatar job-kind schema (2026-10-27 migration) ───────────────────────
+print("6. avatar job-kind schema")
+
+
+def mint_v2(secret, exp, scope, uid="server"):
+    """Byte-identical to the v2 job-token mint in lib/userRoutes/credits.ts."""
+    msg = f"v2.{exp}.{uid}.{scope}"
+    sig = base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()
+    ).decode().rstrip("=")
+    return f"{msg}.{sig}"
+
+
+now = int(time.time())
+info, err = worker._parse_token(mint_v2("test-secret", now + 600, "avatar"))
+check("v2 scope 'avatar' accepted",
+      err is None and info and info["scope"] == "avatar", str((info, err)))
+info, err = worker._parse_token(mint_v2("test-secret", now + 600, "flashhead"))
+check("legacy scope 'flashhead' normalizes to 'avatar'",
+      err is None and info and info["scope"] == "avatar", str((info, err)))
+check("/avatar enforces the paid 'avatar' scope",
+      worker.JOB_ENDPOINT_SCOPE.get("/avatar") == "avatar",
+      str(worker.JOB_ENDPOINT_SCOPE))
+check("/generate_avatar_video enforces the paid 'avatar' scope",
+      worker.JOB_ENDPOINT_SCOPE.get("/generate_avatar_video") == "avatar")
+r = client.post("/avatar", headers={"X-PropReel-Token": tok}, json={})
+check("v1 token cannot start an avatar job (403) — map hole closed",
+      r.status_code == 403, f"got {r.status_code}")
+r = client.post(
+    "/avatar",
+    headers={"X-PropReel-Token": mint_v2("test-secret", now + 600, "avatar")},
+    json={},
+)
+check("paid avatar token clears scope enforcement for /avatar",
+      r.status_code not in (401, 403), f"got {r.status_code}")
+r = client.post(
+    "/avatar",
+    headers={"X-PropReel-Token": mint_v2("test-secret", now + 600, "flashhead")},
+    json={},
+)
+check("legacy 'flashhead' job token clears scope enforcement too",
+      r.status_code not in (401, 403), f"got {r.status_code}")
+
 print(failures == 0 and "\nALL WORKER HARDENING TESTS PASSED" or f"\n{failures} TEST(S) FAILED")
 sys.exit(1 if failures else 0)

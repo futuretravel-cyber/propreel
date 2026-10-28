@@ -2,8 +2,14 @@ import { TABLES, scanItems, updateWhere, updateItem } from './db';
 import { refundDeduction } from './userService';
 import { rawS3Url } from './s3Urls';
 import { workerTokenHeaders } from './workerToken';
+import { normalizeProjectKind } from './legacySchema';
 
-const WORKER_URL = process.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+// Server-side callers talk to the worker DIRECTLY (the browser-visible
+// VITE_MODAL_ENDPOINT now points at the api.propreel.co.za proxy and must not
+// loop server traffic through it). The vendor hostname here is never shipped
+// to any client bundle.
+const WORKER_URL =
+  process.env.RENDER_WORKER_URL || 'https://futuretravel--propreel-render-web.modal.run';
 
 export interface ReapResult {
   scanned: number;
@@ -27,7 +33,9 @@ interface JobOutcome {
 /** Ask the Modal worker how the abandoned job ended. null = unknown. */
 async function lookupJob(kind: string | undefined, jobId: string | undefined): Promise<JobOutcome | null> {
   if (!jobId) return null;
-  const path = kind === 'FLASHHEAD' ? '/flashhead_status?job_id=' : '/render_status?record_id=';
+  // History-aware (2026-10-27 avatar migration): old project rows say
+  // 'FLASHHEAD', new ones 'AVATAR' — both poll the avatar status route.
+  const path = normalizeProjectKind(kind) === 'AVATAR' ? '/avatar_status?job_id=' : '/render_status?record_id=';
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);

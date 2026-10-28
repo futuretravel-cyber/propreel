@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Activity, CheckCircle2, XCircle, Zap, Database, CreditCard, MessageCircle, Headphones, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { RENDER_ENDPOINT } from '../lib/renderEndpoint';
 
 // ─── Real service status. These integrations (WhatsApp Business, live chat,
 // status page hosting, scheduled reports) are not built yet — this panel
@@ -14,9 +15,9 @@ export default function AdminIntegrations() {
   const [api, setApi] = useState<'ok' | 'fail' | 'loading'>('loading');
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/health`)
+    fetch(`${RENDER_ENDPOINT}/health`)
       .then(r => r.json()).then(setModal).catch(() => setModal(null));
-    fetch(`${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/probe`)
+    fetch(`${RENDER_ENDPOINT}/probe`)
       .then(r => r.json()).then(setProbe).catch(() => setProbe(null));
     fetch('/api/music').then(r => setApi(r.ok ? 'ok' : 'fail')).catch(() => setApi('fail'));
   }, []);
@@ -31,13 +32,13 @@ export default function AdminIntegrations() {
 
   const live = [
     {
-      name: 'Modal Render Worker',
+      name: 'Render worker',
       icon: <Zap className="w-4 h-4 text-purple-400" />,
       detail: modal ? `${modal.model} · v${modal.version}` : 'unreachable',
       ok: !!modal,
     },
     {
-      name: 'fal.ai (images, video, LLM)',
+      name: 'AI provider (images, video, text)',
       icon: <Activity className="w-4 h-4 text-purple-400" />,
       detail: probe?.class === 'healthy'
         ? `healthy · ${probe.latencyMs}ms`
@@ -45,7 +46,7 @@ export default function AdminIntegrations() {
       ok: probe?.class === 'healthy',
     },
     {
-      name: 'Vercel API + DynamoDB',
+      name: 'Platform API & database',
       icon: <Database className="w-4 h-4 text-purple-400" />,
       detail: api === 'ok' ? 'serverless functions reachable' : api === 'fail' ? 'API unreachable' : 'checking…',
       ok: api === 'ok',
@@ -107,7 +108,7 @@ export default function AdminIntegrations() {
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-xl font-bold text-white">Service Integrations</h1>
-        <p className="text-ink-400 text-sm mt-1">Live health of every system PropReel depends on. Secrets are managed in Vercel environment variables and Modal secrets — never in this UI.</p>
+        <p className="text-ink-400 text-sm mt-1">Live health of every system PropReel depends on. Secrets are managed in Vercel environment variables and render-platform secrets — never in this UI.</p>
       </div>
 
       <div className="space-y-3">

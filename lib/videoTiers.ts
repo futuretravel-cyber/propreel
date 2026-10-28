@@ -22,7 +22,7 @@ export interface PhotoMeta {
 /** fal image-to-video engine per tier. ESSENTIAL is pure-FFmpeg (no engine).
  *  2026-10-21: wan-25-preview removed from the catalog — every AI tier runs
  *  MiniMax Hailuo-02 standard (kling-26-pro stays as the dormant alternate). */
-export type VideoEngine = 'hailuo-02-standard' | 'kling-26-pro';
+export type VideoEngine = 'motion-standard' | 'motion-pro-alt';
 
 export interface TierConfig {
   duration: number; // seconds
@@ -115,7 +115,7 @@ export const TIERS: Tier[] = [
     description: 'AI Motion at 512p',
     processingType: 'ai',
     resolution: '512p',
-    engine: 'hailuo-02-standard',
+    engine: 'motion-standard',
     configurations: [
       { duration: 30, images: 6, credits: 34 },
       { duration: 60, images: 12, credits: 60 },
@@ -131,7 +131,7 @@ export const TIERS: Tier[] = [
     description: 'AI Motion at 768p',
     processingType: 'ai',
     resolution: '768p',
-    engine: 'hailuo-02-standard',
+    engine: 'motion-standard',
     configurations: [
       { duration: 30, images: 6, credits: 47 },
       { duration: 60, images: 12, credits: 63 },
@@ -149,7 +149,7 @@ export const TIERS: Tier[] = [
     description: 'AI Motion at 1080p',
     processingType: 'ai',
     resolution: '1080p',
-    engine: 'hailuo-02-standard',
+    engine: 'motion-standard',
     configurations: [
       { duration: 30, images: 6, credits: 60 },
       { duration: 60, images: 12, credits: 80 },
@@ -167,10 +167,10 @@ export const TIERS: Tier[] = [
     // main Video Generator picker filters this tier out. Credits repriced
     // from the 10/26 floor to 20/34 on the client's call the same day.
     label: 'Budget',
-    description: 'Gentle Hailuo-02 motion, 512p or 768p — 30s from 5 photos, no voiceover',
+    description: 'Gentle cinematic motion, 512p or 768p — 30s from 5 photos, no voiceover',
     processingType: 'ai',
     resolution: '512p', // display fallback — the real pick is per-config below
-    engine: 'hailuo-02-standard',
+    engine: 'motion-standard',
     configurations: [
       { duration: 30, images: 5, credits: 20, resolution: '512p' },
       { duration: 30, images: 5, credits: 34, resolution: '768p' },

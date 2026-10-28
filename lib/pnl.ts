@@ -44,6 +44,10 @@ export interface PnlExpense {
   createdAt: string;
 }
 
+// Avatar schema vocabulary (2026-10-27 migration) — history-aware charge
+// classifier shared with the refund matchers and admin stats.
+import { isAvatarCharge } from './legacySchema';
+
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 export const isMonthKey = (m: string) => MONTH_RE.test(m);
 
@@ -209,7 +213,7 @@ export interface PnlMetrics {
   topupEvents: number;
   spenders: number;
   renders: number;
-  creditsByFeature: { video: number; flashhead: number; image: number; other: number };
+  creditsByFeature: { video: number; avatar: number; image: number; other: number };
   costPerCredit: number | null;
 }
 
@@ -376,7 +380,7 @@ export async function buildPnlReport(month: string): Promise<PnlReport> {
   };
 
   const featureBucket = (a: MonthAgg, desc: string, credits: number, isRender: boolean) => {
-    if (/flashhead|flash head/i.test(desc)) { a.flash.credits += credits; if (isRender) a.flash.renders += 1; }
+    if (isAvatarCharge({ description: desc })) { a.flash.credits += credits; if (isRender) a.flash.renders += 1; }
     else if (/image edit/i.test(desc)) { a.image.credits += credits; }
     else if (/video generation/i.test(desc)) { a.video.credits += credits; if (isRender) a.video.renders += 1; }
   };
@@ -500,7 +504,7 @@ export async function buildPnlReport(month: string): Promise<PnlReport> {
     renders: cur.renders,
     creditsByFeature: {
       video: cur.video.credits,
-      flashhead: cur.flash.credits,
+      avatar: cur.flash.credits,
       image: cur.image.credits,
       other: Math.max(0, cur.creditsConsumed - cur.video.credits - cur.flash.credits - cur.image.credits),
     },
@@ -768,7 +772,7 @@ async function renderPnlPdf(report: PnlReport): Promise<Buffer> {
   row('New signups this month', String(m.newSignups));
   row('Renders / deduction events', m.renders.toLocaleString('en-ZA'));
   row('Credits: video / flashhead / image',
-    `${m.creditsByFeature.video} / ${m.creditsByFeature.flashhead} / ${m.creditsByFeature.image}`);
+    `${m.creditsByFeature.video} / ${m.creditsByFeature.avatar} / ${m.creditsByFeature.image}`);
   row('Direct cost per credit consumed', m.costPerCredit !== null ? money(m.costPerCredit) : 'n/a');
 
   // Revenue by plan (cohort mix)
@@ -866,6 +870,13 @@ export async function loadPnlSnapshot(month: string): Promise<PnlSnapshot | null
   try {
     const row = await getItem<any>(TABLES.SETTINGS, { id: snapshotId(month) });
     if (row?.kind === 'pl_snapshot' && row.report?.statement) {
+      // History normalization (2026-10-27 avatar migration): snapshots
+      // written before the rename carry creditsByFeature.flashhead.
+      const snapMetrics = (row.report as any).metrics;
+      if (snapMetrics?.creditsByFeature && 'flashhead' in snapMetrics.creditsByFeature) {
+        snapMetrics.creditsByFeature.avatar = snapMetrics.creditsByFeature.flashhead;
+        delete snapMetrics.creditsByFeature.flashhead;
+      }
       return {
         report: row.report as PnlReport,
         pdfUrl: String(row.pdfUrl || ''),

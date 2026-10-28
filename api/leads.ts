@@ -164,9 +164,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
       });
       await s3.send(new HeadBucketCommand({ Bucket: process.env.AWS_S3_RAW_BUCKET || 'propreel-raw-assets' }));
-      storage = { healthy: true, detail: 'Uploads bucket reachable' };
+      storage = { healthy: true, detail: 'Uploads storage reachable' };
     } catch (e: any) {
-      storage = { healthy: false, detail: String(e?.name || e).slice(0, 140) };
+      // Provider error names can identify the cloud vendor — keep the public
+      // status payload generic (stealth 2026-10-27).
+      storage = { healthy: false, detail: 'Storage check failed' };
     }
 
     return res.status(200).json({ success: true, crons, storage, generatedAt: new Date().toISOString() });

@@ -115,13 +115,8 @@ export default function DataProcessingAgreementPage() {
                 </thead>
                 <tbody className="text-ink-300">
                   <tr className="border-b border-white/10">
-                    <td className="py-2">Supabase</td>
-                    <td className="py-2">Database and authentication</td>
-                    <td className="py-2">South Africa</td>
-                  </tr>
-                  <tr className="border-b border-white/10">
-                    <td className="py-2">AWS</td>
-                    <td className="py-2">Storage and AI services</td>
+                    <td className="py-2">Cloud infrastructure &amp; data storage provider</td>
+                    <td className="py-2">Hosting, storage and database</td>
                     <td className="py-2">South Africa</td>
                   </tr>
                   <tr className="border-b border-white/10">
@@ -129,21 +124,16 @@ export default function DataProcessingAgreementPage() {
                     <td className="py-2">Payment processing</td>
                     <td className="py-2">South Africa</td>
                   </tr>
-                  <tr className="border-b border-white/10">
-                    <td className="py-2">xAI</td>
-                    <td className="py-2">AI text generation</td>
-                    <td className="py-2">USA</td>
-                  </tr>
                   <tr>
-                    <td className="py-2">Fal.ai</td>
-                    <td className="py-2">AI image processing</td>
-                    <td className="py-2">USA</td>
+                    <td className="py-2">AI processing providers</td>
+                    <td className="py-2">AI text, image, video and voice processing</td>
+                    <td className="py-2">International</td>
                   </tr>
                 </tbody>
               </table>
             </div>
             <p className="text-ink-300 leading-relaxed">
-              PropReel will notify the Data Controller of any changes to sub-processors with at least 30 days notice.
+              PropReel will notify the Data Controller of any changes to sub-processors with at least 30 days notice. Named sub-processor details are available to the Data Controller on request.
             </p>
           </section>
 

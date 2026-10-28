@@ -3,9 +3,21 @@
  * Every call maps 1:1 to a Vercel function in /api.
  */
 import { useSyncExternalStore } from 'react';
+// Client-side avatar-charge classifier — CANONICAL vocabulary only. The
+// legacy model-name spellings live in lib/legacySchema.ts, which only the
+// server imports: every read boundary normalizes rows before they cross the
+// wire, and legacy rows still classify here through their generic wording
+// ("lip-sync", "talking head"). The stealth guard keeps it that way
+// (scripts/check-bundle-stealth.mjs).
+function isAvatarCharge(t: { reason?: string | null; description?: string | null; metadata?: { scope?: unknown; kind?: unknown } | null }): boolean {
+  if (String(t.metadata?.scope ?? '').toLowerCase() === 'avatar') return true;
+  if (String(t.metadata?.kind ?? '').toUpperCase() === 'AVATAR') return true;
+  const d = String(t.reason || t.description || '').toLowerCase();
+  return d.includes('avatar') || d.includes('lip-sync') || d.includes('talking head');
+}
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
-const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+import { RENDER_ENDPOINT as MODAL_ENDPOINT } from './renderEndpoint';
 
 export type ProjectStatus = 'DRAFT' | 'PROCESSING' | 'READY' | 'FAILED';
 
@@ -27,7 +39,7 @@ export interface Project {
   /** REEL = AI video render, FLASHHEAD = Talking Head clip, IMAGE = photo-tool
    *  output (Photo Editor / Staging / Removal / Twilight), SOCIAL = generated
    *  social caption — all stored in My Projects */
-  kind?: 'REEL' | 'FLASHHEAD' | 'IMAGE' | 'SOCIAL';
+  kind?: 'REEL' | 'AVATAR' | 'IMAGE' | 'SOCIAL';
   voice?: string;
   /** Modal job id — lets the reaper reconcile abandoned renders */
   jobId?: string;
@@ -72,7 +84,7 @@ export interface CreditReportData {
     metadata?: Record<string, any>;
   }>;
   /** Derived client-side from transaction reasons (ledger has no feature column) */
-  creditsByFeature: { videoGeneration: number; imageEditing: number; flashHead: number; other: number };
+  creditsByFeature: { videoGeneration: number; imageEditing: number; avatar: number; other: number };
 }
 
 export interface ReferralStats {
@@ -298,15 +310,17 @@ export const PropReelAPI = {
     const transactions = data.transactions || [];
 
     // Derive per-feature usage from the transaction reasons we write at
-    // deduction time ("Video generation", "Image edit — <preset>", "FlashHead …")
-    const creditsByFeature = { videoGeneration: 0, imageEditing: 0, flashHead: 0, other: 0 };
+    // deduction time ("Video generation", "Image edit — <preset>",
+    // "AI Avatar video" …) — the classifier accepts the un-rewritten legacy
+    // history too (2026-10-27 avatar schema migration).
+    const creditsByFeature = { videoGeneration: 0, imageEditing: 0, avatar: 0, other: 0 };
     for (const t of transactions) {
       if (t.amount >= 0) continue;
       // The ledger stores the deduction reason in `description` (see
       // recordTransaction) — `reason` is kept for rows that carry it.
       const reason = String(t.reason || t.description || '').toLowerCase();
       const cost = Math.abs(t.amount);
-      if (reason.includes('flashhead')) creditsByFeature.flashHead += cost;
+      if (isAvatarCharge(t)) creditsByFeature.avatar += cost;
       else if (reason.includes('image edit') || reason.includes('photo')) creditsByFeature.imageEditing += cost;
       else if (reason.includes('video') || reason.includes('render')) creditsByFeature.videoGeneration += cost;
       else creditsByFeature.other += cost;
@@ -357,14 +371,16 @@ export const PropReelAPI = {
     // torn down with the page reload. AbortSignal.timeout guarantees the
     // promise settles, so the caller's catch refunds the mint and re-enables
     // the button with an actionable message.
-    // Caps chosen against the REAL transport wall, not the worker's budget:
-    // Modal's web proxy kills any response at 150 s, and a CORS fetch (the
-    // browser → Modal case) gets NO 303-redirect recovery — the connection
-    // just drops and the raw error is "Failed to fetch". Aborting slightly
-    // under the wall guarantees every long call settles with our actionable
-    // timeout message instead of that opaque browser error.
+    // Caps chosen against the REAL transport wall, not the worker's budget.
+    // The browser now talks to the worker through the api.propreel.co.za
+    // proxy (vercel.json rewrite), and Vercel hard-kills proxied responses at
+    // 120 s — a call crossing that gets a raw 504 with no recovery. Aborting
+    // slightly under the wall guarantees every long call settles with our
+    // actionable timeout message instead of that opaque error. (A Modal
+    // custom domain would raise the wall back to 150 s — restore 145_000 if
+    // that ever ships.)
     const limit = timeoutMs ?? (
-      kind === 'description' || kind === 'video_script' || kind === 'social_caption' || kind === 'social_pack' ? 145_000
+      kind === 'description' || kind === 'video_script' || kind === 'social_caption' || kind === 'social_pack' ? 115_000
       : 75_000 // language_check / translate are one-shot LLM calls
     );
     const { workerHeaders } = await import('./workerAuth');

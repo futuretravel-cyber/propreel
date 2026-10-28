@@ -77,8 +77,8 @@ export default function GlobalSearch() {
 
     // Search the user's real projects (DynamoDB) — reels and Talking Head clips
     projects.forEach(project => {
-      const isTalkingHead = project.kind === 'FLASHHEAD';
-      const matchesAvatarKind = isTalkingHead && ['avatar', 'avatar video', 'talking head', 'flashhead']
+      const isTalkingHead = project.kind === 'AVATAR';
+      const matchesAvatarKind = isTalkingHead && ['avatar', 'avatar video', 'talking head', 'ai avatar']
         .some(term => term.includes(lowerQuery) || lowerQuery.includes(term));
       if (
         project.title.toLowerCase().includes(lowerQuery) ||

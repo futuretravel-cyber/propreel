@@ -1,12 +1,36 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail, transferCredits, refundDeduction, REFUND_SCOPES } from '../lib/userService';
+import { addCredits, deductCredits, getUser, getCreditReport, getUserByEmail, transferCredits, refundDeduction, REFUND_SCOPES, getCreditTransactions, recordTransaction } from '../lib/userService';
+import { normalizeJobScope } from '../lib/legacySchema';
 import { jobCredits } from '../lib/renderPricing';
+import { isTrialRunning, TRIAL_FREE_TRANSLATES } from '../lib/trial';
 import { requireOwner, requireAdminSession, sessionUser, isAdminActor } from '../lib/auth';
 import { getMaintenanceState } from '../lib/maintenance';
 
 /**
+ * Trial free-translate allowance (lib/trial.ts: TRIAL_FREE_TRANSLATES).
+ * "Used" = every UNREVERSED translate consumption this account has made —
+ * charged or free, both are kind TRANSLATE ledger rows — so the first 3 are
+ * free while the trial runs and every one after that is the normal
+ * TRANSLATE_CREDITS charge. A failed translate's refund writes the rfnd_
+ * marker, which un-counts its row here: the allowance comes back instead of
+ * burning a try on a call that produced nothing.
+ */
+async function translateTrialUsage(userId: string): Promise<{ used: number; remaining: number }> {
+  const txns = await getCreditTransactions(userId, 500);
+  const reversed = new Set(
+    txns
+      .filter(t => t.type === 'refund' && t.eventId?.startsWith('rfnd_'))
+      .map(t => t.eventId!.slice('rfnd_'.length))
+  );
+  const used = txns.filter(
+    t => t.type === 'deduction' && t.metadata?.kind === 'TRANSLATE' && !reversed.has(t.id)
+  ).length;
+  return { used, remaining: Math.max(0, TRIAL_FREE_TRANSLATES - used) };
+}
+
+/**
  * Unified credits endpoint (Hobby plan has a 12-function limit).
- * Routes on ?action= : add (ADMIN) | refund | deduct | transfer | gift_email | report
+ * Routes on ?action= : add (ADMIN) | refund | deduct | transfer | gift_email | translate_quote | report
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = (req.query.action as string) || '';
@@ -53,6 +77,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // getCreditReport returns newest-first, so this cap keeps the most
         // recent 100 rows (on an ascending list it used to cut the newest).
         transactions: report.transactions.slice(0, 100),
+      });
+    }
+
+    // ── GET /api/credits?action=translate_quote&user_id=… ─────────
+    // What the NEXT Translate costs this account right now — the normal
+    // price, or free while the trial's TRIAL_FREE_TRANSLATES allowance
+    // lasts. The mismatch banner reads this BEFORE the click, so the cost is
+    // always visible up front and the label flips the moment charging starts.
+    if (req.method === 'GET' && action === 'translate_quote') {
+      const userId = req.query.user_id as string;
+      if (!userId) {
+        return res.status(400).json({ error: 'user_id is required' });
+      }
+      const gate = await requireOwner(req, userId);
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
+
+      const user = await getUser(userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      const trialActive = isTrialRunning(user);
+      const { remaining } = await translateTrialUsage(userId);
+      return res.status(200).json({
+        success: true,
+        price: jobCredits('translate'),
+        trial: trialActive,
+        free_remaining: trialActive ? remaining : 0,
       });
     }
 
@@ -112,7 +161,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // the ledger and returns exactly its amount — at most once per charge
     // (event lock), so a refund can never exceed what was really charged.
     if (req.method === 'POST' && action === 'refund') {
-      const { user_id, scope } = req.body || {};
+      const { user_id } = req.body || {};
+      // Legacy alias normalized (2026-10-27 avatar migration): stale cached
+      // bundles still refund scope 'flashhead'.
+      const scope = normalizeJobScope(String((req.body || {}).scope || ''));
       if (!user_id || !scope) {
         return res.status(400).json({ error: 'user_id and scope are required' });
       }
@@ -150,13 +202,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // modified client deducting differently gets a 400, never a ledger
       // row (the renderPricing import is the same table UI shows).
       const kind = String(metadata?.kind || '');
-      if (kind === 'PROPERTY_DESCRIPTION' || kind === 'SOCIAL_POST' || kind === 'SOCIAL_PACK') {
-        const expected = jobCredits(kind === 'PROPERTY_DESCRIPTION' ? 'description' : kind === 'SOCIAL_PACK' ? 'social_pack' : 'social_post');
+      if (kind === 'PROPERTY_DESCRIPTION' || kind === 'SOCIAL_POST' || kind === 'SOCIAL_PACK' || kind === 'TRANSLATE') {
+        const expected = jobCredits(kind === 'PROPERTY_DESCRIPTION' ? 'description' : kind === 'SOCIAL_PACK' ? 'social_pack' : kind === 'TRANSLATE' ? 'translate' : 'social_post');
         if (expected == null || amount !== expected) {
           return res.status(400).json({
             error: `This charge is priced server-side — the client cannot choose the amount`,
             expected,
           });
+        }
+      }
+
+      // Translate: personal-balance only (never the agency pool), and a
+      // running trial's first TRIAL_FREE_TRANSLATES translates are FREE —
+      // the allowance is checked AFTER amount validation (a wrong price can
+      // never consume one) and records a 0-amount consumption row instead of
+      // touching the balance. That row counts toward the allowance and is
+      // refundable as a no-op reversal when the call fails (refundDeduction).
+      if (kind === 'TRANSLATE') {
+        if (pool === 'agency') {
+          return res.status(400).json({ error: 'Translate charges are personal-balance only' });
+        }
+        const user = await getUser(user_id);
+        if (user && isTrialRunning(user)) {
+          const { remaining } = await translateTrialUsage(user_id);
+          if (remaining > 0) {
+            await recordTransaction({
+              userId: user_id,
+              amount: 0,
+              type: 'deduction',
+              description: `Translate voiceover script (trial free — ${TRIAL_FREE_TRANSLATES - remaining + 1}/${TRIAL_FREE_TRANSLATES})`,
+              metadata: { kind: 'TRANSLATE', trialFree: true, pool: 'personal' },
+            });
+            return res.status(200).json({
+              success: true,
+              free: true,
+              free_remaining: remaining - 1,
+              new_balance: user.credits,
+              deducted: 0,
+              reason,
+            });
+          }
         }
       }
 

@@ -4,8 +4,13 @@ import {
   Activity, Database, Cloud, Cpu, Mic, Zap, ShieldCheck,
 } from 'lucide-react';
 import { formatRelative } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 
-const WORKER_URL = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+// STEALTH RULE (2026-10-27): this page must never name infrastructure or AI
+// vendors — public copy is provider-neutral by design so nothing on the site
+// reveals which platforms or models run underneath. Raw probe detail and
+// scheduled-job internals render only for signed-in admins.
+import { RENDER_ENDPOINT as WORKER_URL } from '../lib/renderEndpoint';
 
 type State = 'up' | 'down' | 'degraded' | 'unknown';
 
@@ -23,7 +28,7 @@ interface StatusData {
   database: { state: State; detail: string };
   storage: { state: State; detail: string };
   worker: { state: State; detail: string; latencyMs: number | null };
-  fal: { state: State; detail: string; latencyMs: number | null; checkedAt: string | null };
+  ai: { state: State; detail: string; latencyMs: number | null; checkedAt: string | null };
   auth: { state: State; detail: string; latencyMs: number | null };
   crons: CronInfo[];
   generatedAt: string;
@@ -34,7 +39,7 @@ const INITIAL: StatusData = {
   database: { state: 'unknown', detail: 'Checking…' },
   storage: { state: 'unknown', detail: 'Checking…' },
   worker: { state: 'unknown', detail: 'Checking…', latencyMs: null },
-  fal: { state: 'unknown', detail: 'Checking…', latencyMs: null, checkedAt: null },
+  ai: { state: 'unknown', detail: 'Checking…', latencyMs: null, checkedAt: null },
   auth: { state: 'unknown', detail: 'Checking…', latencyMs: null },
   crons: [],
   generatedAt: '',
@@ -57,7 +62,7 @@ async function probe(url: string, init: RequestInit = {}, timeoutMs = 25000): Pr
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-/** Probe with one retry — Modal cold starts can stall the first attempt. */
+/** Probe with one retry — cold starts can stall the first attempt. */
 async function probeWithRetry(url: string, init: RequestInit = {}, attempts = 2): Promise<{ ok: boolean; status: number; body: any; latencyMs: number }> {
   let last: any;
   for (let i = 0; i < attempts; i++) {
@@ -72,6 +77,8 @@ async function probeWithRetry(url: string, init: RequestInit = {}, attempts = 2)
 }
 
 export default function StatusPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [data, setData] = useState<StatusData>(INITIAL);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -81,7 +88,7 @@ export default function StatusPage() {
     setRefreshing(true);
     const next: StatusData = { ...INITIAL };
 
-    // 1) PropReel API → also proves DynamoDB reads; returns cron freshness + S3 check
+    // 1) Platform API — also proves the data layer is serving reads
     try {
       const r = await probe('/api/leads?action=status');
       if (r.ok && r.body?.success) {
@@ -103,42 +110,42 @@ export default function StatusPage() {
       next.storage = { state: 'unknown', detail: 'Unverified — API unreachable' };
     }
 
-    // 2) Modal render worker
+    // 2) Rendering pipeline
     try {
       const r = await probeWithRetry(`${WORKER_URL}/health`);
       next.worker = r.ok && r.body?.status === 'healthy'
         ? { state: 'up', detail: `Pipeline online${r.body?.version ? ` · v${r.body.version}` : ''}`, latencyMs: r.latencyMs }
         : { state: 'down', detail: `Unexpected response (${r.status})`, latencyMs: r.latencyMs };
     } catch {
-      next.worker = { state: 'down', detail: 'No response from render worker', latencyMs: null };
+      next.worker = { state: 'down', detail: 'No response from the render pipeline', latencyMs: null };
     }
 
-    // 3) fal.ai health — from the scheduled probe (class-classified, 15 min cadence)
+    // 3) AI generation — from the scheduled probe (class-classified, 15 min cadence)
     try {
       const r = await probeWithRetry(`${WORKER_URL}/probe`);
       const b = r.body || {};
       const cls = String(b.class || '');
       if (b.healthy === true) {
-        next.fal = { state: 'up', detail: 'AI models reachable — key valid, account in balance', latencyMs: b.latencyMs ?? null, checkedAt: b.checkedAt || null };
+        next.ai = { state: 'up', detail: 'AI models responding normally', latencyMs: b.latencyMs ?? null, checkedAt: b.checkedAt || null };
       } else if (cls === 'billing_locked' || cls === 'auth_failed') {
-        next.fal = { state: 'down', detail: String(b.detail || cls), latencyMs: b.latencyMs ?? null, checkedAt: b.checkedAt || null };
+        next.ai = { state: 'down', detail: String(b.detail || 'Service unavailable'), latencyMs: b.latencyMs ?? null, checkedAt: b.checkedAt || null };
       } else if (cls === 'no_data' || (!b.healthy && !cls)) {
-        next.fal = { state: 'unknown', detail: String(b.detail || 'Probe result unavailable'), latencyMs: null, checkedAt: null };
+        next.ai = { state: 'unknown', detail: String(b.detail || 'Probe result unavailable'), latencyMs: null, checkedAt: null };
       } else {
-        next.fal = { state: 'degraded', detail: String(b.detail || cls), latencyMs: b.latencyMs ?? null, checkedAt: b.checkedAt || null };
+        next.ai = { state: 'degraded', detail: String(b.detail || 'Service degraded'), latencyMs: b.latencyMs ?? null, checkedAt: b.checkedAt || null };
       }
     } catch {
-      next.fal = { state: 'unknown', detail: 'Probe unreachable', latencyMs: null, checkedAt: null };
+      next.ai = { state: 'unknown', detail: 'Probe unreachable', latencyMs: null, checkedAt: null };
     }
 
-    // 4) First-party authentication (session endpoint → DynamoDB read)
+    // 4) First-party authentication
     try {
       const r = await probeWithRetry('/api/users?action=auth_session', { credentials: 'include' });
       next.auth = r.ok
         ? { state: 'up', detail: 'Sign-in service responding', latencyMs: r.latencyMs }
         : { state: 'unknown', detail: `Session endpoint returned ${r.status}`, latencyMs: r.latencyMs };
     } catch {
-      next.auth = { state: 'down', detail: 'No response from authentication service', latencyMs: null };
+      next.auth = { state: 'down', detail: 'No response from the sign-in service', latencyMs: null };
     }
 
     next.generatedAt = new Date().toISOString();
@@ -157,12 +164,12 @@ export default function StatusPage() {
   }, [refresh]);
 
   const services = [
-    { key: 'api', icon: Activity, name: 'PropReel API', description: 'Accounts, credits, projects, billing', ...data.api },
-    { key: 'auth', icon: ShieldCheck, name: 'Authentication', description: 'PropReel accounts — sessions & passwords (DynamoDB)', ...data.auth },
-    { key: 'worker', icon: Cpu, name: 'Render pipeline', description: 'Modal video & image processing', ...data.worker },
-    { key: 'fal', icon: Mic, name: 'AI models (fal.ai)', description: 'Video, lip-sync, image & text models', ...data.fal },
-    { key: 'storage', icon: Cloud, name: 'Media storage', description: 'AWS S3 — uploads and render outputs', state: data.storage.state, detail: data.storage.detail, latencyMs: null },
-    { key: 'database', icon: Database, name: 'Database', description: 'DynamoDB — accounts, ledger, projects', state: data.database.state, detail: data.database.detail, latencyMs: null },
+    { key: 'api', icon: Activity, name: 'Website & API', description: 'Dashboard, uploads and project management', ...data.api },
+    { key: 'auth', icon: ShieldCheck, name: 'Accounts & sign-in', description: 'Sign-in, sessions and account security', ...data.auth },
+    { key: 'worker', icon: Cpu, name: 'Rendering pipeline', description: 'Video and image processing', ...data.worker },
+    { key: 'ai', icon: Mic, name: 'AI generation', description: 'Voiceover, video, image and text generation', ...data.ai },
+    { key: 'storage', icon: Cloud, name: 'Media storage', description: 'Uploads and render outputs', state: data.storage.state, detail: data.storage.detail, latencyMs: null },
+    { key: 'database', icon: Database, name: 'Data services', description: 'Accounts, projects and billing records', state: data.database.state, detail: data.database.detail, latencyMs: null },
   ];
 
   // Cron "no runs recorded yet" (null) is not a fault — it must not drag the
@@ -199,7 +206,7 @@ export default function StatusPage() {
             <Activity className="w-7 h-7 text-purple-400" /> System status
           </h1>
           <p className="text-ink-400 mt-2">
-            Live health of the services behind PropReel — checked from your browser, refreshed automatically every minute.
+            Live health of the services behind PropReel — refreshed automatically every minute.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -223,7 +230,7 @@ export default function StatusPage() {
         </div>
       </div>
 
-      {/* Services */}
+      {/* Services — public rows are provider-neutral; raw detail is admin-only */}
       <div className="card-dark divide-y divide-white/5 overflow-hidden">
         {services.map(s => {
           const Icon = s.icon;
@@ -234,7 +241,7 @@ export default function StatusPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white">{s.name}</p>
                 <p className="text-xs text-ink-500 truncate">{s.description}</p>
-                {s.detail && s.detail !== 'Checking…' && (
+                {isAdmin && s.detail && s.detail !== 'Checking…' && (
                   <p className="text-xs text-ink-400 mt-0.5 truncate" title={s.detail}>{s.detail}</p>
                 )}
               </div>
@@ -249,44 +256,46 @@ export default function StatusPage() {
         })}
       </div>
 
-      {/* Scheduled jobs */}
-      <div>
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-3">
-          <Zap className="w-5 h-5 text-purple-400" /> Scheduled jobs
-        </h2>
-        <div className="card-dark divide-y divide-white/5 overflow-hidden">
-          {data.crons.length === 0 ? (
-            <div className="p-4 text-sm text-ink-400">Job schedule unavailable — the status API did not respond.</div>
-          ) : data.crons.map(c => (
-            <div key={c.name} className="p-4 flex items-start gap-4">
-              {stateIcon(c.healthy === null ? 'unknown' : c.healthy ? 'up' : 'down')}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white">{c.label}</p>
-                <p className="text-xs text-ink-500">{c.schedule}</p>
-                {c.lastRun ? (
-                  <p className="text-xs text-ink-400 mt-1">
-                    Last run {formatRelative(c.lastRun.finishedAt)}
-                    {c.lastRun.durationMs != null && <> · took {(c.lastRun.durationMs / 1000).toFixed(1)}s</>}
-                    {c.lastRun.status === 'error' && <span className="text-red-400"> · failed: {c.lastRun.detail || 'unknown error'}</span>}
-                    {c.lastRun.status === 'success' && c.lastRun.detail && <span className="text-ink-500"> · {c.lastRun.detail}</span>}
-                  </p>
-                ) : (
-                  <p className="text-xs text-ink-500 mt-1">No runs recorded yet — monitoring went live 1 Oct 2026; daily jobs record their first run at the next scheduled slot (00:00 / 09:00 UTC).</p>
-                )}
-                {c.healthy === false && c.lastRun?.status === 'success' && (
-                  <p className="text-xs text-yellow-400 mt-1">Overdue — last run is older than the expected schedule.</p>
-                )}
+      {/* Scheduled jobs — operational internals, admins only */}
+      {isAdmin && (
+        <div>
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-3">
+            <Zap className="w-5 h-5 text-purple-400" /> Scheduled jobs
+          </h2>
+          <div className="card-dark divide-y divide-white/5 overflow-hidden">
+            {data.crons.length === 0 ? (
+              <div className="p-4 text-sm text-ink-400">Job schedule unavailable — the status API did not respond.</div>
+            ) : data.crons.map(c => (
+              <div key={c.name} className="p-4 flex items-start gap-4">
+                {stateIcon(c.healthy === null ? 'unknown' : c.healthy ? 'up' : 'down')}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white">{c.label}</p>
+                  <p className="text-xs text-ink-500">{c.schedule}</p>
+                  {c.lastRun ? (
+                    <p className="text-xs text-ink-400 mt-1">
+                      Last run {formatRelative(c.lastRun.finishedAt)}
+                      {c.lastRun.durationMs != null && <> · took {(c.lastRun.durationMs / 1000).toFixed(1)}s</>}
+                      {c.lastRun.status === 'error' && <span className="text-red-400"> · failed: {c.lastRun.detail || 'unknown error'}</span>}
+                      {c.lastRun.status === 'success' && c.lastRun.detail && <span className="text-ink-500"> · {c.lastRun.detail}</span>}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-ink-500 mt-1">No runs recorded yet — daily jobs record their first run at the next scheduled slot.</p>
+                  )}
+                  {c.healthy === false && c.lastRun?.status === 'success' && (
+                    <p className="text-xs text-yellow-400 mt-1">Overdue — last run is older than the expected schedule.</p>
+                  )}
+                </div>
+                <span className={`text-xs font-medium flex-shrink-0 ${c.healthy === null ? 'text-ink-500' : c.healthy ? 'text-green-400' : 'text-red-400'}`}>
+                  {c.healthy === null ? 'No data' : c.healthy ? 'On schedule' : 'Overdue'}
+                </span>
               </div>
-              <span className={`text-xs font-medium flex-shrink-0 ${c.healthy === null ? 'text-ink-500' : c.healthy ? 'text-green-400' : 'text-red-400'}`}>
-                {c.healthy === null ? 'No data' : c.healthy ? 'On schedule' : 'Overdue'}
-              </span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <p className="text-xs text-ink-500">
-        The AI-model check runs automatically every 15 minutes against a tiny test request; everything else is probed live when you open this page. Incidents and maintenance notices are posted on this page.
+        Some checks run automatically on a schedule; everything else is probed live when you open this page. Incidents and maintenance notices are posted here.
       </p>
     </div>
   );

@@ -21,8 +21,11 @@ import { SERVICE_KEYS, ALL_FIELD_NAMES } from '../../lib/serviceKeys';
 // Modal secret via the worker's bearer-gated /admin/secret route.
 // Values are pass-through only — never persisted, logged, or re-returned.
 const VERCEL_API = 'https://api.vercel.com';
+// Server-side callers talk to the worker DIRECTLY (VITE_MODAL_ENDPOINT is the
+// browser-facing api.propreel.co.za proxy now; never route server traffic
+// through it). The vendor hostname here never reaches a client bundle.
 const WORKER_URL = () =>
-  (process.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run').replace(/\/$/, '');
+  (process.env.RENDER_WORKER_URL || 'https://futuretravel--propreel-render-web.modal.run').replace(/\/$/, '');
 
 async function vercelFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = process.env.VERCEL_TOKEN;
@@ -187,6 +190,8 @@ export async function adminStats(req: VercelRequest, res: VercelResponse) {
   // scanAll pages past the 1 MB scan window (scanItems stops at the first
   // page), so these counts stay exact as the tables grow.
   const { scanAll } = await import('../../lib/db');
+  // Avatar schema vocabulary (2026-10-27 migration) — history-aware helpers.
+  const { isAvatarCharge, normalizeProjectKind } = await import('../../lib/legacySchema');
   const users = await scanAll<any>(TABLES.USERS, { maxItems: 5000 });
   const projects = await scanAll<any>(TABLES.PROJECTS, { maxItems: 5000 });
 
@@ -201,20 +206,22 @@ export async function adminStats(req: VercelRequest, res: VercelResponse) {
   const txns = await scanAll<any>(TABLES.CREDIT_TRANSACTIONS, { maxItems: 20000 });
   const since = Date.now() - 30 * 86400000;
   const video = { renders: 0, credits: 0, plannedSeconds: 0 };
-  const flashhead = { renders: 0, credits: 0, measuredSeconds: 0 };
+  const avatar = { renders: 0, credits: 0, measuredSeconds: 0 };
   const imageEdits = { edits: 0, credits: 0 };
-  const dailyMap = new Map<string, { videoRenders: number; videoCredits: number; flashheadRenders: number; flashheadCredits: number; imageEdits: number; imageCredits: number }>();
+  const dailyMap = new Map<string, { videoRenders: number; videoCredits: number; avatarRenders: number; avatarCredits: number; imageEdits: number; imageCredits: number }>();
   for (const t of txns) {
     if (t.amount >= 0) continue;
     const ts = Date.parse(t.createdAt || '');
     if (Number.isNaN(ts) || ts < since) continue;
     const desc = String(t.description || '');
     const isVideo = /video generation/i.test(desc);
-    const isFlash = /flashhead/i.test(desc);
+    // Avatar charges (legacy 'flashhead' history included) — the shared
+    // schema classifier accepts both spellings, rows are never rewritten.
+    const isFlash = isAvatarCharge(t);
     const isImage = /image edit/i.test(desc);
     if (!isVideo && !isFlash && !isImage) continue;
     const day = new Date(ts).toISOString().slice(0, 10);
-    const bucket = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, flashheadRenders: 0, flashheadCredits: 0, imageEdits: 0, imageCredits: 0 };
+    const bucket = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, avatarRenders: 0, avatarCredits: 0, imageEdits: 0, imageCredits: 0 };
     const credits = Math.abs(Number(t.amount));
     if (isVideo) {
       video.renders += 1;
@@ -228,23 +235,23 @@ export async function adminStats(req: VercelRequest, res: VercelResponse) {
       bucket.imageEdits += 1;
       bucket.imageCredits += credits;
     } else {
-      flashhead.renders += 1;
-      flashhead.credits += credits;
-      bucket.flashheadRenders += 1;
-      bucket.flashheadCredits += credits;
+      avatar.renders += 1;
+      avatar.credits += credits;
+      bucket.avatarRenders += 1;
+      bucket.avatarCredits += credits;
     }
     dailyMap.set(day, bucket);
   }
   // Talking-head runtime: measured by the worker (ffprobe) and persisted on
   // project records when the client polls to completion.
-  flashhead.measuredSeconds = projects
-    .filter((p: any) => p.kind === 'FLASHHEAD' && p.durationSeconds)
+  avatar.measuredSeconds = projects
+    .filter((p: any) => normalizeProjectKind(p.kind) === 'AVATAR' && p.durationSeconds)
     .reduce((s: number, p: any) => s + Number(p.durationSeconds), 0);
 
-  const daily: Array<{ date: string; videoRenders: number; videoCredits: number; flashheadRenders: number; flashheadCredits: number; imageEdits: number; imageCredits: number }> = [];
+  const daily: Array<{ date: string; videoRenders: number; videoCredits: number; avatarRenders: number; avatarCredits: number; imageEdits: number; imageCredits: number }> = [];
   for (let i = 13; i >= 0; i--) {
     const day = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
-    const b = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, flashheadRenders: 0, flashheadCredits: 0, imageEdits: 0, imageCredits: 0 };
+    const b = dailyMap.get(day) || { videoRenders: 0, videoCredits: 0, avatarRenders: 0, avatarCredits: 0, imageEdits: 0, imageCredits: 0 };
     daily.push({ date: day.slice(5), ...b });
   }
 
@@ -263,7 +270,7 @@ export async function adminStats(req: VercelRequest, res: VercelResponse) {
     renderMetrics: {
       windowDays: 30,
       video,
-      flashhead,
+      avatar,
       imageEdits,
       daily,
     },
@@ -355,8 +362,7 @@ export async function adminLedger(req: VercelRequest, res: VercelResponse) {
 }
 
 
-/**
- * Nested route: GET /api/users?action=admin_narakeet_usage&days=30 —
+/**   * Nested route: GET /api/users?action=admin_voice_usage&days=30 —
  * ops report: Narakeet voiceover minutes consumed per render (admin only).
  *
  * Sums `narakeet_seconds` — the billed audio duration the worker records on
@@ -423,13 +429,20 @@ export async function adminNarakeetUsage(req: VercelRequest, res: VercelResponse
       const id = String(doc.record_id || c.key.slice('jobs/'.length, -'.json'.length));
       // Classify video jobs; image-edit and other job files carry no
       // voiceover and are excluded entirely.
-      const kind = doc.kind === 'flashhead' || id.startsWith('fh_') ? 'flashhead'
+      // Job-kind vocabulary (2026-10-27 avatar migration): 'avatar' is
+      // canonical, un-rewritten history says 'flashhead' — both normalize to
+      // 'avatar' here so the ops report never splits the family.
+      const kind = doc.kind === 'avatar' || doc.kind === 'flashhead' || id.startsWith('fh_') ? 'avatar'
         : doc.kind === 'render' || id.startsWith('pr_') ? 'render'
         : null;
       if (!kind) continue;
 
       totals.videoJobs += 1;
-      const secs = typeof doc.narakeet_seconds === 'number' ? doc.narakeet_seconds : null;
+      // New job records write voiceover_seconds; older ones used the
+      // vendor-named key (kept as fallback so history still sums).
+      const secs = typeof doc.voiceover_seconds === 'number'
+        ? doc.voiceover_seconds
+        : typeof doc.narakeet_seconds === 'number' ? doc.narakeet_seconds : null;
       if (secs === null) {
         totals.unmeasured += 1;
       } else {
@@ -506,7 +519,7 @@ export async function imagePresets(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ success: true, presets: promptsCache.presets });
   }
 
-  const workerUrl = process.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+  const workerUrl = WORKER_URL();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 25000);
   try {

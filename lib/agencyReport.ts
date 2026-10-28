@@ -106,7 +106,7 @@ export async function buildAgencyMonthReport(agencyId: string, month: string): P
         used += Math.abs(t.amount);
         const d = (t.description || '').toLowerCase();
         const cat = d.includes('video') ? 'Video renders'
-          : (d.includes('flashhead') || d.includes('talking')) ? 'Talking Head'
+          : (d.includes('avatar') || d.includes('flashhead') || d.includes('talking')) ? 'Talking Head'
           : d.includes('image') ? 'Image edits'
           : d.includes('expired') ? 'Expired' : 'Other';
         byCategory.set(cat, (byCategory.get(cat) || 0) + Math.abs(t.amount));

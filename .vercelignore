@@ -14,11 +14,13 @@ tsconfig.tsbuildinfo
 .vercel/
 
 # Local-only material: staging test scripts/artifacts, docs, CI config.
-# `scripts/*` (not `scripts/`) so the CSP build guard can be re-included —
+# `scripts/*` (not `scripts/`) so the BUILD GUARDS can be re-included —
 # gitignore semantics cannot re-include a file under an excluded directory,
-# and `npm run build` runs the guard after `vite build` on the builder.
+# and `npm run build` runs both guards after `vite build` on the builder
+# (a missing guard file fails the remote build with MODULE_NOT_FOUND).
 scripts/*
 !scripts/check-no-inline-scripts.mjs
+!scripts/check-bundle-stealth.mjs
 docs/
 .github/
 .vscode/

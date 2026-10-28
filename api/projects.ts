@@ -4,7 +4,14 @@ import { TABLES, queryItems, putItem, updateItem, scanItems } from '../lib/db';
 import { deleteItem } from '../lib/db-helpers';
 import { requireOwner } from '../lib/auth';
 import { signProjectUrls, signS3Url, rawS3Url } from '../lib/s3Urls';
+import { normalizeProjectKind } from '../lib/legacySchema';
 import JSZip from 'jszip';
+
+// Server-side history normalization (2026-10-27 avatar migration): rows
+// written before the rename carry kind 'FLASHHEAD' — every API response maps
+// them through here so clients only ever see the canonical vocabulary.
+const withCanonicalKind = <T extends { kind?: string }>(p: T): T =>
+  normalizeProjectKind(p.kind) === p.kind ? p : { ...p, kind: normalizeProjectKind(p.kind) };
 
 export interface ProjectFolder {
   id: string;
@@ -28,8 +35,10 @@ export interface ProjectRecord {
   propertyType?: string;
   features?: string[];
   status?: 'DRAFT' | 'PROCESSING' | 'READY' | 'FAILED';
-  /** REEL = AI video render, FLASHHEAD = Talking Head lip-sync clip */
-  kind?: 'REEL' | 'FLASHHEAD' | 'IMAGE' | 'SOCIAL';
+  /** REEL = AI video render, AVATAR = Talking Head lip-sync clip. The legacy
+   *  'FLASHHEAD' value is normalized server-side on read and never stored
+   *  again (2026-10-27 avatar schema migration). */
+  kind?: 'REEL' | 'AVATAR' | 'IMAGE' | 'SOCIAL';
   voice?: string;
   /** Modal job id — lets the reaper reconcile abandoned renders */
   jobId?: string;
@@ -194,7 +203,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         authorized: true,
         agencyName: user.agencyName || null,
         agentCount: members.length,
-        projects: await Promise.all(projects.map(signProjectUrls)),
+        projects: await Promise.all(projects.map(p => signProjectUrls(withCanonicalKind(p)))),
       });
     }
 
@@ -238,7 +247,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       //  what the DB stores; the fetch just needs read access.)
       try {
         const main = await fetchVideo((await signS3Url(project.videoUrl)) || project.videoUrl);
-        zip.file(`${slug}-${project.kind === 'FLASHHEAD' ? 'talking-head' : 'reel'}.mp4`, main);
+        zip.file(`${slug}-${normalizeProjectKind(project.kind) === 'AVATAR' ? 'talking-head' : 'reel'}.mp4`, main);
       } catch (e: any) {
         // L-5: log the fetch failure server-side, never echo it — the error
         // can carry origin/host details of the storage layer.
@@ -247,10 +256,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // 2) The agent's latest ready Talking Head clip (for reel cards)
-      if (project.kind !== 'FLASHHEAD') {
+      if (normalizeProjectKind(project.kind) !== 'AVATAR') {
         const all = await queryItems<any>(TABLES.PROJECTS, { expression: 'userId = :u', values: { ':u': userId } });
         const talkingHead = all
-          .filter((p: any) => p.kind === 'FLASHHEAD' && p.status === 'READY' && p.videoUrl)
+          .filter((p: any) => normalizeProjectKind(p.kind) === 'AVATAR' && p.status === 'READY' && p.videoUrl)
           .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
         if (talkingHead) {
           try {
@@ -335,7 +344,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `Generated: ${new Date().toISOString().slice(0, 10)}`,
         '',
         'Contents:',
-        `• ${slug}-${project.kind === 'FLASHHEAD' ? 'talking-head' : 'reel'}.mp4 — your ${project.kind === 'FLASHHEAD' ? 'Talking Head clip' : 'AI video reel'}`,
+        `• ${slug}-${normalizeProjectKind(project.kind) === 'AVATAR' ? 'talking-head' : 'reel'}.mp4 — your ${normalizeProjectKind(project.kind) === 'AVATAR' ? 'Talking Head clip' : 'AI video reel'}`,
         ...(zip.file('talking-head.mp4') ? ['• talking-head.mp4 — your AI Talking Head clip'] : []),
         '• captions.txt — ready-to-post captions with your branding',
         '',
@@ -366,7 +375,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Newest first
       projects.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       // M-5: rows keep the raw object URL; the client gets 1h signed URLs.
-      return res.status(200).json({ success: true, projects: await Promise.all(projects.map(signProjectUrls)) });
+      return res.status(200).json({ success: true, projects: await Promise.all(projects.map(p => signProjectUrls(withCanonicalKind(p)))) });
     }
 
     // ── POST /api/projects — create ──────────────────────────────────
@@ -414,7 +423,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         propertyType: b.propertyType || 'House',
         features: Array.isArray(b.features) ? b.features.map(String).slice(0, 20) : [],
         status: (['DRAFT', 'PROCESSING', 'READY', 'FAILED'] as const).includes(b.status) ? b.status : 'DRAFT',
-        kind: (['REEL', 'FLASHHEAD', 'IMAGE', 'SOCIAL'] as const).includes(b.kind) ? b.kind : 'REEL',
+        // Avatar migration (2026-10-27): canonical 'AVATAR' is stored — a
+        // stale bundle sending 'FLASHHEAD' normalizes to it on the way in.
+        kind: (['REEL', 'AVATAR', 'IMAGE', 'SOCIAL'] as const).includes(normalizeProjectKind(b.kind) as any) ? (normalizeProjectKind(b.kind) as 'REEL' | 'AVATAR' | 'IMAGE' | 'SOCIAL') : 'REEL',
         voice: typeof b.voice === 'string' ? b.voice.slice(0, 40) : undefined,
         jobId: typeof b.jobId === 'string' ? b.jobId.slice(0, 120) : undefined,
         creditsSpent: Number(b.creditsSpent) || undefined,
@@ -469,6 +480,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (typeof clean.videoUrl === 'string') clean.videoUrl = rawS3Url(clean.videoUrl);
       if (typeof clean.thumbnailUrl === 'string') clean.thumbnailUrl = rawS3Url(clean.thumbnailUrl);
       if (Array.isArray(clean.photos)) clean.photos = clean.photos.map((p: any) => rawS3Url(String(p)));
+      // Avatar migration (2026-10-27): never persist the legacy kind.
+      if (typeof clean.kind === 'string') clean.kind = normalizeProjectKind(clean.kind);
       clean.updatedAt = new Date().toISOString();
 
       // Publishing a free draft (DRAFT → ACTIVE) takes the 2-credit
@@ -489,7 +502,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         values: { ':u': user_id, ':i': id },
         limit: 1,
       });
-      return res.status(200).json({ success: true, project: await signProjectUrls(updated) });
+      return res.status(200).json({ success: true, project: await signProjectUrls(withCanonicalKind(updated)) });
     }
 
     // ── DELETE /api/projects?user_id=…&id=… ──────────────────────────

@@ -31,7 +31,7 @@ const TOOL_ROUTES: Record<string, string> = {
   'Virtual Staging': '/dashboard/photo-editor?tab=staging',
   'Furniture Removal': '/dashboard/photo-editor?tab=removal',
   'Twilight': '/dashboard/photo-editor?tab=twilight',
-  'AI Avatar (FlashHead)': '/dashboard/video',
+  'AI Avatar Video': '/dashboard/video',
   'Property Description': '/dashboard/description',
   'Social Media': '/dashboard/social',
   'AI Writer': '/dashboard/video',

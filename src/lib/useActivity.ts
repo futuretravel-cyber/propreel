@@ -74,7 +74,7 @@ export function useActivity(userId: string | undefined) {
               timestamp: when, read: false,
               actionUrl: '/dashboard/photo-editor',
             });
-          } else if (t.amount < 0 && (reason.includes('flashhead') || reason.includes('talking head') || reason.includes('lip-sync'))) {
+          } else if (t.amount < 0 && (reason.includes('avatar') || reason.includes('talking head') || reason.includes('lip-sync'))) {
             feed.push({
               id,
               type: 'info', category: 'render',
@@ -140,7 +140,7 @@ export function useActivity(userId: string | undefined) {
 
         // Project status events (reels and Talking Head clips alike)
         for (const p of projects || []) {
-          const isTalkingHead = p.kind === 'FLASHHEAD';
+          const isTalkingHead = p.kind === 'AVATAR';
           if (p.status === 'READY' && p.videoUrl) {
             feed.push({
               id: `proj-${p.id}`,

@@ -4,7 +4,7 @@ import { track } from './analytics';
 import { PropReelAPI } from './api';
 
 import { flashheadCreditsForText, narrationWordCount, narrationSecondsForWords, FLASHHEAD_MAX_SECONDS } from '../../lib/renderPricing';
-const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+import { RENDER_ENDPOINT as MODAL_ENDPOINT } from './renderEndpoint';
 import { workerHeaders, jobHeaders } from './workerAuth';
 import { playRenderComplete } from './renderSound';
 
@@ -119,11 +119,11 @@ export function useFlashHead() {
     setStage('deducting');
     let jobToken: Record<string, string>;
     try {
-      jobToken = await jobHeaders('flashhead', {
+      jobToken = await jobHeaders('avatar', {
         // The script rides along so the API prices per 10s of narration and
         // hash-binds the token to it (worker rejects a mismatched script).
         voiceoverText: opts.voiceoverText,
-        metadata: { kind: 'FLASHHEAD', voice: opts.voice || 'aletta', language: opts.language || 'en-ZA' },
+        metadata: { kind: 'AVATAR', voice: opts.voice || 'aletta', language: opts.language || 'en-ZA' },
       });
       void refresh();
     } catch (e: any) {
@@ -139,7 +139,7 @@ export function useFlashHead() {
     let projectId: string | null = null;
     let wasCancelled = false;
     try {
-      const submitRes = await fetch(`${MODAL_ENDPOINT}/flashhead`, {
+      const submitRes = await fetch(`${MODAL_ENDPOINT}/avatar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...jobToken },
         body: JSON.stringify({
@@ -153,7 +153,7 @@ export function useFlashHead() {
       });
       if (!submitRes.ok) {
         const err = await submitRes.json().catch(() => ({}));
-        throw new Error(err.detail || `FlashHead submit failed (${submitRes.status})`);
+        throw new Error(err.detail || `AI Avatar submit failed (${submitRes.status})`);
       }
       const submitted = await submitRes.json();
       const jobId: string | undefined = submitted.job_id;
@@ -168,7 +168,7 @@ export function useFlashHead() {
         const project = await PropReelAPI.createProject({
           userId: user.id,
           title: `AI Avatar Video — ${opts.voiceoverText.trim().replace(/\s+/g, ' ').slice(0, 60)}`,
-          kind: 'FLASHHEAD',
+          kind: 'AVATAR',
           voice: opts.voice || 'aletta',
           language: opts.language || 'en-ZA',
           status: 'PROCESSING',
@@ -182,7 +182,7 @@ export function useFlashHead() {
       while (Date.now() < deadline) {
         if (cancelRequestedRef.current) { wasCancelled = true; throw new Error('Render cancelled'); }
         await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-        const statusRes = await fetch(`${MODAL_ENDPOINT}/flashhead_status?job_id=${encodeURIComponent(jobId)}`, { headers: await workerHeaders() });
+        const statusRes = await fetch(`${MODAL_ENDPOINT}/avatar_status?job_id=${encodeURIComponent(jobId)}`, { headers: await workerHeaders() });
         if (!statusRes.ok) continue; // transient — retry until deadline
         const job = await statusRes.json();
         setJobStatus(String(job.status || ''));
@@ -195,23 +195,23 @@ export function useFlashHead() {
               ...(job.thumbnail_url ? { thumbnailUrl: String(job.thumbnail_url) } : {}),
             }).catch(() => {});
           }
-          track('render_completed', { kind: 'FLASHHEAD' });
+          track('render_completed', { kind: 'AVATAR' });
           playRenderComplete();
           setStage('done');
           return { videoUrl: job.video_url };
         }
         if (job.status === 'cancelled') { wasCancelled = true; throw new Error('Render cancelled'); }
         if (job.status === 'failed') {
-          throw new Error(job.error || 'FlashHead render failed');
+          throw new Error(job.error || 'AI Avatar render failed');
         }
       }
-      throw new Error('FlashHead timed out — please try again (credits refunded)');
+      throw new Error('AI Avatar timed out — please try again (credits refunded)');
     } catch (e: any) {
       // Mark the project record failed (best effort) and auto-refund
       if (projectId) {
         PropReelAPI.updateProject(user.id, projectId, { status: 'FAILED' }).catch(() => {});
       }
-      await refundCredits('flashhead').catch(() => {});
+      await refundCredits('avatar').catch(() => {});
       setError(wasCancelled ? 'Render cancelled — your credits were refunded.' : (e.message || 'Render failed — your credits were refunded'));
       setStage('idle');
       return null;

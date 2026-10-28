@@ -138,11 +138,11 @@ export default function EnhancedBilling() {
 
   // Real usage-by-feature from the ledger metadata
   const usageByType = useMemo(() => {
-    const byFeature = report?.creditsByFeature || { videoGeneration: 0, imageEditing: 0, flashHead: 0, other: 0 };
+    const byFeature = report?.creditsByFeature || { videoGeneration: 0, imageEditing: 0, avatar: 0, other: 0 };
     return [
       { name: 'Video Renders', value: byFeature.videoGeneration, color: '#800080' },
       { name: 'Photo Edits', value: byFeature.imageEditing, color: '#9333ea' },
-      { name: 'AI Avatar', value: byFeature.flashHead, color: '#a855f7' },
+      { name: 'AI Avatar', value: byFeature.avatar, color: '#a855f7' },
       { name: 'Other', value: byFeature.other, color: '#c084fc' },
     ].filter(x => x.value > 0);
   }, [report]);

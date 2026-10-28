@@ -13,6 +13,7 @@ import { deductCredits } from '../../lib/userService';
 import { TABLES, docClient } from '../../lib/db';
 import { getSessionUser, getTokenFromRequest, requireOwner, sessionUser } from '../../lib/auth';
 import { jobCredits, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../../lib/renderPricing';
+import { normalizeJobScope, AVATAR_CHARGE_DESCRIPTION } from '../../lib/legacySchema';
 import { createHash } from 'crypto';
 
 // ── worker_token mint rate limit ──────────────────────────────────────────
@@ -199,7 +200,10 @@ export async function tokenRoutes(req: VercelRequest, res: VercelResponse, actio
       if (!uidQuota.ok) return mintTooMany(res, uidQuota.retryAfterSec);
 
       const b = (req.body || {}) as any;
-      const scope = String(b.scope || '');
+      // Canonical scope vocabulary (2026-10-27 avatar migration) — stale
+      // cached bundles still mint scope 'flashhead'; ledger rows are written
+      // with the canonical 'avatar' either way.
+      const scope = normalizeJobScope(String(b.scope || ''));
       const voiceoverText = typeof b.voiceover_text === 'string' ? b.voiceover_text : String(b.metadata?.voiceover_text ?? '');
 
       // FlashHead is priced per 10s of narration (per lib/renderPricing), so
@@ -207,7 +211,7 @@ export async function tokenRoutes(req: VercelRequest, res: VercelResponse, actio
       // fallback; text beyond the 90-second cap → a clear client error.
       let credits: number | null;
       let priceError: string | null = null;
-      if (scope === 'flashhead' && voiceoverText.trim()) {
+      if (scope === 'avatar' && voiceoverText.trim()) {
         const seconds = narrationSecondsForText(voiceoverText);
         if (seconds > FLASHHEAD_MAX_SECONDS) {
           priceError =
@@ -220,12 +224,12 @@ export async function tokenRoutes(req: VercelRequest, res: VercelResponse, actio
         return res.status(400).json({ ok: false, error: priceError || 'Unknown job scope or tier', code: priceError ? 'VALIDATION' : 'UNKNOWN_JOB' });
       }
 
-      // Bind the token to the exact script it paid for (scope flashhead):
+      // Bind the token to the exact script it paid for (scope avatar):
       // a tampered client must not mint a token for a 10-word script and then
       // POST a 1,000-word one to the worker. The worker re-hashes the body's
       // voiceover_text and rejects a mismatch — the only honest route to a
       // new price is a fresh mint (a fresh charge).
-      const scriptHash = scope === 'flashhead' && voiceoverText.trim()
+      const scriptHash = scope === 'avatar' && voiceoverText.trim()
         ? createHash('sha256').update(voiceoverText.split(/\s+/).filter(Boolean).join(' ')).digest('hex').slice(0, 16)
         : undefined;
 
@@ -234,7 +238,7 @@ export async function tokenRoutes(req: VercelRequest, res: VercelResponse, actio
       const reason =
         scope === 'render' ? 'Video generation'
         : scope === 'rerender' ? 'Clip re-render'
-        : scope === 'flashhead' ? 'FlashHead lip-sync video'
+        : scope === 'avatar' ? AVATAR_CHARGE_DESCRIPTION
         : scope === 'script' ? 'AI Writer voiceover script'
         : scope === 'description' ? 'Property description'
         : scope === 'social_post' ? 'Social media post'
@@ -244,7 +248,11 @@ export async function tokenRoutes(req: VercelRequest, res: VercelResponse, actio
       // analytics that read these rows) keyed on metadata.kind — keep writing
       // it even if a caller forgets to send it.
       const ledgerKind = scope === 'description' ? 'PROPERTY_DESCRIPTION' : scope === 'social_post' ? 'SOCIAL_POST' : scope === 'social_pack' ? 'SOCIAL_PACK' : null;
-      const metadata = { ...(ledgerKind ? { kind: ledgerKind } : {}), ...(b.metadata || {}), scope, ...(b.tier ? { tier: b.tier } : {}), ...(scope === 'flashhead' && voiceoverText.trim() ? { narration_words: voiceoverText.split(/\s+/).filter(Boolean).length } : {}) };
+      // Legacy clients send metadata.kind 'FLASHHEAD' — canonical writes say
+      // 'AVATAR' (2026-10-27 avatar schema migration).
+      const rawMeta = { ...(b.metadata || {}) };
+      if (String(rawMeta.kind || '').toUpperCase() === 'FLASHHEAD') rawMeta.kind = 'AVATAR';
+      const metadata = { ...(ledgerKind ? { kind: ledgerKind } : {}), ...rawMeta, scope, ...(b.tier ? { tier: b.tier } : {}), ...(scope === 'avatar' && voiceoverText.trim() ? { narration_words: voiceoverText.split(/\s+/).filter(Boolean).length } : {}) };
 
       const { createHmac } = await import('crypto');
       const exp = Math.floor(Date.now() / 1000) + 600; // 10 minutes

@@ -571,7 +571,7 @@ export function BudgetVideoTab() {
                 className={`p-5 rounded-xl text-left transition ${configIndex === idx ? 'bg-purple-700/20 border border-purple-500/30' : 'bg-white/5 hover:bg-white/10'}`}
               >
                 <p className={`text-2xl font-bold ${configIndex === idx ? 'text-purple-300' : 'text-white'}`}>{config.resolution}</p>
-                <p className="text-xs text-ink-400 mt-1">{config.duration}s video from {config.images} photos — gentle Hailuo-02 motion, no voiceover</p>
+                <p className="text-xs text-ink-400 mt-1">{config.duration}s video from {config.images} photos — gentle cinematic motion, no voiceover</p>
                 <p className="text-sm font-semibold text-purple-400 mt-2">{config.credits} credits</p>
                 {configIndex === idx && (user?.credits ?? 0) < config.credits && !((user?.agencyPoolCredits ?? 0) > 0) && (
                   <p className="text-xs text-amber-400/90 mt-2">You have ⚡{user?.credits ?? 0} — <Link to="/dashboard/credits" className="underline hover:text-amber-300">top up</Link> before rendering.</p>

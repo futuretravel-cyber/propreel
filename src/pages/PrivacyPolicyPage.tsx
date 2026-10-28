@@ -134,9 +134,9 @@ export default function PrivacyPolicyPage() {
               Third-party vendors who help us provide the Service, including:
             </p>
             <ul className="list-disc pl-6 text-ink-300 space-y-2 mb-4">
-              <li>Cloud hosting providers (Supabase, AWS)</li>
+              <li>Cloud hosting and infrastructure providers</li>
               <li>Payment processors (Paystack)</li>
-              <li>AI service providers (xAI, Fal.ai, AWS Polly)</li>
+              <li>AI and voice processing providers</li>
               <li>Analytics and monitoring services</li>
               <li>Customer support tools</li>
             </ul>
@@ -236,7 +236,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Account Data:</strong> While your account is active</li>
               <li><strong>Transaction Records:</strong> 7 years (tax compliance)</li>
               <li><strong>Project Data:</strong> Until account deletion</li>
-              <li><strong>Generated Media:</strong> 30 days from creation — uploaded photos, AI-edited images (Photo Editor, Virtual Staging, Furniture Removal, Twilight), rendered videos and AI Avatar Video clips are permanently deleted from AWS storage after 30 days, automatically every night. Download anything you want to keep before it expires.</li>
+              <li><strong>Generated Media:</strong> 30 days from creation — uploaded photos, AI-edited images (Photo Editor, Virtual Staging, Furniture Removal, Twilight), rendered videos and AI Avatar Video clips are permanently deleted from our storage after 30 days, automatically every night. Download anything you want to keep before it expires.</li>
               <li><strong>Audit Logs:</strong> 2 years</li>
               <li><strong>Login History:</strong> 1 year</li>
             </ul>
@@ -248,7 +248,7 @@ export default function PrivacyPolicyPage() {
           <section className="mb-8">
             <h2 className="text-2xl font-bold text-white mb-4">9. International Data Transfers</h2>
             <p className="text-ink-300 leading-relaxed mb-4">
-              Your data is primarily stored in South Africa (af-south-1 region). Some processing may occur in 
+              Your data is primarily stored in South Africa. Some processing may occur in 
               other jurisdictions where our service providers operate. We ensure appropriate safeguards are in 
               place for international transfers.
             </p>

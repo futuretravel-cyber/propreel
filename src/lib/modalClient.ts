@@ -5,7 +5,7 @@
  * Endpoint: https://futuretravel--propreel-render.modal.run
  */
 
-const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+import { RENDER_ENDPOINT as MODAL_ENDPOINT } from './renderEndpoint';
 
 import { workerHeaders } from './workerAuth';
 
@@ -116,7 +116,7 @@ export const ModalAPI = {
    */
   async generateFlashHeadVideo(params: FlashHeadParams): Promise<FlashHeadResponse> {
     try {
-      const response = await fetch(`${MODAL_ENDPOINT}/generate_flashhead_video`, {
+      const response = await fetch(`${MODAL_ENDPOINT}/generate_avatar_video`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

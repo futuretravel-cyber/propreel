@@ -51,7 +51,10 @@ function isReparable(url: string): boolean {
   const ours =
     host === (import.meta.env.VITE_EDGE_RAW_HOST || 'uploads.propreel.co.za') ||
     host === (import.meta.env.VITE_EDGE_CDN_HOST || 'cdn.propreel.co.za') ||
-    /(^|\.)s3[.-].*amazonaws\.com$|\.s3\.amazonaws\.com$/.test(host);
+    // Shape match only — never spell the cloud provider's domain in shipped
+    // code (stealth 2026-10-27). media_sign server-side validates ownership,
+    // so a false positive here merely fails to heal.
+    /(^|\.)s3[.-]/.test(host);
   if (!ours) return false;
   const exp = presignExpiry(url);
   // No timestamp at all (query-stripped form) → treat as dead.

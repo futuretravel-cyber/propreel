@@ -20,7 +20,7 @@ interface TutorialVideo {
 /** The 10 services tutorial videos cover (tutorial recording guide). */
 const CATEGORIES = [
   'AI Video Generator', 'Photo Editor', 'Virtual Staging', 'Furniture Removal',
-  'Twilight', 'AI Avatar (FlashHead)', 'Property Description', 'Social Media',
+  'Twilight', 'AI Avatar Video', 'Property Description', 'Social Media',
   'AI Writer', 'Billing & Credits',
 ];
 
@@ -33,7 +33,7 @@ const CATEGORY_TOOL_LINK: Record<string, string> = {
   'Virtual Staging': '/dashboard/photo-editor?tab=staging',
   'Furniture Removal': '/dashboard/photo-editor?tab=removal',
   'Twilight': '/dashboard/photo-editor?tab=twilight',
-  'AI Avatar (FlashHead)': '/dashboard/video',
+  'AI Avatar Video': '/dashboard/video',
   'Property Description': '/dashboard/description',
   'Social Media': '/dashboard/social',
   'AI Writer': '/dashboard/video',

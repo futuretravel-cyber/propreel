@@ -41,6 +41,10 @@ async function main() {
     }
     const same =
       String(db.resolution || '') === engine.resolution &&
+      // description/engine matter too (2026-10-27): a copy-only catalog scrub
+      // used to be skipped as "in sync" while the row still served old strings.
+      String(db.description || '') === engine.description &&
+      String(db.engine ?? '') === String(engine.engine ?? '') &&
       JSON.stringify((db.configurations || []).map((c: any) => [Number(c.duration), Number(c.images), Number(c.credits)])) ===
         JSON.stringify(engine.configurations.map((c) => [c.duration, c.images, c.credits]));
     if (!same) changes.push(`${engine.id}: [${fmt(db)}] → [${fmt(engine)}]`);

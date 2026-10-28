@@ -81,11 +81,11 @@ export default function EnhancedAnalytics() {
   const successRate = spends.length ? ((successCount / spends.length) * 100).toFixed(1) : null;
   const totalSpent = spends.reduce((s, t) => s + Math.abs(t.amount), 0);
 
-  const featureUsage = useMemo(() => (report?.creditsByFeature || { videoGeneration: 0, imageEditing: 0, flashHead: 0, other: 0 }), [report]);
+  const featureUsage = useMemo(() => (report?.creditsByFeature || { videoGeneration: 0, imageEditing: 0, avatar: 0, other: 0 }), [report]);
   const featurePie = [
     { name: 'Video Renders', value: featureUsage.videoGeneration, color: '#800080' },
     { name: 'Photo Edits', value: featureUsage.imageEditing, color: '#9333ea' },
-    { name: 'FlashHead', value: featureUsage.flashHead, color: '#a855f7' },
+    { name: 'AI Avatar Video', value: featureUsage.avatar, color: '#a855f7' },
     { name: 'Other', value: featureUsage.other, color: '#64748b' },
   ].filter(x => x.value > 0);
 

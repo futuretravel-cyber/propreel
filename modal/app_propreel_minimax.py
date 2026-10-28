@@ -110,7 +110,9 @@ web_app.add_middleware(
 _token_header = "X-PropReel-Token"
 # /admin/secret carries its own stronger gate (ADMIN_API_KEY bearer,
 # constant-time compared, allow-listed secret names) — exempt it here.
-_token_allow_paths = {"/health", "/probe", "/docs", "/openapi.json", "/favicon.ico", "/admin/secret"}
+# STEALTH (2026-10-27): /docs and /openapi.json are no longer exempt — the
+# OpenAPI schema named every route and model to anonymous visitors.
+_token_allow_paths = {"/health", "/probe", "/favicon.ico", "/admin/secret"}
 _warned_no_secret = False
 
 
@@ -120,12 +122,13 @@ def _parse_token(value: Optional[str]):
 
     v1.<exp>.<uid>.<sig>              — generic token: status polls, cancels,
                                         cheap text generation. Free to mint.
-    v2.<exp>.<uid>.<scope>.<sig>      — PAID job token (scope: render|flashhead|edit|script),
+    v2.<exp>.<uid>.<scope>.<sig>      — PAID job token (scope: render|avatar|edit|script;
+                                        legacy alias: flashhead),
                                         minted by the API only after it charges
                                         credits at the price in
                                         lib/renderPricing. Required to START a job.
     v3.<exp>.<uid>.<scope>.<hash>.<sig> — PAID job token bound to the exact
-                                        narration script (FlashHead is priced
+                                        narration script (the avatar is priced
                                         per 10s of narration): <hash> is a
                                         16-hex sha256 prefix of the normed
                                         voiceover_text the API priced. The
@@ -194,6 +197,10 @@ def _parse_token(value: Optional[str]):
         return None, "bad token signature"
     if not hmac.compare_digest(got, expected):
         return None, "bad token signature"
+    # Job-kind vocabulary (2026-10-27 avatar migration): 'avatar' is
+    # canonical; stale cached bundles still mint 'flashhead' tokens.
+    if isinstance(scope, str) and scope.lower() == "flashhead":
+        scope = "avatar"
     return {
         "version": version,
         "uid": uid,
@@ -205,7 +212,7 @@ def _parse_token(value: Optional[str]):
 
 
 def _verify_paid_script_hash(info: Optional[dict], voiceover_text: str) -> None:
-    """Scope flashhead binds its paid token to the EXACT narration script.
+    """Scope avatar binds its paid token to the EXACT narration script.
 
     v3 tokens embed a 16-hex sha256 prefix of the whitespace-normed
     voiceover_text (the same normalization the API minted it from). The body's
@@ -236,8 +243,16 @@ def _verify_paid_script_hash(info: Optional[dict], voiceover_text: str) -> None:
 JOB_ENDPOINT_SCOPE = {
     "/render_video": "render",
     "/edit_image": "edit",
-    "/flashhead": "flashhead",
-    "/generate_flashhead_video": "flashhead",
+    # Avatar jobs (2026-10-27 schema migration — the job kind was
+    # "flashhead"). The canonical routes AND the deprecated aliases all
+    # enforce the 'avatar' paid scope. Before the migration /avatar and
+    # /generate_avatar_video were MISSING from this table entirely: the
+    # middleware then demanded only a valid (free v1) token, so a tampered
+    # client could start paid avatar jobs uncharged. Listed now.
+    "/avatar": "avatar",
+    "/generate_avatar_video": "avatar",
+    "/flashhead": "avatar",
+    "/generate_flashhead_video": "avatar",
     # Per-clip re-roll of a review-paused render — a real fal call, so it
     # carries its own paid single-use token (priced per tier clip-share by
     # lib/renderPricing jobCredits('rerender')). /assemble_reel is NOT here:
@@ -345,6 +360,23 @@ image = modal.Image.debian_slim().apt_install(
 ).add_local_file(str(Path(__file__).parent / "image_prompts.py"), remote_path="/root/image_prompts.py").add_local_file(str(Path(__file__).parent / "camera_prompts.py"), remote_path="/root/camera_prompts.py")
 
 
+import re as _re
+
+_MODEL_ID_RE = _re.compile(
+    r"(?i)\b(?:fal-ai|x-ai|openai|google|openrouter|minimax|anthropic|stability-ai|bria)/[A-Za-z0-9/._-]+"
+    r"|\b(?:hailuo|kling|seedance|seedvr|flashhead|flashvsr|grok|gemini|gpt-4o|wan-2)[-\w.]*"
+)
+
+
+def _scrub_models(text: str) -> str:
+    """Strip provider/model identifiers from text headed for a client.
+
+    Error details land in user-visible toasts and /health is unauthenticated —
+    model ids must never ride either (stealth rule 2026-10-27: nothing outside
+    this module may reveal which providers or models run underneath)."""
+    return _MODEL_ID_RE.sub("[model]", text)
+
+
 def _friendly_fal_error(e: Exception, context: str = "Image edit") -> str:
     """Map fal.ai/provider failures to clear client-facing messages.
 
@@ -358,9 +390,10 @@ def _friendly_fal_error(e: Exception, context: str = "Image edit") -> str:
     if "Could not deserialize remote exception" in msg or "remote traceback" in msg.lower():
         lines = [l.strip() for l in msg.splitlines() if l.strip()]
         msg = lines[-1] if lines else msg
+    msg = _scrub_models(msg)
     lowered = msg.lower()
     if "Exhausted balance" in msg or "User is locked" in msg:
-        return f"{context} failed: the fal.ai account is out of balance (user locked). Top up at fal.ai/dashboard/billing."
+        return f"{context} failed: the AI service is temporarily unavailable (account balance) — please try again later."
     # ── Media-fetch failures BEFORE any status-code branch ────────────────
     # When a provider failed to fetch OUR media (an input image the vendor
     # downloads itself), its error text often carries the HTTP status of that
@@ -386,24 +419,22 @@ def _friendly_fal_error(e: Exception, context: str = "Image edit") -> str:
     # function) — distinct from fal auth and actionable on OUR side.
     if "unable to locate credentials" in lowered:
         return (
-            f"{context} failed: this worker is missing its S3 credentials "
-            "(aws-credentials Modal secret not mounted on the function) — "
-            "vendor media could not be presigned. Ops: attach the "
-            "aws-credentials secret and redeploy."
+            f"{context} failed: this worker is missing its media-storage "
+            "credentials — media links could not be signed. Ops: attach the "
+            "storage credentials secret and redeploy."
         )
     if "401" in msg or "Unauthorized" in msg:
-        return "fal.ai rejected the API key (401 Unauthorized) - check FAL_KEY in the fal-credentials Modal secret."
+        return "the AI service rejected our service key (401) — please contact support."
     if "403" in msg or "Forbidden" in msg:
-        return f"fal.ai rejected the request (403 Forbidden): {msg[:300]}"
+        return f"the AI service refused the request (403): {msg[:300]}"
     if "422" in msg or "Unprocessable" in msg:
-        return f"fal.ai rejected the request payload (422): {msg[:300]}"
+        return f"the AI service rejected the request payload (422): {msg[:300]}"
     if "429" in msg or "rate limit" in msg.lower():
-        return "fal.ai rate limit reached - please retry in a moment."
+        return "the AI service rate limit reached - please retry in a moment."
     if "404" in msg or "could not be found" in lowered or "no endpoints found" in lowered:
         return (
-            f"{context} model unavailable (404): the AI model behind this feature was "
-            "retired from the provider. Ops: update the model list and redeploy. "
-            f"({msg[:200]})"
+            f"{context} is temporarily unavailable — our team has been notified. "
+            f"({msg[:120]})"
         )
     return f"{context} failed: {msg[:400]}"
 
@@ -1021,7 +1052,13 @@ def _read_job_status(record_id: str):
     try:
         s3 = boto3.client('s3', region_name=S3_REGION)
         obj = s3.get_object(Bucket=S3_BUCKET, Key=f"jobs/{record_id}.json")
-        return _json.loads(obj['Body'].read())
+        doc = _json.loads(obj['Body'].read())
+        # Job-kind normalization (2026-10-27 avatar migration): records
+        # written before the rename carry kind "flashhead" — readers always
+        # see the canonical "avatar" (history is never rewritten).
+        if isinstance(doc, dict) and doc.get("kind") == "flashhead":
+            doc["kind"] = "avatar"
+        return doc
     except Exception:
         return None
 
@@ -3455,7 +3492,7 @@ def render_video(
     # Ops report: Narakeet bills per synthesized second — record it on every
     # completed video job (0 = no narration) so old records stay guessable
     # (absent key = predates measurement, excluded from the report totals).
-    nar_extra = {"narakeet_seconds": round(float(narakeet_seconds), 2)}
+    nar_extra = {"voiceover_seconds": round(float(narakeet_seconds), 2)}
     if narakeet_seconds > 0:
         _rep_lang, _rep_voice = _resolve_narakeet_voice(voice_id, language)
         nar_extra.update({"narakeet_voice": _rep_voice, "narakeet_language": _rep_lang})
@@ -3711,13 +3748,13 @@ def probe_fal_health():
     except Exception as e:
         msg = str(e)
         if "Exhausted balance" in msg or "User is locked" in msg:
-            cls, detail = "billing_locked", "fal.ai account out of balance — top up at fal.ai/dashboard/billing"
+            cls, detail = "billing_locked", "AI service account out of balance — ops: top up at the provider dashboard"
         elif "401" in msg or "Unauthorized" in msg or "invalid API key" in msg.lower():
-            cls, detail = "auth_failed", "FAL_KEY rejected (401) — check the fal-credentials Modal secret"
+            cls, detail = "auth_failed", "service key rejected (401) — ops: check the credentials secret"
         elif "timed out" in msg.lower() or "timeout" in msg.lower():
-            cls, detail = "timeout", "fal.ai ping timed out after 120s"
+            cls, detail = "timeout", "AI service ping timed out after 120s"
         else:
-            cls, detail = "provider_error", msg[:300]
+            cls, detail = "provider_error", _scrub_models(msg[:300])
         record.update({"healthy": False, "class": cls, "detail": detail, "latencyMs": int((_time.time() - started) * 1000)})
 
     try:
@@ -4522,10 +4559,9 @@ def generate_flashhead_video(
         "seed": result.get("seed", 0),
         "user_id": user_id,
         "credits_used": 8,  # FlashHead costs 8 credits
-        "model": "fal-ai/flashhead/audio-to-video",
         "voice": nar_voice,
         "language": lang,
-        "narakeet_seconds": round(float(nar_seconds), 2)
+        "voiceover_seconds": round(float(nar_seconds), 2)
     }
 
 
@@ -4567,22 +4603,24 @@ def _health_payload() -> dict:
     # Every AI tier runs Hailuo-02 standard since the 2026-10-21 engine
     # unification, so the single-value `model` field the frontend status
     # cards render is simply it; the full per-tier map rides in `engine`.
-    primary_engine_model = HAILUO_MODEL
+    # STEALTH (2026-10-27): /health is unauthenticated and must never name
+    # engines, models or providers — the operator truth (which engine each
+    # tier runs) lives in the tier catalog in this module.
     return {
         "status": "healthy",
         "service": "propreel-render",
         "version": "2.1.0",
-        "engine": TIER_VIDEO_ENGINE,
-        "model": primary_engine_model,
+        "engine": "standard",
+        "model": "standard",
         # Hailuo-02 standard clips are 6s (the assembler stretches/trims each
         # to its even share of the reel); Kling's dormant 5s clips excepted.
         "clip_duration": 6,
         "resolutions": ai_resolutions,
         "audio": False,
-        "flashhead": "fal-ai/flashhead/v1/lip-sync",
-        # Live kill-switch state (FLASHVSR_UPSCALE) — operators read this from
+        "avatar_video": True,
+        # Live kill-switch state (upscale) — operators read this from
         # GET /health without digging through render logs.
-        "flashvsr_upscale": _flashvsr_enabled(),
+        "upscale_enabled": _flashvsr_enabled(),
     }
 
 
@@ -4855,9 +4893,12 @@ async def api_assemble_reel(request: AssembleReelRequest, raw_request: Request):
         "message": "Assembling reviewed clips — poll /render_status for completion.",
     }
 
+@web_app.post("/generate_avatar_video")
+# Deprecated path kept for stale cached bundles only — the current frontend
+# never calls it (stealth 2026-10-27: feature paths must not name the model).
 @web_app.post("/generate_flashhead_video")
 async def api_generate_flashhead_video(request: FlashHeadRequest, raw_request: Request):
-    """API endpoint to generate FlashHead lip-sync video"""
+    """API endpoint to generate an avatar lip-sync video (legacy alias route)."""
     # Script-hash binding BEFORE the claim: a mismatch must leave the paid
     # token un-burnt so the client's refund path can reverse the charge.
     _verify_paid_script_hash(
@@ -5086,11 +5127,13 @@ def flashhead_job(job_id: str, profile_image_url: str, voiceover_text: str, user
         print(f"FlashHead job {job_id} complete: {final_url} ({duration_seconds}s)")
         _write_job_status(job_id, "completed", {
             "video_url": final_url,
-            # Ops report: billed Narakeet seconds per avatar video
+            # Ops report: billed voiceover seconds per avatar video
+            # (STEALTH 2026-10-27: job status is user-visible — never name
+            # vendors or models in these keys.)
             "kind": "flashhead",
-            "narakeet_seconds": round(float(nar_seconds), 2),
-            "narakeet_voice": nar_voice,
-            "narakeet_language": lang,
+            "voiceover_seconds": round(float(nar_seconds), 2),
+            "voiceover_voice": nar_voice,
+            "voiceover_language": lang,
             **({"duration_seconds": duration_seconds} if duration_seconds else {}),
             **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
         })
@@ -5112,9 +5155,11 @@ class GenerateTextRequest(BaseModel):
     fields: dict = {}
     images: list[str] = []  # optional photo URLs for Grok vision
 
+@web_app.post("/avatar")
+# Deprecated path kept for stale cached bundles only (see above).
 @web_app.post("/flashhead")
 async def api_flashhead(request: FlashHeadJobRequest, raw_request: Request):
-    """Start an async FlashHead lip-sync job. Poll /flashhead_status."""
+    """Start an async avatar lip-sync job. Poll /avatar_status."""
     # Script-hash binding BEFORE the claim (same contract as /generate_flashhead_video).
     _verify_paid_script_hash(
         _parse_token(raw_request.headers.get(_token_header))[0],
@@ -5124,7 +5169,7 @@ async def api_flashhead(request: FlashHeadJobRequest, raw_request: Request):
     try:
         import time as _time, uuid as _uuid
         job_id = f"fh_{int(_time.time() * 1000)}_{_uuid.uuid4().hex[:6]}"
-        _write_job_status(job_id, "queued", {"kind": "flashhead"})
+        _write_job_status(job_id, "queued", {"kind": "avatar"})
         flashhead_job.spawn(
             job_id=job_id,
             profile_image_url=request.profile_image_url,
@@ -5137,11 +5182,13 @@ async def api_flashhead(request: FlashHeadJobRequest, raw_request: Request):
         return {
             "job_id": job_id,
             "status": "queued",
-            "poll_url": f"/flashhead_status?job_id={job_id}",
+            "poll_url": f"/avatar_status?job_id={job_id}",
         }
     except Exception as e:
         raise HTTPException(status_code=502, detail=_friendly_fal_error(e, context="AI Avatar"))
 
+@web_app.get("/avatar_status")
+# Deprecated path kept for stale cached bundles only (see above).
 @web_app.get("/flashhead_status")
 async def api_flashhead_status(job_id: str):
     status = _read_job_status(job_id)
@@ -5149,10 +5196,50 @@ async def api_flashhead_status(job_id: str):
         raise HTTPException(status_code=404, detail=f"Unknown job_id: {job_id}")
     return presign_urls(status)
 
+# ── Per-user rate limit: language_check / translate ───────────────────────────
+# These two kinds are the only /generate_text paths the browser can fire from a
+# pause in typing, and the frontend verdict cache is a client-side courtesy —
+# the hard brake belongs on the server. Sliding window per worker instance,
+# keyed by the token's uid (the identity the API minted for the signed-in
+# user); callers without a usable token fall back to their client host.
+# 30 calls / 10 min comfortably covers a cached editing session (a handful of
+# checks) while capping runaway clients. Best-effort per Modal web instance:
+# containers scale independently, so this bounds each instance rather than a
+# global total — the frontend cache is the volume control, this is the abuse
+# guard. Fail-open for the caller either way: a 429 only skips the advisory
+# language check, it never blocks a render.
+_text_rate_buckets: dict = {}
+_TEXT_RATE_LIMIT = 30        # calls per window, shared by both kinds
+_TEXT_RATE_WINDOW_S = 600.0  # 10 minutes
+
+
+def _text_rate_limited(key: str) -> bool:
+    now = time.time()
+    bucket = _text_rate_buckets.get(key)
+    if bucket is None:
+        # Bound memory: uid/host churn must not grow this map forever.
+        if len(_text_rate_buckets) > 4096:
+            _text_rate_buckets.clear()
+        bucket = _text_rate_buckets.setdefault(key, [])
+    bucket[:] = [t for t in bucket if now - t < _TEXT_RATE_WINDOW_S]
+    if len(bucket) >= _TEXT_RATE_LIMIT:
+        return True
+    bucket.append(now)
+    return False
+
+
 @web_app.post("/generate_text")
-async def api_generate_text(request: GenerateTextRequest):
+async def api_generate_text(request: GenerateTextRequest, raw_request: Request):
     """Grok AI text generation for property descriptions, social captions,
     and video voiceover scripts (optional attached photos)."""
+    if request.kind in ("language_check", "translate"):
+        payload, _err = _parse_token(raw_request.headers.get(_token_header))
+        uid = (payload or {}).get("uid") or (raw_request.client.host if raw_request.client else "anon")
+        if _text_rate_limited(uid):
+            raise HTTPException(
+                status_code=429,
+                detail="Too many language requests — please wait a few minutes and try again.",
+            )
     try:
         text = await generate_text_fn.remote.aio(kind=request.kind, fields=request.fields, images=request.images)
         # An empty 200 settles silently in the browser (the caller writes ""
@@ -5259,8 +5346,8 @@ async def admin_secret(request: Request) -> dict:
     # as env) — or supplied once by the request to bootstrap a fresh or
     # rotated token, which is then persisted back into that secret.
     import modal as _modal
-    tok_id = str(body.get("modal_token_id") or os.environ.get("MODAL_TOKEN_ID", ""))
-    tok_sec = str(body.get("modal_token_secret") or os.environ.get("MODAL_TOKEN_SECRET", ""))
+    tok_id = str(body.get("platform_token_id") or os.environ.get("MODAL_TOKEN_ID", ""))
+    tok_sec = str(body.get("platform_token_secret") or os.environ.get("MODAL_TOKEN_SECRET", ""))
     if not tok_id or not tok_sec:
         raise HTTPException(status_code=502, detail=(
             "MODAL_TOKEN_ID/SECRET not available — paste the Modal token once "

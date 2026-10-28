@@ -16,7 +16,7 @@
  * gets every update as it lands.
  */
 
-const MODAL_ENDPOINT = import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run';
+import { RENDER_ENDPOINT as MODAL_ENDPOINT } from './renderEndpoint';
 
 export interface FalEditParams {
   imageUrl: string;         // public URL accepted by fal (S3 URLs in production)

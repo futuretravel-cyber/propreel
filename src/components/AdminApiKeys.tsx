@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { KeyRound, CheckCircle2, AlertTriangle, RefreshCw, Copy, ShieldCheck } from 'lucide-react';
-import { SERVICE_KEYS } from '../../lib/serviceKeys';
 import { useToast } from '../context/ToastContext';
+// NOTE (stealth 2026-10-27): the service catalog is NOT imported here — the
+// browser gets it only from the admin-authed API response below, so vendor
+// and secret names never ship in the public JS bundle.
 
 interface Status {
   services: Array<{ id: string; label: string; blurb: string; fields: Array<{ name: string; label: string }> }>;
@@ -42,7 +44,7 @@ export default function AdminApiKeys() {
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const save = async (serviceId: string) => {
-    const spec = SERVICE_KEYS.find(s => s.id === serviceId);
+    const spec = status?.services?.find(s => s.id === serviceId);
     if (!spec) return;
     const payload: Record<string, string> = {};
     for (const f of spec.fields) if ((values[f.name] || '').trim()) payload[f.name] = values[f.name].trim();
@@ -59,7 +61,7 @@ export default function AdminApiKeys() {
           // One-time bootstrap: the worker's ambient identity may be denied
           // on the very first call; the token lets it fall back and persist.
           ...(tokenBootstrap.id && tokenBootstrap.secret
-            ? { modal_token_id: tokenBootstrap.id, modal_token_secret: tokenBootstrap.secret }
+            ? { platform_token_id: tokenBootstrap.id, platform_token_secret: tokenBootstrap.secret }
             : {}),
         }),
       });
@@ -68,7 +70,7 @@ export default function AdminApiKeys() {
       const legs: string[] = [];
       let ok = true;
       for (const v of (data.vercel || [])) legs.push(v.error ? (ok = false, `Vercel ${v.key}: ${v.error}`) : `Vercel ${v.key}: ${v.result}`);
-      for (const m of (data.modal || [])) legs.push(m.ok ? `Modal ${m.secret}: updated (${m.via})` : (ok = false, `Modal ${m.secret}: ${m.error}`));
+      for (const m of (data.modal || [])) legs.push(m.ok ? `Render platform ${m.secret}: updated (${m.via})` : (ok = false, `Render platform ${m.secret}: ${m.error}`));
       if (data.redeploy) legs.push(data.redeploy.ok ? `Redeploying: ${data.redeploy.url}` : (ok = false, `Redeploy: ${data.redeploy.error}`));
       // L-1: the server no longer echoes submitted secrets — compose the
       // copyable .env block locally from the payload we just sent.
@@ -95,7 +97,7 @@ export default function AdminApiKeys() {
         <h2 className="text-lg font-bold text-white">Service API Keys</h2>
       </div>
       <p className="text-xs text-ink-400">
-        Saving a key updates the Vercel project env (and redeploys so it takes effect) and the matching Modal secret.
+        Saving a key updates the Vercel project env (and redeploys so it takes effect) and the matching render-platform secret.
         Keys are write-only — this panel never receives stored values back. Your local .env is delivered as copyable lines.
       </p>
 
@@ -104,8 +106,8 @@ export default function AdminApiKeys() {
           <p className="text-sm text-amber-200 flex items-center gap-2"><AlertTriangle className="w-4 h-4 shrink-0" /> One-time setup required</p>
           <ul className="text-xs text-ink-300 space-y-1 list-disc pl-5">
             {!status?.plumbing.vercelToken && <li>Add <code>VERCEL_TOKEN</code> (and optionally <code>VERCEL_TEAM_ID</code>) to the Vercel project env — a token with project + deployment scope.</li>}
-            {!status?.plumbing.adminApiKey && <li>Add <code>ADMIN_API_KEY</code> to the Vercel project env and to the Modal secret <code>admin-api</code> (same random value).</li>}
-            <li>Create the Modal secret <code>modal-admin-creds</code> (MODAL_TOKEN_ID / MODAL_TOKEN_SECRET) — or paste the token once under Advanced below and the worker persists it.</li>
+            {!status?.plumbing.adminApiKey && <li>Add <code>ADMIN_API_KEY</code> to the Vercel project env and to the render-platform secret <code>admin-api</code> (same random value).</li>}
+            <li>Create the render-platform secret for admin credentials (platform token id / token secret) — or paste the token once under Advanced below and the worker persists it.</li>
           </ul>
         </div>
       )}
@@ -116,7 +118,7 @@ export default function AdminApiKeys() {
       </label>
 
       <div className="space-y-4">
-        {(status?.services || SERVICE_KEYS).map(s => (
+        {(status?.services || []).map(s => (
           <div key={s.id} className="bg-white/5 rounded-xl p-4 space-y-3">
             <div>
               <p className="font-semibold text-white text-sm">{s.label}</p>
@@ -165,12 +167,12 @@ export default function AdminApiKeys() {
       <details className="bg-white/5 rounded-xl p-4">
         <summary className="text-sm text-ink-300 cursor-pointer flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-purple-400" /> Advanced — one-time Modal token bootstrap</summary>
         <p className="text-xs text-ink-500 mt-2">
-          If the worker's own identity cannot update a secret, supply your Modal token once (Account → API tokens).
-          The worker persists it into the <code>modal-admin-creds</code> secret so future saves need nothing here.
+          If the worker's own identity cannot update a secret, supply your platform token once (Account → API tokens).
+          The worker persists it into the admin-credentials secret so future saves need nothing here.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-          <input type="password" autoComplete="off" className="input" placeholder="MODAL_TOKEN_ID" value={tokenBootstrap.id} onChange={e => setTokenBootstrap(t => ({ ...t, id: e.target.value }))} />
-          <input type="password" autoComplete="off" className="input" placeholder="MODAL_TOKEN_SECRET" value={tokenBootstrap.secret} onChange={e => setTokenBootstrap(t => ({ ...t, secret: e.target.value }))} />
+          <input type="password" autoComplete="off" className="input" placeholder="Platform token id" value={tokenBootstrap.id} onChange={e => setTokenBootstrap(t => ({ ...t, id: e.target.value }))} />
+          <input type="password" autoComplete="off" className="input" placeholder="Platform token secret" value={tokenBootstrap.secret} onChange={e => setTokenBootstrap(t => ({ ...t, secret: e.target.value }))} />
         </div>
       </details>
     </div>

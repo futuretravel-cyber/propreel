@@ -34,6 +34,13 @@ export const TRIAL_DAYS = 7;
 /** Soft-deleted rows are kept this long after trial expiry, then purged. */
 export const TRIAL_RETENTION_DAYS = 30;
 
+/** Free voiceover translates granted before the per-translate credit charge
+ *  starts (translate pricing, 2026-10-27). api/credits.ts counts UNREVERSED
+ *  TRANSLATE ledger rows to see how many are used, so a failed translate
+ *  that is refunded gives the allowance back instead of burning a try.
+ *  Applies only while the trial is running (isTrialRunning). */
+export const TRIAL_FREE_TRANSLATES = 3;
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SITE_BASE = process.env.SITE_URL || 'https://www.propreel.co.za';
 

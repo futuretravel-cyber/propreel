@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/check-no-inline-scripts.mjs",
+    "build": "vite build && node scripts/check-bundle-stealth.mjs && node scripts/check-no-inline-scripts.mjs",
     "typecheck": "tsc --noEmit",
     "e2e:pricing": "tsx scripts/pricing_paths_e2e.ts",
     "e2e:admin-ui": "tsx scripts/admin_ui_smoke.ts",

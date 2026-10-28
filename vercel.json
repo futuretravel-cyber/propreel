@@ -23,6 +23,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/w/:path*",
+      "destination": "https://futuretravel--propreel-render-web.modal.run/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -34,6 +38,15 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/status",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
         }
       ]
     },
@@ -62,7 +75,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' https://plausible.io https://js.paystack.co https://client.crisp.chat https://widget.intercom.io; style-src 'self' 'sha256-XhB/sT1NFZiND03EBI02AuLnkpCY2zNyXLrK3A24IXo=' https://client.crisp.chat; font-src 'self' data: https://client.crisp.chat; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.vercel.app https://*.modal.run https://api.paystack.co https://plausible.io https://www.propreel.co.za https://uploads.propreel.co.za https://cdn.propreel.co.za https://client.crisp.chat wss://client.crisp.chat https://api-iam.intercom.io wss://*.intercom.io; frame-src https://js.paystack.co https://maps.google.com https://www.google.com https://client.crisp.chat https://widget.intercom.io; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.paystack.com; frame-ancestors 'none'; upgrade-insecure-requests"
+          "value": "default-src 'self'; script-src 'self' https://plausible.io https://js.paystack.co https://client.crisp.chat https://widget.intercom.io; style-src 'self' 'sha256-XhB/sT1NFZiND03EBI02AuLnkpCY2zNyXLrK3A24IXo=' https://client.crisp.chat; font-src 'self' data: https://client.crisp.chat; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://api.propreel.co.za https://*.vercel.app https://api.paystack.co https://plausible.io https://www.propreel.co.za https://uploads.propreel.co.za https://cdn.propreel.co.za https://client.crisp.chat wss://client.crisp.chat https://api-iam.intercom.io wss://*.intercom.io; frame-src https://js.paystack.co https://maps.google.com https://www.google.com https://client.crisp.chat https://widget.intercom.io; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.paystack.com; frame-ancestors 'none'; upgrade-insecure-requests"
         }
       ]
     }

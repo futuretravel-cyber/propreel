@@ -37,7 +37,7 @@
  * The script refunds EVERY charge it makes, so a successful run leaves the
  * account's balance untouched (asserted) — only ledger rows accumulate.
  */
-import { TIERS, jobCredits, SCRIPT_CREDITS, scriptCreditsForDuration, IMAGE_EDIT_CREDITS, STAGING_EDIT_CREDITS, STAGING_PRESET_IDS, DESCRIPTION_CREDITS, SOCIAL_POST_CREDITS, flashheadCreditsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../lib/renderPricing';
+import { TIERS, jobCredits, SCRIPT_CREDITS, scriptCreditsForDuration, IMAGE_EDIT_CREDITS, STAGING_EDIT_CREDITS, STAGING_PRESET_IDS, DESCRIPTION_CREDITS, SOCIAL_POST_CREDITS, TRANSLATE_CREDITS, flashheadCreditsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../lib/renderPricing';
 
 // ── Config ────────────────────────────────────────────────────────────────
 const EMAIL = process.env.E2E_ACCOUNT_EMAIL || 'futuretravel@gmail.com';
@@ -110,6 +110,11 @@ function enginePhase() {
   // 50s→2, 60s→2, 90s→3; 12-image/90s Grok vision cost ~R1.08 ⇒ flat 1⚡
   // was a loss). Mints with no duration stay on the legacy flat rate.
   check('script legacy mint (no duration) == flat 1', jobCredits('script') === SCRIPT_CREDITS && SCRIPT_CREDITS === 1);
+  // Voiceover Translate is priced at the deduct (kind TRANSLATE) — the same
+  // table, so the engine must price it identically (trial users get the
+  // first 3 free at the API layer, never a different price).
+  check('translate == 1 (server-priced at the deduct)', jobCredits('translate') === TRANSLATE_CREDITS && TRANSLATE_CREDITS === 1);
+  check('unknown scope still prices null (never 0)', jobCredits('not_a_scope') === null);
   const SCRIPT_LADDER: Array<[number, number]> = [[30, 1], [50, 2], [60, 2], [90, 3]];
   for (const [dur, expect] of SCRIPT_LADDER) {
     check(`script ${dur}s == ${expect} credit${expect === 1 ? '' : 's'} (server-priced)`, scriptCreditsForDuration(dur) === expect && jobCredits('script', { duration: dur }) === expect);

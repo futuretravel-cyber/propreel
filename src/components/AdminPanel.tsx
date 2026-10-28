@@ -10,6 +10,7 @@ import { useToast } from '../context/ToastContext';
 import { SA_LANGUAGES } from '../lib/constants';
 import { IMAGE_PRESETS } from '../lib/imagePrompts';
 import { formatZar } from '../lib/utils';
+import { RENDER_ENDPOINT } from '../lib/renderEndpoint';
 import { Video, Image, BarChart3, Settings, Shield, Users, Star, Check, X, Sparkles, TrendingUp, Download, RefreshCw, Plus, Search, Mic, FileText, Music, User } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Line, Tooltip as RTooltip } from 'recharts';
 import AdminTutorials from './AdminTutorials';
@@ -237,7 +238,7 @@ function useFalProbe() {
   useEffect(() => {
     let alive = true;
     const load = () => {
-      const url = `${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/probe`;
+      const url = `${RENDER_ENDPOINT}/probe`;
       fetch(url).then(r => r.json()).then(d => { if (alive) setProbe(d); }).catch(() => {});
     };
     load();
@@ -251,13 +252,13 @@ function FalHealthCard() {
   const probe = useFalProbe();
   const cls = probe?.class || 'loading';
   const config: Record<string, { color: string; label: string }> = {
-    healthy: { color: 'text-green-400', label: 'fal.ai healthy' },
-    billing_locked: { color: 'text-red-400', label: 'fal.ai OUT OF BALANCE — renders will fail' },
-    auth_failed: { color: 'text-red-400', label: 'fal.ai key rejected — check FAL_KEY secret' },
-    provider_error: { color: 'text-yellow-400', label: 'fal.ai degraded' },
-    timeout: { color: 'text-yellow-400', label: 'fal.ai slow/timeout' },
+    healthy: { color: 'text-green-400', label: 'AI provider healthy' },
+    billing_locked: { color: 'text-red-400', label: 'AI provider OUT OF BALANCE — renders will fail' },
+    auth_failed: { color: 'text-red-400', label: 'AI provider key rejected — check the service key secret' },
+    provider_error: { color: 'text-yellow-400', label: 'AI provider degraded' },
+    timeout: { color: 'text-yellow-400', label: 'AI provider slow/timeout' },
     no_data: { color: 'text-ink-400', label: 'Awaiting first probe' },
-    loading: { color: 'text-ink-400', label: 'Checking fal.ai status…' },
+    loading: { color: 'text-ink-400', label: 'Checking AI provider status…' },
   };
   const c = config[cls] || config.loading;
   return (
@@ -335,12 +336,12 @@ function AdminOverview() {
             </div>
             <div className="bg-ink-900/60 rounded-lg p-3">
               <p className="text-[11px] text-ink-400">AI Avatar Video renders</p>
-              <p className="text-xl font-bold text-white">{rm.flashhead.renders}</p>
-              <p className="text-[11px] text-cyan-300">{rm.flashhead.credits} credits</p>
+              <p className="text-xl font-bold text-white">{rm.avatar.renders}</p>
+              <p className="text-[11px] text-cyan-300">{rm.avatar.credits} credits</p>
             </div>
             <div className="bg-ink-900/60 rounded-lg p-3">
               <p className="text-[11px] text-ink-400">AI Avatar Video runtime</p>
-              <p className="text-xl font-bold text-white">{rm.flashhead.measuredSeconds ? fmtRuntime(rm.flashhead.measuredSeconds) : '—'}</p>
+              <p className="text-xl font-bold text-white">{rm.avatar.measuredSeconds ? fmtRuntime(rm.avatar.measuredSeconds) : '—'}</p>
               <p className="text-[11px] text-ink-500">measured by worker</p>
             </div>
             <div className="bg-ink-900/60 rounded-lg p-3">
@@ -361,7 +362,7 @@ function AdminOverview() {
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 />
                 <Bar dataKey="videoCredits" name="Video credits" stackId="ai" fill="#7c3aed" />
-                <Bar dataKey="flashheadCredits" name="AI Avatar Video credits" stackId="ai" fill="#22d3ee" />
+                <Bar dataKey="avatarCredits" name="AI Avatar Video credits" stackId="ai" fill="#22d3ee" />
                 <Bar dataKey="imageCredits" name="Image edit credits" stackId="ai" fill="#ec4899" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -388,7 +389,7 @@ function AdminNarakeetOps() {
     let cancelled = false;
     setLoading(true);
     setError('');
-    fetch(`/api/users?action=admin_narakeet_usage&days=${days}`)
+    fetch(`/api/users?action=admin_voice_usage&days=${days}`)
       .then(r => { if (!r.ok) throw new Error('Ops report unavailable'); return r.json(); })
       .then(d => { if (!cancelled) setData(d); })
       .catch(e => { if (!cancelled) setError(e.message); })
@@ -397,7 +398,7 @@ function AdminNarakeetOps() {
   }, [days]);
 
   const langLabel = (code: string) => SA_LANGUAGES.find(l => l.id === code)?.label || code;
-  const kindLabel = (kind: string) => (kind === 'flashhead' ? 'Avatar' : 'Reel');
+  const kindLabel = (kind: string) => (kind === 'avatar' ? 'Avatar' : 'Reel');
   // Render ops CSV — the per-render rows behind the tiles (audit §11).
   const opsRows = (data?.recent || []).map((r: any) => ({
     jobId: r.jobId || r.recordId || '',
@@ -420,7 +421,7 @@ function AdminNarakeetOps() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-          <Mic className="w-4 h-4 text-purple-400" /> Voiceover ops — Narakeet minutes per render
+          <Mic className="w-4 h-4 text-purple-400" /> Voiceover ops — billed minutes per render
         </h3>
         <div className="flex items-center gap-2">
           {[7, 30, 90].map(d => (
@@ -546,7 +547,7 @@ function AdminPnl() {
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [form, setForm] = useState({ label: '', category: 'fal.ai', amount: '', note: '' });
+  const [form, setForm] = useState({ label: '', category: 'AI services', amount: '', note: '' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -712,16 +713,16 @@ function AdminPnl() {
               <FileText className="w-4 h-4 text-purple-400" /> Expense entries — {s.monthLabel}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
-              <input className="input md:col-span-4" placeholder="e.g. fal.ai October usage" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} />
+              <input className="input md:col-span-4" placeholder="e.g. AI provider October usage" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} />
               <select className="input md:col-span-2" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} aria-label="Expense category">
-                {['fal.ai', 'Modal', 'AWS', 'Paystack', 'Marketing', 'Payroll', 'Software', 'Office', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
+                {['AI services', 'Compute', 'Cloud services', 'Payments', 'Marketing', 'Payroll', 'Software', 'Office', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <CurrencyInput className="input md:col-span-2" allowDecimals value={form.amount} onChange={v => setForm({ ...form, amount: v })} placeholder="Amount (R)" aria-label="Amount in rand" />
               <input className="input md:col-span-3" placeholder="Note (optional)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} />
               <button onClick={addExpense} disabled={saving} className="btn btn-primary justify-center"><Plus className="w-4 h-4" /> Add</button>
             </div>
             {s.expenses.items.length === 0 ? (
-              <p className="text-xs text-ink-500">No expenses for this month yet — log Fal monthly usage, Modal, AWS, Paystack fees, salaries, anything the business pays for.</p>
+              <p className="text-xs text-ink-500">No expenses for this month yet — log AI, compute, cloud and payment fees, salaries, anything the business pays for.</p>
             ) : (
               <ul className="space-y-1">
                 {s.expenses.items.map((e: any) => (
@@ -808,7 +809,7 @@ function PnlAnalyst({ data }: { data: any }) {
       case 'insufficient_data':
         return `Break-even forecast needs at least 2 months of usage data (have ${f.sampleMonths}).`;
       default:
-        return 'No expense base logged yet — add fal.ai, Modal, AWS and Paystack bills to project break-even.';
+        return 'No expense base logged yet — add AI, compute, cloud and payment bills to project break-even.';
     }
   };
 
@@ -1070,7 +1071,7 @@ function AdminSettings() {
   const [musicApi, setMusicApi] = useState<'ok' | 'fail' | 'loading'>('loading');
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_MODAL_ENDPOINT || 'https://futuretravel--propreel-render-web.modal.run'}/health`)
+    fetch(`${RENDER_ENDPOINT}/health`)
       .then(r => r.json()).then(setModalHealth).catch(() => setModalHealth(null));
     fetch('/api/music').then(r => setMusicApi(r.ok ? 'ok' : 'fail')).catch(() => setMusicApi('fail'));
   }, []);
@@ -1081,15 +1082,15 @@ function AdminSettings() {
 
   const services = [
     { name: 'Modal Render Worker', detail: modalHealth ? `v${modalHealth.version} · ${modalHealth.model}` : 'unreachable', ok: !!modalHealth?.status?.match(/healthy/) },
-    { name: 'fal.ai Account', detail: probe?.detail || (probe?.class === 'healthy' ? 'key valid, balance OK' : probe?.class || 'checking…'), ok: probe?.class === 'healthy' },
-    { name: 'Vercel API (DynamoDB)', detail: musicApi === 'ok' ? '/api reachable' : musicApi === 'fail' ? '/api unreachable' : 'checking…', ok: musicApi === 'ok' },
+    { name: 'AI provider account', detail: probe?.detail || (probe?.class === 'healthy' ? 'key valid, balance OK' : probe?.class || 'checking…'), ok: probe?.class === 'healthy' },
+    { name: 'Platform API & database', detail: musicApi === 'ok' ? '/api reachable' : musicApi === 'fail' ? '/api unreachable' : 'checking…', ok: musicApi === 'ok' },
     { name: 'Paystack', detail: 'managed via PAYSTACK_SECRET_KEY env var', ok: null as unknown as boolean },
-    { name: 'AWS S3 + DynamoDB', detail: 'managed via AWS_* env vars', ok: null as unknown as boolean },
+    { name: 'Media & data storage', detail: 'managed via platform storage env vars', ok: null as unknown as boolean },
   ];
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-ink-400">Live service status. API keys are managed in Vercel environment variables and Modal secrets — never stored in or editable from the app.</p>
+      <p className="text-sm text-ink-400">Live service status. API keys are managed in Vercel environment variables and render-platform secrets — never stored in or editable from the app.</p>
       {services.map(s => (
         <div key={s.name} className="bg-ink-800/50 rounded-xl p-4 flex items-center justify-between gap-4">
           <div>

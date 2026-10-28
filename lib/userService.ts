@@ -6,6 +6,7 @@
 import { getItem, putItem, putItemIfNotExists, updateItem, queryItems, scanItems, decrementIfEnough, incrementValue, TABLES } from './db';
 import type { ApiErrorCode } from './apiError';
 import { CREDIT_TTL_DAYS } from './creditPolicy';
+import { isAvatarCharge, normalizeCreditAction } from './legacySchema';
 
 export interface CreditExpiry {
   amount: number;
@@ -514,12 +515,16 @@ export async function addCredits(
  * Refund scopes → the deduction each one reverses. Scope strings mirror the
  * charge sites: `job_token` mints (render / flashhead / edit — priced server-
  * side by lib/renderPricing) and the client `deduct` action (description /
- * social_post). The matcher only ever selects a NEGATIVE ledger row, so a
- * refund can never reverse an inflow (purchase, bonus, gift, transfer-in).
+ * social_post). The matcher only ever selects a NEGATIVE ledger row (plus
+ * the 0-amount trial-free TRANSLATE rows, whose reversal mints nothing), so
+ * a refund can never reverse an inflow (purchase, bonus, gift, transfer-in).
  */
 const REFUND_MATCHERS: Record<string, (t: CreditTransaction) => boolean> = {
   render: t => t.metadata?.scope === 'render' || t.description === 'Video generation',
-  flashhead: t => t.metadata?.scope === 'flashhead' || t.description === 'FlashHead lip-sync video',
+  // Avatar (legacy alias 'flashhead' + the old 'FlashHead lip-sync video'
+  // rows) — history is never rewritten, so the matcher accepts both spellings
+  // via the shared schema classifier.
+  avatar: t => isAvatarCharge(t),
   edit: t => t.metadata?.scope === 'edit' || t.metadata?.kind === 'IMAGE_EDIT' || t.description.startsWith('Image edit'),
   description: t => t.metadata?.kind === 'PROPERTY_DESCRIPTION' || t.description === 'Property description',
   social_post: t => t.metadata?.kind === 'SOCIAL_POST' || t.description === 'Social media post',
@@ -528,6 +533,11 @@ const REFUND_MATCHERS: Record<string, (t: CreditTransaction) => boolean> = {
   // Per-clip re-roll inside the post-render review (Option 2) — charged by
   // job_token with scope=rerender, so it has its own matcher like render.
   rerender: t => t.metadata?.scope === 'rerender' || t.description === 'Clip re-render',
+  // Voiceover Translate — charged by the client `deduct` action (kind
+  // TRANSLATE), or consumed free on a trial as a 0-amount row of the same
+  // kind. Reversing a freebie row returns the TRIAL ALLOWANCE (it un-counts
+  // the row in api/credits.ts's usage count), never credits.
+  translate: t => t.metadata?.kind === 'TRANSLATE' || t.description.startsWith('Translate voiceover script'),
 };
 
 export const REFUND_SCOPES = Object.keys(REFUND_MATCHERS);
@@ -570,7 +580,11 @@ export async function refundDeduction(
   const candidate = txns.find(
     t =>
       t.type === 'deduction' &&
-      t.amount < 0 &&
+      // Negative = a real charge. Zero is allowed ONLY for the trial-free
+      // TRANSLATE consumption rows: reversing one moves no balance (abs(0)
+      // refunds nothing) and exists purely to give the free allowance back —
+      // the rfnd_ marker un-counts the row in api/credits.ts's usage count.
+      (t.amount < 0 || (t.amount === 0 && scope === 'translate')) &&
       !reversed.has(t.id) &&
       Date.now() - Date.parse(t.createdAt) <= REFUND_WINDOW_MS &&
       matches(t)
@@ -662,7 +676,9 @@ export async function getCreditTransactions(userId: string, limit = 50): Promise
     values: { ':uid': userId },
   }, { limit, scanIndexForward: false });
 
-  return transactions;
+  // Server-side history normalization (2026-10-27 avatar migration): legacy
+  // scope/kind/description values come back in the canonical vocabulary.
+  return transactions.map(normalizeCreditAction);
 }
 
 // Get subscription by user ID
@@ -965,7 +981,8 @@ export async function getCreditReport(userId: string, days = 30): Promise<{
     currentBalance: user.credits,
     totalUsed: filteredTransactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0),
     totalPurchased: filteredTransactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0),
-    transactions: filteredTransactions,
+    // Server-side history normalization (avatar migration) — see above.
+    transactions: filteredTransactions.map(normalizeCreditAction),
   };
 }
 

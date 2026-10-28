@@ -55,7 +55,7 @@ export default function EnhancedProjects() {
   const [search, setSearch] = useState('');
   const [selectedFolder, setSelectedFolder] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [kindFilter, setKindFilter] = useState<'all' | 'REEL' | 'FLASHHEAD' | 'IMAGE' | 'SOCIAL'>('all');
+  const [kindFilter, setKindFilter] = useState<'all' | 'REEL' | 'AVATAR' | 'IMAGE' | 'SOCIAL'>('all');
   const [selected, setSelected] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'date' | 'price' | 'name'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -382,7 +382,7 @@ export default function EnhancedProjects() {
                 <Star className={`w-3 h-3 ${favoritesOnly ? 'fill-yellow-400' : ''}`} /> Favorites only
               </button>
               <div className="flex items-center gap-1 px-1" role="group" aria-label="Filter by project type">
-                {([['all', 'All'], ['REEL', 'Video'], ['FLASHHEAD', 'AI Avatar Video'], ['IMAGE', 'Images'], ['SOCIAL', 'Social']] as const).map(([k, label]) => (
+                {([['all', 'All'], ['REEL', 'Video'], ['AVATAR', 'AI Avatar Video'], ['IMAGE', 'Images'], ['SOCIAL', 'Social']] as const).map(([k, label]) => (
                   <button key={k} onClick={() => setKindFilter(k)} className={`px-3 py-1 rounded-full text-xs font-medium transition ${kindFilter === k ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-400 hover:text-white border border-transparent'}`}>
                     {label}
                   </button>
@@ -450,7 +450,7 @@ export default function EnhancedProjects() {
                     {p.thumbnailUrl ? (
                       <img src={p.thumbnailUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl">{p.kind === 'FLASHHEAD' ? '🎙️' : p.kind === 'IMAGE' ? '📷' : p.kind === 'SOCIAL' ? '✍️' : '🏡'}</div>
+                      <div className="w-full h-full flex items-center justify-center text-4xl">{p.kind === 'AVATAR' ? '🎙️' : p.kind === 'IMAGE' ? '📷' : p.kind === 'SOCIAL' ? '✍️' : '🏡'}</div>
                     )}
                     {p.videoUrl && p.status === 'READY' && (
                       <video src={p.videoUrl} muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-300" aria-hidden="true" />
@@ -459,7 +459,7 @@ export default function EnhancedProjects() {
                       <span className={`badge ${p.status === 'READY' ? 'badge-success' : p.status === 'PROCESSING' ? 'badge-warning' : p.status === 'FAILED' ? 'badge-danger' : 'badge-muted'}`}>
                         {p.status}
                       </span>
-                      {p.kind === 'FLASHHEAD' ? (
+                      {p.kind === 'AVATAR' ? (
                         <span className="badge badge-brand text-[10px] flex items-center gap-1"><Mic className="w-3 h-3" /> AI Avatar Video</span>
                       ) : p.kind === 'IMAGE' ? (
                         <span className="badge badge-brand text-[10px]">Image Edit</span>
@@ -518,7 +518,7 @@ export default function EnhancedProjects() {
                           <Share2 className="w-3 h-3" /> Video
                         </button>
                       )}
-                      {(p.kind === 'REEL' || !p.kind || p.kind === 'FLASHHEAD') && (!p.videoUrl || p.status !== 'READY') && (
+                      {(p.kind === 'REEL' || !p.kind || p.kind === 'AVATAR') && (!p.videoUrl || p.status !== 'READY') && (
                         <button
                           onClick={() => { queueVideoRender({ images: p.photos || [], script: p.description || '', title: p.title }); navigate('/dashboard/video'); }}
                           className="flex-1 btn btn-ghost text-xs py-1.5 text-purple-300 hover:text-purple-200"
@@ -583,7 +583,7 @@ export default function EnhancedProjects() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-ink-800 flex items-center justify-center text-lg overflow-hidden">
-                            {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" className="w-full h-full object-cover" /> : (p.kind === 'FLASHHEAD' ? '🎙️' : p.kind === 'IMAGE' ? '📷' : p.kind === 'SOCIAL' ? '✍️' : '🏡')}
+                            {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" className="w-full h-full object-cover" /> : (p.kind === 'AVATAR' ? '🎙️' : p.kind === 'IMAGE' ? '📷' : p.kind === 'SOCIAL' ? '✍️' : '🏡')}
                           </div>
                           <div>
                             <p className="text-sm font-medium text-white">{p.title}</p>

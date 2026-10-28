@@ -229,7 +229,9 @@ export interface AgencyUsage {
 function categoryOf(description: string): string {
   const d = description.toLowerCase();
   if (d.includes('video generation') || d.includes('reel')) return 'Video renders';
-  if (d.includes('flashhead') || d.includes('lip-sync') || d.includes('talking')) return 'Talking Head';
+  // Avatar family (2026-10-27 migration): canonical descriptions say
+  // 'AI Avatar video', un-rewritten history still says 'FlashHead …'.
+  if (d.includes('avatar') || d.includes('flashhead') || d.includes('lip-sync') || d.includes('talking')) return 'Talking Head';
   if (d.includes('image edit') || d.includes('staging') || d.includes('photo')) return 'Image edits';
   if (d.includes('expired')) return 'Expired';
   if (d.includes('gift') || d.includes('transfer')) return 'Transfers';

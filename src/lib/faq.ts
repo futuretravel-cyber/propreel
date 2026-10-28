@@ -95,7 +95,7 @@ export const FAQS: FaqItem[] = [
   {
     category: 'Account & agency',
     q: 'Is my listing data safe?',
-    a: 'Yes. Data is encrypted in transit and at rest in AWS DynamoDB, af-south-1 (South Africa). We never sell data or use your listings to train AI models. Full detail is in our Privacy Policy and PAIA Manual.',
+    a: 'Yes. Data is encrypted in transit and at rest in South African data centres. We never sell data or use your listings to train AI models. Full detail is in our Privacy Policy and PAIA Manual.',
   },
 ];
 

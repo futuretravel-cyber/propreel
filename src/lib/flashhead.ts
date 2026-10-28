@@ -24,7 +24,7 @@ export async function generateFlashHeadVideo(request: FlashHeadRequest): Promise
   // In production, this would call the Modal backend endpoint
   // which would then call fal-ai/flashhead
   
-  const response = await fetch('/api/render/flashhead', {
+  const response = await fetch('/api/render/avatar', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -33,7 +33,7 @@ export async function generateFlashHeadVideo(request: FlashHeadRequest): Promise
   });
 
   if (!response.ok) {
-    throw new Error('Failed to generate FlashHead video');
+    throw new Error('Failed to generate avatar video');
   }
 
   return response.json();
@@ -43,10 +43,10 @@ export async function generateFlashHeadVideo(request: FlashHeadRequest): Promise
  * Check the status of a FlashHead video generation
  */
 export async function checkFlashHeadStatus(jobId: string): Promise<FlashHeadResponse> {
-  const response = await fetch(`/api/render/flashhead/status/${jobId}`);
+  const response = await fetch(`/api/render/avatar/status/${jobId}`);
   
   if (!response.ok) {
-    throw new Error('Failed to check FlashHead status');
+    throw new Error('Failed to check avatar video status');
   }
 
   return response.json();

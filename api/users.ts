@@ -114,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET' && req.query.action === 'admin_ledger') {
     return adminLedger(req, res);
   }
-  if (req.method === 'GET' && req.query.action === 'admin_narakeet_usage') {
+  if (req.method === 'GET' && req.query.action === 'admin_voice_usage') {
     return adminNarakeetUsage(req, res);
   }
   if (req.method === 'GET' && req.query.action === 'image_presets') {

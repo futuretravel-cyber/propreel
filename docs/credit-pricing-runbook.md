@@ -10,14 +10,16 @@ Prices are **decided on the server, never the browser**:
 | Tool class | Charge path | Table it reads |
 |---|---|---|
 | Video render, AI Avatar, image edit, AI-Write script, **Property Description, Social Post** | `POST /api/users?action=job_token` — the mint prices, deducts, and issues the single-use token the next worker call carries (`X-PropReel-Token`) | `lib/renderPricing.ts` (`jobCredits()`) |
-| Language check / tone translate | free (no charge) | — |
+| Language check | free — never paywalled (the safety check) | — |
+| Voiceover translate | 1 credit via `POST /api/credits?action=deduct` (kind `TRANSLATE` — server-priced like the text tools); **first 3 free on a running trial**, personal balance only | `lib/renderPricing.ts` (`TRANSLATE_CREDITS` / `jobCredits('translate')`), allowance in `lib/trial.ts` (`TRIAL_FREE_TRANSLATES`) |
 
 The text tools moved onto the mint on 2026-10-13: previously the browser sent
 the amount to `?action=deduct`, so a modified client could choose what it paid.
 Now **every resource-granting path is priced server-side**. The legacy
 `?action=deduct` endpoint still validates known kinds (`PROPERTY_DESCRIPTION`,
-`SOCIAL_POST`) against the server's own price — a mismatched amount gets a 400,
-never a ledger row — and no product caller remains on it.
+`SOCIAL_POST`, `SOCIAL_PACK`, `TRANSLATE`) against the server's own price — a
+mismatched amount gets a 400, never a ledger row — and the voiceover
+Translate action (2026-10-27) is its one live product caller.
 
 `src/lib/constants.ts` re-exports the tier/credit data so the UI always shows the same numbers the server charges.
 
@@ -97,7 +99,7 @@ two tiers' COGS identical (R28.6/56.7/84.8 per length). Margins at the
 floored ladder: Essential 72–75%, Social 47/41/41%, Cinematic 60/40/40%,
 Premium 68/53/43% — every SKU now clears the 40% floor.
 
-### AI Avatar (FlashHead, job_token `flashhead`)
+### AI Avatar (job_token `avatar`; legacy alias `flashhead`, normalized server-side since 27 Oct 2026)
 
 **2 credits per 10 s of narration** (≈2.4 words/sec; minimum 2, hard cap 90 s of narration (longer script → worker answers 400). At R1.50/credit that is R3.00 per 10 s against a ~R1.37 unit cost — about **55% margin**, above the floor. The 2026-10-19 R1.50 reprice briefly took this to 1cr (≈9%, under the floor) and it was restored to 2cr the same day; all client copy (HelpModal, AITalkingProfile, FlashHeadVideo, EnhancedOverview) has always said 2. Legacy flat-8 fallback only if the mint receives no script text at all.
 
@@ -128,7 +130,7 @@ fallback constant only.
 ## Refund semantics — the three rules
 
 1. **Charge first, refund on failure only.** Every paid action deducts (or mints) *before* generating. A failed generation refunds; an *unsatisfactory but successful* output does **not** (stated in the in-app AI notice — never make ad-hoc goodwill refunds outside a support decision).
-2. **The client names a scope, never an amount.** Refunds go `POST /api/credits?action=refund { user_id, scope }` with scope ∈ `render | flashhead | edit | description | social_post | script`. The server finds the matching **unreversed** deduction in the ledger and reverses at most its real amount, **at most once per charge** (event lock). There is no "amount" field to abuse by design (`api/credits.ts`).
+2. **The client names a scope, never an amount.** Refunds go `POST /api/credits?action=refund { user_id, scope }` with scope ∈ `render | avatar | edit | description | social_post | script` (legacy `flashhead` normalizes to `avatar`). The server finds the matching **unreversed** deduction in the ledger and reverses at most its real amount, **at most once per charge** (event lock). There is no "amount" field to abuse by design (`api/credits.ts`).
 3. **Only the ledger is trusted.** A project row's `creditsSpent` is client-written and never grounds a refund — `refundDeduction()` reconciles against actual ledger deductions (`lib/projectReaper.ts`, `lib/userService.ts`).
 
 ### Failure → refund paths in the product
@@ -138,7 +140,7 @@ fallback constant only.
 | Description / Social / AI-Write (text) | the tool's own `catch` → `refundCredits(scope)` → `?action=refund` |
 | AI-Write client timeout (AbortSignal deadline per kind, `src/lib/api.ts`) | same catch — timeout is a failure |
 | Render render loop / cancel (`/cancel_render`, poll loop stop) | `refundCredits('render')` + project row → FAILED |
-| FlashHead avatar job (`useFlashHead`) | `refundCredits('flashhead')` — on failure *or* in-flight cancel (it posts its own `/cancel_render` first) |
+| Avatar job (`useFlashHead`) | `refundCredits('avatar')` — on failure *or* in-flight cancel (it posts its own `/cancel_render` first). History rows charged under `flashhead` match the same scope |
 | Image edit (`useImageEdit`) | `refundCredits('edit')` |
 | **Browser died mid-render** (project stuck `PROCESSING` >2 h) | **nightly reaper** (`lib/projectReaper.ts`, run from the `process-expired-credits` cron): worker says completed → finalize READY, **no refund**; failed/unknown → FAILED + ledger-verified refund. Atomic status claim prevents double-refund with a waking client. |
 

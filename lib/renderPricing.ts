@@ -24,6 +24,12 @@
 export { TIERS } from './videoTiers';
 export type { Tier, TierConfig, VideoEngine } from './videoTiers';
 import { TIERS } from './videoTiers';
+// Avatar schema vocabulary (2026-10-27 migration). CANONICAL vocabulary only
+// here on purpose: this module is shared with the browser, so the legacy alias
+// is normalized at the server API boundary instead (lib/legacySchema.ts →
+// normalizeJobScope, used by the job-token mint in lib/userRoutes/credits.ts)
+// and never enters the shipped bundle (scripts/check-bundle-stealth.mjs).
+import { AVATAR_JOB_SCOPE } from './legacySchema';
 
 /**
  * Cash price in Rands charged per credit for TOP-UP PACKS. Set to 1.50 on
@@ -141,7 +147,7 @@ export function isStagingPreset(presetId: string | undefined | null): boolean {
  *  priced server-side below, so a modified client cannot choose what it
  *  pays (the old client-sent ?action=deduct amount is gone).
  */
-export type JobScope = 'render' | 'flashhead' | 'edit' | 'script' | 'description' | 'social_post' | 'social_pack' | 'rerender';
+export type JobScope = 'render' | 'avatar' | 'edit' | 'script' | 'description' | 'social_post' | 'social_pack' | 'rerender';
 /** AI text tools — fixed prices, previously client constants sent as the
  *  deduct amount; now dollar-priced here so server and UI share one source. */
 export const DESCRIPTION_CREDITS = 1;
@@ -150,6 +156,14 @@ export const SOCIAL_POST_CREDITS = 2;
  *  (audit §9). Bundled below 7×SOCIAL_POST_CREDITS because agents market a
  *  listing across every channel, not one platform at a time. */
 export const SOCIAL_PACK_CREDITS = 5;
+
+/** Voiceover Translate — the mismatch banner's one-click script rewrite.
+ *  Small by design (the LLM call costs a fraction of a cent): 1 credit, the
+ *  same as a description. Trial accounts get the first TRIAL_FREE_TRANSLATES
+ *  of these FREE (lib/trial.ts) — api/credits.ts checks that allowance at the
+ *  deduct, so this price is only ever charged after it runs out. Personal
+ *  balance only; never the agency pool. */
+export const TRANSLATE_CREDITS = 1;
 
 /**
  * Price of re-rolling ONE clip of a review-paused render (Option 2 — the
@@ -179,7 +193,10 @@ export function jobCredits(
   scope: string,
   args: { tier?: string; configIndex?: number; presetId?: string; voiceoverText?: string; voiceover_text?: string; wordCount?: number; duration?: number } = {}
 ): number | null {
-  if (scope === 'flashhead') {
+  // `scope` arrives canonical: the job-token mint normalizes the legacy alias
+  // server-side before pricing (lib/userRoutes/credits.ts), keeping the alias
+  // out of this browser-shared module.
+  if (scope === AVATAR_JOB_SCOPE) {
     // Preferred: price from the narration script the client already has.
     // Only when NO script travels with the mint at all (a legacy client) do
     // we fall back to the deprecated flat rate — that fallback delivers no
@@ -191,6 +208,7 @@ export function jobCredits(
   }
   if (scope === 'script') return scriptCreditsForDuration(args.duration);
   if (scope === 'description') return DESCRIPTION_CREDITS;
+  if (scope === 'translate') return TRANSLATE_CREDITS;
   if (scope === 'social_post') return SOCIAL_POST_CREDITS;
   if (scope === 'social_pack') return SOCIAL_PACK_CREDITS;
   if (scope === 'edit') {

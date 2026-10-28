@@ -1616,7 +1616,7 @@ function StudioRedirect() {
   const [searchParams] = useSearchParams();
   const t = searchParams.get('tab');
   const to =
-    t === 'video' || t === 'flashhead' ? '/dashboard/video'
+    t === 'video' || t === 'avatar' ? '/dashboard/video'
     : t === 'social' ? '/dashboard/social'
     : t === 'description' ? '/dashboard/description'
     : t === 'staging' || t === 'removal' || t === 'twilight' ? `/dashboard/photo-editor?tab=${t}`
