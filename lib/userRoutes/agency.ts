@@ -12,7 +12,33 @@ import { TABLES, queryItems, putItem, getItem, scanItems } from '../../lib/db';
 import { deleteItem } from '../../lib/db-helpers';
 import { deleteSessionsForUser, requireOwner, requireAdminSession, isAdminEmail } from '../../lib/auth';
 import { sendEmail, agencyInviteTemplate } from '../../lib/email';
+import { rawS3Url, signS3Url, toEdgeUrl } from '../../lib/s3Urls';
 import { siteOrigin } from './shared';
+
+/**
+ * Agency branding URLs follow the same "frozen presign" discipline as the
+ * project rows (docs/uploads-origin-isolation.md §9):
+ *   • WRITE — `rawS3Url` normalises any of our object URLs to the canonical
+ *     unsigned bucket form, so a row can never hold an expiring presign.
+ *     Foreign URLs (a pasted https logo) pass through untouched.
+ *   • READ — `signS3Url` + `toEdgeUrl` mint a fresh presign on the media
+ *     origin for whatever form a row holds, so rows written before this
+ *     boundary (frozen edge presigns) self-heal instead of rendering broken.
+ */
+function normalizeBranding(branding: any): any {
+  if (!branding || typeof branding !== 'object') return branding;
+  const out = { ...branding };
+  if (typeof out.logoUrl === 'string') out.logoUrl = rawS3Url(out.logoUrl);
+  if (typeof out.reportLogoUrl === 'string') out.reportLogoUrl = rawS3Url(out.reportLogoUrl);
+  return out;
+}
+
+async function resignAgencyMedia(agency: any): Promise<any> {
+  const logoUrl = agency?.branding?.logoUrl;
+  if (typeof logoUrl !== 'string' || !logoUrl) return agency;
+  const signed = await signS3Url(logoUrl);
+  return { ...agency, branding: { ...agency.branding, logoUrl: toEdgeUrl(signed || logoUrl) } };
+}
 
 /**
  * Agency nested routes (function consolidation — Hobby 12-function cap).
@@ -65,11 +91,11 @@ export async function agencyRoutes(req: VercelRequest, res: VercelResponse, acti
       }
       const agency = await createAgency(
         { id: owner.id, email: owner.email, fullName: owner.fullName, agencyName: owner.agencyName },
-        { name: String(name), company, branding }
+        { name: String(name), company, branding: normalizeBranding(branding) }
       );
       return res.status(201).json({
         success: true,
-        agency,
+        agency: await resignAgencyMedia(agency),
         maxAgents: MAX_AGENTS_PER_AGENCY,
         message: `Agency created. You can invite up to ${MAX_AGENTS_PER_AGENCY} agents — each agent needs their own login.`,
       });
@@ -94,7 +120,7 @@ export async function agencyRoutes(req: VercelRequest, res: VercelResponse, acti
       const isOwner = user.role === 'AGENCY_OWNER' || user.role === 'ADMIN' || isAdminEmail(user.email) || agency?.ownerId === user.id;
       return res.status(200).json({
         success: true,
-        agency,
+        agency: await resignAgencyMedia(agency),
         members,
         invites,
         isOwner,
@@ -308,11 +334,11 @@ export async function agencyRoutes(req: VercelRequest, res: VercelResponse, acti
       const updates: any = {};
       if (name) updates.name = String(name).slice(0, 100);
       if (company) updates.company = { ...agency.company, ...company };
-      if (branding) updates.branding = { ...agency.branding, ...branding };
+      if (branding) updates.branding = { ...agency.branding, ...normalizeBranding(branding) };
       if (webhook_url !== undefined) updates.webhookUrl = webhook_url ? String(webhook_url) : undefined;
       await updateAgency(owner.agencyId, updates);
       const fresh = await getAgency(owner.agencyId);
-      return res.status(200).json({ success: true, agency: fresh });
+      return res.status(200).json({ success: true, agency: await resignAgencyMedia(fresh) });
     }
 
     // ── GET ?action=agency_report&user_id=…&key=… — stream a stored PDF ─
@@ -372,7 +398,7 @@ export async function agencyRoutes(req: VercelRequest, res: VercelResponse, acti
     if (action === 'admin_agencies') {
       const gate = await requireAdminSession(req);
       if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
-      const agencies = await listAllAgencies();
+      const agencies = await Promise.all((await listAllAgencies()).map(resignAgencyMedia));
       return res.status(200).json({ success: true, agencies });
     }
 
