@@ -11,7 +11,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser, updateUser, getUserByEmail, deleteUser, getOrCreateUserByEmail, deductCredits } from '../../lib/userService';
 import { TABLES, queryItems, putItem, scanItems } from '../../lib/db';
 import { deleteItem } from '../../lib/db-helpers';
-import { hashPassword, verifyPassword, createSession, getSessionUser, deleteSession, deleteSessionsForUser, sessionCookie, clearSessionCookie, getTokenFromRequest, SESSION_COOKIE, clientMeta, issueEmailConfirmToken, consumeEmailConfirmToken, issuePasswordResetToken, consumePasswordResetToken, requireOwner, sessionUser, ADMIN_EMAILS } from '../../lib/auth';
+import { hashPassword, verifyPassword, createSession, getSessionUser, deleteSession, deleteSessionsForUser, sessionCookie, clearSessionCookie, getTokenFromRequest, SESSION_COOKIE, clientMeta, issueEmailConfirmToken, consumeEmailConfirmToken, issuePasswordResetToken, consumePasswordResetToken, requireOwner, sessionUser, isAdminActor, ADMIN_EMAILS } from '../../lib/auth';
 import { sendEmail, confirmEmailTemplate, resetPasswordTemplate, accountExistsTemplate } from '../../lib/email';
 import { generateTotpSecret, verifyTotp, otpauthUrl, randomToken } from '../../lib/totp';
 import { consumeRateLimit } from '../../lib/rateLimit';
@@ -82,6 +82,14 @@ export async function deleteAccount(req: VercelRequest, res: VercelResponse) {
   const gate = await requireOwner(req, user_id);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
+  // Admin → Users → detail may delete any OTHER account, but never its own
+  // through this route: nuking the acting admin's session mid-action is
+  // always a misclick, and self-deletion has its own confirmed flow at
+  // /account/delete (DeleteAccountPage).
+  if (isAdminActor(gate.user) && gate.user.id === user_id) {
+    return res.status(400).json({ error: 'Use the account delete page to delete your own account' });
+  }
+
   const user = await getUser(user_id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -100,6 +108,20 @@ export async function deleteAccount(req: VercelRequest, res: VercelResponse) {
 
   // 3) Revoke every first-party session for the account
   await deleteSessionsForUser(user_id);
+
+  // 3) Admin-action audit (audit §11): server-derived actor, best-effort —
+  // an admin deleting an account lands in Admin → Audit exactly like credit
+  // grants and subscription changes do. Self-service deletions are not admin
+  // actions and are not recorded here.
+  if (isAdminActor(gate.user)) {
+    const { recordAdminAction } = await import('../../lib/adminAudit');
+    await recordAdminAction({
+      by: gate.user.email,
+      action: 'USER_DELETED',
+      target: user_id,
+      detail: `Deleted account ${user.email}`,
+    });
+  }
 
   console.log(`Account deleted: ${user_id} (${user.email})`);
   return res.status(200).json({ success: true, message: 'Account permanently deleted' });

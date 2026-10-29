@@ -1579,11 +1579,17 @@ function VideoGeneratorPage() {
   // Shared voiceover language (BCP-47): reel and avatar narrate the same
   // script in the same one of South Africa's 11 official languages.
   const [sharedLanguage, setSharedLanguage] = useState(DEFAULT_VOICE_LANGUAGE);
+  // Narration on/off (Step 5's "No narration" toggle) lives up here — not in
+  // the wizard — because it gates the language check below: with narration
+  // off the script is never spoken, so the hook is disabled, which stops an
+  // in-flight "Checking the script language…" the instant the toggle flips
+  // and lets the agent click Next without waiting for an irrelevant verdict.
+  const [noNarration, setNoNarration] = useState(false);
   // Script-vs-language mismatch detection (LLM, debounced, fail-open): the
   // narrator reads the script verbatim with no auto-translation, so a
   // wrong-language script must surface a warning + one-click fix. One shared
   // instance keeps dismissal consistent across the steps that speak it.
-  const langCheck = useVoiceoverLanguageCheck(sharedScript, sharedLanguage, setSharedScript);
+  const langCheck = useVoiceoverLanguageCheck(sharedScript, sharedLanguage, setSharedScript, { enabled: !noNarration });
   // Shared avatar photo: chosen in the AI Avatar Video step, persisted so a
   // full page reload doesn't orphan the photo the agent already picked.
   const [sharedProfileImage, setSharedProfileImage, sharedProfileImageReady] = useStudioDraft<string | null>(studioDraftKey(user?.id, 'studio:profile-image'), null);
@@ -1603,7 +1609,7 @@ function VideoGeneratorPage() {
       <ToolPageHeader title="AI Video Generator" subtitle="Cinematic, narrated property reel in 8 guided steps — description, tier, orientation, photos, voiceover, avatar, music & branding, render." />
       <div className="card-dark p-6">
         <ErrorBoundary label="Video Generator">
-          <VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} langCheck={langCheck} initialImages={prefillImages} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} />
+          <VideoTab sharedScript={sharedScript} onScriptChange={setSharedScript} langCheck={langCheck} initialImages={prefillImages} profileImage={sharedProfileImage} profileImageReady={sharedProfileImageReady} onProfileImageChange={setSharedProfileImage} language={sharedLanguage} onLanguageChange={setSharedLanguage} noNarration={noNarration} onNoNarrationChange={setNoNarration} />
         </ErrorBoundary>
       </div>
     </div>

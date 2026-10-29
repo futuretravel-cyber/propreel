@@ -31,7 +31,7 @@ import { RENDER_ENDPOINT } from '../lib/renderEndpoint';
 import { ShareSheet, AITalkingProfile } from './ui';
 import { Link } from 'react-router-dom';
 
-export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [], profileImage, profileImageReady = true, onProfileImageChange, language, onLanguageChange }: { sharedScript: string; onScriptChange: (s: string) => void; langCheck: VoiceoverLanguageCheck; initialImages?: string[]; profileImage: string | null; profileImageReady?: boolean; onProfileImageChange: (img: string | null) => void; language: string; onLanguageChange: (l: string) => void }) {
+export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImages = [], profileImage, profileImageReady = true, onProfileImageChange, language, onLanguageChange, noNarration, onNoNarrationChange }: { sharedScript: string; onScriptChange: (s: string) => void; langCheck: VoiceoverLanguageCheck; initialImages?: string[]; profileImage: string | null; profileImageReady?: boolean; onProfileImageChange: (img: string | null) => void; language: string; onLanguageChange: (l: string) => void; noNarration: boolean; onNoNarrationChange: (v: boolean) => void }) {
   const { user, refundCredits, refresh } = useCredit();
   const toast = useToast();
   const confirm = useConfirm();
@@ -63,8 +63,12 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
   const voicePreview = useVoicePreview(`${language}:${voice}`);
   // Agents can keep the script (AI Write + the avatar tab both need it) but
   // render THIS reel silent — the worker skips synthesis entirely when
-  // voiceover_text is empty, so no TTS cost and no freeze-extension.
-  const [noNarration, setNoNarration] = useState(false);
+  // voiceover_text is empty, so no TTS cost and no freeze-extension. The
+  // state itself lives in the page (it gates the shared language check —
+  // pressing "No narration" cancels an in-flight "Checking the script
+  // language…" and re-arms it when narration comes back on), so this
+  // forwards the toggle.
+  const setNoNarration = onNoNarrationChange;
   // Script lives in page state so the AI Avatar Video step speaks the same text
   const script = sharedScript;
   const setScript = onScriptChange;

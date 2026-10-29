@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { X, Pencil, Check, Loader2 } from 'lucide-react';
+import { X, Pencil, Check, Loader2, Trash2 } from 'lucide-react';
 import { AI_NOTICE_ACK_VERSION } from '../lib/aiDisclaimer';
 import { PLANS } from '../lib/constants';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 /**
  * Admin → Users → detail view for a single account.
@@ -51,14 +52,19 @@ export default function AdminUserDetail({
   user,
   onClose,
   onUpdated,
+  onDeleted,
 }: {
   user: any;
   onClose: () => void;
   onUpdated?: (u: any) => void;
+  /** Called after a successful delete so the list can drop the row. */
+  onDeleted?: () => void;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState<FormState>({
     planId: '',
     cycle: 'MONTHLY',
@@ -153,6 +159,40 @@ export default function AdminUserDetail({
       toast.error('Subscription update failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ── Permanent account deletion ──────────────────────────────────────
+  // Same pipeline as the self-service flow (action=delete → deleteAccount):
+  // projects + user row + every session. The admin gate, the self-delete
+  // block and the USER_DELETED audit entry all happen server-side; this is
+  // only the confirm + call. Destructive and irreversible, hence the
+  // explicit two-step confirm rather than an inline toggle.
+  const deleteAccount = async () => {
+    const choice = await confirm(
+      `Delete ${user.email} permanently?\n\nThis removes their account row, every project and every active session. Their credit balance cannot be restored afterwards, and there is no undo.`,
+      { title: 'Delete user', confirmLabel: 'Delete permanently', cancelLabel: 'Keep user', destructive: true }
+    );
+    if (!choice) return;
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/users?action=delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(d.error || 'Delete failed');
+        return;
+      }
+      toast.success(`Deleted ${user.email}`);
+      onDeleted?.();
+      onClose();
+    } catch {
+      toast.error('Delete failed');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -398,6 +438,19 @@ export default function AdminUserDetail({
             The version is a content hash of the exact notice text agreed to — “Older notice text” means the
             wording has changed since, and they will be re-prompted on their next render.
           </p>
+        </div>
+
+        {/* ── Danger zone ──────────────────────────────────────────────── */}
+        <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between gap-3">
+          <p className="text-xs text-ink-500">Deleting removes the account, its projects and all sessions — there is no undo.</p>
+          <button
+            type="button"
+            onClick={deleteAccount}
+            disabled={deleting}
+            className="btn text-xs py-1 px-3 bg-red-600/90 hover:bg-red-500 text-white disabled:opacity-60"
+          >
+            {deleting ? <><Loader2 className="w-3 h-3 animate-spin" /> Deleting…</> : <><Trash2 className="w-3 h-3" /> Delete user</>}
+          </button>
         </div>
       </div>
     </div>

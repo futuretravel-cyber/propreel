@@ -189,7 +189,8 @@ function labelOf(lang: string): string {
 export function useVoiceoverLanguageCheck(
   script: string,
   language: string,
-  onScriptChange: (text: string) => void
+  onScriptChange: (text: string) => void,
+  opts?: { enabled?: boolean }
 ): VoiceoverLanguageCheck {
   const [status, setStatus] = useState<VoiceoverLanguageStatus>('idle');
   const [detectedLabel, setDetectedLabel] = useState<string | null>(null);
@@ -197,6 +198,11 @@ export function useVoiceoverLanguageCheck(
   const [freeRemaining, setFreeRemaining] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { user, refresh } = useCredit();
+  // Narration switched off (Step 5's "No narration"): the check exists only
+  // to protect a voiceover that will actually be spoken, so with `enabled`
+  // false the verdict effect below cancels whatever is in flight and stays
+  // idle instead of arming a check the agent would have to wait out.
+  const enabled = opts?.enabled !== false;
   const seqRef = useRef(0);
   const dismissedKeyRef = useRef<string | null>(null);
   // Last text this (language, verdict) was actually verified against — the
@@ -219,6 +225,20 @@ export function useVoiceoverLanguageCheck(
 
   useEffect(() => {
     loadVerdictCache();
+    if (!enabled) {
+      // Cancel and stay idle: this effect's cleanup drops the pending
+      // settle timer on the dep change, and the seq bump voids a verdict
+      // whose API call is already in flight — so nothing can flip the
+      // status back to 'checking' behind the wizard's back. Idle is the
+      // wizard's "no verdict, no gate", which is exactly what lets
+      // "No narration" click Next immediately. Flipping narration back on
+      // re-runs this effect and re-arms the real check: cached verdicts
+      // re-land instantly, so a cached mismatch re-locks Next as it should.
+      seqRef.current += 1;
+      setStatus('idle');
+      setDetectedLabel(null);
+      return;
+    }
     if (trimmed.length < 12) {
       // Too short to judge — void any in-flight verdict too.
       seqRef.current += 1;
@@ -299,7 +319,7 @@ export function useVoiceoverLanguageCheck(
       }
     }, SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [trimmed, language, languageLabel, checkKey]);
+  }, [trimmed, language, languageLabel, checkKey, enabled]);
 
   const translate = useCallback(async (): Promise<boolean> => {
     const source = script.trim();

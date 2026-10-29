@@ -944,6 +944,11 @@ function AdminUsers() {
             setDetailUser(u);
             setUsers(prev => prev.map(x => (x.id === u.id ? { ...x, ...u } : x)));
           }}
+          onDeleted={() => {
+            const id = detailUser?.id;
+            setDetailUser(null);
+            setUsers(prev => prev.filter(x => x.id !== id));
+          }}
         />
       )}
       {/* Custom-amount grant — the server reports the real new balance, and
