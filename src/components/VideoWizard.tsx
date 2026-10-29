@@ -909,14 +909,18 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
     });
   // Photos are the first hard gate — a reel without images can't render.
   // (2026-10-15: Photos moved after Orientation — agents pick the frame
-  // FIRST, so the orientation tip shapes how they shoot/upload the set.)
-  // 2026-10-18: SECOND gate — every uploaded photo must carry BOTH a
-  // room-type (interior/exterior) and a camera move before the agent can
-  // advance. The move list depends on the room type: EXTERIOR unlocks the
-  // extra "Zoom out" move (a pull-back reveal) that INTERIOR does not get,
-  // because retreating out of an interior space exits the room. The render
-  // maps (roomType, move) to one of the eight authoritative camera prompts.
-  const photosMissingMeta = step === 3
+  // FIRST, so the orientation tip shapes how they shoot/upload the set.)  // 2026-10-18: SECOND gate — every uploaded photo must carry BOTH a
+  //   room-type (interior/exterior) and a camera move before the agent can
+  //   advance. The move list depends on the room type: EXTERIOR unlocks the
+  //   extra "Zoom out" move (a pull-back reveal) that INTERIOR does not get,
+  //   because retreating out of an interior space exits the room. The render
+  //   maps (roomType, move) to one of the eight authoritative camera prompts.
+  // 2026-10-29: ESSENTIAL is exempt — it renders on the local Ken Burns path
+  //   (the worker reads only A/B/C prompt_ids there, never roomType/move), so
+  //   the two per-photo controls are hidden and the gate is skipped for it.
+  //   The other 3 AI tiers (Social / Cinematic / Premium) keep both.
+  const needsPhotoMeta = tier !== 'ESSENTIAL';
+  const photosMissingMeta = step === 3 && needsPhotoMeta
     ? uploadedImages.filter(u => { const m = photoMeta[u]; return !m || !m.roomType || !m.move; }).length
     : 0;
   // "Next" stays locked while the script-language verdict is in flight —
@@ -959,15 +963,24 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
   };
   const prevStep = () => setStep(s => Math.max(0, s - 1));
   // Listing details → Voiceover Script: arriving at the Voiceover step
-  // with an empty script box pre-fills it from the Step-1 Listing details
-  // (listingSummary), so the agent starts from the real facts (then edits
-  // or AI-Writes over it) instead of a blank textarea. Fires on ARRIVAL
-  // only — a script the agent clears while staying on the step is never
-  // resurrected.
+  // pre-fills it from the Step-1 Listing details (listingSummary), so the
+  // agent starts from the real facts (then edits or AI-Writes over it)
+  // instead of a blank textarea. Fires on ARRIVAL only — a script the agent
+  // clears while staying on the step is never resurrected.
+  // 2026-10-29: also REFRESHES a box that still holds the previous
+  // auto-prefill byte-for-byte (the agent went back and edited Step 1 — the
+  // old details used to sit there unchanged, so the new ones never appeared).
+  // Text the agent actually wrote (typed, AI-Written, or seeded by the
+  // Create Reel hand-off) is never overwritten — only an untouched prefill is.
   const lastWizardStepRef = useRef(step);
+  const prefilledScriptRef = useRef<string | null>(null);
   useEffect(() => {
-    if (step === 4 && lastWizardStepRef.current !== 4 && !script.trim() && listingSummary) {
-      setScript(listingSummary);
+    if (step === 4 && lastWizardStepRef.current !== 4 && listingSummary) {
+      const untouchedPrefill = prefilledScriptRef.current !== null && script === prefilledScriptRef.current;
+      if (!script.trim() || untouchedPrefill) {
+        setScript(listingSummary);
+        prefilledScriptRef.current = listingSummary;
+      }
     }
     lastWizardStepRef.current = step;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1174,10 +1187,12 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
                   <X className="w-3 h-3" />
                 </button>
                 {/* Per-photo camera metadata — required before leaving this
-                    step. Room type drives the move list: EXTERIOR also gets
-                    the pull-back (Zoom out); INTERIOR never does, because
-                    retreating out of a room exits it. The render maps this to
-                    one of the eight authoritative camera prompts. */}
+                    step for the 3 AI tiers. Hidden on ESSENTIAL (local Ken
+                    Burns render ignores it), where leaving the step needs no
+                    tags at all. Room type drives the move list: EXTERIOR also
+                    gets the pull-back (Zoom out); INTERIOR never does, because
+                    retreating out of a room exits it. */}
+                {needsPhotoMeta && (
                 <div className="mt-2 space-y-2 rounded-lg bg-black/40 p-2">
                   <div>
                     <span className="text-[10px] uppercase tracking-wide text-ink-500">Photo is from a</span>
@@ -1210,6 +1225,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             ))}
           </div>
@@ -1678,13 +1694,16 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
         )}
       </div>
       )}
-      {/* Wizard nav — Back / Next (the language check and the photos gate on
-          step 3 can each hold Next back) */}
+      {/* Wizard nav — Back / Next. The language check and the photos gate
+          on step 3 hold Next back; the language check also holds Back (both
+          buttons wait out the same in-flight verdict, so the step can't be
+          left mid-check either). */}
       <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
         <button
           type="button"
           onClick={prevStep}
-          disabled={step === 0}
+          disabled={step === 0 || langBusy}
+          title={langBusy ? (langTranslating ? `Translating the script to ${langCheck.languageLabel}…` : 'Waiting for the script language check to finish…') : undefined}
           className="btn btn-ghost min-h-[44px] px-4 disabled:opacity-40"
         >
           ← Back

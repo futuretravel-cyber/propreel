@@ -995,11 +995,22 @@ export default function PropertyListings() {
 
   const filtered = useMemo(() => {
     let list = projects || [];
-    if (filter !== 'ALL') list = list.filter(p => marketState(p) === filter);
+    // Expired is set only by Delete, so the default "All" view hides those
+    // rows — a deleted card staying on screen made it look like delete did
+    // nothing. Expired listings stay reachable under their own tab.
+    if (filter === 'ALL') list = list.filter(p => marketState(p) !== 'EXPIRED');
+    else list = list.filter(p => marketState(p) === filter);
     if (sort === 'old') list = [...list].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
     if (sort === 'price') list = [...list].sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
     return list;
   }, [projects, filter, sort]);
+
+  // Deleted listings live under Expired — worth mentioning when "All" is
+  // empty only because everything was deleted.
+  const expiredCount = useMemo(
+    () => (projects || []).filter(p => marketState(p) === 'EXPIRED').length,
+    [projects]
+  );
 
   const setStatus = async (p: Project, status: MarketStatus) => {
     try {
@@ -1020,7 +1031,7 @@ export default function PropertyListings() {
     if (!(await confirm(`Delete "${p.title}"? It will be moved to your Expired listings.`, { title: 'Delete listing?', confirmLabel: 'Delete', destructive: true }))) return;
     try {
       await PropReelAPI.updateProject(user!.id, p.id, { marketStatus: 'EXPIRED' } as any);
-      toast.success('Listing moved to Expired');
+      toast.success('Listing deleted — find it under the Expired tab');
       load();
     } catch {
       toast.error('Could not update the listing');
@@ -1110,7 +1121,9 @@ export default function PropertyListings() {
                 {filter === 'ALL' ? 'No listings yet' : `No ${filter.toLowerCase()} listings`}
               </p>
               <p className="text-ink-400 text-sm mt-1 mb-4">
-                Add your first property — the wizard takes under a minute.
+                {filter === 'ALL' && expiredCount > 0
+                  ? `${expiredCount} deleted listing${expiredCount === 1 ? '' : 's'} can be found under the Expired tab.`
+                  : 'Add your first property — the wizard takes under a minute.'}
               </p>
               <button onClick={startNew} className="btn btn-primary text-sm">
                 <Plus className="w-4 h-4" /> New Listing
