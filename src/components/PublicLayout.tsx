@@ -117,7 +117,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             <p className="text-xs text-ink-400 leading-relaxed">{AI_DISCLAIMER_TEXT}</p>
           </div>
           <div className="border-t border-white/5 mt-8 pt-8 text-sm text-center text-ink-400">
-            <p>© 2026 PropReel. All rights reserved. All prices include VAT.</p>
+            <p>© 2026 Locus Dynamics (PTY) Ltd K2026515531 t/a Propreel. All rights reserved. All prices include VAT.</p>
           </div>
         </div>
       </footer>

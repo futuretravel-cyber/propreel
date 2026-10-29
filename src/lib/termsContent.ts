@@ -223,7 +223,7 @@ export const TERMS_SECTIONS: TermsSection[] = [
         type: 'p',
         parts: [
           { text: 'PropReel Content:', strong: true },
-          'The Service, including its design, features, and underlying technology, is owned by PropReel and protected by copyright, trademark, and other intellectual property laws.',
+          'The Service, including its design, features, and underlying technology, is owned by Locus Dynamics (PTY) Ltd K2026515531 t/a Propreel and protected by copyright, trademark, and other intellectual property laws.',
         ],
       },
       {
@@ -342,7 +342,7 @@ export const TERMS_SECTIONS: TermsSection[] = [
   },
 ];
 
-export const TERMS_FOOTER = `© 2026 PropReel. All rights reserved. These Terms of Service are effective as of ${TERMS_LAST_UPDATED}.`;
+export const TERMS_FOOTER = `© 2026 Locus Dynamics (PTY) Ltd K2026515531 t/a Propreel. All rights reserved. These Terms of Service are effective as of ${TERMS_LAST_UPDATED}.`;
 
 // ─── The hashed document ────────────────────────────────────────────────────
 // The plain-text projection of everything a reader sees on /terms. Whitespace

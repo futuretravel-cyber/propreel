@@ -294,7 +294,7 @@ export default function CookiePolicyPage() {
 
           <div className="border-t border-white/10 pt-8 mt-12">
             <p className="text-sm text-ink-500 text-center">
-              © 2025 PropReel. All rights reserved. This Cookie Policy is effective as of March 2025.
+              © 2025 Locus Dynamics (PTY) Ltd K2026515531 t/a Propreel. All rights reserved. This Cookie Policy is effective as of March 2025.
             </p>
           </div>
         </div>

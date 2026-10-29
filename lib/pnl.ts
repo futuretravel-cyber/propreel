@@ -722,7 +722,7 @@ async function renderPnlPdf(report: PnlReport): Promise<Buffer> {
 
   // Header
   doc.fontSize(22).fillColor('#6b21a8').text('PropReel');
-  doc.fontSize(9).fillColor('#555').text('PropReel (Future Exclusive Travel) · South Africa · propreel.co.za');
+  doc.fontSize(9).fillColor('#555').text('Locus Dynamics (PTY) Ltd K2026515531 t/a Propreel · South Africa · propreel.co.za');
   doc.moveDown(0.8);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#111').text('PROFIT & LOSS STATEMENT');
   doc.font('Helvetica').fontSize(9).fillColor('#555');

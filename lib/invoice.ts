@@ -13,7 +13,7 @@ export interface InvoiceData {
 }
 
 const VAT_NUMBER = process.env.COMPANY_VAT_NUMBER || 'VAT REGISTRATION PENDING';
-const COMPANY_NAME = 'PropReel (Future Exclusive Travel)';
+const COMPANY_NAME = 'Locus Dynamics (PTY) Ltd K2026515531 t/a Propreel';
 const COMPANY_ADDRESS = 'South Africa · propreel.co.za · support@propreel.co.za';
 
 /**
