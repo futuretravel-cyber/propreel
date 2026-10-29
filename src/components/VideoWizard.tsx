@@ -119,7 +119,25 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
   // gated, per-user prefix), persist the raw bucket form, render the fresh
   // signature. See lib/repairDraftPhotos.ts.
   const draftKey = studioDraftKey(user?.id, 'video:images');
-  const videoPhotoRepair = useRepairDraftPhotos(draftKey, uploadedImages, setUploadedImages);
+  // photoMeta is keyed by photo URL, so a healed (re-signed) slot has to
+  // carry its tags along — without the remap every photo read as "untagged"
+  // after a presign repair even though the user had already tagged it.
+  // (setPhotoMeta is declared further down; the callback only runs from an
+  // effect after the first render, so the binding is live by then.)
+  const videoPhotoRepair = useRepairDraftPhotos(draftKey, uploadedImages, setUploadedImages, (healed) => {
+    setPhotoMeta(prev => {
+      const next = { ...prev };
+      let moved = false;
+      for (const [oldUrl, newUrl] of Object.entries(healed)) {
+        if (next[oldUrl]) {
+          next[newUrl] = next[oldUrl];
+          delete next[oldUrl];
+          moved = true;
+        }
+      }
+      return moved ? next : prev;
+    });
+  });
   const userFacingPhoto = (src: string) => videoPhotoRepair.display[src] || src;
   const videoOrder = useReorderable(setUploadedImages);
   // Prefilled photos (listing / project / description hand-off). Runs after
@@ -967,7 +985,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
           <div key={s.id} className={`flex items-center ${i > 0 ? 'flex-1' : ''}`}>
             {i > 0 && <div className={`h-0.5 flex-1 mx-2 ${i <= step ? 'bg-purple-600' : 'bg-white/10'}`} />}
             <div className="flex flex-col items-center gap-1" aria-current={i === step ? 'step' : undefined}>
-              <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+              <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold ${
                 i < step ? 'bg-purple-700 text-white' : i === step ? 'bg-purple-700/30 border border-purple-500 text-white' : 'bg-white/10 text-ink-400'
               }`}>
                 {i < step ? <Check className="w-4 h-4" /> : i + 1}
@@ -1169,7 +1187,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
                           key={rt}
                           type="button"
                           onClick={e => { e.stopPropagation(); setPhotoMetaFor(src, { roomType: rt, move: 'in' }); }}
-                          className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition ${(photoMeta[src]?.roomType ?? 'interior') === rt ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+                          className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition ${photoMeta[src]?.roomType === rt ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
                         >
                           {ROOM_TYPE_LABEL[rt]}
                         </button>
@@ -1184,7 +1202,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
                           key={mv}
                           type="button"
                           onClick={e => { e.stopPropagation(); setPhotoMetaFor(src, { move: mv }); }}
-                          className={`rounded px-2 py-1 text-[11px] font-medium transition ${(photoMeta[src]?.move ?? 'in') === mv ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+                          className={`rounded px-2 py-1 text-[11px] font-medium transition ${photoMeta[src]?.move === mv ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
                         >
                           {CAMERA_MOVE_LABEL[mv]}
                         </button>
@@ -1671,7 +1689,13 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
         >
           ← Back
         </button>
-        <span className="text-xs text-ink-500">Step {step + 1} of {WIZARD_STEPS.length} — {WIZARD_STEPS[step].label}</span>
+        <span className="text-xs text-ink-500 text-center" aria-live="polite">
+          {langTranslating
+            ? `Translating the script to ${langCheck.languageLabel}…`
+            : langChecking
+              ? 'Checking the script language…'
+              : `Step ${step + 1} of ${WIZARD_STEPS.length} — ${WIZARD_STEPS[step].label}`}
+        </span>
         {step < WIZARD_STEPS.length - 1 ? (
           <button
             type="button"
@@ -1679,7 +1703,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
             disabled={langBusy || photosBlocked}
             aria-disabled={!canNext}
             className={`btn btn-primary min-h-[44px] px-6 disabled:opacity-40${langMismatch && !langBusy && !photosBlocked ? ' opacity-60' : ''}`}
-            title={canNext ? undefined : langTranslating ? `Translating the script to ${langCheck.languageLabel}…` : langChecking ? 'Waiting for the script language check to finish…' : photosBlocked ? 'Add at least one property photo to continue' : `Choose "Translate to ${langCheck.languageLabel}" or "Keep as is" under the Voiceover Script to continue`}
+            title={canNext ? undefined : langTranslating ? `Translating the script to ${langCheck.languageLabel}…` : langChecking ? 'Waiting for the script language check to finish…' : photosBlocked ? (uploadedImages.length === 0 ? 'Add at least one property photo to continue' : `Tag every photo with a room type and a camera move — ${photosMissingMeta} still untagged`) : `Choose "Translate to ${langCheck.languageLabel}" or "Keep as is" under the Voiceover Script to continue`}
           >
             Next →
           </button>

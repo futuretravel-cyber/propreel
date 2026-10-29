@@ -67,12 +67,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const days = parseInt(period) || 30;
       const report = await getCreditReport(userId, days);
 
+      // Windowed sums over the FULL server-side set. The client only gets a
+      // 100-row slice of `transactions`, so deriving these in the browser
+      // undercounted — the sidebar's "used this month" disagreed with the
+      // dashboard's "Credits Used" for the same 30 days.
+      const weekAgo = Date.now() - 7 * 24 * 3600 * 1000;
+      const used7d = report.transactions
+        .filter(t => t.amount < 0 && Date.parse(t.createdAt) >= weekAgo)
+        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
       return res.status(200).json({
         success: true,
         period,
         current_balance: report.currentBalance,
         total_credits_used: report.totalUsed,
         total_credits_purchased: report.totalPurchased,
+        used_7d: used7d,
+        used_30d: report.totalUsed,
         transaction_count: report.transactions.length,
         // getCreditReport returns newest-first, so this cap keeps the most
         // recent 100 rows (on an ascending list it used to cut the newest).

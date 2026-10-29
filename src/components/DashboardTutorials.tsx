@@ -76,7 +76,7 @@ export default function DashboardTutorials() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <GraduationCap className="w-5 h-5 text-purple-400" />
-          <h2 className="text-lg font-semibold text-white">Tutorials</h2>
+          <h1 className="text-lg font-semibold text-white">Tutorials</h1>
           <span className="text-xs text-ink-500">
             {filtered.length} {filtered.length === 1 ? 'video' : 'videos'}
           </span>

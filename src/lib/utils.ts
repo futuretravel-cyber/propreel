@@ -127,3 +127,26 @@ export function toCsv(rows: Array<Record<string, unknown>>, columns?: string[]):
 export function downloadCsv(filename: string, rows: Array<Record<string, unknown>>, columns?: string[]): void {
   downloadText(filename, toCsv(rows, columns));
 }
+
+// Raw upload filenames leak into project titles as the segment after the
+// last " — " ("Coastal Relaxed — Gemini_…_150quu…"). Display those cards
+// without the file-noise; the stored title is untouched. Deliberately NO
+// vendor/product names here (stealth guard) — the long single-token rule
+// below already covers AI-generated filename stems like
+// "<Vendor>_Generated_Image_<hash>".
+const RAW_FILE_NAME =
+  /^(IMG[-_ ]?\d|IMG-\d{8}|DSC[-_]?\d|PXL[-_]?\d|WhatsApp Image|[Ss]creenshot\d*|screen[-_]?shot\d*)/;
+
+export function displayProjectTitle(title: string): string {
+  const parts = String(title || '').split(/\s+—\s+/);
+  if (parts.length < 2) return title;
+  const last = parts[parts.length - 1].replace(/\.[a-z0-9]{1,5}$/i, '');
+  const looksRaw =
+    RAW_FILE_NAME.test(last) ||
+    // hash-y single-token file stems (no spaces, long, one alphabet) —
+    // never a plausible hand-written title.
+    (last.length >= 16 && !/\s/.test(last) && /^[A-Za-z0-9_-]+$/.test(last));
+  if (!looksRaw) return title;
+  const kept = parts.slice(0, -1).join(' — ').trim();
+  return kept || title;
+}

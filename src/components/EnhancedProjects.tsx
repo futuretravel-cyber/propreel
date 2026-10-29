@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
-import { formatZar, formatRelative, downloadRemoteFile } from '../lib/utils';
+import { formatZar, formatRelative, downloadRemoteFile, displayProjectTitle } from '../lib/utils';
 import { PropReelAPI, Project } from '../lib/api';
 import {
   Search, Grid, List as ListIcon, FolderOpen, FolderPlus, Pencil, Trash2,
@@ -448,7 +448,7 @@ export default function EnhancedProjects() {
                 <div key={p.id} className={`card-dark overflow-hidden group transition hover:border-purple-500/30 ${p.favorite ? 'ring-1 ring-yellow-500/20' : ''}`}>
                   <div className="aspect-video bg-ink-800 relative overflow-hidden">
                     {p.thumbnailUrl ? (
-                      <img src={p.thumbnailUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      <img src={p.thumbnailUrl} alt={displayProjectTitle(p.title)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-4xl">{p.kind === 'AVATAR' ? '🎙️' : p.kind === 'IMAGE' ? '📷' : p.kind === 'SOCIAL' ? '✍️' : '🏡'}</div>
                     )}
@@ -480,7 +480,7 @@ export default function EnhancedProjects() {
                   </div>
                   <div className="p-4">
                     <div className="cursor-pointer" onClick={() => openProject(p)}>
-                      <h3 className="font-semibold text-white text-sm truncate">{p.title}</h3>
+                      <h3 className="font-semibold text-white text-sm truncate">{displayProjectTitle(p.title)}</h3>
                       <p className="text-ink-400 text-xs mt-1">{[p.suburb, p.city].filter(Boolean).join(', ') || 'Location not set'}</p>
                       {p.folder && (
                         <p className="text-[10px] text-purple-300/80 mt-1 flex items-center gap-1">
@@ -586,7 +586,7 @@ export default function EnhancedProjects() {
                             {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" className="w-full h-full object-cover" /> : (p.kind === 'AVATAR' ? '🎙️' : p.kind === 'IMAGE' ? '📷' : p.kind === 'SOCIAL' ? '✍️' : '🏡')}
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-white">{p.title}</p>
+                            <p className="text-sm font-medium text-white">{displayProjectTitle(p.title)}</p>
                             <p className="text-xs text-ink-400">{[p.suburb, p.city].filter(Boolean).join(', ')}</p>
                           </div>
                         </div>

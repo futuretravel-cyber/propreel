@@ -167,7 +167,11 @@ export function useActivity(userId: string | undefined) {
         feed.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
         if (!cancelled) setItems(feed.slice(0, 50));
 
-        // Real usage stats for the sidebar card
+        // Real usage stats for the sidebar card. Prefer the server's
+        // windowed sums: `transactions` is capped at 100 rows, so a client
+        // roll-up undercounted (the sidebar disagreed with the dashboard's
+        // "Credits Used" for the same 30 days). Client roll-up stays as the
+        // fallback for older cached/failed responses.
         const now = Date.now();
         const weekAgo = now - 7 * 24 * 3600 * 1000;
         const monthAgo = now - 30 * 24 * 3600 * 1000;
@@ -179,6 +183,8 @@ export function useActivity(userId: string | undefined) {
           if (ts >= weekAgo) used7d += Math.abs(t.amount);
           if (ts >= monthAgo) used30d += Math.abs(t.amount);
         }
+        if (typeof report?.used_7d === 'number') used7d = report.used_7d;
+        if (typeof report?.used_30d === 'number') used30d = report.used_30d;
         if (!cancelled) setStats({
           balance: report?.currentBalance ?? 0,
           used7d,

@@ -794,7 +794,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Free-tier conversion nudge surfaces (banner + LowCreditNudge modal) use
   // the same eligibility rule as AuthContext.lowCreditWarning.
   const isFreeTier = isFreeTierUser(user);
-  const { unreadCount, stats, loading: activityLoading } = useActivity(user?.id);
+  const { unreadCount, stats, loading: activityLoading, markAllRead } = useActivity(user?.id);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   // Top-left profile picture menu (profile / settings / billing / sign out)
@@ -952,8 +952,8 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
                 {/* '…' while the ledger fetch runs — rendering 0 here claimed
                     "no usage" before the numbers arrived (the same race made
                     dashboard screenshots disagree with each other). */}
-                <p className="text-xs text-ink-500">Used this week: {!user?.id || activityLoading ? '…' : `${stats.used7d} credits`}</p>
-                <p className="text-xs text-ink-500">Used this month: {!user?.id || activityLoading ? '…' : `${stats.used30d} credits`}</p>
+                <p className="text-xs text-ink-500">Used (last 7 days): {!user?.id || activityLoading ? '…' : `${stats.used7d} credits`}</p>
+                <p className="text-xs text-ink-500">Used (last 30 days): {!user?.id || activityLoading ? '…' : `${stats.used30d} credits`}</p>
               </div>
             </div>
             <button 
@@ -1012,6 +1012,20 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
               )}
             </Link>
+            {/* One-click clear next to the bell — with dozens of render
+                notifications stacking up, "Mark all as read" only living on
+                the Notifications page was too buried to ever be used. */}
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => markAllRead()}
+                title="Mark all notifications as read"
+                aria-label={`Mark all ${unreadCount} notifications as read`}
+                className="hidden sm:flex items-center text-ink-400 hover:text-white"
+              >
+                <Check className="w-5 h-5" />
+              </button>
+            )}
             <div className="badge badge-brand">
               <Zap className="w-3 h-3" /> {balance.total} credits
             </div>

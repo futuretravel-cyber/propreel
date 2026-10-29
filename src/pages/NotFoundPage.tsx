@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Search, ArrowLeft } from 'lucide-react';
 
@@ -12,6 +13,14 @@ const popularPages = [
 
 export default function NotFoundPage() {
   const location = useLocation();
+
+  // This page is the ONLY thing that knows a route is really a 404, so it
+  // owns the document title. RouteSEO runs first (it is a sibling before
+  // <Routes>), then this effect — so a 404 under /dashboard gets the real
+  // "Page not found" label instead of a humanized title of the bogus path.
+  useEffect(() => {
+    document.title = 'Page not found | PropReel';
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-ink-950 flex items-center justify-center p-4">

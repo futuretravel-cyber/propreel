@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { formatZar, formatRelative, formatDate, creditListZar } from '../lib/utils';
+import { formatZar, formatRelative, formatDate, creditListZar, displayProjectTitle } from '../lib/utils';
 import { PropReelAPI, Project, CreditReportData, ReferralStats } from '../lib/api';
 import { PLANS, RETENTION_DAYS, SIGNUP_BONUS } from '../lib/constants';
 import { track } from '../lib/analytics';
@@ -58,17 +58,20 @@ function CreditExplorerInline() {
 // The signup success toast says "you've received 5 credits"; this line
 // repeats it the moment the dashboard loads, plus the rand value, so the
 // very next action is obvious. Mirrors the FAQ hero line.
-function PostSignupCreditsLine() {
+// Gated on the balance: rendered unconditionally it told a paying Agency
+// account holding 1,569 credits that it had "5 free credits".
+function PostSignupCreditsLine({ total }: { total: number }) {
+  if (total <= 0 || total > SIGNUP_BONUS) return null;
   return (
     <div className="card-dark p-4 flex items-center">
     <p className="text-xs text-ink-400">
       You have{' '}
-      <span className="text-white font-semibold tabular-nums">{SIGNUP_BONUS} free credits</span>{' '}
-      — enough for one Essential 30-second reel.{' '}
+      <span className="text-white font-semibold tabular-nums">{total} free credits</span>{' '}
+      {total >= SIGNUP_BONUS && <>— enough for one Essential 30-second reel.{' '}</>}
       <Link to="/dashboard/video" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">
         Open the Video Generator to use them
       </Link>
-      {' '}— {creditListZar(SIGNUP_BONUS)} total.
+      {' '}— {creditListZar(total)} total.
     </p>
     </div>
   );
@@ -316,7 +319,7 @@ export default function EnhancedOverview() {
 
       {/* Post-signup credits line + wallet-side referral card */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <PostSignupCreditsLine />
+        <PostSignupCreditsLine total={balance.total} />
         <ReferralSummaryCard
           stats={refStats}
           loading={refStatsLoading}
@@ -423,6 +426,11 @@ export default function EnhancedOverview() {
                   </div>
                 ))}
               </div>
+              {statusData.some(s => s.name === 'Failed') && (
+                <p className="text-[11px] text-ink-500 mt-2">
+                  Failed renders are refunded automatically.
+                </p>
+              )}
             </>
           )}
         </div>
@@ -526,7 +534,7 @@ export default function EnhancedOverview() {
               <div key={p.id} className="card-dark overflow-hidden group cursor-pointer hover:border-purple-500/30 transition" onClick={() => navigate('/dashboard/projects')}>
                 <div className="aspect-video bg-ink-800 relative overflow-hidden">
                   {p.thumbnailUrl ? (
-                    <img src={p.thumbnailUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <img src={p.thumbnailUrl} alt={displayProjectTitle(p.title)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-4xl">🏡</div>
                   )}
@@ -540,7 +548,7 @@ export default function EnhancedOverview() {
                   </div>
                 </div>
                 <div className="p-4">
-                  <h3 className="font-semibold text-white text-sm truncate">{p.title}</h3>
+                  <h3 className="font-semibold text-white text-sm truncate">{displayProjectTitle(p.title)}</h3>
                   <p className="text-ink-400 text-xs mt-1">{[p.suburb, p.city].filter(Boolean).join(', ')}</p>
                   <div className="flex items-center justify-between mt-3">
                     <p className="text-purple-400 font-semibold text-sm">{p.price ? formatZar(p.price) : '—'}</p>

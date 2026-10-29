@@ -171,6 +171,12 @@ export function RouteSEO() {
       };
     }
 
+    // Fallback for paths without a ROUTES entry: a real dashboard route
+    // (e.g. /dashboard/video) gets its readable tab title from humanize()
+    // — only NON-noindex unknown paths are 404s here. The actual 404 page
+    // (pages/NotFoundPage) then overwrites document.title with the canonical
+    // "Page not found" in its own effect, which runs after this one, so a
+    // 404 under /dashboard no longer keeps "Does Not Exist | PropReel".
     apply(
       noindex ? `${humanize(pathname)} | ${SUFFIX}` : `Page not found | ${SUFFIX}`,
       'The page you were looking for does not exist on PropReel.',

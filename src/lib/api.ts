@@ -71,6 +71,11 @@ export interface CreditReportData {
   currentBalance: number;
   totalUsed: number;
   totalPurchased: number;
+  /** Server-computed windowed sums over the FULL ledger slice (the
+   *  `transactions` array below is capped at 100 rows, so the browser
+   *  cannot derive these itself without undercounting). */
+  used_7d?: number;
+  used_30d?: number;
   transactions: Array<{
     /** Stable ledger id — used as the notification key so "read" sticks */
     id?: string;
@@ -330,6 +335,8 @@ export const PropReelAPI = {
       currentBalance: data.current_balance ?? 0,
       totalUsed: data.total_credits_used ?? 0,
       totalPurchased: data.total_credits_purchased ?? 0,
+      used_7d: typeof data.used_7d === 'number' ? data.used_7d : undefined,
+      used_30d: typeof data.used_30d === 'number' ? data.used_30d : undefined,
       transactions,
       creditsByFeature,
     };

@@ -77,7 +77,10 @@ const CACHE = new Set<string>();
 export function useRepairDraftPhotos(
   draftKey: string | null,
   urls: string[],
-  setUrls: (next: string[]) => void
+  setUrls: (next: string[]) => void,
+  /** Receives {originalUrl: freshSignedUrl} for every healed slot so
+   *  URL-keyed side state (the wizard's photoMeta) can follow the swap. */
+  onHeal?: (healed: Record<string, string>) => void
 ): { healing: boolean; display: Record<string, string> } {
   const [healing, setHealing] = useState(false);
   const [display, setDisplay] = useState<Record<string, string>>({});
@@ -104,8 +107,10 @@ export function useRepairDraftPhotos(
           if (healed) healedNow.set(u, healed);
         }
         if (healedNow.size) {
-          setDisplay(prev => ({ ...prev, ...Object.fromEntries(healedNow) }));
+          const healedMap = Object.fromEntries(healedNow);
+          setDisplay(prev => ({ ...prev, ...healedMap }));
           setUrls(urls.map(u => healedNow.get(u) || u));
+          onHeal?.(healedMap);
         }
         CACHE.add(draftKey);
       } finally {

@@ -142,6 +142,11 @@ export default function CreditSystemDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Page heading — this page had no h1 at all (a11y/SEO). */}
+      <div>
+        <h1 className="text-2xl font-bold text-white">Credits &amp; Billing</h1>
+        <p className="text-sm text-ink-400 mt-1">Balance, top-ups, invoices and your credit history.</p>
+      </div>
       {/* Credits / Billing sub-tabs */}
       <div className="flex gap-2">
         <button onClick={() => setActiveTab('credits')} className={`tab-pill ${activeTab === 'credits' ? 'tab-pill-active' : ''}`}>Credits</button>
