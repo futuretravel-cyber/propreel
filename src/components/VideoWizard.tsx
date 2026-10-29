@@ -894,7 +894,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
   const [step, setStep] = useState(0);
   // Per-photo camera metadata (interior/exterior + camera move) — the render
   // picks the exact per-photo prompt from it, and it gates leaving the Photos
-  // step. Kept as {photoUrl: {roomType, move}} so a removed photo's entry is
+  // step. Kept as {photoUrl: {roomType, move, dayToNight}} so a removed photo's entry is
   // simply ignored (the gate only ever reads entries for current photos).
   const [photoMeta, setPhotoMeta] = useStudioDraft<Record<string, PhotoMeta>>(studioDraftKey(user?.id, 'video:photoMeta'), {});
   const setPhotoMetaFor = (url: string, patch: Partial<PhotoMeta>) =>
@@ -902,10 +902,13 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
       const prior = prev[url];
       // Explicit precedence (patch > existing > default) — an object-spread
       // version of this either tripped TS2783 or let the defaults clobber
-      // the existing tags when a button patches only ONE of the two fields.
+      // the existing tags when a button patches only ONE of the fields.
       const roomType = patch.roomType ?? prior?.roomType ?? 'interior';
       const move = patch.move ?? prior?.move ?? 'in';
-      return { ...prev, [url]: { roomType, move } };
+      // 2026-10-29: day→night drift defaults ON — the deck's historic
+      // behaviour — so a draft saved before the toggle renders unchanged.
+      const dayToNight = patch.dayToNight ?? prior?.dayToNight ?? true;
+      return { ...prev, [url]: { roomType, move, dayToNight } };
     });
   // Photos are the first hard gate — a reel without images can't render.
   // (2026-10-15: Photos moved after Orientation — agents pick the frame
@@ -1222,6 +1225,38 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
                           {CAMERA_MOVE_LABEL[mv]}
                         </button>
                       ))}
+                    </div>
+                  </div>
+                  {/* 2026-10-29 DAY→NIGHT: third tag per photo — does this
+                      clip's light drift from day into night? ON keeps the
+                      deck's golden-hour / dusk drift (the historic
+                      behaviour); OFF selects BUDGET_CAMERA_PROMPTS_STEADY,
+                      the same prompt rewritten to hold steady daylight.
+                      Rendered under the same needsPhotoMeta gate as the
+                      two rows above, so ESSENTIAL never sees it. */}
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Light over the clip</span>
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      {([
+                        { on: true, label: 'Day → Night' },
+                        { on: false, label: 'Daylight only' },
+                      ] as const).map(opt => {
+                        const selected = (photoMeta[src]?.dayToNight ?? true) === opt.on;
+                        return (
+                          <button
+                            key={String(opt.on)}
+                            type="button"
+                            onClick={e => { e.stopPropagation(); setPhotoMetaFor(src, { dayToNight: opt.on }); }}
+                            aria-pressed={selected}
+                            className={`rounded px-2 py-1 text-[11px] font-medium transition ${selected ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+                            title={opt.on
+                              ? "This clip's light drifts from day into night — golden hour, then dusk lights in the windows"
+                              : "Hold steady daylight for the whole clip — no golden hour, no dusk"}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

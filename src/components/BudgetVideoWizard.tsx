@@ -86,7 +86,10 @@ export function BudgetVideoTab() {
       // identical helper for why object-spread was wrong here.
       const roomType = patch.roomType ?? prior?.roomType ?? 'interior';
       const move = patch.move ?? prior?.move ?? 'in';
-      return { ...prev, [url]: { roomType, move } };
+      // 2026-10-29: day→night drift defaults ON — the deck's historic
+      // behaviour — so a draft saved before the toggle renders unchanged.
+      const dayToNight = patch.dayToNight ?? prior?.dayToNight ?? true;
+      return { ...prev, [url]: { roomType, move, dayToNight } };
     });
   // Backlog drain — photos uploaded while this route was unmounted land here.
   useEffect(() => {
@@ -697,6 +700,36 @@ export function BudgetVideoTab() {
                           {CAMERA_MOVE_LABEL[mv]}
                         </button>
                       ))}
+                    </div>
+                  </div>
+                  {/* 2026-10-29 DAY→NIGHT: third tag per photo, same wording
+                      and behaviour as the main Photos step — ON keeps the
+                      deck's golden-hour / dusk drift, OFF picks the
+                      steady-daylight rewrite. The Budget tier renders through
+                      this same gentle deck, so it gets the option too. */}
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Light over the clip</span>
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      {([
+                        { on: true, label: 'Day → Night' },
+                        { on: false, label: 'Daylight only' },
+                      ] as const).map(opt => {
+                        const selected = (photoMeta[src]?.dayToNight ?? true) === opt.on;
+                        return (
+                          <button
+                            key={String(opt.on)}
+                            type="button"
+                            onClick={e => { e.stopPropagation(); setPhotoMetaFor(src, { dayToNight: opt.on }); }}
+                            aria-pressed={selected}
+                            className={`rounded px-2 py-1 text-[11px] font-medium transition ${selected ? 'bg-purple-600 text-white' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}
+                            title={opt.on
+                              ? "This clip's light drifts from day into night — golden hour, then dusk lights in the windows"
+                              : "Hold steady daylight for the whole clip — no golden hour, no dusk"}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

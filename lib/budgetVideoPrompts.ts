@@ -128,12 +128,70 @@ export const BUDGET_CAMERA_PROMPTS: Record<RoomType, Partial<Record<CameraMove, 
   },
 };
 
+/**
+ * 2026-10-29 DAY→NIGHT OPTION (client request): a third per-photo tag in the
+ * Photos step lets the agent turn OFF the deck's day-into-night drift, and
+ * these are the prompts that turn-off selects. All seven entries above carry
+ * exactly ONE time-of-day clause each (verified: 7 x "golden hour", and only
+ * the 4 exterior prompts carry the follow-on dusk-lights clause), so the
+ * steady deck is DERIVED from the copy above by rewriting that clause — no
+ * hand-copied 1,600-char strings to drift out of sync with the canonical
+ * deck, and every other guarantee (window preservation, motion mandate,
+ * firelight scope, the negative tail) stays byte-identical by construction.
+ *
+ * The steady wording says the quiet part out loud — "no golden hour, no
+ * dusk" — because simply deleting the drift clause would leave the model
+ * free to drift anyway. Length matters too: Interior Zoom In ships at 1,952
+ * chars and Hailuo silently clips past 2,000 (cutting the negative tail), so
+ * each steady clause is kept tight against that ceiling — measured: exterior
+ * prompts SHRINK 63 chars (1,332 → 1,269), interior ones grow only 18
+ * (1,952 → 1,970 for interior-in, the deck's longest prompt), all under 2,000.
+ */
+const STEADY_CLAUSE: Record<RoomType, { from: string; to: string }> = {
+  exterior: {
+    from: "and the light drifts naturally toward warm golden hour, and as dusk falls the home's interior lights glow on warmly through the windows",
+    to: 'and the light stays steady daylight throughout - no golden hour, no dusk',
+  },
+  interior: {
+    from: 'and the light drifts naturally toward warm golden hour',
+    to: 'and the light stays steady daylight throughout - no golden hour, no dusk',
+  },
+};
+
+/** The same seven prompts with the day→night drift removed. */
+export const BUDGET_CAMERA_PROMPTS_STEADY: Record<RoomType, Partial<Record<CameraMove, string>>> = {
+  exterior: deriveSteady('exterior'),
+  interior: deriveSteady('interior'),
+};
+
+function deriveSteady(roomType: RoomType): Partial<Record<CameraMove, string>> {
+  const { from, to } = STEADY_CLAUSE[roomType];
+  const out: Partial<Record<CameraMove, string>> = {};
+  for (const [move, text] of Object.entries(BUDGET_CAMERA_PROMPTS[roomType])) {
+    if (!text) continue;
+    // Clause absent (a future deck revision) ⇒ keep the original verbatim
+    // rather than silently rendering a prompt we never reviewed.
+    out[move as CameraMove] = text.includes(from) ? text.replace(from, to) : text;
+  }
+  return out;
+}
+
 /** The gentle budget prompt for one tagged photo, or null on an invalid pair
  *  (e.g. a hand-edited draft with interior+out) so callers degrade instead of
- *  throwing mid-render-request. */
-export function budgetCameraPrompt(roomType: RoomType, move: CameraMove): string | null {
+ *  throwing mid-render-request.
+ *
+ * 2026-10-29: `dayToNight` picks the deck — true (default) keeps the golden-
+ * hour / dusk drift, false selects the steady-daylight rewrite of the same
+ * prompt. Omitted ⇒ byte-identical to every prompt shipped before the toggle.
+ */
+export function budgetCameraPrompt(
+  roomType: RoomType,
+  move: CameraMove,
+  dayToNight = true,
+): string | null {
   if (roomType !== 'exterior' && roomType !== 'interior') return null;
-  return BUDGET_CAMERA_PROMPTS[roomType][move] || null;
+  const deck = dayToNight ? BUDGET_CAMERA_PROMPTS : BUDGET_CAMERA_PROMPTS_STEADY;
+  return deck[roomType][move] || null;
 }
 
 /**
@@ -147,12 +205,21 @@ export function budgetCameraPrompt(roomType: RoomType, move: CameraMove): string
  *
  * Used by the 2026-10-23 review gate: identify each clip's current move so
  * the agent can reselect a different one before a paid re-roll.
+ *
+ * 2026-10-29: also reports `dayToNight`, so a re-roll replays the SAME
+ * lighting choice the clip was generated with (the two decks never collide —
+ * a steady prompt cannot byte-match a drifting one).
  */
-export function matchBudgetPrompt(prompt: string): { roomType: RoomType; move: CameraMove } | null {
+export function matchBudgetPrompt(
+  prompt: string,
+): { roomType: RoomType; move: CameraMove; dayToNight: boolean } | null {
   if (!prompt) return null;
   for (const roomType of ['exterior', 'interior'] as const) {
     for (const [move, text] of Object.entries(BUDGET_CAMERA_PROMPTS[roomType])) {
-      if (text === prompt) return { roomType, move: move as CameraMove };
+      if (text === prompt) return { roomType, move: move as CameraMove, dayToNight: true };
+    }
+    for (const [move, text] of Object.entries(BUDGET_CAMERA_PROMPTS_STEADY[roomType])) {
+      if (text === prompt) return { roomType, move: move as CameraMove, dayToNight: false };
     }
   }
   return null;
@@ -177,7 +244,9 @@ export function buildBudgetCameraPayload(
   for (const url of imageUrls) {
     const m = meta[url];
     if (!m || !m.roomType || !m.move) continue;
-    const prompt = budgetCameraPrompt(m.roomType, m.move);
+    // `false` selects the steady-daylight rewrite; anything else (unset,
+    // legacy drafts) is the day→night deck the product always shipped.
+    const prompt = budgetCameraPrompt(m.roomType, m.move, m.dayToNight !== false);
     if (prompt) out.push({ image_url: url, prompt });
   }
   return out;

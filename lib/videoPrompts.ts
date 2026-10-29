@@ -22,6 +22,15 @@ export type CameraMove = 'in' | 'left' | 'right' | 'out';
 export interface PhotoMeta {
   roomType: RoomType;
   move: CameraMove;
+  /**
+   * 2026-10-29 DAY→NIGHT OPTION — does this clip's light drift from day into
+   * night? `true` (the default, and every legacy draft's value) keeps the
+   * deck's golden-hour / dusk-lights drift; `false` selects the steady-
+   * daylight rewording of the same prompt (BUDGET_CAMERA_PROMPTS_STEADY in
+   * lib/budgetVideoPrompts.ts). Optional so drafts written before the toggle
+   * keep rendering exactly as they did.
+   */
+  dayToNight?: boolean;
 }
 
 /** Moves offered for a room type. Zoom-out is EXTERIOR-only. */

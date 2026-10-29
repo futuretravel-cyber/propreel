@@ -63,7 +63,10 @@ export default function ClipReviewPanel({
     const picked = pendingMoves[index] as CameraMoveLike | undefined;
     let prompt: string | undefined;
     if (current && picked && picked !== current.move) {
-      prompt = budgetCameraPrompt(current.roomType, picked) ?? undefined;
+      // 2026-10-29: replay the clip's own day→night choice with the new
+      // move — a steady-daylight clip must not come back with a dusk drift
+      // (or vice versa) just because its camera move was reselected.
+      prompt = budgetCameraPrompt(current.roomType, picked, current.dayToNight) ?? undefined;
     }
     onRerender(index, prompt);
   };
