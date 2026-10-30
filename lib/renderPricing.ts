@@ -165,6 +165,9 @@ export const SOCIAL_PACK_CREDITS = 5;
  *  balance only; never the agency pool. */
 export const TRANSLATE_CREDITS = 1;
 
+/** Flat surcharge on an AI render that carries a voiceover (narration on). */
+export const NARRATION_CREDITS = 1;
+
 /**
  * Price of re-rolling ONE clip of a review-paused render (Option 2 — the
  * per-clip review step after generation, before assembly).
@@ -223,7 +226,9 @@ export function jobCredits(
     const tier = TIERS.find(t => t.id === String(args.tier || '').toUpperCase());
     if (!tier) return null;
     const config = tier.configurations[Number(args.configIndex)];
-    return typeof config?.credits === 'number' ? config.credits : null;
+    if (typeof config?.credits !== 'number') return null;
+    const narrated = !!(args.voiceoverText ?? args.voiceover_text ?? '').trim();
+    return config.credits + (narrated ? NARRATION_CREDITS : 0);
   }
   return null;
 }

@@ -4668,6 +4668,10 @@ async def api_render_video(request: RenderVideoRequest, raw_request: Request):
     """
     # Claim OUTSIDE the try: the blanket handler below would otherwise
     # re-wrap the 401/409/503 from _claim_job_token as a 500.
+    _verify_paid_script_hash(
+        _parse_token(raw_request.headers.get(_token_header))[0],
+        request.voiceover_text,
+    )
     _claim_job_token(raw_request)  # paid + single-use before any work starts
     try:
         if raw_request.query_params.get("wait") in ("true", "1"):

@@ -229,7 +229,7 @@ export async function tokenRoutes(req: VercelRequest, res: VercelResponse, actio
       // POST a 1,000-word one to the worker. The worker re-hashes the body's
       // voiceover_text and rejects a mismatch — the only honest route to a
       // new price is a fresh mint (a fresh charge).
-      const scriptHash = scope === 'avatar' && voiceoverText.trim()
+      const scriptHash = (scope === 'avatar' || scope === 'render') && voiceoverText.trim()
         ? createHash('sha256').update(voiceoverText.split(/\s+/).filter(Boolean).join(' ')).digest('hex').slice(0, 16)
         : undefined;
 

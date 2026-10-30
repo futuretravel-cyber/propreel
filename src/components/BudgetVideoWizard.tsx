@@ -708,7 +708,7 @@ export function BudgetVideoTab() {
                       steady-daylight rewrite. The Budget tier renders through
                       this same gentle deck, so it gets the option too. */}
                   <div>
-                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Light over the clip</span>
+                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Dusk sweep</span>
                     <div className="grid grid-cols-2 gap-1 mt-1">
                       {([
                         { on: true, label: 'Day → Night' },
