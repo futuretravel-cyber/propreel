@@ -160,7 +160,7 @@ export default function AITalkingProfile({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <User className="w-5 h-5 text-purple-400" />
-          <label className="label mb-0">AI Avatar Video</label>
+          <h3 id="ai-avatar-toggle-heading" className="label mb-0">AI Avatar Video</h3>
           <span className="badge badge-brand text-xs">
             <Zap className="w-3 h-3" /> {CREDIT_COST != null ? `${CREDIT_COST} credits (≈${Math.round(narrationSecs)}s)` : 'script needed'}
           </span>
@@ -172,9 +172,7 @@ export default function AITalkingProfile({
           onClick={handleToggle}
           role="switch"
           aria-checked={enabled}
-          aria-label={enabled
-            ? 'AI Avatar Video included in this render — switch off to exclude it'
-            : 'Include AI Avatar Video in this render'}
+          aria-labelledby="ai-avatar-toggle-heading"
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
             enabled ? 'bg-purple-600' : 'bg-ink-700'
           }`}
