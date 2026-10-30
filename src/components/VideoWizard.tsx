@@ -1352,13 +1352,13 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
           </button>
           </div>
         </div>
-        <p className="text-xs text-ink-500 mt-1">
-          {generatingScript
-            ? uploadedImages.length
+        {generatingScript && (
+          <p className="text-xs text-ink-500 mt-1">
+            {uploadedImages.length
               ? 'Writing from your listing details and photos — this can take up to a minute…'
-              : 'Writing your script — a few seconds…'
-            : <>Target word count: {targetWords} words (based on {selectedConfig.duration}s duration at 2.4 words/second)</>}
-        </p>
+              : 'Writing your script — a few seconds…'}
+          </p>
+        )}
         {scriptError && (
           <div className="mb-2 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-950/40 p-3" role="alert">
             <AlertTriangle className="w-4 h-4 shrink-0 text-red-300 mt-0.5" />
@@ -1368,15 +1368,16 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
       {/* Live word budget: remaining words left in the duration target, updating
           as the agent types, with a warning the moment the script exceeds it —
           the frozen-tail problem, surfaced before any credits are spent. */}
-      <div className="flex items-center justify-between text-xs">
-        <span className={scriptWords > targetWords ? 'text-red-400 font-semibold' : scriptWords > targetWords - 12 ? 'text-amber-400' : 'text-ink-500'}>
-          {Math.max(0, targetWords - scriptWords)} words left of {targetWords}
+      <div className="flex items-center gap-2 text-xs mb-1" aria-label="Word budget">
+        <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div
+            className={`h-full rounded-full ${scriptWords > targetWords ? 'bg-red-500' : scriptWords > targetWords - 12 ? 'bg-amber-400' : 'bg-purple-500'}`}
+            style={{ width: `${Math.min(100, (scriptWords / Math.max(1, targetWords)) * 100)}%` }}
+          />
+        </div>
+        <span className={`shrink-0 ${scriptWords > targetWords ? 'text-red-400 font-semibold' : 'text-ink-500'}`}>
+          {scriptWords > targetWords ? `${scriptWords - targetWords} over` : `${Math.max(0, targetWords - scriptWords)} left`} of {targetWords}
         </span>
-        {scriptWords > targetWords && (
-          <span className="text-red-400 flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3" /> {scriptWords - targetWords} over target — trim to ~{Math.round(estimatedNarrationSec - (scriptWords - targetWords) / 2.4)}s narration
-          </span>
-        )}
       </div>
       <textarea 
         className={`input min-h-[120px] ${scriptWords > targetWords ? 'border-red-500/50' : ''}`} 
@@ -1388,13 +1389,10 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
             while restructuring this step): the check re-arms on every language
             change or script edit; the LLM verdict takes a few seconds, so show
             the in-flight state instead of silence. */}
-        {langCheck.status === 'checking' && (
-          <p className="text-xs text-ink-500 mt-2 flex items-center gap-1">
-            <RefreshCw className="w-3 h-3 animate-spin" /> Checking the script language…
-          </p>
-        )}
-        <LanguageMismatchBanner check={langCheck} />
-        {narrationTooLong && !noNarration && (
+        {/* One status slot, highest priority first: mismatch > too long > checking. */}
+        {langCheck.status === 'mismatch' ? (
+          <LanguageMismatchBanner check={langCheck} />
+        ) : narrationTooLong && !noNarration ? (
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/40 p-3">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
             <p className="text-xs text-amber-300">
@@ -1403,54 +1401,55 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
               to about {targetWords} words for a clean ending.
             </p>
           </div>
-        )}
+        ) : langCheck.status === 'checking' ? (
+          <p className="text-xs text-ink-500 mt-2 flex items-center gap-1">
+            <RefreshCw className="w-3 h-3 animate-spin" /> Checking the script language…
+          </p>
+        ) : null}
       </div>
 
-      {/* Narrator Voice — only voices that natively speak the selected
-          language; the toggle below lets agents skip narration entirely */}
+      {/* Narrator Voice — one row: voice dropdown (only voices that natively
+          speak the selected language) with a play button beside it. */}
       <div>
-        <div className="flex items-center justify-between">
-          <label className="label">Narrator Voice</label>
-          {!noNarration && (
-            <button
-              type="button"
-              onClick={() => voicePreview.play(voice, language)}
-              disabled={voicePreview.loading}
-              className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 disabled:opacity-60"
-            >
-              {voicePreview.loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : voicePreview.isCurrent(voice, language) ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-              {voicePreview.loading ? 'Loading…' : voicePreview.isCurrent(voice, language) ? 'Stop' : 'Preview'}
-            </button>
-          )}
-        </div>
-        <div className="flex gap-2 mb-2">
+        <div className="flex items-center justify-between mb-2">
+          <label className="label">Narrator</label>
           <button
             type="button"
-            onClick={() => setNoNarration(false)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${!noNarration ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-300 hover:bg-white/10 border border-transparent'}`}
+            role="switch"
+            aria-checked={!noNarration}
+            aria-label="Narration on or off"
+            onClick={() => { if (!noNarration) { setNoNarration(true); voicePreview.stop(); } else { setNoNarration(false); } }}
+            className={`text-xs font-semibold px-3 py-1 rounded-full border transition ${!noNarration ? 'bg-purple-700/20 text-purple-300 border-purple-500/30' : 'bg-white/5 text-ink-300 border-transparent hover:bg-white/10'}`}
           >
-            <Mic className="w-3 h-3 inline mr-1" /> Narrator voice
-          </button>
-          <button
-            type="button"
-            onClick={() => { setNoNarration(true); voicePreview.stop(); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${noNarration ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-300 hover:bg-white/10 border border-transparent'}`}
-          >
-            <VolumeX className="w-3 h-3 inline mr-1" /> No narration
+            {noNarration ? <><VolumeX className="w-3 h-3 inline mr-1" />Narration off</> : <><Mic className="w-3 h-3 inline mr-1" />Narration on</>}
           </button>
         </div>
         {noNarration ? (
           <p className="text-xs text-ink-400 bg-white/5 rounded-lg p-3">
-            This video renders without a voiceover — background music still plays if selected below.
-            Your script and language stay put for AI Write and the AI Avatar Video tab.
+            No voiceover. Music only. Your script and language stay put for AI Write and the AI Avatar Video tab.
           </p>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {languageVoices.map(v => (
-              <button key={v.id} onClick={() => setVoice(v.id)} className={`px-3 py-2 rounded-lg text-sm text-left transition ${voice === v.id ? 'bg-purple-700/20 text-purple-300 border border-purple-500/30' : 'bg-white/5 text-ink-300 hover:bg-white/10'}`}>
-                <Mic className="w-3 h-3 inline mr-1" /> {v.label}
-              </button>
-            ))}
+          <div className="flex gap-2">
+            <select
+              className="input flex-1"
+              value={voice}
+              onChange={e => setVoice(e.target.value)}
+              aria-label="Narrator voice"
+            >
+              {languageVoices.map(v => (
+                <option key={v.id} value={v.id}>{v.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => voicePreview.play(voice, language)}
+              disabled={voicePreview.loading}
+              aria-label={voicePreview.isCurrent(voice, language) ? 'Stop voice preview' : 'Preview voice'}
+              title={voicePreview.isCurrent(voice, language) ? 'Stop' : 'Preview'}
+              className="px-3 rounded-lg bg-white/5 hover:bg-white/10 text-purple-300 disabled:opacity-60"
+            >
+              {voicePreview.loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : voicePreview.isCurrent(voice, language) ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
           </div>
         )}
         {!noNarration && voicePreview.error && <p className="text-xs text-red-400 mt-1">{voicePreview.error}</p>}
