@@ -12,7 +12,7 @@ import { tokenRoutes, invoicePdf, consumeMintQuota } from '../lib/userRoutes/cre
 import { listSessions, revokeSessions, auditLog } from '../lib/userRoutes/sessions';
 import {
   adminApiKeysRoute, adminStats, listUsers, adminLedger, adminNarakeetUsage,
-  imagePresets, pnlRoutes, maintenanceRoute, adminAuditLog,
+  imagePresets, pnlRoutes, maintenanceRoute, adminAuditLog, adminUnmatchedPayments,
 } from '../lib/userRoutes/admin';
 import { agencyRoutes } from '../lib/userRoutes/agency';
 
@@ -84,6 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return auditLog(req, res);
   }
   if (req.query.action === 'admin_audit_log' && req.method === 'GET') return adminAuditLog(req, res);
+  if (req.query.action === 'unmatched_payments' && (req.method === 'GET' || req.method === 'POST')) return adminUnmatchedPayments(req, res);
   if (req.query.action === 'admin_api_keys') {
     return adminApiKeysRoute(req, res);
   }

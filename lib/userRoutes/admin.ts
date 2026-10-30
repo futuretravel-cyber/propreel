@@ -656,6 +656,59 @@ export async function maintenanceRoute(req: VercelRequest, res: VercelResponse) 
   }
 }
 
+export async function adminUnmatchedPayments(req: VercelRequest, res: VercelResponse) {
+  // ── GET ?action=unmatched_payments — Paystack charges with no matching user ──
+  // Written by the webhook when a charge.success email matches no account, so
+  // an admin can reconcile them (find the account or refund). Admin-only.
+  if (req.query.action === 'unmatched_payments' && req.method === 'POST') {
+    // POST — mark one unmatched payment as resolved (with a note). The row is
+    // kept for the record and hidden from the list; the action is audited.
+    const gate = await requireAdminSession(req);
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
+    const body = (req.body || {}) as any;
+    const reference = String(body.reference || '').trim();
+    const note = String(body.note || '').trim().slice(0, 300);
+    if (!reference) return res.status(400).json({ error: 'reference is required' });
+    if (!note) return res.status(400).json({ error: 'A resolution note is required' });
+    try {
+      const { getItem, updateItem, TABLES } = await import('../db');
+      const id = `unmatched_${reference}`;
+      const row = await getItem<any>(TABLES.SETTINGS, { id });
+      if (!row || row.type !== 'UNMATCHED_PAYMENT') return res.status(404).json({ error: 'Unmatched payment not found' });
+      if (row.resolvedAt) return res.status(409).json({ error: 'Already resolved' });
+      const resolvedAt = new Date().toISOString();
+      await updateItem(TABLES.SETTINGS, { id }, { resolvedAt, resolvedBy: gate.user.email, resolutionNote: note });
+      const { recordAdminAction } = await import('../../lib/adminAudit');
+      await recordAdminAction({
+        by: gate.user.email,
+        action: 'UNMATCHED_PAYMENT_RESOLVED',
+        target: reference,
+        detail: note,
+      });
+      return res.status(200).json({ success: true, resolvedAt });
+    } catch (e) {
+      console.error('unmatched_payments resolve failed:', e);
+      return res.status(500).json({ error: 'Could not resolve payment — try again' });
+    }
+  }
+
+  if (req.query.action === 'unmatched_payments' && req.method === 'GET') {
+    const gate = await requireAdminSession(req);
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
+    try {
+      const { scanItems, TABLES } = await import('../db');
+      const rows = await scanItems<any>(TABLES.SETTINGS, { limit: 500 });
+      const payments = rows
+        .filter(r => r.type === 'UNMATCHED_PAYMENT' && String(r.id || '').startsWith('unmatched_') && !r.resolvedAt)
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      return res.status(200).json({ payments, generatedAt: new Date().toISOString() });
+    } catch (e) {
+      console.error('unmatched_payments failed:', e);
+      return res.status(500).json({ error: 'Could not load unmatched payments — try again' });
+    }
+  }
+}
+
 export async function adminAuditLog(req: VercelRequest, res: VercelResponse) {
   // ── GET ?action=admin_audit_log — the platform admin action log ─────
   // Credit grants, subscription/role changes, review moderation and

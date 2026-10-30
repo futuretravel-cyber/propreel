@@ -520,11 +520,26 @@ This removes their account, projects and sign-ins — it cannot be undone. The e
                   if (!user) return;
                   setPoolLoading(true);
                   try {
-                    const res = await fetch('/api/paystack/initialize', {
+                    const payload = { user_id: user.id, credits: poolAmount, email: user.email, pool: 'agency' };
+                    let res = await fetch('/api/paystack/initialize', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ user_id: user.id, credits: poolAmount, email: user.email, pool: 'agency' }),
+                      body: JSON.stringify(payload),
                     });
+                    if (res.status === 409) {
+                      const blocked = await res.json().catch(() => ({}));
+                      if (blocked.code !== 'REPEAT_PURCHASE_CONFIRM') throw new Error(blocked.error || 'Pool top-up failed');
+                      const ok = await confirm(
+                        'You started a credit purchase a few minutes ago. If that checkout is still open, finish it instead. Only continue if you want to pay again.',
+                        { title: 'Start another payment?', confirmLabel: 'Pay again' },
+                      );
+                      if (!ok) { setPoolLoading(false); return; }
+                      res = await fetch('/api/paystack/initialize', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...payload, confirm_repeat: true }),
+                      });
+                    }
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || 'Payment could not be initialized');
                     window.location.href = data.authorization_url;

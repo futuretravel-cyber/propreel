@@ -6,6 +6,58 @@ import { generateInvoicePdf } from '../../lib/invoice';
 import { clearDunningAndNotify } from '../../lib/dunning';
 import { sendEmail, paymentFailedTemplate } from '../../lib/email';
 
+// Email every platform admin. Best-effort: a failed alert must never change the
+// webhook's response, so errors are logged and swallowed.
+async function alertAdmins(subject: string, detail: string): Promise<void> {
+  try {
+    const { ADMIN_EMAILS } = await import('../../lib/auth');
+    for (const to of ADMIN_EMAILS) {
+      const sent = await sendEmail({ to, subject, html: `<p>${detail}</p>`, text: detail });
+      if (!sent.ok) console.error(`[admin-alert] to=${to} failed: ${sent.error}`);
+    }
+  } catch (err: any) {
+    console.error('[admin-alert] could not send:', err?.message || err);
+  }
+}
+
+// Record an orphaned Paystack charge (a successful charge that matched no user)
+// so an admin can reconcile it in Admin → Unmatched payments, and alert the
+// admins once. Keyed by reference so Paystack redeliveries neither duplicate the
+// row nor re-send the alert. Best-effort: bookkeeping must never change the
+// webhook's response.
+async function recordUnmatchedPayment(p: {
+  fallbackId: string;
+  reference?: string | null;
+  email?: string | null;
+  amountZar: number;
+  currency?: string | null;
+  planCode?: string | null;
+  kind: string;
+}): Promise<void> {
+  try {
+    const { putItemIfNotExists, TABLES } = await import('../../lib/db');
+    const recorded = await putItemIfNotExists(TABLES.SETTINGS, {
+      id: `unmatched_${p.reference || p.fallbackId}`,
+      type: 'UNMATCHED_PAYMENT',
+      kind: p.kind,
+      reference: p.reference || null,
+      email: p.email || null,
+      amountZar: p.amountZar,
+      currency: p.currency || null,
+      planCode: p.planCode || null,
+      createdAt: new Date().toISOString(),
+    });
+    if (recorded) {
+      await alertAdmins(
+        `Unmatched Paystack ${p.kind}: R${p.amountZar} from ${p.email || 'unknown email'}`,
+        `A successful ${p.kind} (reference ${p.reference || 'n/a'}, R${p.amountZar}) matched no user account. Find the owner or refund it in Admin → Unmatched payments.`,
+      );
+    }
+  } catch (recErr) {
+    console.error('Webhook: could not record unmatched payment:', recErr);
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -191,8 +243,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (!userId) {
-        console.error(`No user found for email ${email}`);
-        return res.status(200).json({ received: true }); // Acknowledge to prevent retries
+        // Acknowledge with 200 (no retry): the event claim stays, so a redelivery
+        // is deduped. The charge is recorded for reconciliation first.
+        await recordUnmatchedPayment({
+          fallbackId: eventKeyId,
+          reference,
+          email,
+          amountZar: amount,
+          currency: data.currency,
+          planCode: data.plan?.plan_code,
+          kind: 'charge',
+        });
+        console.error(`Webhook: no user found for charge.success email ${email} (reference ${reference}) — recorded for manual review`);
+        return res.status(200).json({ received: true, unmatched: true, reference });
       }
 
       // ── Prorated plan upgrades (saved-card + hosted-checkout) ──────────
@@ -293,7 +356,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const recurringUser = await getUserByEmail(data.customer_email || data.customer?.email || '');
         if (recurringUser) {
           try {
-            await allocateMonthlyCredits(recurringUser.id);
+            await allocateMonthlyCredits(recurringUser.id, data.subscription?.next_payment_date);
           } catch (allocErr) {
             console.error('Recurring invoice allocation failed (claim released for retry):', allocErr);
           }
@@ -303,7 +366,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // would keep retrying, and cancel at day 21, a plan that just paid.
           await clearDunningAndNotify(recurringUser.id).catch(e => console.error('Dunning close failed (non-fatal):', e));
         } else {
-          console.error(`Webhook: recurring charge ${reference} has no user for ${data.customer_email}`);
+          // Never throw here. A throw releases the event claim, so Paystack
+          // retries a charge that can never match — for days — while the money
+          // stays uncredited and nobody is told. Record it for reconciliation
+          // and acknowledge instead, exactly like the credit-purchase path.
+          await recordUnmatchedPayment({
+            fallbackId: eventKeyId,
+            reference,
+            email: data.customer_email || data.customer?.email,
+            amountZar: amount,
+            currency: data.currency,
+            planCode: data.plan?.plan_code,
+            kind: 'recurring plan charge',
+          });
+          console.error(`Webhook: recurring charge ${reference} has no user for ${data.customer_email || data.customer?.email} — recorded for manual review`);
         }
         return res.status(200).json({ success: true, recurring_invoice: true, reference });
       }
@@ -317,7 +393,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`Webhook: reference ${reference} already credited (via ${already.userId === userId ? 'webhook' : 'verify'}) — skipping`);
         return res.status(200).json({ success: true, already_processed: true, reference });
       }
-      await putItem(T.SETTINGS, { id: markerId, userId, type: 'payment_processed', createdAt: new Date().toISOString() });
+
 
       // Agency-pool purchases (type 'agency_pool_purchase') land in the
       // shared agency pool instead of the personal balance.
@@ -353,6 +429,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           eventId
         );
       }
+      // Mark the reference only AFTER the credit has been written. If addCredits
+      // throws, no marker exists, so Paystack's retry can still grant the credit.
+      await putItem(T.SETTINGS, { id: markerId, userId, type: 'payment_processed', createdAt: new Date().toISOString() });
       if (addResult.duplicated) {
         console.log(`Webhook: eventId ${eventId} already credited — balance untouched`);
         return res.status(200).json({ success: true, already_processed: true, reference });
@@ -454,7 +533,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         planInfo.id,
         planInfo.cycle,
         data.subscription_code,
-        data.customer_code
+        data.customer_code,
+        data.next_payment_date
       );
 
       return res.status(200).json({
@@ -481,7 +561,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Allocate monthly credits (this also extends the period)
-      const result = await allocateMonthlyCredits(userId);
+      const result = await allocateMonthlyCredits(userId, data.next_payment_date);
 
       // A renewal webhook is proof the plan paid: close any active dunning
       // episode and send the "active again" email (exactly-once per episode;
@@ -536,6 +616,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await getUserByEmail(email || '');
       if (!user) {
         console.error(`No user found for email ${email} on ${event}`);
+        await alertAdmins(
+          `Failed Paystack charge with no matching user: ${email || 'unknown email'}`,
+          `${event} (reference ${data.reference || 'n/a'}) matched no user account, so no dunning or customer notice was sent. Review in Paystack.`,
+        );
         return res.status(200).json({ received: true });
       }
 
@@ -642,14 +726,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 // so non-key lookups scan with a filter)
 async function getUserByEmail(email: string) {
   const { scanItems, TABLES } = await import('../../lib/db');
+  const needle = (email || '').toLowerCase();
   const users = await scanItems<any>(TABLES.USERS, {
     filter: {
       expression: 'email = :email',
-      values: { ':email': (email || '').toLowerCase() },
+      values: { ':email': needle },
     },
     limit: 1,
   });
-  return users[0] || null;
+  if (users[0]) return users[0];
+  if (!needle) return null;
+
+  // Agent emails live inside the owning account's agentProfiles list, which
+  // DynamoDB can't filter on by nested field, so scan owners and match in code.
+  // Payments from an agent's email credit the agency owner's account.
+  const owners = await scanItems<any>(TABLES.USERS, {
+    filter: { expression: 'attribute_exists(agentProfiles)' },
+  });
+  return owners.find((u) =>
+    Array.isArray(u.agentProfiles) &&
+    u.agentProfiles.some((p: any) => String(p?.email || '').toLowerCase() === needle)
+  ) || null;
 }
 
 async function cancelSubscription(userId: string) {

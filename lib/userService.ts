@@ -122,6 +122,8 @@ export interface User {
   trialReactivatedAt?: string;
   /** Last day (YYYY-MM-DD UTC) a daily trial reminder email went out */
   trialLastReminderDate?: string;
+  /** Last Paystack checkout start (ISO) — repeat-purchase guard in api/paystack/initialize.ts */
+  lastCheckoutInitAt?: string;
   /** Computed by the allocate-monthly-credits cron for the Billing page */
   monthlySummary?: {
     month: string;
@@ -693,7 +695,8 @@ export async function createSubscription(
   planId: string,
   cycle: 'MONTHLY' | 'ANNUAL',
   paystackSubCode?: string,
-  paystackCustomerCode?: string
+  paystackCustomerCode?: string,
+  nextPaymentDate?: string
 ): Promise<{ subscription: Subscription; creditsAllocated: number }> {
   const plan = (await getPlans())[planId];
   if (!plan) {
@@ -702,7 +705,8 @@ export async function createSubscription(
 
   const now = new Date();
   const periodEnd = new Date();
-  periodEnd.setDate(periodEnd.getDate() + (cycle === 'MONTHLY' ? 30 : 365));
+  // Paystack's next_payment_date is the real period end; fall back to a fixed offset when absent.
+  if (nextPaymentDate && !Number.isNaN(Date.parse(nextPaymentDate))) periodEnd.setTime(Date.parse(nextPaymentDate)); else periodEnd.setDate(periodEnd.getDate() + (cycle === 'MONTHLY' ? 30 : 365));
 
   const subscription: Subscription = {
     planId,
@@ -789,7 +793,7 @@ export async function cancelSubscription(userId: string, immediate: boolean = fa
 // recurring charge.success invoices — so claim renew_<user>_<YYYY-MM>
 // atomically first; losers return null without allocating, and the claim
 // is released if the allocation itself fails so a retry can proceed.
-export async function allocateMonthlyCredits(userId: string): Promise<{ allocated: number; newBalance: number } | null> {
+export async function allocateMonthlyCredits(userId: string, nextPaymentDate?: string): Promise<{ allocated: number; newBalance: number } | null> {
   const eligibility = await getUser(userId);
   if (!eligibility?.subscription || eligibility.subscription.status !== 'ACTIVE') {
     return null;
@@ -805,7 +809,7 @@ export async function allocateMonthlyCredits(userId: string): Promise<{ allocate
   if (!claimed) return null;
 
   try {
-    return await runMonthlyAllocation(userId);
+    return await runMonthlyAllocation(userId, nextPaymentDate);
   } catch (err) {
     try {
       const { deleteItem } = await import('./db-helpers');
@@ -815,7 +819,7 @@ export async function allocateMonthlyCredits(userId: string): Promise<{ allocate
   }
 }
 
-async function runMonthlyAllocation(userId: string): Promise<{ allocated: number; newBalance: number } | null> {
+async function runMonthlyAllocation(userId: string, nextPaymentDate?: string): Promise<{ allocated: number; newBalance: number } | null> {
   const user = await getUser(userId);
   if (!user || !user.subscription || user.subscription.status !== 'ACTIVE') {
     return null;
@@ -828,7 +832,7 @@ async function runMonthlyAllocation(userId: string): Promise<{ allocated: number
 
   const now = new Date();
   const periodEnd = new Date();
-  periodEnd.setDate(periodEnd.getDate() + (user.subscription.cycle === 'MONTHLY' ? 30 : 365));
+  if (nextPaymentDate && !Number.isNaN(Date.parse(nextPaymentDate))) periodEnd.setTime(Date.parse(nextPaymentDate)); else periodEnd.setDate(periodEnd.getDate() + (user.subscription.cycle === 'MONTHLY' ? 30 : 365));
 
   const subscription: Subscription = {
     ...user.subscription,

@@ -86,6 +86,7 @@ scripts/_*
 # permanent — CI runs them on every push (H-1 paystack gate, L-1/L-2
 # leads+admin hardening, M-1/L-3/L-4 Modal worker hardening).
 !scripts/_paystack_verify_gate_test.ts
+!scripts/_paystack_webhook_unmatched_test.ts
 !scripts/_leads_admin_hardening_test.ts
 !scripts/_worker_hardening_test.py
 scripts/__pycache__/

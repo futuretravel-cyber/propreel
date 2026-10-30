@@ -203,7 +203,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // exactly once per month across cron + renewal webhook + this path.
     if (result.data.plan && !result.data.metadata?.type) {
       const { allocateMonthlyCredits } = await import('../../lib/userService');
-      const alloc = await allocateMonthlyCredits(userId).catch(() => null);
+      const alloc = await allocateMonthlyCredits(userId, result.data.subscription?.next_payment_date).catch(() => null);
       // A verified renewal charge = recovery when the user was in dunning:
       // close the episode and send the "active again" email (exactly-once).
       await clearDunningAndNotify(userId).catch(e => console.error('Dunning close failed (non-fatal):', e));
@@ -232,7 +232,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         new_balance: user?.credits || 0,
       });
     }
-    await putItem(TABLES.SETTINGS, { id: markerId, userId, type: 'payment_processed', createdAt: new Date().toISOString() });
+
 
     // Add credits — eventId (Paystack's unique data.id) makes the ledger row
     // idempotent, mirroring the webhook path.
@@ -252,6 +252,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       eventId
     );
+    // Mark the reference only AFTER the credit has been written, so a failed
+    // addCredits leaves no marker and a retry (verify or webhook) can still grant it.
+    await putItem(TABLES.SETTINGS, { id: markerId, userId, type: 'payment_processed', createdAt: new Date().toISOString() });
     if (addResult.duplicated) {
       const user = await getUser(userId);
       return res.status(200).json({

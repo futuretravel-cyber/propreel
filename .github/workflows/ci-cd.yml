@@ -59,6 +59,9 @@ jobs:
     - name: "Security: Paystack repeat-purchase guard"
       run: npx tsx scripts/_paystack_repeat_purchase_test.ts
 
+    - name: "Security: Paystack webhook unmatched-email claim release"
+      run: npx tsx scripts/_paystack_webhook_unmatched_test.ts
+
     - name: "Security: leads + admin API-keys hardening (L-1/L-2)"
       run: npx tsx scripts/_leads_admin_hardening_test.ts
 

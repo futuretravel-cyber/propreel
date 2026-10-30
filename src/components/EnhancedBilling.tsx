@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { formatZar, formatDate, creditListZar } from '../lib/utils';
 import { PLANS, TIERS, CREDIT_PACK_RAND, SIGNUP_BONUS } from '../lib/constants';
 import { PropReelAPI, CreditReportData, ReferralStats } from '../lib/api';
@@ -32,6 +33,7 @@ const bundles = [
 export default function EnhancedBilling() {
   const { user, balance, refresh, giftCredits } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   // Deep-linkable sub-tab (?btab=) so Credits → Gift credits and the dunning
   // banner land on the right panel instead of the overview underneath it.
@@ -167,11 +169,25 @@ export default function EnhancedBilling() {
     if (!user) { toast.error('Please sign in first'); return; }
     setPurchasing(true);
     try {
-      const response = await fetch('/api/paystack/initialize', {
+      let response = await fetch('/api/paystack/initialize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: user.id, credits: amount, email: user.email }),
       });
+      if (response.status === 409) {
+        const err = await response.json().catch(() => ({}));
+        if (err.code !== 'REPEAT_PURCHASE_CONFIRM') throw new Error(err.error || 'Payment could not be initialized');
+        const ok = await confirm(
+          'You started a credit purchase a few minutes ago. If that checkout is still open, finish it instead. Only continue if you want to pay again.',
+          { title: 'Start another payment?', confirmLabel: 'Pay again' },
+        );
+        if (!ok) { setPurchasing(false); return; }
+        response = await fetch('/api/paystack/initialize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.id, credits: amount, email: user.email, confirm_repeat: true }),
+        });
+      }
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.error || 'Payment could not be initialized');

@@ -90,6 +90,106 @@ function AdminAuditLog() {
   );
 }
 
+// Admin: Paystack charges whose email matched no user. The webhook records
+// each one so it can be reconciled (find the account or refund). An admin
+// marks each one resolved with a note, which removes it from this list.
+function AdminUnmatchedPayments() {
+  const [payments, setPayments] = useState<any[] | null>(null);
+  const [error, setError] = useState('');
+  const [openRef, setOpenRef] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+  useEffect(() => {
+    fetch('/api/users?action=unmatched_payments')
+      .then(r => { if (!r.ok) throw new Error('Admin access required'); return r.json(); })
+      .then(d => setPayments(d.payments || []))
+      .catch(e => { setError(e.message); setPayments([]); });
+  }, []);
+
+  const resolve = async (reference: string) => {
+    if (!note.trim() || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/users?action=unmatched_payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reference, note: note.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      setPayments(list => (list || []).filter(p => p.reference !== reference));
+      setOpenRef(null);
+      setNote('');
+      toast.success('Payment marked resolved');
+    } catch {
+      toast.error('Failed to resolve payment');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (error) return <p className="text-sm text-red-400">{error}</p>;
+  if (!payments) return <p className="text-sm text-ink-400">Loading unmatched payments…</p>;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-white">Unmatched payments</h3>
+          <p className="text-xs text-ink-500">Successful Paystack charges whose email matched no user account. Find the owner or refund each one.</p>
+        </div>
+        <CsvExportButton filename="unmatched-payments.csv" rows={payments} columns={['createdAt', 'reference', 'email', 'amountZar', 'currency', 'planCode']} />
+      </div>
+      {payments.length === 0 ? (
+        <p className="text-sm text-ink-400">No unmatched payments.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">When</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Reference</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Email</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Amount</th>                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Plan</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Resolve</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map(p => (
+                <tr key={p.id} className="border-b border-white/5">
+                  <td className="px-3 py-2 text-ink-300 whitespace-nowrap">{p.createdAt ? new Date(p.createdAt).toLocaleString('en-ZA') : ''}</td>
+                  <td className="px-3 py-2 text-white font-mono text-xs">{p.reference}</td>
+                  <td className="px-3 py-2 text-ink-300">{p.email}</td>
+                  <td className="px-3 py-2 text-ink-300 whitespace-nowrap">R{p.amountZar}</td>
+                  <td className="px-3 py-2 text-ink-300">{p.planCode || '—'}</td>
+                  <td className="px-3 py-2">
+                    {openRef === p.reference ? (
+                      <div className="flex flex-col gap-2 min-w-[220px]">
+                        <input
+                          value={note}
+                          onChange={e => setNote(e.target.value)}
+                          placeholder="Resolution note (required)"
+                          maxLength={300}
+                          className="w-full rounded bg-white/5 border border-white/10 px-2 py-1 text-xs text-white"
+                        />
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => resolve(p.reference)} disabled={!note.trim() || saving} className="text-xs px-2 py-1 rounded bg-white/10 text-white disabled:opacity-50">Save</button>
+                          <button type="button" onClick={() => { setOpenRef(null); setNote(''); }} className="text-xs px-2 py-1 rounded text-ink-400">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => { setOpenRef(p.reference); setNote(''); }} className="text-xs px-2 py-1 rounded bg-white/10 text-white">Mark resolved</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ADMIN
 // ═══════════════════════════════════════════════════════════════════════════
@@ -126,6 +226,7 @@ const ADMIN_SECTIONS: { label: string; tabs: { key: string; label: string }[] }[
       { key: 'api-keys', label: 'API Keys' },
       { key: 'update-mode', label: 'Maintenance' },
       { key: 'audit', label: 'Audit log' },
+      { key: 'unmatched', label: 'Unmatched payments' },
     ],
   },
 ];
@@ -164,6 +265,7 @@ export default function AdminPage() {
       <div className="card-dark p-6">
         {tab === 'overview' && <AdminOverview />}
         {tab === 'audit' && <AdminAuditLog />}
+        {tab === 'unmatched' && <AdminUnmatchedPayments />}
         {tab === 'pnl' && <AdminPnl />}
         {tab === 'ops' && <AdminNarakeetOps />}
         {tab === 'users' && <AdminUsers />}
