@@ -9,10 +9,10 @@ import { movesForRoomType, CAMERA_MOVE_LABEL } from '../../lib/videoPrompts';
  * worker pauses a finished generation at `clips_ready`, BEFORE assembly.
  *
  * The agent watches every generated clip here and decides:
- *  - re-select the clip's CAMERA MOVE (the 2026-10-23 add-on) and re-roll it
- *    — a paid, per-clip fal regeneration with the newly chosen prompt, so a
- *    clip whose motion doesn't fit can change course without re-rendering
- *    the reel;
+ *  - re-select the clip's CAMERA MOVE and LIGHT JOURNEY (day→night or steady
+ *    daylight) and re-roll it — a paid, per-clip fal regeneration with the
+ *    newly chosen prompt, so a clip whose motion or lighting doesn't fit can
+ *    change course without re-rendering the reel;
  *  - re-roll as-is — same shot, fresh attempt (fire on furniture, invented
  *    room, …);
  *  - assemble the reviewed clips into the finished reel (free — the original
@@ -20,10 +20,10 @@ import { movesForRoomType, CAMERA_MOVE_LABEL } from '../../lib/videoPrompts';
  *  - cancel instead — the render charge refunds, same contract as cancel
  *    during generation.
  *
- * The move row only renders for clips whose prompt byte-matches the gentle
- * deck (matchBudgetPrompt), so it can never mislabel a move — and every
- * prompt the re-roll sends comes from budgetCameraPrompt, the same source
- * the render itself used.
+ * The move and light rows only render for clips whose prompt byte-matches the
+ * budget deck (matchBudgetPrompt), so they can never mislabel a clip — and
+ * every prompt the re-roll sends comes from budgetCameraPrompt, the same
+ * source the render itself used.
  */
 export interface ClipReviewPanelProps {
   clips: RenderClip[];
@@ -34,10 +34,23 @@ export interface ClipReviewPanelProps {
   assembling: boolean;
   cancelling: boolean;
   /** `prompt` is the full replacement prompt when the agent reselected a
-   *  camera move; omitted ⇒ the worker replays the clip's stored prompt. */
+   *  camera move or light journey; omitted ⇒ the worker replays the clip's
+   *  stored prompt. */
   onRerender: (index: number, prompt?: string) => void;
   onAssemble: () => void;
   onCancel: () => void;
+}
+
+/** Dusk sweep options — same labels the wizards show on the Photos step. */
+const LIGHT_OPTIONS = [
+  { on: true, label: 'Day → Night' },
+  { on: false, label: 'Daylight only' },
+] as const;
+
+/** Per-clip reselection; unset fields keep the clip's current setting. */
+interface PendingPick {
+  move?: CameraMoveLike;
+  dayToNight?: boolean;
 }
 
 export default function ClipReviewPanel({
@@ -51,22 +64,21 @@ export default function ClipReviewPanel({
   onCancel,
 }: ClipReviewPanelProps) {
   const busy = busyIndex !== null || assembling;
-  // Pending move reselection per clip (unset ⇒ keep the clip's current move).
-  const [pendingMoves, setPendingMoves] = useState<Partial<Record<number, string>>>({});
+  const [pendingPicks, setPendingPicks] = useState<Partial<Record<number, PendingPick>>>({});
 
   const rerenderPrice = rerenderCredits != null ? ` · ${rerenderCredits}⚡` : '';
 
-  const selectMove = (index: number, move: string) =>
-    setPendingMoves(prev => ({ ...prev, [index]: move }));
+  const selectPick = (index: number, pick: PendingPick) =>
+    setPendingPicks(prev => ({ ...prev, [index]: { ...prev[index], ...pick } }));
 
   const reroll = (index: number, current: ReturnType<typeof matchBudgetPrompt>) => {
-    const picked = pendingMoves[index] as CameraMoveLike | undefined;
+    const pick = pendingPicks[index];
+    const move = pick?.move ?? current?.move;
+    const dayToNight = pick?.dayToNight ?? current?.dayToNight;
     let prompt: string | undefined;
-    if (current && picked && picked !== current.move) {
-      // 2026-10-29: replay the clip's own day→night choice with the new
-      // move — a steady-daylight clip must not come back with a dusk drift
-      // (or vice versa) just because its camera move was reselected.
-      prompt = budgetCameraPrompt(current.roomType, picked, current.dayToNight) ?? undefined;
+    if (current && move && dayToNight !== undefined
+      && (move !== current.move || dayToNight !== current.dayToNight)) {
+      prompt = budgetCameraPrompt(current.roomType, move, dayToNight) ?? undefined;
     }
     onRerender(index, prompt);
   };
@@ -78,9 +90,10 @@ export default function ClipReviewPanel({
           <Film className="w-4 h-4 shrink-0" /> Review each clip before the final video is stitched
         </p>
         <p className="text-xs text-ink-300 mt-1">
-          Watch every clip below — each is generated straight from your photo. Don't like how a clip moves? Pick a
-          different camera move for it, then re-roll just that clip instead of paying for a whole new render. When
-          all clips look right, create the final video: narration, music and branding are added in one pass.
+          Watch every clip below — each is generated straight from your photo. Don't like how a clip moves or how its
+          light changes? Pick a different camera move or light journey for it, then re-roll just that clip instead of
+          paying for a whole new render. When all clips look right, create the final video: narration, music and
+          branding are added in one pass.
         </p>
       </div>
 
@@ -88,8 +101,11 @@ export default function ClipReviewPanel({
         {clips.map((clip, i) => {
           const found = matchBudgetPrompt(clip.prompt || '');
           const currentMove = found?.move;
-          const picked = (pendingMoves[i] ?? currentMove) as CameraMoveLike | undefined;
-          const switching = !!(found && picked && picked !== currentMove);
+          const currentLight = found?.dayToNight;
+          const pick = pendingPicks[i];
+          const picked = (pick?.move ?? currentMove) as CameraMoveLike | undefined;
+          const pickedLight = pick?.dayToNight ?? currentLight;
+          const switching = !!(found && picked && (picked !== currentMove || pickedLight !== currentLight));
           const reRollingThis = busyIndex === i;
           const rerolled = !!clip.rerendered_at;
           return (
@@ -117,7 +133,7 @@ export default function ClipReviewPanel({
                         type="button"
                         disabled={busy}
                         aria-pressed={isSelected}
-                        onClick={() => selectMove(i, m)}
+                        onClick={() => selectPick(i, { move: m })}
                         className={`text-[11px] px-2 py-1 rounded-md border transition-colors disabled:opacity-40 ${
                           isSelected
                             ? 'border-amber-400/60 bg-amber-400/10 text-amber-200'
@@ -129,24 +145,49 @@ export default function ClipReviewPanel({
                       </button>
                     );
                   })}
+                </div>
+              )}
+              {found && (
+                <div className="flex flex-wrap items-center gap-1 px-2 pt-1">
+                  <span className="text-[11px] text-ink-500 mr-1">Dusk sweep</span>
+                  {LIGHT_OPTIONS.map(opt => {
+                    const isSelected = pickedLight === opt.on;
+                    return (
+                      <button
+                        key={String(opt.on)}
+                        type="button"
+                        disabled={busy}
+                        aria-pressed={isSelected}
+                        onClick={() => selectPick(i, { dayToNight: opt.on })}
+                        className={`text-[11px] px-2 py-1 rounded-md border transition-colors disabled:opacity-40 ${
+                          isSelected
+                            ? 'border-amber-400/60 bg-amber-400/10 text-amber-200'
+                            : 'border-white/10 text-ink-400 hover:text-ink-200 hover:border-white/25'
+                        }`}
+                        title={isSelected ? 'Current light journey for this clip' : `Re-generate this clip with ${opt.label.toLowerCase()} light`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                   {switching && (
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => setPendingMoves(prev => {
+                      onClick={() => setPendingPicks(prev => {
                         const next = { ...prev };
                         delete next[i];
                         return next;
                       })}
                       className="text-[11px] px-2 py-1 rounded-md border border-white/10 text-ink-500 hover:text-ink-300 disabled:opacity-40"
-                      title="Keep this clip's current camera move"
+                      title="Keep this clip's current camera move and light journey"
                     >
                       reset
                     </button>
                   )}
                 </div>
               )}
-              <div className="flex items-center justify-between gap-2 px-2 py-2 bg-white/[0.03]">
+              <div className="flex items-center justify-between gap-2 px-2 py-2 mt-1 bg-white/[0.03]">
                 <span className="text-xs text-ink-300">
                   Clip {i + 1} of {clips.length}
                   {found && <> · {CAMERA_MOVE_LABEL[currentMove!]}</>}
@@ -160,8 +201,8 @@ export default function ClipReviewPanel({
                   disabled={busy}
                   className="btn btn-ghost text-xs px-3 min-h-[32px] disabled:opacity-40 border border-white/15 hover:border-amber-400/50"
                   title={
-                    switching && picked
-                      ? `Generate this clip again with a ${CAMERA_MOVE_LABEL[picked].toLowerCase()} camera move — costs ${rerenderCredits ?? '?'} credits`
+                    switching
+                      ? `Generate this clip again with the new camera move and light journey — costs ${rerenderCredits ?? '?'} credits`
                       : rerenderCredits != null
                         ? `Pay ${rerenderCredits} credits to generate this clip again with the same prompt`
                         : 'Generate this clip again with the same prompt'
@@ -169,8 +210,8 @@ export default function ClipReviewPanel({
                 >
                   {reRollingThis ? (
                     <><RefreshCw className="w-3 h-3 animate-spin" /> Re-rolling…</>
-                  ) : switching && picked ? (
-                    <>Re-roll as {CAMERA_MOVE_LABEL[picked]}{rerenderPrice}</>
+                  ) : switching ? (
+                    <>Re-roll with changes{rerenderPrice}</>
                   ) : (
                     <>Re-roll{rerenderPrice}</>
                   )}

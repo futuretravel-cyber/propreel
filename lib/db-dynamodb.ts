@@ -2,8 +2,16 @@
  * DynamoDB driver — the ONLY database backend (AWS, af-south-1).
  */
 
+import { config as loadDotenv } from 'dotenv';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, QueryCommand, ScanCommand, GetCommand, PutCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+
+// Local scripts run outside Vercel, so load the env files here before the client
+// reads AWS credentials. Existing variables win, so .env.local overrides .env.
+if (!process.env.VERCEL) {
+  loadDotenv({ path: '.env.local', quiet: true });
+  loadDotenv({ path: '.env', quiet: true });
+}
 
 export const dbDriver = 'dynamodb' as const;
 

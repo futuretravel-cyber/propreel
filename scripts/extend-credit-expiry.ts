@@ -31,7 +31,12 @@ const YEAR_MS = 365 * DAY_MS;
 const TOLERANCE_MS = DAY_MS;
 
 async function main() {
-  const users = await scanItems<User>(TABLES.USERS, { limit: 3000 });
+  // scanItems only follows DynamoDB pagination when a filter is set and no
+  // limit is given. An always-true filter makes it read every page, so no
+  // users past the first ~1 MB are skipped.
+  const users = await scanItems<User>(TABLES.USERS, {
+    filter: { expression: 'attribute_exists(#id)', names: { '#id': 'id' } },
+  });
   console.log(`${APPLY ? 'Applying' : 'Dry run'} — ${users.length} user rows scanned`);
 
   let usersChanged = 0;
