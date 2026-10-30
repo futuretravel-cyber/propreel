@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Download, Loader2, RefreshCw, User, Video, Zap, AlertCircle, Sparkles, Play, Square } from 'lucide-react';
+import { Download, Loader2, RefreshCw, User, Video, Zap, AlertCircle, Sparkles, Play, Square } from 'lucide-react';
 import { useFlashHead } from '../lib/useFlashHead';
 import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../../lib/renderPricing';
 import { useCredit } from '../context/AuthContext';
@@ -364,7 +364,7 @@ export default function FlashHeadVideo({ initialScript = '', onScriptChange, onV
               </button>
             </div>
             <select className="input" value={voice} onChange={e => setVoice(e.target.value)}>
-              {languageVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+              {languageVoices.map(v => <option key={v.id} value={v.id}>{v.label}{avatarCost != null ? ` · ${avatarCost} ${avatarCost === 1 ? 'credit' : 'credits'}` : ''}</option>)}
             </select>
             {voicePreview.error && <p className="text-xs text-red-400 mt-1">{voicePreview.error}</p>}
           </div>

@@ -1,5 +1,3 @@
-import { putItem } from './db';
-import { TABLES } from './db';
 
 export interface InvoiceData {
   reference: string;

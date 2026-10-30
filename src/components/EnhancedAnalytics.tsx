@@ -1,13 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import {
-  BarChart3, TrendingUp, Clock, CheckCircle2, XCircle, Video,
-  Zap, Download, Eye, Loader2
-} from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area, PieChart, Pie, Cell
-} from 'recharts';
+import { BarChart3, TrendingUp, CheckCircle2, XCircle, Video, Zap, Eye } from 'lucide-react';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import { PropReelAPI, CreditReportData } from '../lib/api';
 import { TIERS } from '../../lib/renderPricing';
 

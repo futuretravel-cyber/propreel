@@ -24,7 +24,7 @@ import { useVoicePreview } from '../lib/useVoicePreview';
 import { type VoiceoverLanguageCheck } from '../lib/useVoiceoverLanguageCheck';
 import LanguageMismatchBanner from './LanguageMismatchBanner';
 import RenderProgressBar from './RenderProgressBar';
-import { Video, Image, Share2, Play, Square, Check, X, Sparkles, AlertTriangle, RefreshCw, VolumeX, Mic, Camera, Music, Tag } from 'lucide-react';
+import { Video, Image, Share2, Play, Square, Check, X, Sparkles, AlertTriangle, RefreshCw, VolumeX, Mic, Music, Zap } from 'lucide-react';
 import { track } from '../lib/analytics';
 import { workerHeaders, jobHeaders } from '../lib/workerAuth';
 import { RENDER_ENDPOINT } from '../lib/renderEndpoint';
@@ -1412,7 +1412,10 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
           speak the selected language) with a play button beside it. */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="label">Narrator</label>
+          <div className="flex items-center gap-2">
+            <label className="label">Narrator</label>
+            <span className="badge badge-brand"><Zap className="w-3 h-3" /> 1 credit</span>
+          </div>
           <button
             type="button"
             role="switch"
@@ -1437,7 +1440,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
               aria-label="Narrator voice"
             >
               {languageVoices.map(v => (
-                <option key={v.id} value={v.id}>{v.label}</option>
+                <option key={v.id} value={v.id}>{v.label} · {NARRATION_CREDITS} {NARRATION_CREDITS === 1 ? 'credit' : 'credits'}</option>
               ))}
             </select>
             <button
@@ -1550,26 +1553,36 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
             type="button"
             onClick={() => setBranding(!branding)}
             aria-pressed={branding}
-            className={`p-4 rounded-xl text-left transition min-h-[44px] ${branding ? 'bg-purple-700/25 border border-purple-500/50' : 'bg-white/5 border border-transparent hover:bg-white/10'}`}
+            className={`p-4 rounded-xl text-left transition min-h-[44px] border ${branding ? 'border-purple-500/50 bg-purple-950/20' : 'border-white/10 bg-ink-800/50 hover:bg-white/5'}`}
           >
-            <div className="flex items-center justify-between">
-              <span className={`text-sm font-semibold ${branding ? 'text-purple-300' : 'text-ink-300'}`}>Agent Profile Branding</span>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${branding ? 'bg-purple-600 text-white' : 'bg-white/10 text-ink-400'}`}>{branding ? 'INCLUDED' : 'OFF'}</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${branding ? 'bg-purple-600/30' : 'bg-ink-700'}`}>
+                  <Sparkles className={`w-5 h-5 ${branding ? 'text-purple-300' : 'text-ink-400'}`} />
+                </div>
+                <span className={`text-sm font-semibold ${branding ? 'text-purple-300' : 'text-ink-300'}`}>Agent Profile Branding</span>
+              </div>
+              <span className={`text-xs font-semibold uppercase tracking-wide shrink-0 ${branding ? 'text-purple-300' : 'text-ink-500'}`}>{branding ? 'On' : 'Off'}</span>
             </div>
-            <p className="text-xs text-ink-500 mt-1">Profile picture, agency logo & contact details on the reel</p>
+            <p className="text-xs text-ink-500 mt-2">Profile picture, agency logo & contact details on the reel</p>
           </button>
           <button
             type="button"
             onClick={() => setSelectedMusic(selectedMusic ? null : (musicTracks[0]?.url || 'default'))}
             aria-pressed={!!selectedMusic}
             disabled={musicTracks.length === 0}
-            className={`p-4 rounded-xl text-left transition min-h-[44px] disabled:opacity-40 ${selectedMusic ? 'bg-purple-700/25 border border-purple-500/50' : 'bg-white/5 border border-transparent hover:bg-white/10'}`}
+            className={`p-4 rounded-xl text-left transition min-h-[44px] border disabled:opacity-40 ${selectedMusic ? 'border-purple-500/50 bg-purple-950/20' : 'border-white/10 bg-ink-800/50 hover:bg-white/5'}`}
           >
-            <div className="flex items-center justify-between">
-              <span className={`text-sm font-semibold ${selectedMusic ? 'text-purple-300' : 'text-ink-300'}`}>Music Track</span>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${selectedMusic ? 'bg-purple-600 text-white' : 'bg-white/10 text-ink-400'}`}>{selectedMusic ? 'INCLUDED' : 'OFF'}</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${selectedMusic ? 'bg-purple-600/30' : 'bg-ink-700'}`}>
+                  <Music className={`w-5 h-5 ${selectedMusic ? 'text-purple-300' : 'text-ink-400'}`} />
+                </div>
+                <span className={`text-sm font-semibold ${selectedMusic ? 'text-purple-300' : 'text-ink-300'}`}>Music Track</span>
+              </div>
+              <span className={`text-xs font-semibold uppercase tracking-wide shrink-0 ${selectedMusic ? 'text-purple-300' : 'text-ink-500'}`}>{selectedMusic ? 'On' : 'Off'}</span>
             </div>
-            <p className="text-xs text-ink-500 mt-1">{musicTracks.length === 0 ? 'No tracks uploaded yet' : selectedMusic ? 'Tap to remove — choose specific track below' : 'Tap to include — pick the track below'}</p>
+            <p className="text-xs text-ink-500 mt-2">{musicTracks.length === 0 ? 'No tracks uploaded yet' : selectedMusic ? 'Tap to remove — choose specific track below' : 'Tap to include — pick the track below'}</p>
           </button>
         </div>
 

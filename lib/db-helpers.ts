@@ -3,7 +3,7 @@
  * Common operations for working with DynamoDB tables
  */
 
-import { docClient, queryItems, scanItems, putItem, updateItem, getItem, TABLES } from './db';
+import { docClient, scanItems, putItem, getItem, TABLES } from './db';
 
 export interface PaginatedResult<T> {
   items: T[];

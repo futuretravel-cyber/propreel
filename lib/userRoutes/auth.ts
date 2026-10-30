@@ -8,7 +8,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { getUser, updateUser, getUserByEmail, deleteUser, getOrCreateUserByEmail, deductCredits } from '../../lib/userService';
+import { getUser, updateUser, getUserByEmail, deleteUser, getOrCreateUserByEmail } from '../../lib/userService';
 import { TABLES, queryItems, putItem, scanItems } from '../../lib/db';
 import { deleteItem } from '../../lib/db-helpers';
 import { hashPassword, verifyPassword, createSession, getSessionUser, deleteSession, deleteSessionsForUser, sessionCookie, clearSessionCookie, getTokenFromRequest, SESSION_COOKIE, clientMeta, issueEmailConfirmToken, consumeEmailConfirmToken, issuePasswordResetToken, consumePasswordResetToken, requireOwner, sessionUser, isAdminActor, ADMIN_EMAILS } from '../../lib/auth';

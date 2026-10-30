@@ -7,11 +7,8 @@
  * Usage: set -a; source .env; set +a; npx tsx scripts/livetest_agency.ts
  */
 import { putItem, deleteItem, TABLES } from '../lib/db';
-import {
-  createAgency, getAgency, addMemberToAgency, setAgentMonthlyLimit,
-  agencyUsageAnalytics, countMembers, listMembers,
-} from '../lib/agency';
-import { generateAndStoreAgencyReport, generateAgentReports, buildAgentMonthReport } from '../lib/agencyReport';
+import { createAgency, getAgency, addMemberToAgency, setAgentMonthlyLimit, agencyUsageAnalytics, countMembers, listMembers } from '../lib/agency';
+import { generateAndStoreAgencyReport, buildAgentMonthReport } from '../lib/agencyReport';
 import { addAgencyPoolCredits, deductCredits, getUser } from '../lib/userService';
 
 const OWNER = 'propreel-livetest-owner';

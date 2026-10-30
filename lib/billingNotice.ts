@@ -1,5 +1,5 @@
 import { scanItems, TABLES } from './db';
-import { getUser, updateUser, getPlans } from './userService';
+import { getPlans } from './userService';
 import { sendEmail, upcomingBillingTemplate } from './email';
 
 /**

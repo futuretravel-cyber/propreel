@@ -4,15 +4,9 @@ import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { formatDate, formatRelative, formatZar } from '../lib/utils';
 import { PropReelAPI } from '../lib/api';
-import {
-  Users, Plus, Zap, TrendingUp, Mail, Settings,
-  BarChart3, CheckCircle2, Send, Gift, Film, Download,
-  Building2, Clock, Mic, Upload, Loader2,
-} from 'lucide-react';
+import { Users, Plus, Zap, TrendingUp, Mail, Settings, BarChart3, CheckCircle2, Send, Gift, Film, Download, Building2, Clock, Mic, Upload, Loader2 } from 'lucide-react';
 import { uploadImagesForAI } from '../lib/propertyListing';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 // ─── Real agency data: members come from the agency_members table ──────────
 

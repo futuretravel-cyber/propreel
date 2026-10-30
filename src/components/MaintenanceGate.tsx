@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Wrench, RefreshCw, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 

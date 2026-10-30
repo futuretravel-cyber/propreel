@@ -144,7 +144,6 @@ export async function runDunningSweep(): Promise<DunningOutcome[]> {
         if (authCode) {
           try {
             const { chargeAuthorization } = await import('./paystack');
-            const reference_ = `dunning_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
             const charge = await chargeAuthorization(u.email, Math.max(50, Math.round(u.subscription?.nextChargeAmount || 50)), authCode, {
               user_id: u.id, type: 'dunning_retry',
             });

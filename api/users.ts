@@ -8,7 +8,7 @@ import {
   updateUserFields, deleteAccount, dataExport, mediaSign,
   DEFAULT_NOTIFICATION_PREFERENCES,
 } from '../lib/userRoutes/auth';
-import { tokenRoutes, invoicePdf, consumeMintQuota } from '../lib/userRoutes/credits';
+import { tokenRoutes, invoicePdf } from '../lib/userRoutes/credits';
 import { listSessions, revokeSessions, auditLog } from '../lib/userRoutes/sessions';
 import {
   adminApiKeysRoute, adminStats, listUsers, adminLedger, adminNarakeetUsage,

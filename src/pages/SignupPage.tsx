@@ -5,7 +5,7 @@ import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { PLANS, SIGNUP_BONUS, PHONE_COUNTRY_CODES } from '../lib/constants';
 import { formatZar, creditListZar } from '../lib/utils';
-import { Check, ArrowRight, ArrowLeft, Sparkles, Building2, User, CreditCard, Shield, Mail, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Check, ArrowRight, ArrowLeft, Building2, User, Mail, RefreshCw, AlertTriangle } from 'lucide-react';
 
 type Step = 'plan' | 'details' | 'payment' | 'confirm';
 

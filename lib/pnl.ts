@@ -23,7 +23,7 @@
  * Editing an expense on a closed month invalidates both (the month re-opens).
  */
 
-import { TABLES, scanItems, scanAll, getItem, putItem, deleteItem } from './db';
+import { TABLES, scanAll, getItem, putItem, deleteItem } from './db';
 
 export const EXPENSE_CATEGORIES = [
   'fal.ai', 'Modal', 'AWS', 'Paystack', 'Marketing', 'Payroll', 'Software', 'Office', 'Other',

@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ArrowLeft, Play, Check, Clock, Sparkles, Video, Image, FileText, Share2,
-  GraduationCap, Loader2, AlertCircle,
-} from 'lucide-react';
+import { ArrowLeft, Play, Clock, Sparkles, Video, Image, FileText, Share2, GraduationCap, Loader2, AlertCircle } from 'lucide-react';
 
 interface TutorialVideo {
   id: string;

@@ -19,7 +19,7 @@ import { rerenderClipCredits } from '../../lib/renderPricing';
 import { pollRenderJob, pollRerender, type RenderClip } from '../lib/renderPoll';
 import ClipReviewPanel from './ClipReviewPanel';
 import RenderProgressBar from './RenderProgressBar';
-import { Video, Image, Share2, Play, Check, X, AlertTriangle, RefreshCw, Camera, Music, Tag, PiggyBank } from 'lucide-react';
+import { Image, Share2, Play, Check, X, AlertTriangle, RefreshCw, Music, PiggyBank } from 'lucide-react';
 import { track } from '../lib/analytics';
 import { workerHeaders, jobHeaders } from '../lib/workerAuth';
 import { RENDER_ENDPOINT } from '../lib/renderEndpoint';

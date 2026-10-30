@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, FileText, Shield, Mail, Clock } from 'lucide-react';
+import { ArrowLeft, Shield, Mail, Clock } from 'lucide-react';
 
 export default function PAIAManualPage() {
   return (

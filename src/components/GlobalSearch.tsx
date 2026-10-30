@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, X, Video, Image, FileText, CreditCard, Settings, ArrowRight, Clock, Star, TrendingUp, Mic } from 'lucide-react';
 import { PropReelAPI, Project } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { formatZar, formatRelative } from '../lib/utils';
+import { formatZar } from '../lib/utils';
 
 /**
  * The header button and ⌘K both ask the one mounted <GlobalSearch/> to open.

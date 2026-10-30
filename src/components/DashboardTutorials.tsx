@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { GraduationCap, Play, Loader2, Video } from 'lucide-react';
-import { TUTORIALS } from '../../scripts/_tut_content';
+import { GraduationCap, Loader2, Video } from 'lucide-react';
 
 interface TutorialVideo {
   id: string;

@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef, lazy } from 'react';
-import UploadQueueNotifier from './UploadQueueNotifier';
+import { useState, useEffect, useRef } from 'react';
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { TONES, PROVINCES, PROPERTY_TYPES, SA_LANGUAGES } from '../lib/constants';
@@ -18,7 +17,7 @@ import { DESCRIPTION_CREDITS as DESCRIPTION_RENDER_COST } from '../../lib/render
 import CostHeader from './CostHeader';
 import { creditListZar } from '../lib/utils';
 import { queueVideoRender } from '../lib/videoPrefill';
-import { Video, Image, Check, X, Zap, Sparkles, Download, Copy, RefreshCw, MapPin, FileText } from 'lucide-react';
+import { Video, Image, Check, X, Zap, Sparkles, Download, RefreshCw, MapPin, FileText } from 'lucide-react';
 import { jobHeaders } from '../lib/workerAuth';
 import { CopyButton } from './ui';
 export function DescriptionTab() {

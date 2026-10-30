@@ -14,7 +14,7 @@ import { formatZar } from '../lib/utils';
 import { SOCIAL_POST_CREDITS as SOCIAL_POST_COST, SOCIAL_PACK_CREDITS as SOCIAL_PACK_COST } from '../../lib/renderPricing';
 import CostHeader from './CostHeader';
 import { creditListZar } from '../lib/utils';
-import { Image, Share2, ChevronRight, Check, X, Zap, Sparkles, AlertCircle, Copy, RefreshCw, ChevronLeft } from 'lucide-react';
+import { Image, Share2, ChevronRight, Check, X, Zap, Sparkles, AlertCircle, RefreshCw, ChevronLeft } from 'lucide-react';
 import { jobHeaders } from '../lib/workerAuth';
 import { CopyButton } from './ui';
 export function SocialTab() {

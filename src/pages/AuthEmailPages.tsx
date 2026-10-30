@@ -1,6 +1,6 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, RefreshCw, KeyRound, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { RefreshCw, KeyRound, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useCredit } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';

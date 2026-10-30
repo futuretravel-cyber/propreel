@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, FileText, Shield, Database } from 'lucide-react';
+import { ArrowLeft, Database } from 'lucide-react';
 
 export default function DataProcessingAgreementPage() {
   return (

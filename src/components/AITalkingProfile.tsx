@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Upload, Sparkles, Zap, Info, Video, AlertCircle, AlertTriangle } from 'lucide-react';
+import { User, Upload, Zap, Info, Video, AlertCircle, AlertTriangle } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { useCredit } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
@@ -157,32 +157,39 @@ export default function AITalkingProfile({
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <User className="w-5 h-5 text-purple-400" />
-          <h3 id="ai-avatar-toggle-heading" className="label mb-0">AI Avatar Video</h3>
-          <span className="badge badge-brand text-xs">
-            <Zap className="w-3 h-3" /> {CREDIT_COST != null ? `${CREDIT_COST} credits (≈${Math.round(narrationSecs)}s)` : 'script needed'}
-          </span>
-          {scriptOverCap && (
-            <span className="text-xs text-red-300">⚠ script over the {FLASHHEAD_MAX_SECONDS}s cap — shorten it</span>
-          )}
+      <div
+        className={`flex items-center justify-between gap-4 flex-wrap rounded-xl border p-4 transition-colors ${
+          enabled ? 'border-purple-500/50 bg-purple-950/20' : 'border-white/10 bg-ink-800/50'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${enabled ? 'bg-purple-600/30' : 'bg-ink-700'}`}>
+            <User className={`w-5 h-5 ${enabled ? 'text-purple-300' : 'text-ink-400'}`} />
+          </div>
+          <div className="min-w-0">
+            <h3 id="ai-avatar-toggle-heading" className="label mb-0">AI Avatar Video</h3>
+            <div className="flex items-center gap-2 flex-wrap mt-1">
+              <span className="badge badge-brand text-xs">
+                <Zap className="w-3 h-3" /> {CREDIT_COST != null ? `${CREDIT_COST} credits (≈${Math.round(narrationSecs)}s)` : 'script needed'}
+              </span>
+              {scriptOverCap && (
+                <span className="text-xs text-red-300">⚠ script over the {FLASHHEAD_MAX_SECONDS}s cap — shorten it</span>
+              )}
+            </div>
+          </div>
         </div>
-        <button
-          onClick={handleToggle}
-          role="switch"
-          aria-checked={enabled}
-          aria-labelledby="ai-avatar-toggle-heading"
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            enabled ? 'bg-purple-600' : 'bg-ink-700'
-          }`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              enabled ? 'translate-x-6' : 'translate-x-1'
-            }`}
-          />
-        </button>
+        <div className="flex items-center gap-3 shrink-0 ml-auto">
+          <button
+            type="button"
+            onClick={handleToggle}
+            role="switch"
+            aria-checked={enabled}
+            aria-labelledby="ai-avatar-toggle-heading"
+            className={`text-xs font-semibold px-3 py-1 rounded-full border transition ${enabled ? 'bg-purple-700/20 text-purple-300 border-purple-500/30' : 'bg-white/5 text-ink-300 border-transparent hover:bg-white/10'}`}
+          >
+            {enabled ? <><Video className="w-3 h-3 inline mr-1" />Avatar on</> : <><User className="w-3 h-3 inline mr-1" />Avatar off</>}
+          </button>
+        </div>
       </div>
 
       <div className="bg-ink-800/50 rounded-xl p-4 space-y-4">

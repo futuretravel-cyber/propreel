@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Cookie, Shield, Settings, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Cookie, Shield, RefreshCw } from 'lucide-react';
 import { clearConsent } from '../lib/consent';
 
 export default function CookiePolicyPage() {

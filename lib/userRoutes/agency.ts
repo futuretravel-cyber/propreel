@@ -8,7 +8,7 @@
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser, getUserByEmail, deleteUser } from '../../lib/userService';
-import { TABLES, queryItems, putItem, getItem, scanItems } from '../../lib/db';
+import { TABLES, queryItems, putItem, getItem } from '../../lib/db';
 import { deleteItem } from '../../lib/db-helpers';
 import { deleteSessionsForUser, requireOwner, requireAdminSession, isAdminEmail } from '../../lib/auth';
 import { sendEmail, agencyInviteTemplate } from '../../lib/email';
@@ -54,11 +54,7 @@ async function resignAgencyMedia(agency: any): Promise<any> {
  *   GET  agency_report_zip    — zip the last 12 months for accounting
  *   GET  admin_agencies       — platform-wide agency list (admin only)
  */
-async function requireAgencyRole(user_id: string): Promise<{ ok: true; user: any } | { ok: false; res: VercelResponse }> {
-  const user = await getUser(user_id);
-  if (!user) return { ok: false, res: null as any } as any;
-  return { ok: true, user } as any;
-}
+
 
 
 export async function agencyRoutes(req: VercelRequest, res: VercelResponse, action: string) {

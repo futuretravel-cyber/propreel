@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BillingSkeleton } from './Skeleton';
 
 // Billing (invoices, transaction history, bundles) lives inside Credits now
@@ -7,15 +7,11 @@ import { BillingSkeleton } from './Skeleton';
 const EnhancedBilling = lazy(() => import('./EnhancedBilling'));
 import { useCredit } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { formatZar, formatDate } from '../lib/utils';
+import { formatZar } from '../lib/utils';
 import { useActivity } from '../lib/useActivity';
 import { PLANS, CREDIT_PACK_RAND } from '../lib/constants';
 import { CREDIT_EXPIRY_RULE, CREDIT_ROLLOVER_RULE, CREDIT_CANCEL_RULE, CREDIT_SPEND_RULE } from '../../lib/creditPolicy';
-import {
-  Zap, AlertTriangle, TrendingUp, CreditCard, Gift, Settings,
-  Clock, ArrowUpRight, ArrowDownRight, Check, X, Sparkles,
-  Crown, Shield, Plus, Minus, RefreshCw, Download
-} from 'lucide-react';
+import { Zap, AlertTriangle, TrendingUp, CreditCard, Gift, Clock, Check, X, Sparkles, Crown, Shield, Plus, RefreshCw } from 'lucide-react';
 
 // Premium's monthly credit count — read from PLANS so marketing strings can
 // never drift from the ladder again (they were hardcoded "1,300" until

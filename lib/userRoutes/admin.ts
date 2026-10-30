@@ -7,11 +7,10 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { TABLES, scanItems } from '../../lib/db';
+import { TABLES } from '../../lib/db';
 import { getSessionUser, getTokenFromRequest, requireAdminSession, isAdminEmail } from '../../lib/auth';
 import { workerTokenHeaders } from '../../lib/workerToken';
 import { getMaintenanceState, setMaintenanceState } from '../../lib/maintenance';
-import { signS3Url, toEdgeUrl } from '../../lib/s3Urls';
 import { SERVICE_KEYS, ALL_FIELD_NAMES } from '../../lib/serviceKeys';
 
 // ── Admin → API Keys propagation (consolidated into this function: the

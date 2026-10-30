@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import {
-  Sparkles, ArrowRight, Check, Star, Camera, Sofa, Trash2, MoonIcon,
-  Share2, FileText, Video, Mic, Wand2,
-} from 'lucide-react';
+import { Sparkles, ArrowRight, Check, Star, Camera, Sofa, Trash2, MoonIcon, Share2, FileText, Video, Mic, Wand2 } from 'lucide-react';
 import { PublicLayout } from './PublicLayout';
 import { track } from '../lib/analytics';
-import { SmartImage, BeforeAfterSlider } from './SmartMedia';
+import { BeforeAfterSlider } from './SmartMedia';
 import { useApprovedReviews } from '../lib/useReviews';
 import { SIGNUP_BONUS, TIERS, PHOTO_PRESETS, SA_LANGUAGES } from '../lib/constants';
 

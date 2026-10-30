@@ -1,4 +1,4 @@
-import { clsx, type ClassValue } from 'clsx';
+import { type ClassValue } from 'clsx';
 import { CREDIT_LIST_RAND } from './constants';
 
 export function cn(...inputs: ClassValue[]) {

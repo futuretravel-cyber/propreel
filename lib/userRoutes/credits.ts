@@ -11,7 +11,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { deductCredits } from '../../lib/userService';
 import { TABLES, docClient } from '../../lib/db';
-import { getSessionUser, getTokenFromRequest, requireOwner, sessionUser } from '../../lib/auth';
+import { getSessionUser, getTokenFromRequest, requireOwner } from '../../lib/auth';
 import { jobCredits, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../../lib/renderPricing';
 import { normalizeJobScope, AVATAR_CHARGE_DESCRIPTION } from '../../lib/legacySchema';
 import { createHash } from 'crypto';

@@ -9,16 +9,8 @@ import { PropReelAPI, CreditReportData, ReferralStats } from '../lib/api';
 import { BackendAPI } from '../lib/backendAPI';
 import { track } from '../lib/analytics';
 import { AI_DISCLAIMER_TEXT } from '../lib/aiDisclaimer';
-import {
-  CreditCard, Zap, Download, Search,
-  Gift, Package, TrendingUp, Clock,
-  Check, Star, Info, Sparkles, History, BarChart3, XCircle, Lightbulb, Copy,
-  MessageCircle, Facebook, Twitter, Linkedin, Mail, Users, UserCheck,
-} from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
-} from 'recharts';
+import { CreditCard, Zap, Download, Search, Gift, Package, TrendingUp, Clock, Check, Star, Info, Sparkles, History, BarChart3, XCircle, Copy, MessageCircle, Facebook, Twitter, Linkedin, Mail, Users, UserCheck } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // ─── Real data: everything on this page comes from the credits ledger ──────
 

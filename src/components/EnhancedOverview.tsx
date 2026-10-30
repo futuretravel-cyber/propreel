@@ -6,16 +6,8 @@ import { PropReelAPI, Project, CreditReportData, ReferralStats } from '../lib/ap
 import { PLANS, RETENTION_DAYS, SIGNUP_BONUS } from '../lib/constants';
 import { track } from '../lib/analytics';
 import UpgradeToProCTA from './UpgradeToProCTA';
-import {
-  Video, Zap, List, Clock, ArrowUpRight, Activity,
-  BarChart3, PieChart as PieIcon, ChevronRight, Loader2, Image as ImageIcon,
-  Sparkles, X, FileText, Camera,
-  Users, MessageCircle, Facebook, Twitter, Linkedin, Mail,
-} from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area, PieChart, Pie, Cell,
-} from 'recharts';
+import { Video, Zap, List, Activity, BarChart3, PieChart as PieIcon, ChevronRight, Loader2, Image as ImageIcon, Sparkles, X, FileText, Camera, Users, MessageCircle, Facebook, Twitter, Linkedin, Mail } from 'lucide-react';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 
 // ─── Real-data dashboard: stats come from the credits ledger and projects DB ──
 

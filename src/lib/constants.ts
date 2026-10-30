@@ -269,7 +269,7 @@ export const TONES = [
 ];
 
 // Import new image prompts
-import { IMAGE_PRESETS, getPresetsByCategory } from './imagePrompts';
+import { getPresetsByCategory } from './imagePrompts';
 
 // SA listing form options — live here (not in PropertyListings) so App.tsx's
 // own listing form doesn't pull the 47 KB PropertyListings module into the

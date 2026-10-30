@@ -8,7 +8,7 @@
  */
 
 import { getItem, putItem, updateItem, queryItems, scanItems, TABLES } from './db';
-import { getUser, recordTransaction } from './userService';
+import { getUser } from './userService';
 
 /** Hard cap — agencies needing more agents create a second agency. */
 export const MAX_AGENTS_PER_AGENCY = 10;
@@ -253,7 +253,6 @@ export async function agencyUsageAnalytics(agencyId: string, days: number = 30):
   const agency = await getAgency(agencyId);
   if (!agency) throw new Error('Agency not found');
   const members = await listMembers(agencyId);
-  const memberIds = new Set(members.map(m => m.userId));
 
   const since = new Date(Date.now() - days * 86400000);
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);

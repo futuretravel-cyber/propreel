@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, Trash2, XCircle, Check, Clock, CreditCard, Shield } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, XCircle, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatZar } from '../lib/utils';
