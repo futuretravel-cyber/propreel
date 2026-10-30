@@ -56,6 +56,9 @@ jobs:
     - name: "Security: Paystack verify gate (H-1)"
       run: npx tsx scripts/_paystack_verify_gate_test.ts
 
+    - name: "Security: Paystack repeat-purchase guard"
+      run: npx tsx scripts/_paystack_repeat_purchase_test.ts
+
     - name: "Security: leads + admin API-keys hardening (L-1/L-2)"
       run: npx tsx scripts/_leads_admin_hardening_test.ts
 
