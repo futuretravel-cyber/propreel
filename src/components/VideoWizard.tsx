@@ -17,7 +17,7 @@ import { TIERS as VIDEO_TIERS } from '../../lib/videoTiers';
 import { playRenderComplete } from '../lib/renderSound';
 import { useRenderProgress, typicalVideoSeconds } from '../lib/useRenderProgress';
 import { useFlashHead } from '../lib/useFlashHead';
-import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC, scriptCreditsForDuration, rerenderClipCredits } from '../../lib/renderPricing';
+import { flashheadCreditsForText, narrationSecondsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC, scriptCreditsForDuration, rerenderClipCredits, NARRATION_CREDITS } from '../../lib/renderPricing';
 import { pollRenderJob, pollRerender, type RenderClip } from '../lib/renderPoll';
 import ClipReviewPanel from './ClipReviewPanel';
 import { useVoicePreview } from '../lib/useVoicePreview';
@@ -874,7 +874,10 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
   // Avatar add-on is priced per 10s of narration from the CURRENT script —
   // null ⇒ over the 90s cap (the Render step blocks until it is shortened).
   const avatarAddonCredits = aiTalkingProfile ? flashheadCreditsForText(script) : null;
-  const totalCredits = selectedConfig.credits + (avatarAddonCredits ?? 0);
+  // Narration add-on: +1 only for a voiceover without the avatar (the same rule
+  // lib/renderPricing applies server-side at the job_token mint).
+  const narrationAddonCredits = !aiTalkingProfile && !noNarration && script.trim() ? NARRATION_CREDITS : 0;
+  const totalCredits = selectedConfig.credits + (avatarAddonCredits ?? 0) + narrationAddonCredits;
 
   // ── 8-step wizard (same numbered-step UX as New Listing) ─────────────
   // Steps 1–4 are the core setup; 5–8 are optional add-ons the agent can
@@ -1619,7 +1622,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
             const balance = user?.credits ?? 0;
             const withAvatar = !!(aiTalkingProfile && avatarAddonCredits != null);
             confirm(
-              `${tierConfig.label} · ${selectedConfig.duration}s${withAvatar ? ' with AI Avatar' : ''} costs ${totalCredits} credits${withAvatar ? ` (tier ${selectedConfig.credits} + avatar ${avatarAddonCredits})` : ''}.\n\nYou have ${balance} credit${balance === 1 ? '' : 's'}. A failed render is refunded automatically.\n\nGenerate now?`,
+              `${tierConfig.label} · ${selectedConfig.duration}s${withAvatar ? ' with AI Avatar' : ''} costs ${totalCredits} credits${withAvatar ? ` (tier ${selectedConfig.credits} + avatar ${avatarAddonCredits})` : narrationAddonCredits ? ` (tier ${selectedConfig.credits} + narration ${narrationAddonCredits})` : ''}.\n\nYou have ${balance} credit${balance === 1 ? '' : 's'}. A failed render is refunded automatically.\n\nGenerate now?`,
               { title: 'Generate video?', confirmLabel: 'Generate' },
             ).then((ok) => {
               if (ok) void guardAIRender(generateReel);

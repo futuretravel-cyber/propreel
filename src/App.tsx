@@ -1598,7 +1598,7 @@ function VideoGeneratorPage() {
   // off the script is never spoken, so the hook is disabled, which stops an
   // in-flight "Checking the script language…" the instant the toggle flips
   // and lets the agent click Next without waiting for an irrelevant verdict.
-  const [noNarration, setNoNarration] = useState(false);
+  const [noNarration, setNoNarration] = useState(true);
   // Script-vs-language mismatch detection (LLM, debounced, fail-open): the
   // narrator reads the script verbatim with no auto-translation, so a
   // wrong-language script must surface a warning + one-click fix. One shared
