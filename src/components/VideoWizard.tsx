@@ -1239,7 +1239,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
                       Rendered under the same needsPhotoMeta gate as the
                       two rows above, so ESSENTIAL never sees it. */}
                   <div>
-                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Dusk sweep</span>
+                    <span className="text-[10px] uppercase tracking-wide text-ink-500">Day to Twilight</span>
                     <div className="grid grid-cols-2 gap-1 mt-1">
                       {([
                         { on: true, label: 'Day → Night' },

@@ -4145,7 +4145,7 @@ WATCHDOG_STALL_SECONDS = 45 * 60
 WATCHDOG_MAX_KEYS = 2000  # sweep cap on the jobs/ store
 WATCHDOG_MAX_FAILURES = 50  # safety cap per sweep
 
-@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=300, schedule=modal.Cron("*/10 * * * *"))
+@app.function(image=image, secrets=[modal.Secret.from_name("edge-hosts"), modal.Secret.from_name("aws-credentials"), modal.Secret.from_name("fal-credentials")], timeout=900, schedule=modal.Cron("*/10 * * * *"))
 def scheduled_render_watchdog():
     """Every 10 minutes: fail job records silent for 45+ minutes.
 

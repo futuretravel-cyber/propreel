@@ -41,7 +41,7 @@ export interface ClipReviewPanelProps {
   onCancel: () => void;
 }
 
-/** Dusk sweep options — same labels the wizards show on the Photos step. */
+/** Day to Twilight options — same labels the wizards show on the Photos step. */
 const LIGHT_OPTIONS = [
   { on: true, label: 'Day → Night' },
   { on: false, label: 'Daylight only' },
@@ -149,7 +149,7 @@ export default function ClipReviewPanel({
               )}
               {found && (
                 <div className="flex flex-wrap items-center gap-1 px-2 pt-1">
-                  <span className="text-[11px] text-ink-500 mr-1">Dusk sweep</span>
+                  <span className="text-[11px] text-ink-500 mr-1">Day to Twilight</span>
                   {LIGHT_OPTIONS.map(opt => {
                     const isSelected = pickedLight === opt.on;
                     return (
