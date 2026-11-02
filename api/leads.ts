@@ -10,6 +10,14 @@ import { getUser, updateUser, getUserByEmail } from '../lib/userService';
  */
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // ── /api/chat (vercel.json rewrite) — support assistant ──
+  // Lives here rather than in api/chat.ts to stay inside the account's
+  // serverless-function limit; the logic is in lib/chatAssistant.
+  if ((req.query.action as string) === 'chat') {
+    const { handleChat } = await import('../lib/chatAssistant');
+    return handleChat(req, res);
+  }
+
   // ── GET /api/leads?action=reviews — public, approved reviews only ──
   if (req.method === 'GET' && (req.query.action as string) === 'reviews') {
     try {

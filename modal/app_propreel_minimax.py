@@ -1167,8 +1167,8 @@ TIER_CONFIGS = {
         "processing_type": "ai",
         "resolution": "512p",
         "configurations": [
-            {"duration": 30, "images": 5, "credits": 20, "resolution": "512p"},
-            {"duration": 30, "images": 5, "credits": 34, "resolution": "768p"}
+            {"duration": 30, "images": 6, "credits": 20, "resolution": "512p"},
+            {"duration": 30, "images": 6, "credits": 34, "resolution": "768p"}
         ]
     }
 }

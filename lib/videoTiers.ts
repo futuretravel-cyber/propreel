@@ -68,7 +68,7 @@ export interface Tier {
  *
  * 2026-10-20: BUDGET tier — the gentle-motion rung on MiniMax Hailuo-02
  * standard (the only non-wan engine left in the catalog at the time). One
- * length only (30s from 5 photos), no voiceover, no avatar; the configs each
+ * length only (30s from 6 photos), no voiceover, no avatar; the configs each
  * name their own fal resolution, the only tier where they do. Floor math at
  * R16.55/USD + the R0.45 assembly pass: 512p ≈ R8.89 COGS ($0.017/s × 30s),
  * 768p ≈ R22.79 COGS ($0.045/s × 30s). Launched on the floor at 10/26⚡;
@@ -161,19 +161,19 @@ export const TIERS: Tier[] = [
     // 2026-10-20: the gentle-motion rung — MiniMax Hailuo-02 standard, the
     // engine that (2026-10-21) now serves EVERY AI tier, and the only tier
     // whose CONFIGS each name their own fal resolution (512p / 768p). One length
-    // only (30s / 5 photos), no voiceover: photos + calm camera motion +
+    // only (30s / 6 photos), no voiceover: photos + calm camera motion +
     // optional music and agent branding (both ride the same worker paths as
     // every AI tier). Rendered from its own Budget AI Video studio tab; the
     // main Video Generator picker filters this tier out. Credits repriced
     // from the 10/26 floor to 20/34 on the client's call the same day.
     label: 'Budget',
-    description: 'Gentle cinematic motion, 512p or 768p — 30s from 5 photos, no voiceover',
+    description: 'Gentle cinematic motion, 512p or 768p — 30s from 6 photos, no voiceover',
     processingType: 'ai',
     resolution: '512p', // display fallback — the real pick is per-config below
     engine: 'motion-standard',
     configurations: [
-      { duration: 30, images: 5, credits: 20, resolution: '512p' },
-      { duration: 30, images: 5, credits: 34, resolution: '768p' },
+      { duration: 30, images: 6, credits: 20, resolution: '512p' },
+      { duration: 30, images: 6, credits: 34, resolution: '768p' },
     ],
   },
 ];

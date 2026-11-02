@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useLocation,
 import ErrorBoundary from './components/ErrorBoundary';
 import { Tooltip } from './components/ui';
 import CookieConsent from './components/CookieConsent';
+import SupportAssistant from './components/SupportAssistant';
 import NotFoundPage from './pages/NotFoundPage';
 import OfflineBanner from './components/OfflineBanner';
 import { useState, useEffect, useRef, type ComponentProps } from 'react';
@@ -856,7 +857,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     // earns its own sidebar destination.
     { path: '/dashboard/social', icon: <Share2 className="w-5 h-5" />, label: 'Social Media' },
     // The gentle-motion studio: same render pipeline as Video Generator but
-    // on the Budget tier only (Hailuo-02 standard, 30s/5 photos, no
+    // on the Budget tier only (Hailuo-02 standard, 30s/6 photos, no
     // voiceover or avatar) — placed between Social and the main generator.
     // One-line subtitles disambiguate the two video entries (audit §2): which
     // to pick is the first question every user asks.
@@ -1646,7 +1647,7 @@ function BudgetVideoPage() {
       <TrialDeadlineModal />
       <ToolPageHeader
         title="Budget AI Video"
-        subtitle="Gentle motion, no voiceover — a calm 30-second reel from 5 photos at a slower, gentler pace than the Video Generator, generated at 512p or 768p."
+        subtitle="Gentle motion, no voiceover — a calm 30-second reel from 6 photos at a slower, gentler pace than the Video Generator, generated at 512p or 768p."
       />
       <div className="card-dark p-6">
         <ErrorBoundary label="Budget AI Video"><BudgetVideoTab /></ErrorBoundary>
@@ -1891,6 +1892,7 @@ export default function App() {
             <OfflineBanner />
             <AIDisclaimerGate />
             <CookieConsent />
+            <SupportAssistant />
           </CreditProvider>
          </ConfirmProvider>
         </ToastProvider>

@@ -27,7 +27,7 @@ import { RENDER_ENDPOINT } from '../lib/renderEndpoint';
 // BUDGET AI VIDEO — the gentle-motion tier (MiniMax Hailuo-02 standard)
 // ═══════════════════════════════════════════════════════════════════════════
 // A second, slimmer render studio on the SAME pipeline as VideoTab, pinned
-// to the BUDGET tier only: 512p or 768p generation, 30s from 5 photos, and
+// to the BUDGET tier only: 512p or 768p generation, 30s from 6 photos, and
 // deliberately NO voiceover step, NO AI Avatar step and NO listing-details
 // form (they exist to ground a narration budget never has). The gentleness
 // promise is stated before credits can be spent — page subtitle, the amber

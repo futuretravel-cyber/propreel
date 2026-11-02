@@ -21,6 +21,9 @@ tsconfig.tsbuildinfo
 scripts/*
 !scripts/check-no-inline-scripts.mjs
 !scripts/check-bundle-stealth.mjs
+# `npm run chat:index` runs this before `vite build` to regenerate the support
+# assistant's knowledge index (lib/chatIndex.json) from the FAQ, blog and docs.
+!scripts/build-chat-index.ts
 docs/
 .github/
 .vscode/

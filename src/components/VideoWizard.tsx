@@ -1119,7 +1119,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
         {/* Cross-link to the sibling studio (audit §2/§6): two video tools,
             one job — say plainly which to pick and link both ways. */}
         <p className="text-xs text-ink-400 mt-3">
-          Watching the budget? <Link to="/dashboard/budget-video" className="text-purple-300 underline hover:text-purple-200">Budget AI Video</Link> renders a calm 30-second reel from 5 photos at 512p/768p — no voiceover, no avatar, fewer credits.
+          Watching the budget? <Link to="/dashboard/budget-video" className="text-purple-300 underline hover:text-purple-200">Budget AI Video</Link> renders a calm 30-second reel from 6 photos at 512p/768p — no voiceover, no avatar, fewer credits.
         </p>
       </div>
 

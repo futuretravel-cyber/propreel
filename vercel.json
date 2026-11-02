@@ -23,6 +23,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/chat",
+      "destination": "/api/leads?action=chat"
+    },
+    {
       "source": "/w/:path*",
       "destination": "https://futuretravel--propreel-render-web.modal.run/:path*"
     },
