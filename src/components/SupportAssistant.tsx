@@ -98,7 +98,7 @@ export default function SupportAssistant() {
              bar (bottom-0, z-40) and the dashboard's MobileNav (bottom-0, z-50)
              both paint over a bottom-5 launcher, which made it look clipped and
              off-corner. Sit above those bars until sm, where they are gone. */
-          className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-4 sm:bottom-5 sm:right-5 z-[60] min-h-[48px] pl-4 pr-5 rounded-full bg-gradient-to-br from-purple-700 to-purple-500 text-white shadow-xl shadow-black/40 flex items-center gap-2 hover:scale-105 transition-transform"
+          className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom)+var(--consent-h,0px))] right-4 sm:bottom-[calc(1.25rem+var(--consent-h,0px))] sm:right-5 z-[60] min-h-[48px] pl-4 pr-5 rounded-full bg-gradient-to-br from-purple-700 to-purple-500 text-white shadow-xl shadow-black/40 flex items-center gap-2 hover:scale-105 transition-transform"
           aria-label="Open the PropReel assistant"
         >
           <Sparkles className="w-5 h-5" aria-hidden />
@@ -114,7 +114,7 @@ export default function SupportAssistant() {
              that was covering it on phones. dvh, not vh: with the mobile
              browser's collapsing toolbar, 85vh is taller than the visible area
              and pushes the header up out of view. */
-          className="fixed z-[80] bottom-0 inset-x-0 sm:inset-x-auto sm:bottom-5 sm:right-5 w-full sm:w-[380px] h-[85dvh] sm:h-auto sm:max-h-[70vh] flex flex-col card-dark border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
+          className="fixed z-[95] bottom-0 inset-x-0 sm:inset-x-auto sm:bottom-[calc(1.25rem+var(--consent-h,0px))] sm:right-5 w-full sm:w-[380px] h-[85dvh] sm:h-auto sm:max-h-[70vh] flex flex-col card-dark border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
         >
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10 bg-white/[0.03]">
             <div className="flex items-center gap-2 min-w-0">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Cookie, Check, ShieldCheck } from 'lucide-react';
 import { getConsent, setConsent, CONSENT_CHANGED_EVENT, CookieChoice } from '../lib/consent';
@@ -14,6 +14,7 @@ import { getConsent, setConsent, CONSENT_CHANGED_EVENT, CookieChoice } from '../
 export default function CookieConsent() {
   const [choice, setChoice] = useState<CookieChoice | null>(null);
   const [visible, setVisible] = useState(false);
+  const bannerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Read after mount: localStorage is client-only (SSR-safe habit) and this
@@ -28,6 +29,30 @@ export default function CookieConsent() {
     return () => window.removeEventListener(CONSENT_CHANGED_EVENT, onChange);
   }, []);
 
+  // Publish this banner's height so the floating support widgets can clear it.
+  // On a first visit the card sits exactly where their launcher lives, which
+  // left the launcher covered and unclickable until consent was answered.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!visible) {
+      root.style.removeProperty('--consent-h');
+      return;
+    }
+    const measure = () => {
+      const h = bannerRef.current?.offsetHeight ?? 0;
+      root.style.setProperty('--consent-h', `${h}px`);
+    };
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (observer && bannerRef.current) observer.observe(bannerRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+      root.style.removeProperty('--consent-h');
+    };
+  }, [visible]);
+
   const choose = (v: CookieChoice) => {
     setConsent(v);
     setVisible(false);
@@ -37,6 +62,7 @@ export default function CookieConsent() {
 
   return (
     <div
+      ref={bannerRef}
       className="fixed inset-x-0 bottom-0 z-[90] p-4 sm:p-6 pointer-events-none"
       role="region"
       aria-label="Cookie consent"

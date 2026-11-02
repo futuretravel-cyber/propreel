@@ -64,7 +64,7 @@ export default function SupportWidgets() {
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Chat with us on WhatsApp"
-      className="fixed bottom-[calc(9.25rem+env(safe-area-inset-bottom))] right-4 sm:bottom-24 sm:right-5 z-40 w-14 h-14 rounded-full bg-[#25D366] shadow-xl shadow-black/30 flex items-center justify-center hover:scale-110 transition-transform"
+      className="fixed bottom-[calc(9.25rem+env(safe-area-inset-bottom)+var(--consent-h,0px))] right-4 sm:bottom-[calc(6rem+var(--consent-h,0px))] sm:right-5 z-40 w-14 h-14 rounded-full bg-[#25D366] shadow-xl shadow-black/30 flex items-center justify-center hover:scale-110 transition-transform"
     >
       {/* WhatsApp glyph */}
       <svg viewBox="0 0 32 32" className="w-7 h-7 fill-white" aria-hidden>
