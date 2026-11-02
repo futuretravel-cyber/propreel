@@ -55,15 +55,16 @@ export default function SupportWidgets() {
   const digits = flags.whatsapp.number.replace(/[^\d]/g, '');
   if (!digits) return null;
 
-  // bottom-24 clears the support assistant's launcher (fixed bottom-5 right-5)
-  // so the two floating buttons never overlap.
+  // Stacked above the support assistant's launcher so the floats never overlap;
+  // on phones the whole stack also clears the bottom bars (sticky CTA on public
+  // pages, MobileNav in the dashboard). sm and up has room for bottom-24.
   return (
     <a
       href={`https://wa.me/${digits}?text=${encodeURIComponent(flags.whatsapp.message || 'Hi PropReel!')}`}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Chat with us on WhatsApp"
-      className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full bg-[#25D366] shadow-xl shadow-black/30 flex items-center justify-center hover:scale-110 transition-transform"
+      className="fixed bottom-[calc(9.25rem+env(safe-area-inset-bottom))] right-4 sm:bottom-24 sm:right-5 z-40 w-14 h-14 rounded-full bg-[#25D366] shadow-xl shadow-black/30 flex items-center justify-center hover:scale-110 transition-transform"
     >
       {/* WhatsApp glyph */}
       <svg viewBox="0 0 32 32" className="w-7 h-7 fill-white" aria-hidden>

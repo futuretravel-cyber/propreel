@@ -94,7 +94,11 @@ export default function SupportAssistant() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 min-h-[48px] pl-4 pr-5 rounded-full bg-gradient-to-br from-purple-700 to-purple-500 text-white shadow-xl shadow-black/40 flex items-center gap-2 hover:scale-105 transition-transform"
+          /* On phones the page owns the bottom edge: PublicLayout's sticky CTA
+             bar (bottom-0, z-40) and the dashboard's MobileNav (bottom-0, z-50)
+             both paint over a bottom-5 launcher, which made it look clipped and
+             off-corner. Sit above those bars until sm, where they are gone. */
+          className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-4 sm:bottom-5 sm:right-5 z-[60] min-h-[48px] pl-4 pr-5 rounded-full bg-gradient-to-br from-purple-700 to-purple-500 text-white shadow-xl shadow-black/40 flex items-center gap-2 hover:scale-105 transition-transform"
           aria-label="Open the PropReel assistant"
         >
           <Sparkles className="w-5 h-5" aria-hidden />
@@ -106,7 +110,11 @@ export default function SupportAssistant() {
         <div
           role="dialog"
           aria-label="PropReel assistant"
-          className="fixed z-40 bottom-0 right-0 sm:bottom-5 sm:right-5 w-full sm:w-[380px] h-[85vh] sm:h-auto sm:max-h-[70vh] flex flex-col card-dark border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
+          /* z-[80] keeps this title bar above the sticky site nav (z-40/z-50)
+             that was covering it on phones. dvh, not vh: with the mobile
+             browser's collapsing toolbar, 85vh is taller than the visible area
+             and pushes the header up out of view. */
+          className="fixed z-[80] bottom-0 inset-x-0 sm:inset-x-auto sm:bottom-5 sm:right-5 w-full sm:w-[380px] h-[85dvh] sm:h-auto sm:max-h-[70vh] flex flex-col card-dark border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
         >
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10 bg-white/[0.03]">
             <div className="flex items-center gap-2 min-w-0">
@@ -220,7 +228,7 @@ export default function SupportAssistant() {
             </button>
           </form>
 
-          <p className="px-4 pb-3 text-[10px] text-ink-500 leading-snug">
+          <p className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-[10px] text-ink-500 leading-snug">
             AI answers can be wrong — check{' '}
             <a href="/faq" className="underline hover:text-purple-300">the FAQ</a> or{' '}
             <a href="/ai-notice" className="underline hover:text-purple-300">how we use AI</a>.
