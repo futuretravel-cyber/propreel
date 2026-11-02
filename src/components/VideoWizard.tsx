@@ -280,14 +280,77 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
   useEffect(() => {
     setConfigIndex(0);
   }, [tier]);
+  /**
+   * Background-music URLs are signed S3 links that expire after an hour, and
+   * the picker used to read them once when the wizard mounted. In a Studio
+   * session left open longer than that, the <audio> preview silently played
+   * nothing and the same dead URL went to the renderer. Re-sign on the music
+   * step, on player error, and immediately before submitting.
+   */
+  const signedUrlPath = (u: string): string => {
+    try {
+      return new URL(u, window.location.origin).pathname;
+    } catch {
+      return u;
+    }
+  };
 
-  // Load admin-managed music tracks for the picker
+  const [musicPreviewError, setMusicPreviewError] = useState<string | null>(null);
+  const musicRetryRef = useRef(false);
+
+  const loadMusicTracks = async () => {
+    try {
+      const res = await fetch('/api/music');
+      const data = await res.json();
+      const tracks: Array<{ id: string; name: string; genre: string; url: string }> = data.tracks || [];
+      setMusicTracks(tracks);
+      // Point the current selection back at the freshly signed URL for the
+      // same track — the path is stable, only the signature changes.
+      setSelectedMusic((current) => {
+        if (!current) return current;
+        const path = signedUrlPath(current);
+        const fresh = tracks.find((t) => signedUrlPath(t.url) === path);
+        return fresh ? fresh.url : current;
+      });
+    } catch {
+      setMusicTracks([]);
+    }
+  };
+
   useEffect(() => {
-    fetch('/api/music')
-      .then(r => r.json())
-      .then(d => setMusicTracks(d.tracks || []))
-      .catch(() => setMusicTracks([]));
+    void loadMusicTracks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // `step` is declared further down the component, so this effect carries no
+  // dependency array — referencing it there would hit the temporal dead zone.
+  // A ref keeps it to exactly one re-sign per arrival on the music step.
+  const onMusicStepRef = useRef(false);
+  useEffect(() => {
+    if (step !== 6) {
+      onMusicStepRef.current = false;
+      return;
+    }
+    if (onMusicStepRef.current) return;
+    onMusicStepRef.current = true;
+    musicRetryRef.current = false;
+    setMusicPreviewError(null);
+    void loadMusicTracks();
+  });
+
+  /** Freshest signature for the selected track, resolved at submit time. */
+  const freshMusicUrl = async (): Promise<string | null> => {
+    if (!selectedMusic) return null;
+    try {
+      const res = await fetch('/api/music');
+      const data = await res.json();
+      const path = signedUrlPath(selectedMusic);
+      const match = (data.tracks || []).find((t: any) => signedUrlPath(t.url) === path);
+      return match?.url || selectedMusic;
+    } catch {
+      return selectedMusic;
+    }
+  };
 
   // Real AI script generation via fal-ai/any-llm, sized to the selected duration.
   // Source priority: (1) a Property Description the agent already wrote or
@@ -574,7 +637,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
             // before assembly so the agent watches and re-rolls each clip.
             // ESSENTIAL (local FFmpeg) has no clips and ignores the flag.
             review: true,
-            music_url: selectedMusic || undefined,
+            music_url: (await freshMusicUrl()) || undefined,
             branding: brandingPayload,
           }),
           signal: AbortSignal.timeout(START_TIMEOUT_MS),
@@ -1505,7 +1568,7 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
             <select
               className="input"
               value={selectedMusic || ''}
-              onChange={(e) => setSelectedMusic(e.target.value || null)}
+              onChange={(e) => { setSelectedMusic(e.target.value || null); setMusicPreviewError(null); musicRetryRef.current = false; }}
             >
               <option value="">No background music</option>
               {musicTracks.map(t => (
@@ -1515,14 +1578,24 @@ export function VideoTab({ sharedScript, onScriptChange, langCheck, initialImage
           )}
           {selectedMusic && musicTracks.some((t) => t.url === selectedMusic) && (
             <div className="mt-3">
-              <audio
-                key={selectedMusic}
-                controls
-                preload="none"
-                src={selectedMusic}
-                aria-label="Preview the selected background music"
-                className="w-full"
-              />
+        <audio
+          key={selectedMusic}
+          controls
+          preload="none"
+          src={selectedMusic}
+          onError={() => {
+            if (musicRetryRef.current) {
+              setMusicPreviewError('This track could not be played. Pick another track, or try again in a moment.');
+              return;
+            }
+            musicRetryRef.current = true;
+            setMusicPreviewError('Refreshing the preview link…');
+            void loadMusicTracks().then(() => setMusicPreviewError('Preview link refreshed — press play again.'));
+          }}
+          aria-label="Preview the selected background music"
+          className="w-full"
+        />
+        {musicPreviewError && <p className="text-xs text-amber-300 mt-1">{musicPreviewError}</p>}
               <p className="text-xs text-ink-500 mt-1">
                 Preview — this is how the track will sound under your reel. Choose another track above to preview it instead.
               </p>
