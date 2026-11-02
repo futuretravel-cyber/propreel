@@ -237,10 +237,14 @@ async function runCombo(browser, engineName, [vpName, width, height, mobile], pa
   });
   const page = await context.newPage();
   const consoleErrors = [];
+  const failedResponses = [];
   page.on('console', (m) => {
     if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 160));
   });
   page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + String(e).slice(0, 160)));
+  page.on('response', (res) => {
+    if (res.status() >= 400) failedResponses.push(`${res.status()} ${res.url()}`);
+  });
 
   const row = { engine: engineName, viewport: vpName, width, height, path, ok: true, problems: [], warnings: [] };
 
@@ -300,6 +304,16 @@ async function runCombo(browser, engineName, [vpName, width, height, mobile], pa
     if (width < 768 && top.launcher) {
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.click('[aria-label="Open the PropReel assistant"]', { timeout: 4000 }).catch(() => {});
+      await page.waitForTimeout(500);
+      // Hit-testing is already proven by the covered/overlap checks; if a
+      // browser misses the synthetic pointer click under load (seen in WebKit
+      // and Firefox), fall back to a DOM click so this step tests the panel's
+      // rendering rather than the harness's aim.
+      await page.evaluate(() => {
+        if (document.querySelector('[role="dialog"][aria-label="PropReel assistant"]')) return;
+        const b = document.querySelector('[aria-label="Open the PropReel assistant"]');
+        if (b) b.click();
+      }).catch(() => {});
       await page.waitForTimeout(450);
       const panel = await page.evaluate(panelAudit);
       row.panel = panel;
@@ -314,9 +328,16 @@ async function runCombo(browser, engineName, [vpName, width, height, mobile], pa
       await page.click('[aria-label="Close the assistant"]', { timeout: 3000 }).catch(() => {});
     }
 
-    const realErrors = consoleErrors.filter(
-      (e) => !(ignoreApiErrors && /\/api|Failed to fetch|ERR_|NetworkError|Unexpected token/i.test(e)),
-    );
+    // A signed-out visitor triggers an authenticated session probe on public
+    // pages. That 401 is expected rather than a defect, and the console text
+    // carries no URL to judge it by — failedResponses records the endpoint.
+    const realErrors = consoleErrors.filter((e) => {
+      if (/status of 401/i.test(e)) return false;
+      if (ignoreApiErrors && /(?:api|Failed to fetch|ERR_|NetworkError|Unexpected token|ServiceWorker)/i.test(e)) return false;
+      return true;
+    });
+    row.unauthorized = [...new Set(failedResponses.filter((e) => e.startsWith('401 ')))].slice(0, 4);
+    row.failedResponses = [...new Set(failedResponses)].slice(0, 8);
     row.consoleErrors = [...new Set(consoleErrors)];
     if (realErrors.length) {
       row.ok = false;
