@@ -357,6 +357,32 @@ async function runCombo(browser, engineName, [vpName, width, height, mobile], pa
 const results = [];
 const skipped = [];
 
+// Resolve the matrix up front. A filter that matches nothing must never look
+// like a clean run: an empty sweep reporting PASS is worse than no sweep.
+const planned = ENGINES.filter((e) => onlyEngine(e.name)).flatMap((e) =>
+  e.pages
+    .filter((p) => !wantPages || wantPages.includes(p))
+    .flatMap((p) =>
+      VIEWPORTS.filter(([, w]) => e.widths.includes(w) && (!wantWidths || wantWidths.includes(w))).map((vp) => ({
+        engine: e,
+        vp,
+        path: p,
+      })),
+    ),
+);
+if (process.env.AUDIT_DEBUG) {
+  const byEngine = {};
+  for (const item of planned) byEngine[item.engine.name] = (byEngine[item.engine.name] || 0) + 1;
+  console.error('[audit] planned ' + planned.length + ' combination(s): ' + JSON.stringify(byEngine));
+  if (planned.length === 0) {
+    console.error('[audit] filters → engines=' + JSON.stringify(wantEngines) + ' pages=' + JSON.stringify(wantPages) + ' widths=' + JSON.stringify(wantWidths));
+  }
+}
+if (planned.length === 0) {
+  console.error('No combinations matched the AUDIT_* filters — refusing to report a pass.');
+  process.exit(2);
+}
+
 for (const engine of ENGINES.filter((e) => onlyEngine(e.name))) {
   let browser;
   try {
