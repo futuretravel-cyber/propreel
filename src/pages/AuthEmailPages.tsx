@@ -58,7 +58,7 @@ export function ConfirmEmailPage() {
         {state === 'working' ? (
           <>
             <RefreshCw className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-white mb-2">Confirming your email…</h2>
+            <h1 className="text-xl font-bold text-white mb-2">Confirming your email…</h1>
             <p className="text-ink-400">One moment — this opens your account.</p>
           </>
         ) : (
@@ -66,7 +66,7 @@ export function ConfirmEmailPage() {
             <div className="w-16 h-16 rounded-full bg-red-500/15 flex items-center justify-center mx-auto mb-4">
               <AlertTriangle className="w-8 h-8 text-red-400" />
             </div>
-            <h2 className="text-xl font-bold text-white mb-2">That link didn't work</h2>
+            <h1 className="text-xl font-bold text-white mb-2">That link didn't work</h1>
             <p className="text-ink-400 mb-6">{message}</p>
             <div className="space-y-3">
               <Link to="/login" className="btn btn-primary w-full">Back to sign in</Link>
@@ -114,7 +114,7 @@ export function ForgotPasswordPage() {
           <div className="w-14 h-14 rounded-full bg-purple-500/15 flex items-center justify-center mx-auto mb-3">
             <KeyRound className="w-7 h-7 text-purple-400" />
           </div>
-          <h2 className="text-2xl font-bold text-white">Forgot your password?</h2>
+          <h1 className="text-2xl font-bold text-white">Forgot your password?</h1>
           <p className="text-ink-400 mt-1">We'll email you a secure reset link.</p>
         </div>
         {error && <div className="mb-4 p-3 rounded-lg bg-red-950/50 border border-red-500/30 text-red-300 text-sm">{error}</div>}
@@ -182,7 +182,7 @@ export function ResetPasswordPage() {
           <div className="w-14 h-14 rounded-full bg-purple-500/15 flex items-center justify-center mx-auto mb-3">
             <KeyRound className="w-7 h-7 text-purple-400" />
           </div>
-          <h2 className="text-2xl font-bold text-white">Choose a new password</h2>
+          <h1 className="text-2xl font-bold text-white">Choose a new password</h1>
         </div>
         {!token && (
           <div className="mb-4 p-3 rounded-lg bg-red-950/50 border border-red-500/30 text-red-300 text-sm">

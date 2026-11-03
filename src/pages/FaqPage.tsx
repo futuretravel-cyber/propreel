@@ -10,6 +10,20 @@ import { SIGNUP_BONUS } from '../lib/constants';
  * Content comes from src/lib/faq.ts — the same list the in-app Help modal
  * renders — so the two can't disagree about credits or retention.
  */
+/**
+ * FAQPage structured data. Every answer is also rendered in the page (see
+ * below), which is what Google requires to show a FAQ rich result.
+ */
+const FAQ_JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQS.map(f => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
+};
+
 export default function FaqPage() {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<string | null>(FAQS[0]?.q ?? null);
@@ -22,6 +36,7 @@ export default function FaqPage() {
   return (
     <PublicLayout>
       <section className="py-16 sm:py-20">
+        <script type="application/ld+json">{JSON.stringify(FAQ_JSON_LD)}</script>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-10">
             <h1 className="text-3xl sm:text-5xl font-black text-white">Questions, answered</h1>
@@ -70,9 +85,12 @@ export default function FaqPage() {
                             <span className="text-sm font-medium text-white">{item.q}</span>
                             <ChevronDown className={`w-4 h-4 text-ink-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                           </button>
-                          {isOpen && (
+                          {/* Answers stay in the DOM even when collapsed so
+                              search engines can index them; the button's
+                              aria-expanded carries the visual state. */}
+                          <div className={isOpen ? 'block' : 'hidden'}>
                             <p className="px-5 pb-4 text-sm text-ink-300 leading-relaxed">{item.a}</p>
-                          )}
+                          </div>
                         </div>
                       );
                     })}

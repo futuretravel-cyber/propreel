@@ -120,7 +120,7 @@ export default function PaymentPage() {
           <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
             <Check className="w-8 h-8 text-green-400" />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Payment successful</h2>
+          <h1 className="text-2xl font-bold text-white mb-2">Payment successful</h1>
           <p className="text-ink-400 mb-4">
             {isTopup
               ? creditsAdded
@@ -149,7 +149,7 @@ export default function PaymentPage() {
       <div className="min-h-screen bg-ink-950 flex items-center justify-center p-4">
         <div className="card-dark p-8 max-w-md text-center">
           <Loader2 className="w-10 h-10 text-purple-400 animate-spin mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">Confirming your payment…</h2>
+          <h1 className="text-xl font-bold text-white mb-2">Confirming your payment…</h1>
           <p className="text-ink-400 text-sm">Reference {callbackRef} — this only takes a moment.</p>
         </div>
       </div>
@@ -162,7 +162,7 @@ export default function PaymentPage() {
     return (
       <div className="min-h-screen bg-ink-950 flex items-center justify-center p-4">
         <div className="card-dark p-8 max-w-md text-center">
-          <h2 className="text-xl font-bold text-white mb-2">Payment received — confirming…</h2>
+          <h1 className="text-xl font-bold text-white mb-2">Payment received — confirming…</h1>
           <p className="text-ink-400 text-sm mb-6">{verifyError}. Your payment is safe; we just couldn't confirm it yet.</p>
           <button onClick={() => runVerify(callbackRef)} className="btn btn-primary w-full">
             Check again
@@ -184,7 +184,7 @@ export default function PaymentPage() {
           <div className="w-14 h-14 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
             <LogIn className="w-7 h-7 text-purple-400" />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Sign in to continue</h2>
+          <h1 className="text-2xl font-bold text-white mb-2">Sign in to continue</h1>
           <p className="text-ink-400 text-sm mb-6">
             {plan && !isTopup
               ? `Sign in (or create an account) to subscribe to the ${plan.name} plan — you'll come straight back to this page.`
@@ -225,9 +225,9 @@ export default function PaymentPage() {
         </div>
 
         <div className="card-dark p-8">
-          <h2 className="text-2xl font-bold text-white text-center mb-2">
+          <h1 className="text-2xl font-bold text-white text-center mb-2">
             {isTopup ? 'Top Up Credits' : 'Complete Your Subscription'}
-          </h2>
+          </h1>
           <p className="text-ink-400 text-center mb-6">
             {isTopup ? `Add ${topupAmount} credits to your account` : `Subscribe to ${planName}`}
           </p>

@@ -1,29 +1,33 @@
 # PropReel robots.txt
 # https://www.propreel.co.za
 #
-# Policy (2026-10-27): mainstream search engines may index the public
-# marketing pages. AI / LLM crawlers are refused site-wide — no training,
-# no model harvesting. /status is internal diagnostics and is not indexed.
+# Policy (2026-11-03): search engines index every public page — the sitemap
+# lists them all. AI / LLM crawlers are refused site-wide — no training,
+# no model harvesting. Authenticated app screens are excluded.
 
 User-agent: *
 Allow: /
 
-# Allow all public pages
+# Public pages (allowed by the blanket rule above; listed for clarity)
 Allow: /pricing
 Allow: /reviews
+Allow: /faq
 Allow: /about
 Allow: /contact
+Allow: /tutorial
+Allow: /blog
+Allow: /status
 Allow: /login
 Allow: /register
 Allow: /terms
 Allow: /privacy
 Allow: /cookies
 Allow: /paia
+Allow: /ai-notice
 Allow: /refund-policy
 Allow: /dpa
 
-# Disallow authenticated areas and internal status
-Disallow: /status
+# Authenticated app screens and tokenised flows: nothing here belongs in search
 Disallow: /dashboard
 Disallow: /studio
 Disallow: /admin
@@ -112,6 +116,3 @@ Disallow: /
 
 # Sitemap location
 Sitemap: https://www.propreel.co.za/sitemap.xml
-
-# Crawl-delay for polite crawling
-Crawl-delay: 1

@@ -56,7 +56,7 @@ export default function DeleteAccountPage() {
             </div>
 
             <div className="bg-red-950/30 border border-red-500/30 rounded-xl p-6 mb-6">
-              <h3 className="font-semibold text-red-300 mb-3">⚠️ Warning: Permanent Deletion</h3>
+              <h2 className="font-semibold text-red-300 mb-3">⚠️ Warning: Permanent Deletion</h2>
               <p className="text-sm text-red-200 mb-4">
                 Deleting your account will permanently remove all your data from PropReel. This includes:
               </p>
@@ -91,7 +91,7 @@ export default function DeleteAccountPage() {
             </div>
 
             <div className="bg-ink-800/50 rounded-xl p-6 mb-6">
-              <h3 className="font-semibold text-white mb-3">Before You Delete</h3>
+              <h2 className="font-semibold text-white mb-3">Before You Delete</h2>
               <div className="space-y-3">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
@@ -117,7 +117,7 @@ export default function DeleteAccountPage() {
             </div>
 
             <div className="bg-ink-800/50 rounded-xl p-6 mb-6">
-              <h3 className="font-semibold text-white mb-3">What You'll Lose</h3>
+              <h2 className="font-semibold text-white mb-3">What You'll Lose</h2>
               <ul className="space-y-2 text-sm text-ink-300">
                 <li className="flex items-start gap-2">
                   <XCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
@@ -194,7 +194,7 @@ export default function DeleteAccountPage() {
             </div>
 
             <div className="bg-ink-800/50 rounded-xl p-6 mb-6">
-              <h3 className="font-semibold text-white mb-3">Account Deletion Summary</h3>
+              <h2 className="font-semibold text-white mb-3">Account Deletion Summary</h2>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-ink-400">Account Email</span>

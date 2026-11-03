@@ -226,6 +226,7 @@ export default function SignupPage() {
             </div>
             <span className="font-bold text-2xl text-white">PropReel</span>
           </Link>
+          <h1 className="text-sm text-ink-400 mt-3">Create your PropReel account</h1>
         </div>
 
         {/* Progress Steps — hidden in invite mode (no plan/payment steps) */}

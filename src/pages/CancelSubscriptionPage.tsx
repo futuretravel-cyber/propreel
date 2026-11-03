@@ -80,7 +80,7 @@ export default function CancelSubscriptionPage() {
             </div>
 
             <div className="bg-ink-800/50 rounded-xl p-6 mb-6">
-              <h3 className="font-semibold text-white mb-3">What happens when you cancel:</h3>
+              <h2 className="font-semibold text-white mb-3">What happens when you cancel:</h2>
               <ul className="space-y-2 text-sm text-ink-300">
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
@@ -130,7 +130,7 @@ export default function CancelSubscriptionPage() {
             </div>
 
             <div className="bg-red-950/30 border border-red-500/30 rounded-xl p-6 mb-6">
-              <h3 className="font-semibold text-red-300 mb-3">Important:</h3>
+              <h2 className="font-semibold text-red-300 mb-3">Important:</h2>
               <ul className="space-y-2 text-sm text-red-200">
                 <li>• Your subscription will remain active until the end of your current billing period</li>
                 <li>• You will not be charged again after this period</li>
@@ -140,7 +140,7 @@ export default function CancelSubscriptionPage() {
             </div>
 
             <div className="bg-ink-800/50 rounded-xl p-6 mb-6">
-              <h3 className="font-semibold text-white mb-3">Your Current Subscription:</h3>
+              <h2 className="font-semibold text-white mb-3">Your Current Subscription:</h2>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-ink-400">Plan</span>

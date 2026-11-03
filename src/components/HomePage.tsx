@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { Sparkles, ArrowRight, Check, Star, Camera, Sofa, Trash2, MoonIcon, Share2, FileText, Video, Mic, Wand2 } from 'lucide-react';
@@ -58,14 +58,57 @@ function Reveal({ children, delay = 0, y = 28, className = '' }: { children: Rea
 
 /* ── Hero ─────────────────────────────────────────────────────────── */
 function Hero() {
+  // The 2.6 MB showreel sits behind a blur + dark overlay, so it is not the
+  // LCP element — the headline is. Painting the hero still immediately and
+  // only starting the video download once the page is idle keeps the largest
+  // paint (and the network) free for the content that actually matters.
+  const [playShowreel, setPlayShowreel] = useState(false);
+
+  useEffect(() => {
+    if (!SHOWREEL_SRC) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let cancelled = false;
+    const start = () => {
+      if (cancelled) return;
+      const idle = window.requestIdleCallback;
+      if (idle) idle(() => setPlayShowreel(true), { timeout: 2500 });
+      else window.setTimeout(() => setPlayShowreel(true), 1200);
+    };
+    if (document.readyState === 'complete') start();
+    else window.addEventListener('load', start, { once: true });
+    return () => {
+      cancelled = true;
+      window.removeEventListener('load', start);
+    };
+  }, []);
+
   return (
     <section className="relative min-h-[92vh] flex items-center overflow-hidden">
-      {/* Background: looping video behind frosted glass */}
-      <div className="absolute inset-0">
-        {SHOWREEL_SRC ? (
-          <video src={SHOWREEL_SRC} autoPlay muted loop playsInline className="w-full h-full object-cover" />
-        ) : (
-          <img src={img(IMG.hero, 1200)} alt="" className="w-full h-full object-cover scale-105" aria-hidden />
+      {/* Background: still first, looping video (once idle) behind frosted glass */}
+      <div className="absolute inset-0 bg-ink-950">
+        <img
+          src={img(IMG.hero, 1200)}
+          alt=""
+          aria-hidden
+          width={1200}
+          height={800}
+          fetchPriority="high"
+          decoding="async"
+          className="w-full h-full object-cover scale-105"
+        />
+        {SHOWREEL_SRC && playShowreel && (
+          <video
+            src={SHOWREEL_SRC}
+            poster={img(IMG.hero, 1200)}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="none"
+            aria-hidden
+            tabIndex={-1}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
         )}
         <div className="absolute inset-0 bg-gradient-to-b from-ink-950/80 via-ink-950/70 to-ink-950 backdrop-blur-[6px]" />
         <div className="absolute inset-0 bg-grid-fade opacity-60" />
@@ -170,6 +213,10 @@ function DemoReel() {
               {near && (
                 <video
                   src="/media/kitchen-after.mp4"
+                  poster="/images/kitchen-after-poster.webp"
+                  width={768}
+                  height={1280}
+                  aria-label="Kitchen listing reel rendered by PropReel"
                   autoPlay
                   muted
                   loop
@@ -214,7 +261,7 @@ function VisualShowcase() {
         <div className="grid grid-cols-1 md:grid-cols-3 auto-rows-[minmax(180px,auto)] gap-5">
           <BentoCard className="md:col-span-2 md:row-span-2" delay={0}>
             <div className="relative h-full min-h-[420px]">
-              <img src={img(IMG.hero, 1200)} alt="AI-enhanced luxury property" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+              <img src={img(IMG.hero, 1200)} alt="AI-enhanced luxury property" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/90 via-transparent to-transparent" />
               <div className="absolute bottom-0 p-6">
                 <span className="badge badge-brand mb-3">Sky Replacement + Enhancement</span>
@@ -226,7 +273,7 @@ function VisualShowcase() {
 
           <BentoCard delay={0.05}>
             <div className="relative h-44">
-              <img src={img(IMG.staging, 800)} alt="Virtual staging" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+              <img src={img(IMG.staging, 800)} alt="Virtual staging" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 to-transparent" />
               <div className="absolute bottom-0 p-4">
                 <h3 className="font-bold text-white">Virtual Staging</h3>
@@ -237,7 +284,7 @@ function VisualShowcase() {
 
           <BentoCard delay={0.1}>
             <div className="relative h-44">
-              <img src={img(IMG.twilight, 800)} alt="Twilight photography" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+              <img src={img(IMG.twilight, 800)} alt="Twilight photography" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 to-transparent" />
               <div className="absolute bottom-0 p-4">
                 <h3 className="font-bold text-white">Twilight Mode</h3>
@@ -249,11 +296,11 @@ function VisualShowcase() {
           <BentoCard className="md:col-span-2" delay={0.15}>
             <div className="grid grid-cols-2 h-full min-h-[200px]">
               <div className="relative">
-                <img src={img(IMG.manorBefore, 800)} alt="Before AI" className="absolute inset-0 w-full h-full object-cover" />
+                <img src={img(IMG.manorBefore, 800)} alt="Before AI" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" />
                 <span className="absolute top-3 left-3 bg-black/60 text-white text-xs font-semibold px-2.5 py-1 rounded-full">Before</span>
               </div>
               <div className="relative border-l border-white/10">
-                <img src={img(IMG.manorAfter, 800)} alt="After AI" className="absolute inset-0 w-full h-full object-cover" />
+                <img src={img(IMG.manorAfter, 800)} alt="After AI" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" />
                 <span className="absolute top-3 right-3 bg-purple-700 text-white text-xs font-semibold px-2.5 py-1 rounded-full">After</span>
               </div>
             </div>
@@ -261,7 +308,7 @@ function VisualShowcase() {
 
           <BentoCard delay={0.2}>
             <div className="relative h-44">
-              <img src={img(IMG.apartment, 800)} alt="Modern apartment" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+              <img src={img(IMG.apartment, 800)} alt="Modern apartment" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 to-transparent" />
               <div className="absolute bottom-0 p-4">
                 <h3 className="font-bold text-white">Sandton Apartment</h3>
@@ -319,6 +366,7 @@ function PropertyShowcase() {
                     sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                     alt={`${p.title} — ${p.place}`}
                     loading="lazy"
+                    decoding="async"
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-[900ms]"
                   />
                 )}
@@ -459,6 +507,7 @@ function EditorDemo() {
                   sizes="(max-width: 1024px) 100vw, 860px"
                   alt="The real PropReel dashboard — Studio overview with credits, projects and render status"
                   loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute top-3 left-3 flex items-center gap-2 glass rounded-full px-3 py-1.5">
@@ -530,6 +579,7 @@ function InsidePropReel() {
                     sizes="(max-width: 640px) 100vw, 50vw"
                     alt={`${s.title} — real PropReel dashboard screen`}
                     loading="lazy"
+                    decoding="async"
                     className="w-full"
                   />
                 </div>

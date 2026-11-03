@@ -104,16 +104,30 @@ export default function BlogPostPage() {
     .slice(0, 3)
     .map(r => r.post);
 
+  const url = `https://www.propreel.co.za/blog/${post.slug}`;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     headline: post.title,
     description: post.description,
+    image: ['https://www.propreel.co.za/images/og-default.png'],
     datePublished: post.date,
     dateModified: post.updated || post.date,
-    author: { '@type': 'Organization', name: 'PropReel' },
-    publisher: { '@type': 'Organization', name: 'PropReel', url: 'https://www.propreel.co.za/' },
-    mainEntityOfPage: `https://www.propreel.co.za/blog/${post.slug}`,
+    inLanguage: 'en-ZA',
+    articleSection: post.tags[0],
+    author: { '@type': 'Organization', name: 'PropReel', url: 'https://www.propreel.co.za/' },
+    publisher: {
+      '@type': 'Organization',
+      name: 'PropReel',
+      url: 'https://www.propreel.co.za/',
+      logo: {
+        '@type': 'ImageObject',
+        url: 'https://www.propreel.co.za/icon-512.png',
+        width: 512,
+        height: 512,
+      },
+    },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
   };
 
   return (
@@ -123,6 +137,8 @@ export default function BlogPostPage() {
           <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
 
           <nav className="mb-6 text-sm text-ink-400" aria-label="Breadcrumb">
+            <Link to="/" className="hover:text-purple-300">Home</Link>
+            <span className="mx-2">/</span>
             <Link to="/blog" className="text-purple-400 hover:text-purple-300 inline-flex items-center gap-1.5">
               <ArrowLeft className="w-3.5 h-3.5" /> Blog
             </Link>

@@ -12,6 +12,9 @@ import { SIGNUP_BONUS } from './constants';
 
 const SITE = 'https://www.propreel.co.za';
 const SUFFIX = 'PropReel';
+const DEFAULT_OG_IMAGE = `${SITE}/images/og-default.png`;
+const OG_IMAGE_WIDTH = 1200;
+const OG_IMAGE_HEIGHT = 630;
 
 interface SeoEntry {
   title: string;
@@ -19,13 +22,30 @@ interface SeoEntry {
   /** Extra OG type; defaults to website. */
   type?: string;
   noindex?: boolean;
+  /** Short label used in the BreadcrumbList and for JSON-LD. */
+  crumb?: string;
+}
+
+/**
+ * Routes that answer on more than one URL. The canonical tag always points at
+ * the first one, so /signup and /register never compete as duplicates.
+ */
+const CANONICAL_ALIASES: Record<string, string> = {
+  '/signup': '/register',
+  '/payment/callback': '/payment',
+};
+
+/** `/pricing/` -> `/pricing`; root stays `/`. */
+function canonicalPath(pathname: string) {
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  return CANONICAL_ALIASES[clean] ?? clean;
 }
 
 const ROUTES: Record<string, SeoEntry> = {
   '/': {
     title: `PropReel — Create Stunning Property Videos Instantly with AI`,
     description:
-      `PropReel turns your property photos into cinematic, narrated listing reels in minutes. Built for South African estate agents. Start free — your first ${SIGNUP_BONUS} credits are on us, no card needed.`,
+      `Turn property photos into cinematic, narrated listing reels in minutes. Built for South African estate agents — start free with ${SIGNUP_BONUS} credits, no card.`,
   },
   '/pricing': {
     title: `Pricing — Pay per video in ZAR | ${SUFFIX}`,
@@ -115,6 +135,42 @@ function setCanonical(href: string) {
   el.href = href;
 }
 
+/** Replace (or drop, when `data` is null) one managed JSON-LD block. */
+function setJsonLd(id: string, data: unknown | null) {
+  const selector = `script[data-seo-jsonld="${id}"]`;
+  const existing = document.head.querySelector<HTMLScriptElement>(selector);
+  if (!data) {
+    existing?.remove();
+    return;
+  }
+  const el = existing ?? document.createElement('script');
+  if (!existing) {
+    el.type = 'application/ld+json';
+    el.dataset.seoJsonld = id;
+    document.head.appendChild(el);
+  }
+  el.textContent = JSON.stringify(data);
+}
+
+/** Home > Pricing, Home > Blog > <post title>. */
+function breadcrumbs(trail: Array<{ name: string; path: string }>) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [{ name: 'Home', path: '/' }, ...trail].map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.name,
+      item: `${SITE}${item.path}`,
+    })),
+  };
+}
+
+/** Breadcrumb label from the page title: "Pricing — Pay per video | PropReel" -> "Pricing". */
+function crumbLabel(entry: SeoEntry) {
+  return entry.crumb ?? entry.title.split('|')[0].split('—')[0].trim();
+}
+
 /** ` /dashboard/billing ` -> `Billing` — readable tab titles for app areas. */
 function humanize(pathname: string) {
   const parts = pathname.split('/').filter(Boolean);
@@ -128,24 +184,78 @@ export function RouteSEO() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    const apply = (title: string, description: string, noindex: boolean) => {
+    const path = canonicalPath(pathname);
+    const url = `${SITE}${path}`;
+
+    const apply = (opts: {
+      title: string;
+      description: string;
+      noindex: boolean;
+      type?: string;
+      image?: string;
+    }) => {
+      const { title, description, noindex } = opts;
+      const image = opts.image ?? DEFAULT_OG_IMAGE;
+
       document.title = title;
       setMeta('meta[name="description"]', 'name', 'description', description);
-      setCanonical(`${SITE}${pathname}`);
+      setCanonical(url);
 
+      setMeta('meta[property="og:type"]', 'property', 'og:type', opts.type ?? 'website');
+      setMeta('meta[property="og:site_name"]', 'property', 'og:site_name', SUFFIX);
+      setMeta('meta[property="og:locale"]', 'property', 'og:locale', 'en_ZA');
       setMeta('meta[property="og:title"]', 'property', 'og:title', title);
       setMeta('meta[property="og:description"]', 'property', 'og:description', description);
-      setMeta('meta[property="og:url"]', 'property', 'og:url', `${SITE}${pathname}`);
+      setMeta('meta[property="og:url"]', 'property', 'og:url', url);
+      setMeta('meta[property="og:image"]', 'property', 'og:image', image);
+      setMeta('meta[property="og:image:width"]', 'property', 'og:image:width', String(OG_IMAGE_WIDTH));
+      setMeta('meta[property="og:image:height"]', 'property', 'og:image:height', String(OG_IMAGE_HEIGHT));
+      setMeta('meta[property="og:image:alt"]', 'property', 'og:image:alt', title);
+      setMeta('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
       setMeta('meta[name="twitter:title"]', 'name', 'twitter:title', title);
       setMeta('meta[name="twitter:description"]', 'name', 'twitter:description', description);
+      setMeta('meta[name="twitter:image"]', 'name', 'twitter:image', image);
+      setMeta('meta[name="twitter:image:alt"]', 'name', 'twitter:image:alt', title);
       setMeta('meta[name="robots"]', 'name', 'robots', noindex ? 'noindex, nofollow' : 'index, follow');
     };
 
     const entry = ROUTES[pathname];
-    const noindex = entry?.noindex || NOINDEX_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'));
+    const noindex = entry?.noindex || NOINDEX_PREFIXES.some(p => path === p || path.startsWith(p + '/'));
 
     if (entry) {
-      apply(entry.title, entry.description, noindex);
+      apply({ title: entry.title, description: entry.description, noindex });
+      setJsonLd(
+        'breadcrumb',
+        noindex || path === '/'
+          ? null
+          : breadcrumbs([{ name: crumbLabel(entry), path }])
+      );
+      setJsonLd(
+        'pricing-offers',
+        path === '/pricing'
+          ? {
+              '@context': 'https://schema.org',
+              '@type': 'Product',
+              name: 'PropReel credits',
+              description:
+                'Prepaid rendering credits for AI property videos, priced in South African rand.',
+              brand: { '@type': 'Brand', name: SUFFIX },
+              offers: {
+                '@type': 'Offer',
+                price: CREDIT_PACK_RAND.toFixed(2),
+                priceCurrency: 'ZAR',
+                availability: 'https://schema.org/InStock',
+                url,
+                priceSpecification: {
+                  '@type': 'UnitPriceSpecification',
+                  price: CREDIT_PACK_RAND.toFixed(2),
+                  priceCurrency: 'ZAR',
+                  referenceQuantity: { '@type': 'QuantitativeValue', value: 1, unitCode: 'C62' },
+                },
+              },
+            }
+          : null
+      );
       return;
     }
 
@@ -153,16 +263,44 @@ export function RouteSEO() {
     // dynamic import; this keeps post titles/descriptions out of the main bundle.
     const blogMatch = pathname.match(/^\/blog\/([^/]+)\/?$/);
     if (blogMatch) {
-      apply(`Blog | ${SUFFIX}`, 'Property marketing guides for South African estate agents.', false);
+      const slug = decodeURIComponent(blogMatch[1]);
+      apply({
+        title: `Blog | ${SUFFIX}`,
+        description: 'Property marketing guides for South African estate agents.',
+        noindex: false,
+        type: 'article',
+        image: DEFAULT_OG_IMAGE,
+      });
+      setJsonLd('breadcrumb', breadcrumbs([{ name: 'Blog', path: '/blog' }]));
+      setJsonLd('pricing-offers', null);
       let cancelled = false;
       import('../blog/posts')
         .then(m => {
           if (cancelled) return;
-          const post = m.getPost(decodeURIComponent(blogMatch[1]));
+          const post = m.getPost(slug);
           if (post) {
-            apply(`${post.title} | ${SUFFIX}`, post.description, false);
+            apply({
+              title: `${post.title} | ${SUFFIX}`,
+              description: post.description,
+              noindex: false,
+              type: 'article',
+              image: DEFAULT_OG_IMAGE,
+            });
+            setCanonical(`${SITE}/blog/${post.slug}`);
+            setJsonLd(
+              'breadcrumb',
+              breadcrumbs([
+                { name: 'Blog', path: '/blog' },
+                { name: post.title, path: `/blog/${post.slug}` },
+              ])
+            );
           } else {
-            apply(`Article not found | ${SUFFIX}`, 'That blog post does not exist on PropReel.', true);
+            apply({
+              title: `Article not found | ${SUFFIX}`,
+              description: 'That blog post does not exist on PropReel.',
+              noindex: true,
+            });
+            setJsonLd('breadcrumb', null);
           }
         })
         .catch(() => {});
@@ -172,16 +310,18 @@ export function RouteSEO() {
     }
 
     // Fallback for paths without a ROUTES entry: a real dashboard route
-    // (e.g. /dashboard/video) gets its readable tab title from humanize()
-    // — only NON-noindex unknown paths are 404s here. The actual 404 page
+    // (e.g. /dashboard/video) gets its readable tab title from humanize().
+    // Everything else is a 404 and is always noindex — indexing rendered
+    // 404s is what creates soft-404 results in Search Console. The 404 page
     // (pages/NotFoundPage) then overwrites document.title with the canonical
-    // "Page not found" in its own effect, which runs after this one, so a
-    // 404 under /dashboard no longer keeps "Does Not Exist | PropReel".
-    apply(
-      noindex ? `${humanize(pathname)} | ${SUFFIX}` : `Page not found | ${SUFFIX}`,
-      'The page you were looking for does not exist on PropReel.',
-      noindex
-    );
+    // "Page not found" in its own effect, which runs after this one.
+    setJsonLd('pricing-offers', null);
+    setJsonLd('breadcrumb', null);
+    apply({
+      title: noindex ? `${humanize(pathname)} | ${SUFFIX}` : `Page not found | ${SUFFIX}`,
+      description: 'The page you were looking for does not exist on PropReel.',
+      noindex: true,
+    });
   }, [pathname]);
 
   return null;
