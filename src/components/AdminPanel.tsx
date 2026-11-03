@@ -11,7 +11,7 @@ import { SA_LANGUAGES } from '../lib/constants';
 import { IMAGE_PRESETS } from '../lib/imagePrompts';
 import { formatZar } from '../lib/utils';
 import { RENDER_ENDPOINT } from '../lib/renderEndpoint';
-import { BarChart3, Shield, Star, Check, X, Sparkles, TrendingUp, Download, RefreshCw, Plus, Mic, FileText } from 'lucide-react';
+import { BarChart3, Shield, Star, Check, X, Sparkles, TrendingUp, Download, RefreshCw, Plus, Mic, FileText, Pencil } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip } from 'recharts';
 import AdminTutorials from './AdminTutorials';
 import AdminMusicLibrary from './AdminMusicLibrary';
@@ -651,11 +651,14 @@ function AdminPnl() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [form, setForm] = useState({ label: '', category: 'Other', amount: '', note: '', recurring: false });
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  const [savingId, setSavingId] = useState('');
 
   useEffect(() => {
     if (!user?.email) return;
     setData(null);
     setError('');
+    setEditing(null);
     fetch(`/api/users?action=pln_get&month=${month}`)
       .then(r => { if (!r.ok) throw new Error('P&L statement unavailable'); return r.json(); })
       .then(setData)
@@ -689,8 +692,7 @@ function AdminPnl() {
     }
   };
 
-  const removeExpense = async (itemId: string) => {
-    if (!user?.email) return;
+  const removeExpense = async (itemId: string) => {    if (!user?.email) return;
     try {
       const res = await fetch('/api/users?action=pln_expense_delete', {
         method: 'POST',
@@ -702,6 +704,31 @@ function AdminPnl() {
       refresh();
     } catch {
       toast.error('Failed to remove expense');
+    }
+  };
+
+  const saveAmount = async (itemId: string) => {
+    if (!user?.email || !editing || savingId) return;
+    const amount = Number(editing.value);
+    if (!editing.value.trim() || !Number.isFinite(amount) || amount < 0) {
+      toast.error('Enter an amount of zero or more');
+      return;
+    }
+    setSavingId(itemId);
+    try {
+      const res = await fetch('/api/users?action=pln_expense_update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, month, itemId, amount }),
+      });
+      if (!res.ok) throw new Error();
+      setEditing(null);
+      toast.success('Amount updated');
+      refresh();
+    } catch {
+      toast.error('Failed to update amount');
+    } finally {
+      setSavingId('');
     }
   };
 
@@ -831,20 +858,58 @@ function AdminPnl() {
               <p className="text-xs text-ink-500">No expenses for this month yet — log AI, compute, cloud and payment fees, salaries, anything the business pays for.</p>
             ) : (
               <ul className="space-y-1">
-                {s.expenses.items.map((e: any) => (
-                  <li key={e.id} className="flex items-center justify-between gap-3 bg-ink-900/60 rounded-lg px-3 py-2">
-                    <div className="min-w-0">
-                      <p className="text-sm text-white truncate">{e.label}</p>
-                      <p className="text-[11px] text-ink-500">{e.category}{e.note ? ` · ${e.note}` : ''}</p>
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className="text-sm text-white tabular-nums">{fmt(e.amount)}</span>
-                      <button onClick={() => removeExpense(e.id)} className="text-ink-500 hover:text-red-400 transition-colors" aria-label={`Delete ${e.label}`}>
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                {s.expenses.items.map((e: any) => {
+                  const isEditing = editing?.id === e.id;
+                  return (
+                    <li key={e.id} className="flex items-center justify-between gap-3 bg-ink-900/60 rounded-lg px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-white truncate">{e.label}</p>
+                        <p className="text-[11px] text-ink-500">
+                          {e.category}{String(e.id).startsWith('plr_') ? ' · monthly' : ''}{e.note ? ` · ${e.note}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {isEditing ? (
+                          <>
+                            <CurrencyInput
+                              className="input w-32"
+                              allowDecimals
+                              value={editing?.value ?? ''}
+                              onChange={v => setEditing({ id: e.id, value: v })}
+                              aria-label={`Amount for ${e.label}`}
+                            />
+                            <button
+                              onClick={() => saveAmount(e.id)}
+                              disabled={savingId === e.id}
+                              className="text-green-400 hover:text-green-300 transition-colors disabled:opacity-40"
+                              aria-label={`Save amount for ${e.label}`}
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setEditing(null)} className="text-ink-500 hover:text-ink-300 transition-colors" aria-label="Cancel amount edit">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-sm text-white tabular-nums">{fmt(e.amount)}</span>
+                            <button
+                              onClick={() => setEditing({ id: e.id, value: String(e.amount) })}
+                              className="text-ink-500 hover:text-purple-400 transition-colors"
+                              aria-label={`Edit amount for ${e.label}`}
+                              title="Edit amount"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => removeExpense(e.id)} className="text-ink-500 hover:text-red-400 transition-colors" aria-label={`Delete ${e.label}`}>
+                              <X className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

@@ -546,7 +546,8 @@ export async function imagePresets(req: VercelRequest, res: VercelResponse) {
  * Nested route: GET/POST /api/users?action=pln_* — monthly Profit & Loss
  * statement for the admin dashboard (admin-only, Hobby-cap consolidation).
  *   GET  pln_get            &month=YYYY-MM → statement + 12-month series + analyst insights
- *   POST pln_expense_add    {month, label, category, amount, note?}
+ *   POST pln_expense_add    {month, label, category, amount, note?, recurring?}
+ *   POST pln_expense_update {month, itemId, amount}
  *   POST pln_expense_delete {month, itemId}
  *   GET  pln_pdf            &month=YYYY-MM → downloadable P&L PDF (S3 URL)
  */
@@ -555,7 +556,7 @@ export async function pnlRoutes(req: VercelRequest, res: VercelResponse, action:
   const gate = await requireAdminSession(req);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
-  const { isMonthKey, buildPnlReport, loadPnlSnapshot, addPnlExpense, addRecurringPnlExpense, deletePnlExpense, generatePnlPdf, EXPENSE_CATEGORIES } =
+  const { isMonthKey, buildPnlReport, loadPnlSnapshot, addPnlExpense, addRecurringPnlExpense, updatePnlExpenseAmount, deletePnlExpense, generatePnlPdf, EXPENSE_CATEGORIES } =
     await import('../../lib/pnl');
 
   const month = String(req.query.month || body.month || '').trim();
@@ -600,6 +601,18 @@ export async function pnlRoutes(req: VercelRequest, res: VercelResponse, action:
         ? await addRecurringPnlExpense(month, input)
         : await addPnlExpense(month, input);
       return res.status(201).json({ success: true, item });
+    }
+
+    if (action === 'pln_expense_update' && req.method === 'POST') {
+      const itemId = String(body.itemId || '');
+      const amount = Math.round(Number(body.amount) * 100) / 100;
+      if (!itemId) return res.status(400).json({ error: 'itemId is required' });
+      if (!Number.isFinite(amount) || amount < 0) {
+        return res.status(400).json({ error: 'amount must be zero or more' });
+      }
+      const updated = await updatePnlExpenseAmount(month, itemId, amount);
+      if (!updated) return res.status(404).json({ error: 'expense not found' });
+      return res.status(200).json({ success: true });
     }
 
     if (action === 'pln_expense_delete' && req.method === 'POST') {

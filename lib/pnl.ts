@@ -199,6 +199,40 @@ export async function addPnlExpense(month: string, input: {
   return item;
 }
 
+/**
+ * Re-price an expense line. Recurring lines (`plr_`) carry one amount for every
+ * month from their start month, so the edit applies to all of them.
+ * Zero is allowed (a fee that was waived); negative amounts never are.
+ */
+export async function updatePnlExpenseAmount(month: string, itemId: string, amount: number): Promise<boolean> {
+  const next = Math.round(Number(amount) * 100) / 100;
+  if (!Number.isFinite(next) || next < 0) return false;
+
+  if (itemId.startsWith(RECURRING_ID_PREFIX)) {
+    const recurring = await loadRecurringItems();
+    const item = recurring.find(r => r.id === itemId);
+    if (!item) return false;
+    item.amount = next;
+    await saveRecurringItems(recurring);
+    await invalidateSnapshotsFrom(item.startMonth);
+    return true;
+  }
+
+  const items = await loadMonthlyItems(month);
+  const item = items.find(i => i.id === itemId);
+  if (!item) return false;
+  item.amount = next;
+  await putItem(TABLES.SETTINGS, {
+    id: `pl_expenses_${month}`,
+    kind: 'pl_expenses',
+    month,
+    items,
+    updatedAt: new Date().toISOString(),
+  } satisfies PnlExpenseRow);
+  await invalidatePnlSnapshot(month).catch(() => {}); // a closed month re-opens on edit
+  return true;
+}
+
 export async function deletePnlExpense(month: string, itemId: string): Promise<boolean> {
   if (itemId.startsWith(RECURRING_ID_PREFIX)) {
     // Recurring lines are removed for every month they apply to.
