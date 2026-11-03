@@ -27,6 +27,96 @@ export interface BlogPost {
 
 const POSTS: BlogPost[] = [
   {
+    slug: 'festive-season-property-marketing-south-africa',
+    title: 'Selling a House in December: The Festive-Season Listing Playbook',
+    description:
+      'How South African estate agents should list, market and show property over the December holidays: timing, content, viewings, paperwork and the January follow-through.',
+    date: '2026-11-03',
+    tags: ['Marketing strategy', 'Listings'],
+    blocks: [
+      {
+        type: 'p',
+        text: 'Every year the same thing happens: instructions taper off in late November, agents assume the market has gone to the beach, and then January opens with a queue of buyers who did all their browsing in December and could not get hold of anyone. The festive season is not a dead month for property — it is a quiet month for marketing. Those are two very different problems, and only one of them is worth having.',
+      },
+      { type: 'h2', text: 'Who is actually looking in December' },
+      {
+        type: 'p',
+        text: 'December viewings skew towards a specific group of buyers, and they are unusually motivated because their timeline is fixed:',
+      },
+      {
+        type: 'ul',
+        items: [
+          '**Relocating buyers** starting a job in January — they need a roof, not a bargain.',
+          '**Families buying for the school year**, who want occupation before the first term.',
+          '**South Africans abroad**, home for three weeks with a bond pre-approval already in a drawer from an online application.',
+          '**Semigration buyers** from Gauteng to the Cape and KZN coast, using the holiday to test a suburb they have only seen on a map.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'None of them are browsing for fun. They are the buyers who will sign an offer in the first two weeks of January — if they saw your listing in December.',
+      },
+      { type: 'h2', text: 'The mistake: going quiet at the exact moment attention is free' },
+      {
+        type: 'p',
+        text: 'Your competitors are the reason December works. Feed costs are the same year-round, but in mid-December half the agents in your suburb stop posting, so the same budget buys noticeably more reach. A listing marketed properly through December arrives in a thinner feed with less competition for the same buyer. That advantage disappears by the second week of January, when everyone returns and posts three weeks of backlog in two days.',
+      },
+      { type: 'h2', text: 'Shoot everything before the second week of December' },
+      {
+        type: 'p',
+        text: 'The single constraint that wrecks festive-season marketing is production capacity. Photographers close, sellers go away, and the house is full of visiting relatives and a Christmas tree that dates every photo instantly. Batch your content early:',
+      },
+      {
+        type: 'ol',
+        items: [
+          '**Photograph and film every live stock listing in one or two days**, and re-shoot anything with a seasonal giveaway in frame.',
+          '**Render the video versions from the same photos** rather than booking another shoot — the [listing video guide](/blog/property-listing-video-south-africa) covers the shots that survive a re-crop.',
+          '**Cut both formats now:** 16:9 for portals and your website, 9:16 for WhatsApp status and Reels. Doing this in advance is the difference between posting daily and posting never.',
+          '**Schedule the copy** — captions, prices, suburb notes — so a hungover 27 December does not become a content gap.',
+        ],
+      },
+      { type: 'h2', text: 'Price for a deadline, not for hope' },
+      {
+        type: 'p',
+        text: 'A December listing that has been on the market since August is not magically fresher because it is December. Buyers on a fixed timeline are decisive but not gullible: they will pay for the right property and skip an overpriced one without a second look, because they do not have months to watch a price drift. If a mandate has gone stale, the honest conversation with the seller belongs in November, while there is still time for a re-launch with fresh photos and a corrected asking price to catch the holiday audience.',
+      },
+      {
+        type: 'note',
+        text: 'Freshen the listing, not just the price: new hero photo, new video, rewritten first paragraph. A price drop alone reads as desperation; a re-launch reads as a new option.',
+      },
+      { type: 'h2', text: 'Make viewings easy while people are away' },
+      {
+        type: 'ul',
+        items: [
+          '**Publish viewing windows, not "by appointment".** A buyer on holiday will not chase you; give them two fixed slots and a booking link.',
+          '**Video walkthroughs earn their keep in December.** Send a narrated reel first and save the physical viewing for buyers who have already self-qualified — see [why video sells houses faster](/blog/video-sells-houses-faster).',
+          '**Sort access before the seller leaves.** Keys, alarm codes and a neighbour or caretaker who can open up. The deal you lose in December is almost always an access problem, not a price problem.',
+          '**Be careful with occupied homes and short-term lets.** Confirm in writing when the property is available, who is present, and what may be photographed.',
+        ],
+      },
+      { type: 'h2', text: 'Content that works between Christmas and New Year' },
+      {
+        type: 'p',
+        text: 'People are on their phones with time to spare — the highest-attention, lowest-intent-to-act week of the year. Use it for the content you never have time for otherwise: suburb guides, "what R3m buys in four Cape Town suburbs", before-and-after stagings, a year-in-review of your own sales. None of it is a hard sell, all of it is what a buyer saves and returns to in January. The [social media playbook](/blog/social-media-marketing-estate-agents) and [WhatsApp guide](/blog/whatsapp-property-marketing) cover the formats; December is when you finally have room to run them.',
+      },
+      { type: 'h2', text: 'Paperwork does not pause for the holidays' },
+      {
+        type: 'p',
+        text: 'Offers signed in mid-December still need bond applications, FICA documents and conveyancing, and the professionals handling them take leave too. Practically: confirm your bond originator’s and transferring attorney’s cut-off dates before you promise a seller a timeline, check when the relevant deeds office winds down, and set expectations in the offer around occupation and registration dates that straddle the break. A buyer who understands the delay is calm; a buyer who was told "three weeks" and waits six weeks starts looking for an exit.',
+      },
+      { type: 'h2', text: 'The January follow-through is the whole point' },
+      {
+        type: 'p',
+        text: 'December marketing only pays if someone answers in January. Before you close the office, work through every enquiry from the month and tag it: viewing booked, waiting on finance, needs a different suburb, dead. Then diary the first working day for outreach — a short message with the listing link and one question about their timeline beats a generic "are you still interested?" every time.',
+      },
+      { type: 'note', text: 'The agents who own January are the ones whose December listings were still visible, still accurate and still answered. Quiet is fine. Silent is expensive.' },
+      {
+        type: 'p',
+        text: 'If this month is already full, start with the cheapest win: put a video on every live listing before the second week of December. [Create a free account](/register) — it comes with credits to render your first listing — or [compare plans](/pricing) if you are batching a whole stock book.',
+      },
+    ],
+  },
+  {
     slug: 'property-listing-video-south-africa',
     title: 'How to Make a Property Listing Video in South Africa',
     description:
