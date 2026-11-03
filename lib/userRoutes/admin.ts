@@ -555,7 +555,7 @@ export async function pnlRoutes(req: VercelRequest, res: VercelResponse, action:
   const gate = await requireAdminSession(req);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
 
-  const { isMonthKey, buildPnlReport, loadPnlSnapshot, addPnlExpense, deletePnlExpense, generatePnlPdf, EXPENSE_CATEGORIES } =
+  const { isMonthKey, buildPnlReport, loadPnlSnapshot, addPnlExpense, addRecurringPnlExpense, deletePnlExpense, generatePnlPdf, EXPENSE_CATEGORIES } =
     await import('../../lib/pnl');
 
   const month = String(req.query.month || body.month || '').trim();
@@ -589,12 +589,15 @@ export async function pnlRoutes(req: VercelRequest, res: VercelResponse, action:
         return res.status(400).json({ error: 'label and a positive amount are required' });
       }
       const safeCategory = (EXPENSE_CATEGORIES as readonly string[]).includes(category) ? category : 'Other';
-      const item = await addPnlExpense(month, {
+      const input = {
         label,
         category: safeCategory,
         amount,
         note: String(body.note || '').trim().slice(0, 300) || undefined,
-      });
+      };
+      const item = body.recurring === true
+        ? await addRecurringPnlExpense(month, input)
+        : await addPnlExpense(month, input);
       return res.status(201).json({ success: true, item });
     }
 

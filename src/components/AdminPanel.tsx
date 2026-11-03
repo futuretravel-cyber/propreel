@@ -649,7 +649,7 @@ function AdminPnl() {
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [form, setForm] = useState({ label: '', category: 'AI services', amount: '', note: '' });
+  const [form, setForm] = useState({ label: '', category: 'fal.ai', amount: '', note: '', recurring: false });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -676,10 +676,10 @@ function AdminPnl() {
       const res = await fetch('/api/users?action=pln_expense_add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email, month, label: form.label, category: form.category, amount: Number(form.amount), note: form.note }),
+        body: JSON.stringify({ email: user.email, month, label: form.label, category: form.category, amount: Number(form.amount), note: form.note, recurring: form.recurring }),
       });
       if (!res.ok) throw new Error();
-      setForm({ label: '', category: form.category, amount: '', note: '' });
+      setForm({ label: '', category: form.category, amount: '', note: '', recurring: false });
       toast.success('Expense added');
       refresh();
     } catch {
@@ -817,11 +817,15 @@ function AdminPnl() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
               <input className="input md:col-span-4" placeholder="e.g. AI provider October usage" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} />
               <select className="input md:col-span-2" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} aria-label="Expense category">
-                {['AI services', 'Compute', 'Cloud services', 'Payments', 'Marketing', 'Payroll', 'Software', 'Office', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
+                {['fal.ai', 'Modal', 'AWS', 'Paystack', 'Marketing', 'Payroll', 'Software', 'Office', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <CurrencyInput className="input md:col-span-2" allowDecimals value={form.amount} onChange={v => setForm({ ...form, amount: v })} placeholder="Amount (R)" aria-label="Amount in rand" />
               <input className="input md:col-span-3" placeholder="Note (optional)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} />
               <button onClick={addExpense} disabled={saving} className="btn btn-primary justify-center"><Plus className="w-4 h-4" /> Add</button>
+              <label className="md:col-span-12 flex items-center gap-2 text-xs text-ink-400">
+                <input type="checkbox" checked={form.recurring} onChange={e => setForm({ ...form, recurring: e.target.checked })} />
+                Recurring monthly (applies to this month and every later month)
+              </label>
             </div>
             {s.expenses.items.length === 0 ? (
               <p className="text-xs text-ink-500">No expenses for this month yet — log AI, compute, cloud and payment fees, salaries, anything the business pays for.</p>

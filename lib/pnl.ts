@@ -99,7 +99,8 @@ interface PnlExpenseRow {
   updatedAt: string;
 }
 
-export async function loadPnlExpenses(month: string): Promise<PnlExpense[]> {
+/** One-off entries logged for a single month (no recurring lines). */
+async function loadMonthlyItems(month: string): Promise<PnlExpense[]> {
   try {
     const row = await getItem<PnlExpenseRow>(TABLES.SETTINGS, { id: `pl_expenses_${month}` });
     return Array.isArray(row?.items) ? row!.items : [];
@@ -108,10 +109,76 @@ export async function loadPnlExpenses(month: string): Promise<PnlExpense[]> {
   }
 }
 
+/** Recurring monthly lines. Each applies to `startMonth` and every later month. */
+export interface PnlRecurringExpense extends PnlExpense {
+  startMonth: string;
+}
+
+interface PnlRecurringRow {
+  id: string;
+  kind: 'pl_recurring';
+  items: PnlRecurringExpense[];
+  updatedAt: string;
+}
+
+const RECURRING_ID_PREFIX = 'plr_';
+
+async function loadRecurringItems(): Promise<PnlRecurringExpense[]> {
+  try {
+    const row = await getItem<PnlRecurringRow>(TABLES.SETTINGS, { id: 'pl_recurring' });
+    return Array.isArray(row?.items) ? row!.items : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveRecurringItems(items: PnlRecurringExpense[]): Promise<void> {
+  await putItem(TABLES.SETTINGS, {
+    id: 'pl_recurring',
+    kind: 'pl_recurring',
+    items,
+    updatedAt: new Date().toISOString(),
+  } satisfies PnlRecurringRow);
+}
+
+/** Every month from `from` through the current SAST month gets its snapshot dropped. */
+async function invalidateSnapshotsFrom(from: string): Promise<void> {
+  const current = monthKeyAt(Date.now());
+  for (let m = from; m <= current; m = shiftMonthKey(m, 1)) {
+    await invalidatePnlSnapshot(m).catch(() => {});
+  }
+}
+
+/** Month expenses: one-off entries for `month` plus recurring lines active in it. */
+export async function loadPnlExpenses(month: string): Promise<PnlExpense[]> {
+  const [monthly, recurring] = await Promise.all([loadMonthlyItems(month), loadRecurringItems()]);
+  const active = recurring.filter(r => r.startMonth <= month);
+  return [...monthly, ...active];
+}
+
+export async function addRecurringPnlExpense(startMonth: string, input: {
+  label: string; category: string; amount: number; note?: string;
+}): Promise<PnlRecurringExpense> {
+  const items = await loadRecurringItems();
+  const item: PnlRecurringExpense = {
+    id: `${RECURRING_ID_PREFIX}${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    label: input.label,
+    category: input.category || 'Other',
+    amount: Math.round(Number(input.amount) * 100) / 100,
+    note: input.note || undefined,
+    createdAt: new Date().toISOString(),
+    startMonth,
+  };
+  items.push(item);
+  await saveRecurringItems(items);
+  await invalidateSnapshotsFrom(startMonth);
+  return item;
+}
+
 export async function addPnlExpense(month: string, input: {
   label: string; category: string; amount: number; note?: string;
 }): Promise<PnlExpense> {
-  const items = await loadPnlExpenses(month);
+  const items = await loadMonthlyItems(month);
   const item: PnlExpense = {
     id: `ple_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     label: input.label,
@@ -133,7 +200,16 @@ export async function addPnlExpense(month: string, input: {
 }
 
 export async function deletePnlExpense(month: string, itemId: string): Promise<boolean> {
-  const items = await loadPnlExpenses(month);
+  if (itemId.startsWith(RECURRING_ID_PREFIX)) {
+    // Recurring lines are removed for every month they apply to.
+    const recurring = await loadRecurringItems();
+    const next = recurring.filter(r => r.id !== itemId);
+    if (next.length === recurring.length) return false;
+    await saveRecurringItems(next);
+    await invalidateSnapshotsFrom(recurring.find(r => r.id === itemId)!.startMonth);
+    return true;
+  }
+  const items = await loadMonthlyItems(month);
   const next = items.filter(i => i.id !== itemId);
   if (next.length === items.length) return false;
   await invalidatePnlSnapshot(month).catch(() => {}); // a closed month re-opens on edit
