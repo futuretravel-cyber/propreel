@@ -649,7 +649,7 @@ function AdminPnl() {
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [form, setForm] = useState({ label: '', category: 'fal.ai', amount: '', note: '', recurring: false });
+  const [form, setForm] = useState({ label: '', category: 'Other', amount: '', note: '', recurring: false });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -817,7 +817,7 @@ function AdminPnl() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
               <input className="input md:col-span-4" placeholder="e.g. AI provider October usage" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} />
               <select className="input md:col-span-2" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} aria-label="Expense category">
-                {['fal.ai', 'Modal', 'AWS', 'Paystack', 'Marketing', 'Payroll', 'Software', 'Office', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
+                {(data?.categories ?? ['Other']).map((c: string) => <option key={c} value={c}>{c}</option>)}
               </select>
               <CurrencyInput className="input md:col-span-2" allowDecimals value={form.amount} onChange={v => setForm({ ...form, amount: v })} placeholder="Amount (R)" aria-label="Amount in rand" />
               <input className="input md:col-span-3" placeholder="Note (optional)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} />

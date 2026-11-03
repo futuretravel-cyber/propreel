@@ -575,10 +575,11 @@ export async function pnlRoutes(req: VercelRequest, res: VercelResponse, action:
           finalized: true,
           finalizedAt: snapshot.finalizedAt,
           pdfUrl: snapshot.pdfUrl,
+          categories: EXPENSE_CATEGORIES,
         });
       }
       const report = await buildPnlReport(month);
-      return res.status(200).json({ success: true, ...report, finalized: false });
+      return res.status(200).json({ success: true, ...report, finalized: false, categories: EXPENSE_CATEGORIES });
     }
 
     if (action === 'pln_expense_add' && req.method === 'POST') {
