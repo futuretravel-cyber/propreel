@@ -138,7 +138,7 @@ interface CreditContextType {
   isAdmin: boolean;
   isAgencyOwner: boolean;
   lowCreditWarning: 'none' | 'info' | 'warning' | 'critical';
-  login: (email: string, password: string, opts?: { reactivate?: boolean }) => Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }>;
+  login: (email: string, password: string, opts?: { reactivate?: boolean; altcha?: string }) => Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }>;
   loginWithTwoFactor: (email: string, token: string, code: string, opts?: { reactivate?: boolean }) => Promise<void>;
   register: (data: RegisterData) => Promise<{ needsConfirmation: boolean }>;
   logout: () => Promise<void>;
@@ -156,6 +156,7 @@ interface CreditContextType {
 }
 
 export interface RegisterData {
+  altcha?: string;
   email: string;
   password: string;
   fullName: string;
@@ -275,10 +276,10 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     return 'none';
   })();
 
-  const login = useCallback(async (email: string, password: string, opts?: { reactivate?: boolean }): Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }> => {
+  const login = useCallback(async (email: string, password: string, opts?: { reactivate?: boolean; altcha?: string }): Promise<{ requires2fa?: boolean; token?: string; setupRequired?: boolean }> => {
     const data = await authFetch('auth_login', {
       method: 'POST',
-      body: JSON.stringify({ email, password, ...(opts?.reactivate ? { reactivate: true } : {}) }),
+      body: JSON.stringify({ email, password, altcha: opts?.altcha, ...(opts?.reactivate ? { reactivate: true } : {}) }),
     });
     // Two-step verification: no session yet — the caller prompts for the
     // 6-digit authenticator code and finishes with loginWithTwoFactor.
@@ -304,6 +305,7 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     const res = await authFetch('auth_register', {
       method: 'POST',
       body: JSON.stringify({
+        altcha: data.altcha,
         email: data.email,
         password: data.password,
         fullName: data.fullName,

@@ -19,6 +19,7 @@ import { recordCronRun } from '../../lib/cronRuns';
 import { rawS3Url, signS3Url, toEdgeUrl } from '../../lib/s3Urls';
 import { auditApiResponses, auditStoredRows, type MediaCheck } from '../../lib/mediaAudit';
 import { readCookie, siteOrigin, clientIp, tooMany } from './shared';
+import { issueAltchaChallenge, verifyAltchaPayload } from '../altcha';
 
 /**
  * Per-IP signup cap. Offices and carrier NATs legitimately share one
@@ -482,6 +483,13 @@ export async function authRoutes(req: VercelRequest, res: VercelResponse, action
 
 
 
+    // ── GET auth_challenge — ALTCHA proof-of-work challenge for sign-in/sign-up ──
+    if (action === 'auth_challenge') {
+      if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json(await issueAltchaChallenge());
+    }
+
     // ── POST auth_register ───────────────────────────────────────────
     if (action === 'auth_register') {
       if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -499,6 +507,10 @@ export async function authRoutes(req: VercelRequest, res: VercelResponse, action
         const waitSec = Math.max(1, rl.retryAfterSec);
         res.setHeader('Retry-After', String(waitSec));
         return res.status(429).json({ ok: false, error: `Too many signups from this network — try again in ${waitSec}s`, code: 'RATE_LIMITED', retryAfterSec: waitSec });
+      }
+
+      if (!(await verifyAltchaPayload(body.altcha))) {
+        return res.status(400).json({ ok: false, error: 'Please complete the verification check and try again', code: 'CAPTCHA_FAILED' });
       }
 
       const { email, password, fullName, phone = null, agencyName = null, planId = null, cycle = 'MONTHLY', redirect, enableTwoFactor = false, referralCode, startTrial = false, aiAcknowledged = false, termsConsentVersion = null } = body;
@@ -709,6 +721,9 @@ export async function authRoutes(req: VercelRequest, res: VercelResponse, action
       if (email) {
         const acctRl = await consumeRateLimit('login_email', email, 10, 900);
         if (!acctRl.allowed) return tooMany(res, acctRl, 'Too many sign-in attempts for this account — try again in a few minutes');
+      }
+      if (!(await verifyAltchaPayload(body.altcha))) {
+        return res.status(400).json({ ok: false, error: 'Please complete the verification check and try again', code: 'CAPTCHA_FAILED' });
       }
 
       const user = await getUserByEmail(email);

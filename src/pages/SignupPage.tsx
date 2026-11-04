@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import 'altcha';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { track } from '../lib/analytics';
 import { useCredit } from '../context/AuthContext';
@@ -76,6 +77,18 @@ export default function SignupPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [altchaPayload, setAltchaPayload] = useState('');
+  const altchaRef = useRef<HTMLElement & { value?: string }>(null);
+  useEffect(() => {
+    const el = altchaRef.current;
+    if (!el) return;
+    const onState = (ev: Event) => {
+      const d = (ev as CustomEvent).detail;
+      setAltchaPayload(d?.state === 'verified' ? String(d.payload || '') : '');
+    };
+    el.addEventListener('statechange', onState);
+    return () => el.removeEventListener('statechange', onState);
+  }, []);
   const [resending, setResending] = useState(false);
   // Registration created/reused the (still-unconfirmed) account but the
   // confirmation email failed — the confirm step shows resend/sign-in
@@ -135,6 +148,7 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.agreed) { setError('You must acknowledge the AI disclaimer'); return; }
+    if (!altchaPayload) { setError('Please complete the verification check'); return; }
     setLoading(true);
     setError('');
     setExistingAccount(false);
@@ -146,6 +160,7 @@ export default function SignupPage() {
       const emailRedirectTo = `${window.location.origin}${postAuthUrl}`;
       import('../lib/postAuth').then(m => m.setPostAuthRedirect(postAuthUrl));
       const result = await register({
+        altcha: altchaPayload,
         email: formData.email,
         password: formData.password,
         fullName: formData.fullName,
@@ -449,9 +464,16 @@ export default function SignupPage() {
                 </span>
               </label>
 
+              <div className="my-4">
+                <altcha-widget
+                  ref={altchaRef}
+                  challenge="/api/users?action=auth_challenge"
+                  name="altcha"
+                ></altcha-widget>
+              </div>
               <div className="flex gap-3">
                 <button type="button" onClick={() => setStep('plan')} className="btn btn-secondary"><ArrowLeft className="w-4 h-4" /> Back</button>
-                <button type="submit" disabled={loading || (invited && !!inviteLoadError)} className="btn btn-primary flex-1">{loading ? 'Creating account...' : invited ? 'Create account & join agency' : subscribeSelected ? 'Continue to Payment' : 'Create free account'}</button>
+                <button type="submit" disabled={loading || !altchaPayload || (invited && !!inviteLoadError)} className="btn btn-primary flex-1">{loading ? 'Creating account...' : invited ? 'Create account & join agency' : subscribeSelected ? 'Continue to Payment' : 'Create free account'}</button>
               </div>
             </form>
 

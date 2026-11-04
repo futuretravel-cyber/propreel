@@ -28,6 +28,7 @@ import { takeVideoRender } from './lib/videoPrefill';
 import { Video, Sofa, Trash2, Share2, LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield, Star, Check, X, Menu, LogOut, Zap, Crown, Sparkles, Loader2, Clock, AlertCircle, AlertTriangle, RefreshCw, Mail, MapPin, ChevronDown, Camera, Palette, Moon as MoonIcon, Bell, FileText, XCircle, User, Keyboard, HelpCircle, FolderOpen, GraduationCap, PiggyBank } from 'lucide-react';
 
 import { lazy, Suspense } from 'react';
+import 'altcha';
 import HomePage from './components/HomePage';
 import { PublicLayout } from './components/PublicLayout';
 import { track } from './lib/analytics';
@@ -459,6 +460,18 @@ function GoogleGIcon() {
 function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [altchaPayload, setAltchaPayload] = useState('');
+  const altchaRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = altchaRef.current;
+    if (!el) return;
+    const onState = (ev: Event) => {
+      const d = (ev as CustomEvent).detail;
+      setAltchaPayload(d?.state === 'verified' ? String(d.payload || '') : '');
+    };
+    el.addEventListener('statechange', onState);
+    return () => el.removeEventListener('statechange', onState);
+  }, []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   // Two-step verification: pending challenge from auth_login
@@ -514,7 +527,7 @@ function LoginPage() {
       // (e.g. the payment page).
       const { setPostAuthRedirect } = await import('./lib/postAuth');
       setPostAuthRedirect(nextPath && nextPath.startsWith('/') ? nextPath : '/dashboard');
-      const result = await login(email, password, reactivate ? { reactivate: true } : undefined);
+      const result = await login(email, password, { ...(reactivate ? { reactivate: true } : {}), altcha: altchaPayload });
       if (result.requires2fa) {
         // Password accepted — ask for the authenticator code next.
         setTwoFactorToken(result.token || '');
@@ -662,7 +675,8 @@ function LoginPage() {
               </div>
               <input type="password" className="input" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
             </div>
-            <button type="submit" disabled={loading} className="btn btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
+            <altcha-widget ref={altchaRef} challenge="/api/users?action=auth_challenge" name="altcha"></altcha-widget>
+            <button type="submit" disabled={loading || !altchaPayload} className="btn btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
           </form>
           )}
             <div className="flex items-center gap-3 my-1">
