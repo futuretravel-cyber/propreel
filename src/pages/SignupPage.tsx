@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import 'altcha';
+import '../lib/altchaSetup';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { track } from '../lib/analytics';
 import { useCredit } from '../context/AuthContext';

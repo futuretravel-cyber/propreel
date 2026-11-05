@@ -28,7 +28,7 @@ import { takeVideoRender } from './lib/videoPrefill';
 import { Video, Sofa, Trash2, Share2, LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield, Star, Check, X, Menu, LogOut, Zap, Crown, Sparkles, Loader2, Clock, AlertCircle, AlertTriangle, RefreshCw, Mail, MapPin, ChevronDown, Camera, Palette, Moon as MoonIcon, Bell, FileText, XCircle, User, Keyboard, HelpCircle, FolderOpen, GraduationCap, PiggyBank } from 'lucide-react';
 
 import { lazy, Suspense } from 'react';
-import 'altcha';
+import './lib/altchaSetup';
 import HomePage from './components/HomePage';
 import { PublicLayout } from './components/PublicLayout';
 import { track } from './lib/analytics';
