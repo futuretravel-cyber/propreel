@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, X, ArrowRight, AlertTriangle } from 'lucide-react';
-import { SIGNUP_BONUS } from '../lib/constants';
+import { Menu, X, ArrowRight, AlertTriangle, Facebook, Twitter, Youtube, Instagram, Linkedin, MessageCircle, Music2 } from 'lucide-react';
+import { SIGNUP_BONUS, SOCIAL_LINKS } from '../lib/constants';
 import { AI_DISCLAIMER_TEXT } from '../lib/aiDisclaimer';
 import SupportWidgets from './SupportWidgets';
 
@@ -112,6 +112,16 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </div>
+          <div className="mt-12 flex flex-wrap items-center justify-center gap-3" aria-label="PropReel on social media">
+            {SOCIAL_LINKS.map(s => {
+              const Icon = SOCIAL_ICONS[s.id];
+              return (
+                <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer" aria-label={`PropReel on ${s.label}`} title={s.label} className="w-11 h-11 rounded-full glass flex items-center justify-center text-ink-300 hover:text-white hover:bg-white/10 transition">
+                  <Icon className="w-5 h-5" />
+                </a>
+              );
+            })}
+          </div>
           <div className="mt-12 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-left" role="note">
             <p className="text-xs font-semibold text-amber-300 mb-1.5 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> AI-generated content notice</p>
             <p className="text-xs text-ink-400 leading-relaxed">{AI_DISCLAIMER_TEXT}</p>
@@ -124,6 +134,16 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+const SOCIAL_ICONS: Record<string, typeof Facebook> = {
+  facebook: Facebook,
+  x: Twitter,
+  youtube: Youtube,
+  instagram: Instagram,
+  tiktok: Music2,
+  linkedin: Linkedin,
+  whatsapp: MessageCircle,
+};
 
 function MobileStickyCta() {
   const [visible, setVisible] = useState(false);

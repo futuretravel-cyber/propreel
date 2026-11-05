@@ -15,7 +15,7 @@ import { useAuth, useCredit, CreditProvider, isFreeTierUser } from './context/Au
 import { ToastProvider, useToast } from './context/ToastContext';
 import { ConfirmProvider } from './context/ConfirmContext';
 import { SearchButton } from './components/GlobalSearch';
-import { DEFAULT_VOICE_LANGUAGE, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, RETENTION_DAYS } from './lib/constants';
+import { DEFAULT_VOICE_LANGUAGE, PLANS, SIGNUP_BONUS, RETENTION_NOTICE, RETENTION_NOTICE_LONG, RETENTION_DAYS, SOCIAL_LINKS } from './lib/constants';
 import { CREDIT_EXPIRY_RULE, CREDIT_ROLLOVER_RULE } from '../lib/creditPolicy';
 import { AI_DISCLAIMER_TEXT } from './lib/aiDisclaimer';
 import { useStudioDraft, studioDraftKey } from './lib/studioDrafts';
@@ -25,7 +25,7 @@ import { useActivity } from './lib/useActivity';
 import { CREDIT_PACK_RAND } from '../lib/renderPricing';
 import { useVoiceoverLanguageCheck } from './lib/useVoiceoverLanguageCheck';
 import { takeVideoRender } from './lib/videoPrefill';
-import { Video, Sofa, Trash2, Share2, LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield, Star, Check, X, Menu, LogOut, Zap, Crown, Sparkles, Loader2, Clock, AlertCircle, AlertTriangle, RefreshCw, Mail, MapPin, ChevronDown, Camera, Palette, Moon as MoonIcon, Bell, FileText, XCircle, User, Keyboard, HelpCircle, FolderOpen, GraduationCap, PiggyBank } from 'lucide-react';
+import { Video, Sofa, Trash2, Share2, LayoutDashboard, List, BarChart3, CreditCard, Building2, Settings, Shield, Star, Check, X, Menu, LogOut, Zap, Crown, Sparkles, Loader2, Clock, AlertCircle, AlertTriangle, RefreshCw, Mail, MapPin, ChevronDown, Camera, Palette, Moon as MoonIcon, Bell, FileText, XCircle, User, Keyboard, HelpCircle, FolderOpen, GraduationCap, PiggyBank, Facebook, Twitter, Youtube, Instagram, Linkedin, MessageCircle, Music2 } from 'lucide-react';
 
 import { lazy, Suspense } from 'react';
 import './lib/altchaSetup';
@@ -386,6 +386,15 @@ function AboutPage() {
   );
 }
 
+const CONTACT_SOCIAL_ICONS: Record<string, typeof Facebook> = {
+  facebook: Facebook,
+  x: Twitter,
+  youtube: Youtube,
+  instagram: Instagram,
+  tiktok: Music2,
+  linkedin: Linkedin,
+};
+
 function ContactPage() {
   const [sent, setSent] = useState(false);
   return (
@@ -399,6 +408,20 @@ function ContactPage() {
               <div className="space-y-6">
                 <div className="flex items-start gap-4"><Mail className="w-5 h-5 text-purple-400 mt-1" /><div><p className="font-semibold text-white">Email</p><p className="text-ink-400">support@propreel.co.za</p></div></div>
                 <div className="flex items-start gap-4"><MapPin className="w-5 h-5 text-purple-400 mt-1" /><div><p className="font-semibold text-white">Office</p><p className="text-ink-400">Cape Town, South Africa</p></div></div>
+                <div className="flex items-start gap-4"><MessageCircle className="w-5 h-5 text-purple-400 mt-1" /><div><p className="font-semibold text-white">WhatsApp</p><a href="https://wa.me/27818757044" target="_blank" rel="noopener noreferrer" className="text-ink-400 hover:text-white">+27 81 875 7044</a></div></div>
+                <div>
+                  <p className="font-semibold text-white mb-3">Follow us</p>
+                  <div className="flex flex-wrap gap-3">
+                    {SOCIAL_LINKS.filter(s => s.id !== 'whatsapp').map(s => {
+                      const Icon = CONTACT_SOCIAL_ICONS[s.id];
+                      return (
+                        <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer" aria-label={`PropReel on ${s.label}`} title={s.label} className="w-11 h-11 rounded-full glass flex items-center justify-center text-ink-300 hover:text-white hover:bg-white/10 transition">
+                          <Icon className="w-5 h-5" />
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
             <div>

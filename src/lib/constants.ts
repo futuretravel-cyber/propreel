@@ -371,3 +371,15 @@ export const RETENTION_NOTICE =
   `Media storage: ${RETENTION_DAYS} days — uploaded photos, AI-edited images and rendered videos are kept for ${RETENTION_DAYS} days only, then permanently deleted.`;
 export const RETENTION_NOTICE_LONG =
   `Your media is stored for ${RETENTION_DAYS} days only. Photos you upload, images produced by the Photo Editor, Virtual Staging, Furniture Removal and Twilight tools, rendered videos and AI Avatar Video clips are kept for ${RETENTION_DAYS} days and then permanently deleted — automatically, every night. Download anything you want to keep before it expires.`;
+
+// ─── Social media + WhatsApp (single source for footer, contact page, SEO) ─
+// Keep in sync with the Organization sameAs list in index.html.
+export const SOCIAL_LINKS = [
+  { id: 'facebook', label: 'Facebook', url: 'https://www.facebook.com/share/1PE66uJUMF/' },
+  { id: 'x', label: 'X (Twitter)', url: 'https://x.com/propreel_ai' },
+  { id: 'youtube', label: 'YouTube', url: 'https://www.youtube.com/@Propreel_AI' },
+  { id: 'instagram', label: 'Instagram', url: 'https://www.instagram.com/propreel_ai/' },
+  { id: 'tiktok', label: 'TikTok', url: 'https://www.tiktok.com/@propreel_ai' },
+  { id: 'linkedin', label: 'LinkedIn', url: 'https://www.linkedin.com/in/ulric-jooste-10b6902' },
+  { id: 'whatsapp', label: 'WhatsApp', url: 'https://wa.me/27818757044' },
+] as const;
