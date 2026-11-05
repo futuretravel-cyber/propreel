@@ -469,7 +469,7 @@ export default function SignupPage() {
                   ref={altchaRef}
                   challenge="/api/users?action=auth_challenge"
                   name="altcha"
-                  style={{ '--altcha-color-base': '#0f1420', '--altcha-color-base-content': '#e5e7eb', '--altcha-color-primary': '#a855f7', '--altcha-color-primary-content': '#ffffff', '--altcha-border-color': 'rgba(255,255,255,0.1)', '--altcha-input-background-color': '#0f1420', '--altcha-input-color': '#e5e7eb', '--altcha-checkbox-border-color': 'rgba(255,255,255,0.3)' } as React.CSSProperties}
+                  style={{ colorScheme: 'dark', '--altcha-color-primary': '#a855f7', '--altcha-color-primary-content': '#ffffff' } as React.CSSProperties}
                 ></altcha-widget>
               </div>
               <div className="flex gap-3">
