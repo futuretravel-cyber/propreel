@@ -345,6 +345,36 @@ interface ProvisionInput {
 }
 
 /**
+ * Runs once an email address is confirmed: the 5-credit signup bonus, the
+ * admin allocation (if applicable) and the deferred referral attribution.
+ * Every grant has an event id, so a repeat call cannot pay twice. Non-fatal.
+ */
+async function grantConfirmedSignupBonus(user: any, pendingReferralCode?: string | null): Promise<void> {
+  try {
+    const { addCredits, creditTtlIso, updateUser: updateUserRow } = await import('../../lib/userService');
+    await addCredits(
+      user.id,
+      5,
+      'bonus',
+      'Signup bonus — welcome to PropReel!',
+      { kind: 'signup_bonus' },
+      creditTtlIso(),
+      `signup_${user.id}`
+    );
+    if (ADMIN_EMAILS.includes(String(user.email).toLowerCase())) {
+      await addCredits(user.id, ADMIN_GRANT_CREDITS, 'bonus', 'Admin account allocation', { kind: 'admin_grant' }, undefined, `admin_${user.id}`);
+      await updateUserRow(user.id, { role: 'ADMIN' } as any);
+    }
+    if (pendingReferralCode) {
+      const { attributeReferral } = await import('../../lib/referral');
+      await attributeReferral(user.id, user.email, pendingReferralCode);
+    }
+  } catch (err) {
+    console.error('Confirmed-signup grants failed (non-fatal):', err);
+  }
+}
+
+/**
  * Idempotent user provisioning shared by POST /api/users and
  * POST ?action=auth_register: one row per email even under concurrent
  * first-login requests, profile refresh, the 5-credit signup bonus and the
@@ -378,6 +408,13 @@ export async function provisionUser(input: ProvisionInput): Promise<{ user: any;
 
   if (!created) {
     return { user: (await getUser(provisioned.id)) || provisioned, created: false };
+  }
+
+  // Password signups are unverified here: the 5-credit bonus is granted only
+  // once the email is confirmed (auth_confirm → grantConfirmedSignupBonus), so
+  // throwaway addresses can't farm credits. Google-verified accounts get it now.
+  if (!input.emailVerified) {
+    return { user: (await getUser(provisioned.id)) || provisioned, created: true };
   }
 
   // Grant 5-credit signup bonus (best effort)
@@ -614,13 +651,14 @@ export async function authRoutes(req: VercelRequest, res: VercelResponse, action
             await beginTrial(user.id);
           }
         })(),
-        // Give 5, get 5: attribute to ?ref= and grant the friend's +5 now; the
-        // referrer's +5 is paid on this account's first purchase (lib/referral).
-        (async () => {
-          const { attributeReferral } = await import('../../lib/referral');
-          await attributeReferral(user.id, user.email, referralCode);
-        })(),
       ]);
+      // Give 5, get 5: the friend's +5 and the referrer's attribution are
+      // granted on email confirmation (auth_confirm), not here, so a fake
+      // unverified account can't farm referral credits. The referrer's +5 is
+      // paid on this account's first purchase (lib/referral).
+      if (referralCode) {
+        await updateUser(user.id, { pendingReferralCode: String(referralCode).slice(0, 200) } as any);
+      }
       // provisionUser already returns a freshly-read row — no second read.
       const token = await issueEmailConfirmToken(user, redirect);
       const confirmUrl = `${siteOrigin(req)}/confirm-email?token=${token}`;
@@ -671,6 +709,7 @@ export async function authRoutes(req: VercelRequest, res: VercelResponse, action
       // confirmation — keep the emailed link working until its TTL.
       if (!user.emailVerified) {
         await updateUser(user.id, { emailVerified: true, emailConfirmToken: null } as any);
+        await grantConfirmedSignupBonus(user, (user as any).pendingReferralCode);
       }
       const sessionToken = await createSession(user.id, clientMeta(req));
       res.setHeader('Set-Cookie', sessionCookie(sessionToken, req));

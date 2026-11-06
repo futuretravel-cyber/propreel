@@ -254,25 +254,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // ── POST /api/leads?action=referral ─────────────────────────────
-    // Legacy path — auth_register now attributes ?ref= server-side. Kept so
-    // any in-flight signup from an older bundle still lands; delegates to the
-    // shared idempotent logic (friend +5, referrer +5 on first purchase).
-    if (action === 'referral') {
-      const { referrer, newUserId, newUserEmail } = req.body || {};
-
-      if (!referrer || !newUserId) {
-        return res.status(400).json({ error: 'referrer and newUserId are required' });
-      }
-
-      const { attributeReferral, REFERRAL_FRIEND_CREDITS } = await import('../lib/referral');
-      await attributeReferral(newUserId, newUserEmail || '', referrer);
-
-      return res.status(200).json({
-        success: true,
-        creditsGranted: REFERRAL_FRIEND_CREDITS,
-      });
-    }
+    // POST ?action=referral was removed: it let any caller name a newUserId
+    // and referrer and mint the friend bonus without an account. Attribution
+    // now happens only server-side in auth_register / auth_confirm.
 
     // ── POST /api/leads?action=review ───────────────────────────────
     // Submit a product review (stored pending; shown publicly after approval)

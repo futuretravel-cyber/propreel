@@ -665,7 +665,8 @@ export async function transferCredits(
     // Roll back — receiver vanished mid-transfer
     await addCredits(fromUserId, amount, 'refund', 'Transfer reversed — recipient not found', { kind: 'TRANSFER_REVERSAL', linkId });
     return { success: false, newBalance: deduct.newBalance, error: 'Recipient not found' };
-  }    await updateUser(toUserId, { credits: receiver.credits + amount });
+  }    // Atomic increment: a read-then-write here could overwrite a concurrent spend by the recipient.
+  await incrementValue(TABLES.USERS, { id: toUserId }, 'credits', amount);
 
 
   return { success: true, newBalance: deduct.newBalance };
