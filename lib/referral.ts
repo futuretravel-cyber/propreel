@@ -4,7 +4,7 @@
  * - Attributed server-side during auth_register (?ref= → referralCode):
  *   the FRIEND gets +5 credits the moment the account is created.
  * - The REFFERER gets +5 credits once, when that friend makes their FIRST
- *   purchase (credit top-up or subscription) — see grantReferralPayout(),
+ *   purchase of at least REFERRAL_MIN_PURCHASE_ZAR (credit top-up or subscription) — see grantReferralPayout(),
  *   called from the Paystack verify/webhook/subscription paths.
  *
  * Both grants are exactly-once: addCredits() takes an eventId whose
@@ -16,6 +16,8 @@ import { getUser, getUserByEmail, updateUser, addCredits, creditTtlIso } from '.
 
 export const REFERRAL_FRIEND_CREDITS = 5;
 export const REFERRAL_PAYOUT_CREDITS = 5;
+/** The referrer is paid only once the friend's purchase is at least the Starter price (R129). */
+export const REFERRAL_MIN_PURCHASE_ZAR = 129;
 
 /**
  * Attribute a new account to the referrer in ?ref= and grant the friend's
@@ -59,12 +61,15 @@ export async function attributeReferral(
 }
 
 /**
- * Pay the referrer +5 for their referred friend's FIRST purchase. Safe to
- * call from every payment path — referralPaid + the event lock guarantee a
- * single payout per referred user. Non-fatal: never throws.
+ * Pay the referrer +5 for their referred friend's FIRST qualifying purchase
+ * (paidZar >= REFERRAL_MIN_PURCHASE_ZAR). Smaller payments are ignored, so a
+ * later qualifying purchase can still pay out. Safe to call from every payment
+ * path — referralPaid + the event lock guarantee a single payout per referred
+ * user. Non-fatal: never throws.
  */
-export async function grantReferralPayout(userId: string): Promise<void> {
+export async function grantReferralPayout(userId: string, paidZar: number): Promise<void> {
   try {
+    if (!(paidZar >= REFERRAL_MIN_PURCHASE_ZAR)) return;
     const user = await getUser(userId);
     if (!user?.referredBy || user.referralPaid) return;
 

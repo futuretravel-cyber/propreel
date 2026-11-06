@@ -440,7 +440,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Give 5, get 5: first purchase by a referred user pays their referrer +5.
       // Idempotent — referralPaid + an addCredits event lock make it once-only.
       const { grantReferralPayout } = await import('../../lib/referral');
-      await grantReferralPayout(userId);
+      await grantReferralPayout(userId, amount);
 
       // Capture the card authorization for auto-topup / dunning retries
       const authCode = data.authorization?.authorization_code;

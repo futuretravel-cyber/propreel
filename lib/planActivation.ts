@@ -89,7 +89,7 @@ export async function activateSubscriptionFromPayment(opts: {
     // Give 5, get 5 — same payout the old create route granted.
     try {
       const { grantReferralPayout } = await import('./referral');
-      await grantReferralPayout(userId);
+      await grantReferralPayout(userId, paidZar);
     } catch (refErr) {
       console.error('Referral payout after activation failed (non-fatal):', refErr);
     }
