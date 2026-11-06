@@ -36,9 +36,13 @@ export function siteOrigin(req: VercelRequest): string {
 }
 
 
-/** Client IP for rate-limit keys (first x-forwarded-for hop, else socket). */
+/**
+ * Client IP for rate-limit keys. Prefers x-vercel-forwarded-for, which Vercel's
+ * edge sets itself. The first x-forwarded-for hop is client-controlled, so it
+ * must not be trusted for limits.
+ */
 export function clientIp(req: VercelRequest): string {
-  return String((req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown').toLowerCase();
+  return String((req.headers['x-vercel-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown').toLowerCase();
 }
 
 /** Shared 429: Retry-After header + friendly message (no enumeration). */

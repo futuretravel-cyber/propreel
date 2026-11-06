@@ -214,10 +214,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Rate limit: 1 per IP per day (best-effort; shared IPs may collide)
-      const ip =
-        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-        req.socket?.remoteAddress ||
-        'unknown';
+      const { clientIp } = await import('../lib/userRoutes/shared');
+      const ip = clientIp(req);
       const today = new Date().toISOString().slice(0, 10);
       const limitKey = `demo-limit-${ip}-${today}`;
 
