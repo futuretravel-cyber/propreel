@@ -28,11 +28,17 @@ export async function consumeRateLimit(
   scope: string,
   key: string,
   limit: number,
-  windowSec: number
+  windowSec: number,
+  opts: { failClosed?: boolean } = {}
 ): Promise<RateLimitDecision> {
   const now = Math.floor(Date.now() / 1000);
   const windowStart = now - (now % windowSec);
   const id = `rl_${scope}_${key.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}`;
+  // Database trouble: allow (default) or block (failClosed, for auth routes).
+  const onError = (): RateLimitDecision =>
+    opts.failClosed
+      ? { allowed: false, remaining: 0, retryAfterSec: 30 }
+      : { allowed: true, remaining: limit, retryAfterSec: 0 };
 
   // A few attempts: contention at a window boundary retries cleanly; only
   // after repeated collisions do we fail open.
@@ -51,8 +57,8 @@ export async function consumeRateLimit(
       return { allowed: true, remaining: Math.max(0, limit - count), retryAfterSec: 0 };
     } catch (err: any) {
       if (err?.name !== 'ConditionalCheckFailedException') {
-        console.error(`Rate limit (${scope}) failed open:`, err);
-        return { allowed: true, remaining: limit, retryAfterSec: 0 };
+        console.error(`Rate limit (${scope}) database error:`, err);
+        return onError();
       }
     }
 
@@ -71,8 +77,8 @@ export async function consumeRateLimit(
       // Row is in-window and under the limit — our ADD only lost a race;
       // loop and retry the atomic increment.
     } catch (err) {
-      console.error(`Rate limit (${scope}) failed open on rollover:`, err);
-      return { allowed: true, remaining: limit, retryAfterSec: 0 };
+      console.error(`Rate limit (${scope}) database error on rollover:`, err);
+      return onError();
     }
   }
   return { allowed: true, remaining: limit, retryAfterSec: 0 };

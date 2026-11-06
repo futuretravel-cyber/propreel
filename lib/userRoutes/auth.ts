@@ -539,7 +539,7 @@ export async function authRoutes(req: VercelRequest, res: VercelResponse, action
         (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
         req.socket?.remoteAddress || 'unknown'
       ).toLowerCase();
-      const rl = await consumeRateLimit('register', Buffer.from(ip).toString('base64url'), REGISTER_RATE_LIMIT, REGISTER_RATE_WINDOW_SEC);
+      const rl = await consumeRateLimit('register', Buffer.from(ip).toString('base64url'), REGISTER_RATE_LIMIT, REGISTER_RATE_WINDOW_SEC, { failClosed: true });
       if (!rl.allowed) {
         const waitSec = Math.max(1, rl.retryAfterSec);
         res.setHeader('Retry-After', String(waitSec));
@@ -755,10 +755,10 @@ export async function authRoutes(req: VercelRequest, res: VercelResponse, action
       // under it) plus a tighter per-account ceiling so one mailbox can't be
       // ground down from many hosts. Fixed 15-min windows, counted before
       // any user lookup so probes are bounded too.
-      const ipRl = await consumeRateLimit('login_ip', clientIp(req), 30, 900);
+      const ipRl = await consumeRateLimit('login_ip', clientIp(req), 30, 900, { failClosed: true });
       if (!ipRl.allowed) return tooMany(res, ipRl);
       if (email) {
-        const acctRl = await consumeRateLimit('login_email', email, 10, 900);
+        const acctRl = await consumeRateLimit('login_email', email, 10, 900, { failClosed: true });
         if (!acctRl.allowed) return tooMany(res, acctRl, 'Too many sign-in attempts for this account — try again in a few minutes');
       }
       if (!(await verifyAltchaPayload(body.altcha))) {
