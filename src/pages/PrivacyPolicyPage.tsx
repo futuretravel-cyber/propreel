@@ -91,6 +91,7 @@ export default function PrivacyPolicyPage() {
               <li>Develop new features and functionality</li>
               <li>Monitor and prevent technical issues</li>
               <li>Conduct research and analysis</li>
+              <li>Record which pages visitors view, the IP address and time spent on each page, for visitors who accept analytics cookies</li>
             </ul>
 
             <h3 className="text-xl font-semibold text-white mt-6 mb-3">3.3 Communication</h3>
@@ -239,6 +240,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Generated Media:</strong> 30 days from creation — uploaded photos, AI-edited images (Photo Editor, Virtual Staging, Furniture Removal, Twilight), rendered videos and AI Avatar Video clips are permanently deleted from our storage after 30 days, automatically every night. Download anything you want to keep before it expires.</li>
               <li><strong>Audit Logs:</strong> 2 years</li>
               <li><strong>Login History:</strong> 1 year</li>
+              <li><strong>Site Visitor Logs:</strong> 30 days — IP address, page viewed and time on page, recorded only for visitors who accept analytics cookies</li>
             </ul>
             <p className="text-ink-300 leading-relaxed">
               After retention periods expire, we securely delete or anonymize your data.

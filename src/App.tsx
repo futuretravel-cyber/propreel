@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useLocation,
 import ErrorBoundary from './components/ErrorBoundary';
 import { Tooltip } from './components/ui';
 import CookieConsent from './components/CookieConsent';
+import { trackPageView, startVisitTracking } from './lib/visitTracker';
 import SupportAssistant from './components/SupportAssistant';
 import NotFoundPage from './pages/NotFoundPage';
 import OfflineBanner from './components/OfflineBanner';
@@ -1768,6 +1769,15 @@ function ShortcutsHelpListener() {
 }
 
 // First-time user onboarding + reusable Help Centre entry point
+// Page-view + time-on-page for the admin Visitors tab. Consent-gated inside
+// trackPageView; mounted under BrowserRouter so it sees every route change.
+function VisitTracker() {
+  const location = useLocation();
+  useEffect(() => { startVisitTracking(); }, []);
+  useEffect(() => { trackPageView(location.pathname + location.search); }, [location.pathname, location.search]);
+  return null;
+}
+
 function OnboardingAndHelp() {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -1929,6 +1939,7 @@ export default function App() {
             <OfflineBanner />
             <AIDisclaimerGate />
             <CookieConsent />
+            <VisitTracker />
             <SupportAssistant />
           </CreditProvider>
          </ConfirmProvider>

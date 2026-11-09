@@ -39,6 +39,61 @@ function CsvExportButton({ filename, rows, columns }: { filename: string; rows: 
 
 // Admin: the platform action log — credit grants, subscription/role changes,
 // review moderation and update-mode toggles (audit §11). Server-written only.
+// Admin: who visited the site (IP, pages, time on page). Only visitors who
+// accepted analytics cookies are recorded. Rows expire after 30 days.
+function AdminVisitors() {
+  const [visits, setVisits] = useState<any[] | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    fetch('/api/leads?action=visits')
+      .then(r => { if (!r.ok) throw new Error('Admin access required'); return r.json(); })
+      .then(d => setVisits(d.visits || []))
+      .catch(e => { setError(e.message); setVisits([]); });
+  }, []);
+
+  if (error) return <p className="text-sm text-red-400">{error}</p>;
+  if (!visits) return <p className="text-sm text-ink-400">Loading visitors…</p>;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-white">Site visitors</h3>
+          <p className="text-xs text-ink-500">Last 30 days, newest first (up to 1,000 page views). Only visitors who accepted analytics cookies are included. Time on page is recorded when the visitor leaves the page.</p>
+        </div>
+        <CsvExportButton filename="site-visitors.csv" rows={visits} columns={['createdAt', 'ip', 'path', 'seconds', 'userId', 'visitId', 'userAgent']} />
+      </div>
+      {visits.length === 0 ? (
+        <p className="text-sm text-ink-400">No visits recorded yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">When</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">IP address</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Page</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Time on page</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-semibold text-ink-400 uppercase">Signed in</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visits.map((v, i) => (
+                <tr key={`${v.visitId}-${v.path}-${i}`} className="border-b border-white/5">
+                  <td className="px-3 py-2 text-ink-300 whitespace-nowrap">{v.createdAt ? new Date(v.createdAt).toLocaleString('en-ZA') : ''}</td>
+                  <td className="px-3 py-2 text-white font-mono text-xs">{v.ip}</td>
+                  <td className="px-3 py-2 text-ink-300">{v.path}</td>
+                  <td className="px-3 py-2 text-ink-300 whitespace-nowrap">{v.seconds ? `${v.seconds}s` : '—'}</td>
+                  <td className="px-3 py-2 text-ink-300 font-mono text-xs">{v.userId || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminAuditLog() {
   const [events, setEvents] = useState<any[] | null>(null);
   const [error, setError] = useState('');
@@ -209,6 +264,7 @@ const ADMIN_SECTIONS: { label: string; tabs: { key: string; label: string }[] }[
       { key: 'users', label: 'Users' },
       { key: 'agencies', label: 'Agencies' },
       { key: 'reviews', label: 'Reviews' },
+      { key: 'visitors', label: 'Visitors' },
     ],
   },
   {
@@ -271,6 +327,7 @@ export default function AdminPage() {
         {tab === 'users' && <AdminUsers />}
         {tab === 'agencies' && <AdminAgencies />}
         {tab === 'reviews' && <AdminReviews />}
+        {tab === 'visitors' && <AdminVisitors />}
         {tab === 'settings' && <AdminSettings />}
         {tab === 'prompts' && <AdminPrompts />}
         {tab === 'tutorials' && <AdminTutorials />}

@@ -112,6 +112,9 @@ export default function CookiePolicyPage() {
             <p className="text-ink-300 leading-relaxed mb-4">
               These cookies help us understand how visitors interact with our Service.
             </p>
+            <p className="text-ink-300 leading-relaxed mb-4">
+              If you accept analytics cookies, we also record the pages you view, your IP address and the time you spend on each page, so we can see how the site is used. These visitor logs are kept for 30 days and are then deleted automatically.
+            </p>
             <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
               <table className="w-full text-sm">
                 <thead>

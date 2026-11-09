@@ -45,6 +45,7 @@ export const TABLES = {
   PROJECTS: `${TABLE_PREFIX}projects`,
   SETTINGS: `${TABLE_PREFIX}settings`,
   SESSIONS: `${TABLE_PREFIX}sessions`,
+  SITE_VISITS: `${TABLE_PREFIX}site_visits`,
 };
 
 // Generic CRUD helpers

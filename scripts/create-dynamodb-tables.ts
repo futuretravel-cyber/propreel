@@ -124,6 +124,20 @@ const TABLES = [
     billingMode: 'PAY_PER_REQUEST' as const,
   },
   {
+    // Site visits (admin → Visitors). One row per page view, written by
+    // POST /api/leads?action=visit only after the visitor accepts analytics
+    // cookies. createdAt is an ISO string. ttl is epoch-seconds; DynamoDB
+    // deletes rows ~30 days after the visit (enable TTL on `ttl`).
+    name: 'propreel-site_visits',
+    attributes: [
+      { name: 'id', type: 'S' },
+    ],
+    keySchema: [
+      { name: 'id', keyType: 'HASH' },
+    ],
+    billingMode: 'PAY_PER_REQUEST' as const,
+  },
+  {
     // First-party auth sessions (opaque token id → userId). expiresAt is
     // epoch-seconds for DynamoDB TTL cleanup.
     //

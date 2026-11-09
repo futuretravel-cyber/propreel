@@ -18,6 +18,78 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return handleChat(req, res);
   }
 
+  // ── POST /api/leads?action=visit — page-view beacon (analytics consent only) ──
+  // The client sends only the path, time on the previous page and a visit id.
+  // IP and signed-in user are derived on the server, never taken from the body.
+  if (req.method === 'POST' && (req.query.action as string) === 'visit') {
+    try {
+      const { consumeRateLimit } = await import('../lib/rateLimit');
+      const { clientIp } = await import('../lib/userRoutes/shared');
+      const ip = clientIp(req);
+      const rl = await consumeRateLimit('visit', ip, 600, 3600);
+      if (!rl.allowed) return res.status(429).json({ ok: false });
+
+      const body = (req.body && typeof req.body === 'object') ? req.body : {};
+      const path = String(body.path || '/').slice(0, 300);
+      const visitId = String(body.visitId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+      const seconds = Math.max(0, Math.min(Number(body.seconds) || 0, 86400));
+      if (!visitId) return res.status(400).json({ ok: false });
+
+      const { putItem, TABLES: T } = await import('../lib/db');
+      const { getSessionUser, getTokenFromRequest } = await import('../lib/auth');
+      const user = await getSessionUser(getTokenFromRequest(req)).catch(() => null);
+      const now = Date.now();
+      const createdAt = new Date(now).toISOString();
+      // Keyed by visit + path so the row for each page is written once and
+      // the time-on-page is refreshed when the visitor leaves it.
+      await putItem(T.SITE_VISITS, {
+        id: `${visitId}_${path}`,
+        visitId,
+        path,
+        ip,
+        userId: user?.id,
+        userAgent: String(req.headers['user-agent'] || '').slice(0, 200),
+        seconds,
+        createdAt,
+        ttl: Math.floor(now / 1000) + 30 * 86400,
+      });
+      return res.status(204).end();
+    } catch (e) {
+      console.error('Visit record error:', e);
+      return res.status(204).end();
+    }
+  }
+
+  // ── GET /api/leads?action=visits (admin) — recent page views ──
+  if (req.method === 'GET' && (req.query.action as string) === 'visits') {
+    try {
+      const { requireAdminSession } = await import('../lib/auth');
+      const gate = await requireAdminSession(req);
+      if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error, code: gate.code });
+      const { scanItems } = await import('../lib/db');
+      const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+      const rows = await scanItems<any>(TABLES.SITE_VISITS, {
+        filter: { expression: 'createdAt >= :c', values: { ':c': cutoff } },
+      });
+      const visits = rows
+        .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+        .slice(0, 1000)
+        .map((r: any) => ({
+          createdAt: r.createdAt,
+          ip: r.ip,
+          path: r.path,
+          seconds: r.seconds,
+          visitId: r.visitId,
+          userId: r.userId || '',
+          userAgent: r.userAgent,
+        }));
+      return res.status(200).json({ success: true, visits });
+    } catch (e) {
+      console.error('Visits fetch error:', e);
+      return res.status(500).json({ error: 'Failed to load visits' });
+    }
+  }
+
   // ── GET /api/leads?action=reviews — public, approved reviews only ──
   if (req.method === 'GET' && (req.query.action as string) === 'reviews') {
     try {
