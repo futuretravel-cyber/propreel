@@ -140,6 +140,12 @@ export async function signS3Url(
   if (!url || typeof url !== 'string') return url;
   const obj = parseObjectUrl(url);
   if (!obj) return url;
+  // Renders are public-read (bucket policy on renders/*), so their share links
+  // stay valid for the whole 30-day retention window. Return the plain edge URL.
+  if (obj.bucket === OUTPUT_BUCKET && obj.key.startsWith('renders/')) {
+    const plain = url.split('?')[0];
+    return toEdgeUrl(plain);
+  }
   try {
     return await getSignedUrl(s3(), new GetObjectCommand({ Bucket: obj.bucket, Key: obj.key }), { expiresIn });
   } catch (e) {

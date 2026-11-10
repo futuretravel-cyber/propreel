@@ -572,7 +572,15 @@ def presign_urls(value, expires_in: int = MEDIA_LINK_SECONDS):
     """Recursively presign every one-of-ours URL inside a JSON-ish structure
     and rehost it on the edge — these strings are what the browser receives."""
     if isinstance(value, str):
-        return to_edge_url(presign_media(value, expires_in)) if _our_s3_object(value) else value
+        obj = _our_s3_object(value)
+        if not obj:
+            return value
+        bucket, key = obj
+        # Renders are public-read (bucket policy on renders/*): hand out the
+        # plain edge URL so share links last the whole 30-day retention.
+        if bucket == S3_BUCKET and key.startswith("renders/"):
+            return to_edge_url(value.split("?")[0])
+        return to_edge_url(presign_media(value, expires_in))
     if isinstance(value, dict):
         return {k: presign_urls(v, expires_in) for k, v in value.items()}
     if isinstance(value, list):
