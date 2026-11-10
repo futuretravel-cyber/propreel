@@ -28,7 +28,7 @@
     },
     {
       "source": "/w/:path*",
-      "destination": "https://futuretravel--propreel-render-web.modal.run/:path*"
+      "destination": "https://propreel--propreel-render-web.modal.run/:path*"
     },
     {
       "source": "/(.*)",

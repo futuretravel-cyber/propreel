@@ -24,7 +24,7 @@ const VERCEL_API = 'https://api.vercel.com';
 // browser-facing api.propreel.co.za proxy now; never route server traffic
 // through it). The vendor hostname here never reaches a client bundle.
 const WORKER_URL = () =>
-  (process.env.RENDER_WORKER_URL || 'https://futuretravel--propreel-render-web.modal.run').replace(/\/$/, '');
+  (process.env.RENDER_WORKER_URL || 'https://propreel--propreel-render-web.modal.run').replace(/\/$/, '');
 
 async function vercelFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = process.env.VERCEL_TOKEN;

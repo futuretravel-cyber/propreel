@@ -9,7 +9,7 @@ import { normalizeProjectKind } from './legacySchema';
 // loop server traffic through it). The vendor hostname here is never shipped
 // to any client bundle.
 const WORKER_URL =
-  process.env.RENDER_WORKER_URL || 'https://futuretravel--propreel-render-web.modal.run';
+  process.env.RENDER_WORKER_URL || 'https://propreel--propreel-render-web.modal.run';
 
 export interface ReapResult {
   scanned: number;
