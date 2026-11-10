@@ -22,7 +22,15 @@ const PLATFORMS: Array<{ id: string; label: string; build: (url: string, text: s
  * One-click share sheet for finished renders, with per-platform captions.
  * Uses the Web Share API when available (mobile), otherwise per-platform links.
  */
-export default function ShareSheet({ videoUrl, caption = '', hashtags = [], onClose }: ShareSheetProps) {
+// Render videos are shared via the /share page so social platforms read
+// og:video tags. Other links are shared as they are.
+function toShareLink(url: string): string {
+  const m = url.match(/^https:\/\/cdn\.propreel\.co\.za\/renders\/([A-Za-z0-9_-]+)\/video\.mp4$/);
+  return m ? `https://api.propreel.co.za/share/${m[1]}` : url;
+}
+
+export default function ShareSheet({ videoUrl: rawVideoUrl, caption = '', hashtags = [], onClose }: ShareSheetProps) {
+  const videoUrl = toShareLink(rawVideoUrl);
   const [copied, setCopied] = useState(false);
   const [copiedCaption, setCopiedCaption] = useState(false);
 
