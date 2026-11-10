@@ -922,7 +922,7 @@ export function BudgetVideoTab() {
           className="btn btn-primary w-full text-lg py-4"
         >
           {generating ? (
-            <><RefreshCw className="w-5 h-5 animate-spin" /> Generating Video...</>
+            <><span aria-hidden="true" className="inline-block h-5 w-5 shrink-0 rounded-full border-2 border-sky-200/25 border-t-sky-200 shadow-[0_0_10px_rgba(125,211,252,0.5)] animate-spin" /> Generating Video...</>
           ) : (
             <><Play className="w-5 h-5" /> Generate Video ({selectedConfig.credits} credits)</>
           )}
