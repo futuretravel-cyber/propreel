@@ -28,6 +28,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!safe) return res.status(404).send('Not found');
     const videoUrl = `https://cdn.propreel.co.za/${key}`;
     const pageUrl = `https://api.propreel.co.za/share/${key.split('/')[1]}`;
+    // Poster frame written by the render worker (thumbnails/render/<id>.jpg);
+    // the logo is the fallback for renders made before posters existed.
+    const posterUrl = `https://cdn.propreel.co.za/thumbnails/render/${key.split('/')[1]}.jpg`;
+    // Only point og:image at the poster when it actually exists (renders made
+    // before posters were added would otherwise give crawlers a broken image).
+    const hasPoster = await fetch(posterUrl, { method: 'HEAD' }).then(r => r.ok).catch(() => false);
+    const imageUrl = hasPoster ? posterUrl : 'https://www.propreel.co.za/icon-512.png';
     const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>PropReel listing video</title>
@@ -41,14 +48,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="1280">
 <meta property="og:video:height" content="720">
-<meta property="og:image" content="https://www.propreel.co.za/icon-512.png">
-<meta property="og:image:width" content="512">
-<meta property="og:image:height" content="512">
+<meta property="og:image" content="${esc(imageUrl)}">
+<meta property="og:image:width" content="${hasPoster ? 800 : 512}">
 <meta name="twitter:card" content="player">
 <meta name="twitter:player" content="${esc(videoUrl)}">
 <meta name="twitter:player:width" content="1280">
 <meta name="twitter:player:height" content="720">
-<meta name="twitter:image" content="https://www.propreel.co.za/icon-512.png">
+<meta name="twitter:image" content="${esc(imageUrl)}">
 </head><body style="margin:0;background:#0b0d12;display:grid;place-items:center;min-height:100vh">
 <video src="${esc(videoUrl)}" controls playsinline style="max-width:100%;max-height:100vh"></video>
 </body></html>`;
