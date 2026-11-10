@@ -18,6 +18,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return handleChat(req, res);
   }
 
+  // ── GET /api/leads?action=share&key=renders/… — shareable render page ──
+  // Social crawlers read og:video from static HTML, so this serves a small
+  // page with the video metadata for one public render. Only renders/ keys
+  // are accepted; the video itself is the public CDN file (30-day life).
+  if (req.method === 'GET' && (req.query.action as string) === 'share') {
+    const key = String(req.query.key || '');
+    const safe = /^renders\/[A-Za-z0-9_\-]+\/video\.mp4$/.test(key);
+    if (!safe) return res.status(404).send('Not found');
+    const videoUrl = `https://cdn.propreel.co.za/${key}`;
+    const pageUrl = `https://api.propreel.co.za/share/${key.split('/')[1]}`;
+    const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>PropReel listing video</title>
+<meta name="robots" content="noindex">
+<meta property="og:type" content="video.other">
+<meta property="og:title" content="PropReel listing video">
+<meta property="og:url" content="${esc(pageUrl)}">
+<meta property="og:video" content="${esc(videoUrl)}">
+<meta property="og:video:url" content="${esc(videoUrl)}">
+<meta property="og:video:secure_url" content="${esc(videoUrl)}">
+<meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="1280">
+<meta property="og:video:height" content="720">
+<meta property="og:image" content="https://www.propreel.co.za/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="player">
+<meta name="twitter:player" content="${esc(videoUrl)}">
+<meta name="twitter:player:width" content="1280">
+<meta name="twitter:player:height" content="720">
+<meta name="twitter:image" content="https://www.propreel.co.za/icon-512.png">
+</head><body style="margin:0;background:#0b0d12;display:grid;place-items:center;min-height:100vh">
+<video src="${esc(videoUrl)}" controls playsinline style="max-width:100%;max-height:100vh"></video>
+</body></html>`;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.status(200).send(html);
+  }
+
   // ── POST /api/leads?action=visit — page-view beacon (analytics consent only) ──
   // The client sends only the path, time on the previous page and a visit id.
   // IP and signed-in user are derived on the server, never taken from the body.

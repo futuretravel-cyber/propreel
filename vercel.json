@@ -27,6 +27,10 @@
       "destination": "/api/leads?action=chat"
     },
     {
+      "source": "/share/:id",
+      "destination": "/api/leads?action=share&key=renders/:id/video.mp4"
+    },
+    {
       "source": "/w/:path*",
       "destination": "https://propreel--propreel-render-web.modal.run/:path*"
     },
