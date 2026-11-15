@@ -14,11 +14,11 @@
  * Env:
  *   E2E_BASE            site origin (default https://www.propreel.co.za)
  *   E2E_ACCOUNT_EMAIL   admin account (default the admin walkthrough acct)
- *   E2E_SESSION_COOKIE  'propreel_session=…' — ALTERNATIVE to the password:
+ *   E2E_SESSION_COOKIE  '__Host-propreel_session=…' — ALTERNATIVE to the password:
  *                       a minted session cookie (scripts/_ui_session.ts) for
  *                       credential-less runs. The sign-in form is then
  *                       skipped; everything after it is identical.
- *   E2E_NONADMIN_SESSION_COOKIE  'propreel_session=…' — a NON-admin session
+ *   E2E_NONADMIN_SESSION_COOKIE  '__Host-propreel_session=…' — a NON-admin session
  *                       for the bounce case (skips the throwaway fixture).
  *   E2E_NONADMIN_ACCOUNT_EMAIL / E2E_NONADMIN_ACCOUNT_PASSWORD
  *                       sign in as an existing non-admin through the form.
@@ -45,15 +45,15 @@ import { chromium } from '@playwright/test';
 const BASE = (process.env.E2E_BASE || 'https://www.propreel.co.za').replace(/\/$/, '');
 const EMAIL = process.env.E2E_ACCOUNT_EMAIL || 'futuretravel@gmail.com';
 const PASSWORD = process.env.E2E_ACCOUNT_PASSWORD; // never store a password in source
-const SESSION_COOKIE = process.env.E2E_SESSION_COOKIE; // optional, instead of the password
+const ENV_SESSION_COOKIE = process.env.E2E_SESSION_COOKIE; // optional, instead of the password
 const NONADMIN_COOKIE = process.env.E2E_NONADMIN_SESSION_COOKIE; // optional non-admin identity
 const NONADMIN_EMAIL = process.env.E2E_NONADMIN_ACCOUNT_EMAIL; // optional non-admin identity
 const NONADMIN_PASSWORD = process.env.E2E_NONADMIN_ACCOUNT_PASSWORD;
 
-if (!PASSWORD && !SESSION_COOKIE) {
+if (!PASSWORD && !ENV_SESSION_COOKIE) {
   console.error(
     'Set E2E_ACCOUNT_PASSWORD=<password of the admin account>' +
-      ' (or E2E_SESSION_COOKIE=propreel_session=… minted via scripts/_ui_session.ts)'
+      ' (or E2E_SESSION_COOKIE=__Host-propreel_session=… minted via scripts/_ui_session.ts)'
   );
   process.exit(2);
 }
@@ -114,10 +114,10 @@ async function main() {
 
   try {
     // ── 1. Signed-out: /admin must bounce to the login form ───────────────
-    if (SESSION_COOKIE) {
+    if (ENV_SESSION_COOKIE) {
       // Credential-less run: plant the minted session for the target origin.
       const { hostname } = new URL(BASE);
-      const [name, ...rest] = SESSION_COOKIE.split('=');
+      const [name, ...rest] = ENV_SESSION_COOKIE.split('=');
       await context.addCookies([{
         name: name.trim(),
         value: rest.join('='),

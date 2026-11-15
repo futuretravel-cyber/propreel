@@ -8,7 +8,7 @@
  * nothing, Accept actually starts the job.
  *
  * Usage:
- *   E2E_SESSION_COOKIE='propreel_session=…' npx tsx scripts/generate_confirm_smoke.ts
+ *   E2E_SESSION_COOKIE='__Host-propreel_session=…' npx tsx scripts/generate_confirm_smoke.ts
  *   (or E2E_ACCOUNT_PASSWORD='…' of the e2e account)
  * Env:
  *   E2E_BASE            site origin (default http://localhost:5199 — the local
@@ -48,7 +48,7 @@ const SESSION_COOKIE = process.env.E2E_SESSION_COOKIE; // optional, instead of t
 if (!PASSWORD && !SESSION_COOKIE) {
   console.error(
     'Set E2E_ACCOUNT_PASSWORD=<password of the e2e account>' +
-      ' (or E2E_SESSION_COOKIE=propreel_session=… minted via scripts/_ui_session.ts)'
+      ' (or E2E_SESSION_COOKIE=__Host-propreel_session=… minted via scripts/_ui_session.ts)'
   );
   process.exit(2);
 }

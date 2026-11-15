@@ -37,6 +37,7 @@
  * The script refunds EVERY charge it makes, so a successful run leaves the
  * account's balance untouched (asserted) — only ledger rows accumulate.
  */
+import { SESSION_COOKIE as COOKIE_NAME } from '../lib/auth';
 import { TIERS, jobCredits, SCRIPT_CREDITS, scriptCreditsForDuration, IMAGE_EDIT_CREDITS, STAGING_EDIT_CREDITS, STAGING_PRESET_IDS, DESCRIPTION_CREDITS, SOCIAL_POST_CREDITS, TRANSLATE_CREDITS, flashheadCreditsForText, FLASHHEAD_MAX_SECONDS, NARRATION_WORDS_PER_SEC } from '../lib/renderPricing';
 
 // ── Config ────────────────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ const PASSWORD = process.env.E2E_ACCOUNT_PASSWORD; // never store a password in 
 const SESSION_COOKIE = process.env.E2E_SESSION_COOKIE;
 if (!PASSWORD && !SESSION_COOKIE && process.env.PRICING_E2E_ENGINE_ONLY !== '1') {
   console.error('Set E2E_ACCOUNT_PASSWORD=<password of the e2e account>' +
-    ' (or E2E_SESSION_COOKIE=propreel_session=… minted via scripts/_ui_session.ts' +
+    ' (or E2E_SESSION_COOKIE=' + COOKIE_NAME + '=… minted via scripts/_ui_session.ts' +
     ' — or PRICING_E2E_ENGINE_ONLY=1 to verify the pricing table without credentials)');
   process.exit(2);
 }
@@ -81,7 +82,7 @@ async function call(path: string, opts: { method?: string; body?: any; cookie?: 
 }
 function getCookie(r: Resp): string | null {
   const sc = (r.headers as any).getSetCookie?.() || [];
-  const match = sc.find((c: string) => c.startsWith('propreel_session=')) || r.headers.get('set-cookie');
+  const match = sc.find((c: string) => c.startsWith(`${COOKIE_NAME}=`)) || r.headers.get('set-cookie');
   return match ? match.split(';')[0] : null;
 }
 if (process.env.PRICING_E2E_ENGINE_ONLY === '1') {
@@ -135,7 +136,7 @@ function enginePhase() {
 async function loginPhase() {
   console.log('\n── 1) Auth + live pricing config ──');
   if (SESSION_COOKIE) {
-    cookie = SESSION_COOKIE.startsWith('propreel_session=') ? SESSION_COOKIE : `propreel_session=${SESSION_COOKIE}`;
+    cookie = SESSION_COOKIE.startsWith(`${COOKIE_NAME}=`) ? SESSION_COOKIE : `${COOKIE_NAME}=${SESSION_COOKIE}`;
     check('using minted session cookie (E2E_SESSION_COOKIE)', true);
   } else {
     const a = await call('/api/users?action=auth_login', { method: 'POST', body: { email: EMAIL, password: PASSWORD } });

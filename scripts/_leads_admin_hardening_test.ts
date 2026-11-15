@@ -24,6 +24,7 @@
  */
 import path from 'path';
 import Module from 'module';
+import { SESSION_COOKIE } from '../lib/auth';
 
 const root = path.resolve(__dirname, '..');
 const resolve = (rel: string) => require.resolve(path.join(root, rel));
@@ -120,7 +121,7 @@ function fakeReq(action: string, body: any, cookie?: string) {
     method: 'POST',
     body,
     query: { action },
-    headers: cookie ? { cookie: `propreel_session=${cookie}` } : {},
+    headers: cookie ? { cookie: `${SESSION_COOKIE}=${cookie}` } : {},
     socket: { remoteAddress: '127.0.0.1' },
   } as any;
 }

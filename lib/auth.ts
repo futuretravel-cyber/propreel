@@ -5,7 +5,7 @@
  *   comparison. Stored on the user row as `passwordHash`.
  * - Sessions: opaque 256-bit tokens stored server-side in the DynamoDB
  *   `sessions` table; handed to the browser as an HttpOnly cookie
- *   (`propreel_session`). Lookup is by token id — nothing is forgeable
+ *   (`__Host-propreel_session`). Lookup is by token id — nothing is forgeable
  *   without database write access.
  * - Email-confirmation / password-reset tokens: single-use rows in the
  *   `settings` table (`emconf_<token>`, `pwreset_<token>`) with expiry,
@@ -19,7 +19,7 @@ import { getItem, putItem, deleteItem, updateItem, scanItems, queryIndex, TABLES
 import type { ApiErrorCode } from './apiError';
 import type { User } from './userService';
 
-export const SESSION_COOKIE = 'propreel_session';
+export const SESSION_COOKIE = '__Host-propreel_session';
 export const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 const CONFIRM_TTL_HOURS = 24;
 const RESET_TTL_MINUTES = 60;
@@ -160,6 +160,10 @@ export async function deleteSessionsForUser(userId: string): Promise<void> {
 function isHttps(req: any): boolean {
   if (req?.headers?.['x-forwarded-proto'] === 'https') return true;
   if (process.env.VERCEL) return true;
+  // Browsers treat loopback origins as secure contexts and accept Secure
+  // cookies there; __Host- cookies require the Secure attribute.
+  const host = String(req?.headers?.host || '').replace(/:\d+$/, '');
+  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return true;
   return false;
 }
 

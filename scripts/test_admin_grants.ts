@@ -18,6 +18,7 @@
  * script verifies no residue before exiting non-zero on any failed check.
  */
 import http from 'http';
+import { SESSION_COOKIE } from '../lib/auth';
 import { URL } from 'url';
 import handler from '../api/credits';
 import { scanItems, deleteItem, putItem, TABLES } from '../lib/db';
@@ -105,8 +106,8 @@ async function main() {
 
   const adminToken = await createSession(adminId);
   const userToken = await createSession(userId);
-  const adminCookie = `propreel_session=${adminToken}`;
-  const userCookie = `propreel_session=${userToken}`;
+  const adminCookie = `${SESSION_COOKIE}=${adminToken}`;
+  const userCookie = `${SESSION_COOKIE}=${userToken}`;
 
   const action = (body: any, cookie?: string) => post('/api/credits?action=add', body, cookie);
   const goodBody = (over: any = {}) => ({

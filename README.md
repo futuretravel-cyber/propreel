@@ -107,7 +107,7 @@ Required variables:
   <https://resend.com/domains> with the DKIM/SPF TXT records published at the
   registrar (zadns), Resend only accepts `onboarding@resend.dev` → the account
   address. Verify the domain for real traffic.
-- Sessions are HttpOnly cookies (`propreel_session`) backed by the
+- Sessions are HttpOnly cookies (`__Host-propreel_session`) backed by the
   `propreel-sessions` table; reset links live at `/forgot-password`.
 - **Temporary (trial) accounts** (`lib/trial.ts`): the signup form offers an
   opt-in 7-day trial — the row gets `trialExpiresAt`, riding on the standard
@@ -255,10 +255,9 @@ Attributes:
 ## Credit System
 
 ### Credit Expiration (FIFO)
-- Subscription credits: Expire at end of billing period (rollover enabled)
-- Purchased credits: Never expire (365 days inactivity timeout)
-- Bonus credits: 90 days
-- Gift credits: 180 days
+- Every credit expires 365 days after it is added (`CREDIT_TTL_DAYS` in `lib/creditPolicy.ts`), including subscription, top-up, bonus and gift credits
+- Plan credits roll over month to month while the plan is active; they do not reset at renewal
+- Credits are spent oldest first
 
 ### Plans
 

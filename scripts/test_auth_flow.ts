@@ -15,6 +15,7 @@ import http from 'http';
 import { URL } from 'url';
 import handler from '../api/users';
 import { scanItems, deleteItem, TABLES } from '../lib/db';
+import { SESSION_COOKIE } from '../lib/auth';
 
 const PORT = 4310;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -66,10 +67,10 @@ function makeServer() {
 function getCookie(res: Response): string | null {
   // Node fetch exposes headers; grab the raw set-cookie
   const sc = (res.headers as any).getSetCookie?.() || [];
-  const match = sc.find((c: string) => c.startsWith('propreel_session=')) || res.headers.get('set-cookie');
+  const match = sc.find((c: string) => c.startsWith(`${SESSION_COOKIE}=`)) || res.headers.get('set-cookie');
   if (!match) return null;
   const pair = match.split(';')[0];
-  return pair && pair.startsWith('propreel_session=') && pair.length > 'propreel_session='.length ? pair : null;
+  return pair && pair.startsWith(`${SESSION_COOKIE}=`) && pair.length > `${SESSION_COOKIE}=`.length ? pair : null;
 }
 
 let pass = 0, fail = 0;
