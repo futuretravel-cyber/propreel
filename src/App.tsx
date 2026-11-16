@@ -368,7 +368,7 @@ function AboutPage() {
   return (
     <PublicLayout>
       <section className="py-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto pl-4 pr-24 sm:px-6 lg:px-8">
           <h1 className="text-4xl font-black text-white text-center">About PropReel</h1>
           <p className="mt-6 text-lg text-ink-400 leading-relaxed text-center">
             PropReel is a South African software company, Locus Dynamics (PTY) Ltd, trading as PropReel. It is an AI property marketing platform for estate agents and brokerages. It turns the listing photos you already have into property videos, edited images, listing descriptions and social posts.
@@ -394,9 +394,7 @@ function AboutPage() {
             A render is charged when it starts. If it fails, the credits are returned automatically. Plan credits roll over month to month while your plan is active; they do not reset when your plan renews. Top-ups are non-refundable once a render has started.
           </p>
 
-          <div className="mt-16 text-center">
-            <p className="text-ink-400">Start free with {SIGNUP_BONUS} credits, no card needed.</p>
-          </div>
+          <p className="mt-16 text-center text-ink-400">Start free with {SIGNUP_BONUS} credits, no card needed.</p>
         </div>
       </section>
     </PublicLayout>
