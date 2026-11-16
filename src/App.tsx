@@ -368,18 +368,34 @@ function AboutPage() {
   return (
     <PublicLayout>
       <section className="py-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-black text-white">About PropReel</h1>
-          <p className="mt-6 text-lg text-ink-400 leading-relaxed">
-            PropReel was built to solve a simple problem: South African estate agents spend too much time and money creating marketing content for their listings. We use cutting-edge AI to turn your existing property photos into stunning videos, enhanced images, and compelling descriptions — in minutes, not days.
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h1 className="text-4xl font-black text-white text-center">About PropReel</h1>
+          <p className="mt-6 text-lg text-ink-400 leading-relaxed text-center">
+            PropReel is a South African software company, Locus Dynamics (PTY) Ltd, trading as PropReel. It is an AI property marketing platform for estate agents and brokerages. It turns the listing photos you already have into property videos, edited images, listing descriptions and social posts.
           </p>
-          <p className="mt-4 text-lg text-ink-400 leading-relaxed">
-            Our platform is designed specifically for the South African property market, with local voices, Rand pricing, and seamless integration with Property24 and Private Property portals.
+          <p className="mt-4 text-lg text-ink-400 leading-relaxed text-center">
+            Every plan and credit pack is priced in Rand, including VAT. Users never convert to dollars.
           </p>
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div><p className="text-3xl font-black text-purple-400">27</p><p className="text-ink-400">AI Photo Presets</p></div>
-            <div><p className="text-3xl font-black text-purple-400">4</p><p className="text-ink-400">AI Video Tiers</p></div>
-            <div><p className="text-3xl font-black text-purple-400">R{zarComma(CREDIT_PACK_RAND)}</p><p className="text-ink-400">Per Credit, VAT Included</p></div>
+
+          <h2 className="mt-16 text-2xl font-black text-white">What you can make</h2>
+          <ul className="mt-6 space-y-4 text-ink-400 leading-relaxed">
+            <li><span className="font-semibold text-white">AI property videos.</span> Social, Cinematic and Premium tiers animate listing photos with AI motion at 512p, 768p and 1080p.</li>
+            <li><span className="font-semibold text-white">AI avatar videos.</span> An AI presenter narrates a listing, billed at 2 credits per 10 seconds of narration.</li>
+            <li><span className="font-semibold text-white">AI photo editing and virtual staging.</span> Each edit or staged photo costs 2 credits.</li>
+            <li><span className="font-semibold text-white">AI listing descriptions and social posts.</span> A description costs 1 credit and a social post costs 2 credits.</li>
+          </ul>
+
+          <h2 className="mt-16 text-2xl font-black text-white">Credits, simply</h2>
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
+            <div><p className="text-3xl font-black text-purple-400">R{zarComma(CREDIT_PACK_RAND)}</p><p className="text-ink-400">Per credit, VAT included. Top-ups start at 50 credits (R75).</p></div>
+            <div><p className="text-3xl font-black text-purple-400">365 days</p><p className="text-ink-400">Every credit expires 365 days after it is added. PropReel spends your oldest credits first.</p></div>
+          </div>
+          <p className="mt-6 text-ink-400 leading-relaxed">
+            A render is charged when it starts. If it fails, the credits are returned automatically. Plan credits roll over month to month while your plan is active; they do not reset when your plan renews. Top-ups are non-refundable once a render has started.
+          </p>
+
+          <div className="mt-16 text-center">
+            <p className="text-ink-400">Start free with {SIGNUP_BONUS} credits, no card needed.</p>
           </div>
         </div>
       </section>
