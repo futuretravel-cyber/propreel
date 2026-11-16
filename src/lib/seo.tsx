@@ -60,7 +60,7 @@ const ROUTES: Record<string, SeoEntry> = {
   '/about': {
     title: `About us | ${SUFFIX}`,
     description:
-      'PropReel is built in South Africa for estate agents who want professional listing videos without studio time, editors or hefty production costs.',
+      'PropReel is a South African AI property marketing platform for estate agents and brokerages. It turns listing photos into property videos, edited images, listing descriptions and social posts, priced in Rand including VAT.',
   },
   '/contact': {
     title: `Contact us | ${SUFFIX}`,
