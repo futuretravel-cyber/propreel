@@ -24,6 +24,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               md (tablet) the full nav crams the buttons into 2–3 line labels,
               so tablets get the hamburger menu until lg. */}
           <div className="hidden lg:flex items-center gap-8">
+            <Link to="/services/photo-editor" className="text-sm font-medium text-ink-300 hover:text-white transition">Services</Link>
             <Link to="/pricing" className="text-sm font-medium text-ink-300 hover:text-white transition">Pricing</Link>
             <Link to="/blog" className="text-sm font-medium text-ink-300 hover:text-white transition">Blog</Link>
             <Link to="/reviews" className="text-sm font-medium text-ink-300 hover:text-white transition">Reviews</Link>
@@ -44,6 +45,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         {menuOpen && (
           <div className="lg:hidden border-t border-white/5 bg-ink-950/95 backdrop-blur-xl p-4 space-y-1">
             {[
+              ['/services/photo-editor', 'Services'],
               ['/pricing', 'Pricing'],
               ['/blog', 'Blog'],
               ['/reviews', 'Reviews'],

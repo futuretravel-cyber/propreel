@@ -57,6 +57,11 @@ const ROUTES: Record<string, SeoEntry> = {
     description:
       'Real reviews from South African estate agents using PropReel to turn listing photos into cinematic video reels in minutes.',
   },
+  '/services/photo-editor': {
+    title: `AI Photo Editor | ${SUFFIX}`,
+    description:
+      'PropReel AI photo editor for estate agents. Pick an enhancement preset, such as Golden Sunset Sky, and see the before and after of each listing photo.',
+  },
   '/about': {
     title: `About us | ${SUFFIX}`,
     description:

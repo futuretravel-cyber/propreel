@@ -32,6 +32,7 @@ import { lazy, Suspense } from 'react';
 import './lib/altchaSetup';
 import HomePage from './components/HomePage';
 import { PublicLayout } from './components/PublicLayout';
+import { BeforeAfterSlider } from './components/SmartMedia';
 import { track } from './lib/analytics';
 import { RouteSEO } from './lib/seo';
 
@@ -395,6 +396,584 @@ function AboutPage() {
           </p>
 
           <p className="mt-16 text-center text-ink-400">Start free with {SIGNUP_BONUS} credits, no card needed.</p>
+        </div>
+      </section>
+    </PublicLayout>
+  );
+}
+
+const SOCIAL_MEDIA_POSTS: [string, string][] = [
+  ['📸 Instagram', `Step into luxury with this incredible 4-bedroom, 4-bathroom apartment in Sandton, Johannesburg! ✨
+
+This stunning home, priced at R 11 800 000,00, offers spacious living and top-tier amenities. Imagine cooking with a Gas Stove, staying connected with Fibre Internet, and enjoying perfect temperatures with Air Conditioning.
+
+In the attached photo, you can see a beautifully styled living area, featuring a large sectional sofa, a rustic coffee table, and two elegant woven chairs. The room opens up completely to an outdoor patio with stunning ocean views, a pool, and loungers – perfect for entertaining or relaxing. The space boasts sleek modern design with stone accents around a fireplace.
+
+Don't miss out on this prime Sandton property! Contact us today for a viewing.
+
+#SandtonLiving #LuxuryApartment #JohannesburgRealEstate #ForSaleSA #DreamHome #PropertySA #ModernLiving #GautengProperties`],
+  ['👥 Facebook', `Dreaming of luxury living in Sandton? Look no further! We're thrilled to present this exquisite 4-bedroom, 4-bathroom apartment, now available for R 11 800 000,00.
+
+This isn't just an apartment; it's a lifestyle. With a Gas Stove for culinary enthusiasts, Fibre Internet to keep you connected, and Air Conditioning for year-round comfort, every detail has been considered. The attached photo perfectly captures the essence of this home: a magnificent open-plan living area flowing seamlessly onto an outdoor space with breathtaking ocean views and a sparkling pool. Imagine hosting unforgettable gatherings or simply unwinding in this serene setting.
+
+Located in the vibrant heart of Sandton, you'll be close to all amenities, while still enjoying the tranquility and privacy this exceptional property offers. It's an opportunity to own a piece of Johannesburg's finest real estate.
+
+Ready to experience this unparalleled luxury for yourself? Contact us today to schedule a private viewing. Your new Sandton dream home awaits!`],
+  ['💬 WhatsApp', `✨ New Listing Alert! ✨
+
+Luxury 4-bed, 4-bath apartment in Sandton, Johannesburg for R 11 800 000,00.
+
+Key features:
+🏠 4 Bedrooms, 4 Bathrooms
+🛋️ Open-plan living (as seen in photo) with ocean views and pool access
+🔥 Gas Stove
+🌐 Fibre Internet
+❄️ Air Conditioning
+🚗 1 Garage
+
+This is a truly stunning property, offering unparalleled comfort and style. The attached photo shows the incredible living area with panoramic views. Don't miss out!
+
+Contact us for more details or to arrange a viewing.`],
+  ['💼 LinkedIn', `An exceptional investment opportunity has arisen in the esteemed Sandton market. We are pleased to announce the availability of a luxurious 4-bedroom, 4-bathroom apartment, priced at R 11 800 000,00.
+
+This apartment represents a significant acquisition for discerning investors or those seeking a premium residential asset. Boasting modern amenities such as Fibre Internet and Air Conditioning, alongside a Gas Stove, it caters to the demands of contemporary sophisticated living. The attached image showcases a meticulously designed open-plan living space that extends to an impressive outdoor area with an ocean vista and a private pool, underscoring its high-value appeal.
+
+Positioned in Sandton, Johannesburg, this property offers not only an opulent lifestyle but also strong potential for capital appreciation within one of South Africa's most dynamic real estate markets. We invite interested parties to contact us for further information and to schedule a private viewing.`],
+  ['🐦 X / Twitter', `Luxury 4-bed, 4-bath apartment for sale in Sandton, JHB! R 11 800 000,00. Features Fibre Internet & Air Conditioning. The attached photo shows a stunning living area with direct access to ocean views and a pool. #Sandton #PropertyForSale`],
+  ['🎵 TikTok', `POV: You just found your dream apartment in Sandton! 😍 This 4-bed, 4-bath beauty for R 11 800 000,00 is everything! We're talking Fibre Internet, Air Conditioning, and a Gas Stove for those gourmet nights. The photo shows an epic open living space that flows out to ocean views and a pool - seriously, swipe to see! Who's ready to move in? ✨ #LuxuryLiving #SandtonHomes #DreamApartment #PropertyGoals`],
+  ['📧 Newsletter', `Subject: New Listing: Unparalleled Luxury in Sandton - 4 Bed Apartment
+
+Discover the epitome of sophisticated urban living with our latest offering: a magnificent 4-bedroom, 4-bathroom apartment located in the prestigious Sandton, Johannesburg. Priced at R 11 800 000,00, this property sets a new standard for luxury and comfort.
+
+This exquisite apartment is designed for discerning individuals who appreciate fine living and modern convenience. It features state-of-the-art amenities including Fibre Internet, Air Conditioning, and a premium Gas Stove. The attached photo provides a glimpse into the grand open-plan living area, which seamlessly connects to an expansive outdoor space boasting breathtaking ocean views and a private pool – perfect for both relaxation and grand entertaining. With a dedicated garage, this home offers both exclusivity and practicality.
+
+We invite you to experience this exceptional property firsthand. Contact us today to arrange a private viewing and take the first step towards owning your dream Sandton residence.`],
+];
+
+function PhotoEditorServicePage() {
+  const [mainTab, setMainTab] = useState('Photo Editor');
+  const [photoSub, setPhotoSub] = useState('AI Photo Editor');
+  const mainTabs = ['Photo Editor', 'Property Description', 'Social Media', 'Budget AI Video', 'Video Generator'];
+  const photoTabs = ['AI Photo Editor', 'Virtual Staging', 'Furniture Removal', 'Twilight'];
+  const tabClass = (on: boolean) => `px-4 py-2 rounded-full text-sm font-semibold transition ${on ? 'bg-purple-600 text-white' : 'glass text-ink-300 hover:text-white'}`;
+  return (
+    <PublicLayout>
+      <section className="py-20">
+        <div className="max-w-4xl mx-auto pl-4 pr-24 sm:px-6 lg:px-8">
+          <p className="text-center text-sm font-semibold uppercase tracking-widest text-purple-400">Services</p>
+          <p className="mt-4 text-center text-ink-400 leading-relaxed">
+            See what PropReel does for your listings: AI photo edits like Golden Sunset Sky and Declutter &amp; Clean, virtual staging and furniture removal, twilight conversions, AI property descriptions, social media posts and video tours. Pick a service below to see before-and-after examples.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-2" role="tablist">
+            {mainTabs.map((t) => (
+              <button key={t} type="button" role="tab" aria-selected={mainTab === t} onClick={() => setMainTab(t)} className={tabClass(mainTab === t)}>{t}</button>
+            ))}
+          </div>
+
+          {mainTab === 'Photo Editor' ? (
+            <>
+              <div className="mt-6 flex flex-wrap justify-center gap-2" role="tablist">
+                {photoTabs.map((t) => (
+                  <button key={t} type="button" role="tab" aria-selected={photoSub === t} onClick={() => setPhotoSub(t)} className={tabClass(photoSub === t)}>{t}</button>
+                ))}
+              </div>
+              {photoSub === 'Virtual Staging' ? (
+                <div className="mt-12">
+                  <h2 className="text-2xl font-black text-white text-center">🛋️ Virtual Staging - Luxury Modern</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Furnishes an empty or dated room in a luxury modern style. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/virtual-staging-luxury-modern-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Luxury Modern staging.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🪵 Virtual Staging - Scandinavian Minimal</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Furnishes the room in a light, minimal Scandinavian style with natural wood and neutral tones. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/virtual-staging-scandinavian-minimal-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Scandinavian Minimal staging.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🌑 Virtual Staging - Contemporary Dark</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Furnishes the room in a moody contemporary style with dark tones, warm accent lighting and brass details. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/virtual-staging-contemporary-dark-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Contemporary Dark staging.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🌊 Virtual Staging - Coastal Relaxed</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Furnishes the room in a light, relaxed coastal style with white upholstery, rattan and soft blue accents. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/virtual-staging-coastal-relaxed-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Coastal Relaxed staging.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">👨‍👩‍👧 Virtual Staging - Family Comfortable</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Furnishes the room for everyday family living with soft, durable upholstery, warm textures and cosy lighting. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/virtual-staging-family-comfortable-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Family Comfortable staging.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🛏️ Virtual Staging - Luxury Bedroom</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Dresses the bedroom with a made-up luxury bed, layered linens, warm lighting and accent seating. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/virtual-staging-luxury-bedroom-before.webp"
+                      after="/images/virtual-staging-luxury-bedroom-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original bedroom photo with the Luxury Bedroom staging.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">💻 Virtual Staging - Home Office</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Turns the open living space into a working home office with a wood desk, task chair, warm task lighting and a rug. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/virtual-staging-home-office-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Home Office staging.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🏭 Virtual Staging - Industrial Loft</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Furnishes the space in an industrial loft style with brown leather seating, dark metal accents, a reclaimed-wood coffee table and pendant lighting. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/virtual-staging-industrial-loft-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Industrial Loft staging.</p>
+                </div>
+              ) : photoSub === 'Furniture Removal' ? (
+                <div className="mt-12">
+                  <h2 className="text-2xl font-black text-white text-center">🪑 Furniture Removal - Remove All Furniture</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Removes all furniture and décor from the room, leaving the empty floors, walls and architecture visible. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/furniture-removal-remove-all-furniture-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the furniture removed.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🧺 Furniture Removal - Remove Clutter Only</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Removes loose clutter and small items while keeping the main furniture in place. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/furniture-removal-remove-clutter-only-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the clutter removed.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">👤 Furniture Removal - Remove Personal Items</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Removes personal items such as decor, plants, photos and small belongings, leaving the furniture in place. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/declutter-clean-before.webp"
+                      after="/images/furniture-removal-remove-personal-items-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the personal items removed.</p>
+                </div>
+              ) : photoSub === 'Twilight' ? (
+                <div className="mt-12">
+                  <h2 className="text-2xl font-black text-white text-center">🌆 Twilight Photography - Blue Hour</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Turns a daytime exterior into a blue hour twilight shot, with warm interior and landscape lighting and a deep blue sky. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/twilight-blue-hour-before.webp"
+                      after="/images/twilight-blue-hour-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original daytime photo with the blue hour version.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🌇 Twilight Photography - Golden Dusk</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Turns a daytime exterior into a golden dusk shot, with a warm pink and gold sky and glowing interior and landscape lights. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/twilight-blue-hour-before.webp"
+                      after="/images/twilight-golden-dusk-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original daytime photo with the golden dusk version.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🌃 Twilight Photography - Night Lights</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Turns a daytime exterior into a night scene, with a deep navy sky and glowing interior and landscape lights. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/twilight-blue-hour-before.webp"
+                      after="/images/twilight-night-lights-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original daytime photo with the night lights version.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🌅 Twilight Photography - Dramatic Sunset</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Turns a daytime exterior into a dramatic sunset shot, with a fiery orange and magenta sky and a glowing horizon. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/twilight-blue-hour-before.webp"
+                      after="/images/twilight-dramatic-sunset-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original daytime photo with the dramatic sunset version.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🌫️ Twilight Photography - Moody &amp; Atmospheric</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Turns a daytime exterior into a moody, atmospheric shot, with a soft overcast sky and muted, cinematic light. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/twilight-blue-hour-before.webp"
+                      after="/images/twilight-moody-atmospheric-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original daytime photo with the moody atmospheric version.</p>
+                  <h2 className="mt-16 text-2xl font-black text-white text-center">🎄 Twilight Photography - Festive Evening</h2>
+                  <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                    Turns a daytime exterior into a festive evening shot, with a deep blue dusk sky and warm string lights along the roofline, palms and landscaping. The layout and view stay as photographed.
+                  </p>
+                  <div className="mt-8 glass-strong rounded-3xl p-3">
+                    <BeforeAfterSlider
+                      before="/images/twilight-blue-hour-before.webp"
+                      after="/images/twilight-festive-evening-after.webp"
+                      aspect="aspect-video"
+                      beforeLabel="Before"
+                      afterLabel="After"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original daytime photo with the festive evening version.</p>
+                </div>
+              ) : photoSub === 'AI Photo Editor' ? null : (
+                <p className="mt-12 text-center text-ink-400">{photoSub} examples coming soon.</p>
+              )}
+            </>
+          ) : mainTab === 'Property Description' ? (
+            <div className="mt-12">
+              <h2 className="text-2xl font-black text-white text-center">📝 Property Description - 15 Vineyard Road, Constantia</h2>
+              <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                A 5-bedroom, 4-bathroom house on 1800m² with 683m² floor size, priced at R 15 500 000. Listing details were entered once and the AI wrote the full description below.
+              </p>
+              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                {[
+                  ['/images/property-description/vineyard-road-exterior.webp', 'Exterior'],
+                  ['/images/property-description/vineyard-road-living-room.webp', 'Living room'],
+                  ['/images/property-description/vineyard-road-bedroom.webp', 'Bedroom'],
+                  ['/images/property-description/vineyard-road-pool-terrace.webp', 'Pool terrace'],
+                ].map(([src, alt]) => (
+                  <img key={src} src={src} alt={`${alt} - 15 Vineyard Road, Constantia`} loading="lazy" className="w-full aspect-video object-cover rounded-2xl" />
+                ))}
+              </div>
+              <div className="mt-8 glass-strong rounded-3xl p-6 sm:p-8 space-y-4 text-ink-300 leading-relaxed">
+                <h3 className="text-lg font-bold text-white">Generated Description</h3>
+                <p>Discover unparalleled luxury at this exquisite 5-bedroom, 4-bathroom house located at 15 Vineyard Road, Constantia, Cape Town, presented at R 15 500 000,00. This magnificent home spans an impressive 683m2 on an 1800m2 erf, boasting breathtaking ocean views from its elevated position. The modern architecture is evident in the striking facade, featuring expansive glass panels, natural stone cladding, and a welcoming entrance with illuminated steps, hinting at the sophisticated interiors within. A spacious driveway leads to a 3-car garage, complementing the manicured garden and palm trees that enhance its curb appeal.</p>
+                <p>Step inside and be greeted by an ambiance of refined elegance. The open-plan living areas flow seamlessly, with floor-to-ceiling glass sliding doors that open onto a generous outdoor patio, perfectly framing the spectacular sunsets over the ocean. The outdoor space is an entertainer's dream, featuring a luxurious swimming pool with an infinity edge, a built-in fire pit seating area, and an outdoor kitchen and dining space. Inside, a bedroom also offers direct access to a private balcony with similar stunning ocean views, providing a serene retreat. The property is equipped with modern conveniences including Solar Panels, Fibre Internet, Air Conditioning, and Underfloor Heating, ensuring comfort and efficiency year-round.</p>
+                <p>Situated in the highly sought-after Vineyard Close, Constantia, this home offers more than just luxury living; it provides a lifestyle. Enjoy easy access to some of Cape Town's finest schools, upmarket shopping centres, and charming cafés, all within close proximity. This property is a testament to sophisticated design and comfort, offering an exceptional opportunity to own a piece of paradise in one of the Western Cape's most prestigious suburbs.</p>
+              </div>
+            </div>
+          ) : mainTab === 'Social Media' ? (
+            <div className="mt-12">
+              <h2 className="text-2xl font-black text-white text-center">📱 Social Media Post Generator - Sandton Apartment</h2>
+              <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                One listing, written for each platform: apartment in Sandton, Johannesburg, R 11 800 000, 4 beds, 4 baths, 1 garage.
+              </p>
+              <img src="/images/social-media/sandton-apartment-living.webp" alt="Sandton apartment open-plan living area with ocean view and pool" loading="lazy" className="mt-8 w-full aspect-video object-cover rounded-2xl" />
+              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                {SOCIAL_MEDIA_POSTS.map(([platform, text]) => (
+                  <div key={platform} className="glass-strong rounded-3xl p-6 space-y-3">
+                    <h3 className="text-lg font-bold text-white">{platform}</h3>
+                    <p className="whitespace-pre-line text-ink-300 leading-relaxed text-sm">{text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : mainTab === 'Budget AI Video' ? (
+            <div className="mt-12">
+              <h2 className="text-2xl font-black text-white text-center">🎬 Budget AI Video - Gentle Motion</h2>
+              <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                A calm reel with gentle motion and no voiceover, generated from listing photos.
+              </p>
+              <h3 className="mt-12 text-xl font-bold text-white text-center">Before</h3>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <img key={n} src={`/images/budget-video/before-${n}.webp`} alt={`Budget AI Video listing photo ${n}`} loading="lazy" className="w-full aspect-[9/16] object-cover rounded-2xl" />
+                ))}
+              </div>
+              <h3 className="mt-12 text-xl font-bold text-white text-center">After</h3>
+              <video src="/Videos/Budget%20Video.mp4" poster="/images/video-posters/budget-video.jpg" controls playsInline preload="none" className="mt-6 mx-auto max-h-[80vh] w-auto max-w-full rounded-2xl" />
+            </div>
+          ) : mainTab === 'Video Generator' ? (
+            <div className="mt-12">
+              <h2 className="text-2xl font-black text-white text-center">🎥 Video Generator</h2>
+              <p className="mt-4 text-ink-400 leading-relaxed text-center">
+                A property reel generated from listing photos, shown here from before to after.
+              </p>
+              <h3 className="mt-12 text-xl font-bold text-white text-center">Before</h3>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <img key={n} src={`/images/video-generator/before-${n}.webp`} alt={`Video Generator listing photo ${n}`} loading="lazy" className="w-full aspect-video object-cover rounded-2xl" />
+                ))}
+              </div>
+              <h3 className="mt-12 text-xl font-bold text-white text-center">After</h3>
+              <video src="/Videos/Video.mp4" poster="/images/video-posters/video-generator.jpg" controls playsInline preload="none" className="mt-6 mx-auto max-h-[80vh] w-auto max-w-full rounded-2xl" />
+            </div>
+          ) : (
+            <p className="mt-12 text-center text-ink-400">{mainTab} coming soon.</p>
+          )}
+
+          {mainTab === 'Photo Editor' && photoSub === 'AI Photo Editor' && (
+          <>
+          <h1 className="mt-12 text-4xl font-black text-white text-center">AI Photo Editor</h1>
+          <p className="mt-6 text-lg text-ink-400 leading-relaxed text-center">
+            Pick an enhancement preset and PropReel edits your listing photo with AI. Each edit costs 2 credits.
+          </p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">🌅 Golden Sunset Sky</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Replaces the sky with a warm golden sunset. The property itself stays as it was photographed.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/golden-sunset-before.webp"
+              after="/images/golden-sunset-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Golden Sunset Sky edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">☀️ Clear Blue Sky</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Replaces the sky with a clear blue sky. The property itself stays as it was photographed.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/golden-sunset-before.webp"
+              after="/images/clear-blue-sky-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Clear Blue Sky edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">🌿 Lush Green Lawn</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Turns the lawn into a lush, green lawn. The property itself stays as it was photographed.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/lush-green-lawn-before.webp"
+              after="/images/lush-green-lawn-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Lush Green Lawn edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">✨ Brighten &amp; Warm</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Brightens the whole photo and adds a warm tone. The property itself stays as it was photographed.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/golden-sunset-before.webp"
+              after="/images/brighten-warm-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Brighten &amp; Warm edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">🧹 Declutter &amp; Clean</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Removes clutter from the room and tidies the surfaces. The property itself stays as it was photographed.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/declutter-clean-before.webp"
+              after="/images/declutter-clean-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Declutter &amp; Clean edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">📸 HDR Boost</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Boosts the dynamic range so the windows, sky and interior details all show clearly. The property itself stays as it was photographed.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/golden-sunset-before.webp"
+              after="/images/hdr-boost-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the HDR Boost edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">🚗 Remove Cars</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Removes the cars from the driveway and parking area. The property itself stays as it was photographed.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/remove-cars-before.webp"
+              after="/images/remove-cars-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Remove Cars edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">💧 Crystal Pool</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Makes the pool water clear and bright blue. The property itself stays as it was photographed.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/crystal-pool-before.webp"
+              after="/images/crystal-pool-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Crystal Pool edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">🎨 Fresh White Walls</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Brightens the walls to a clean, fresh white while keeping the room's layout and furnishings unchanged.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/declutter-clean-before.webp"
+              after="/images/fresh-white-walls-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Fresh White Walls edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">🌄 Magic Hour</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Turns the dusk sky into a warm, colourful magic hour glow while keeping the house and grounds as photographed.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/magic-hour-before.webp"
+              after="/images/magic-hour-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Magic Hour edit.</p>
+
+          <h2 className="mt-16 text-2xl font-black text-white text-center">💡 Fix Dark Corners</h2>
+          <p className="mt-4 text-ink-400 leading-relaxed text-center">
+            Lifts the shadowy corners of the room so the whole space reads evenly lit, with the layout unchanged.
+          </p>
+          <div className="mt-8 glass-strong rounded-3xl p-3">
+            <BeforeAfterSlider
+              before="/images/declutter-clean-before.webp"
+              after="/images/fix-dark-corners-after.webp"
+              aspect="aspect-video"
+              beforeLabel="Before"
+              afterLabel="After"
+            />
+          </div>
+          <p className="text-center text-xs text-ink-500 mt-3">Drag the handle to compare the original photo with the Fix Dark Corners edit.</p>
+          </>
+          )}
         </div>
       </section>
     </PublicLayout>
@@ -1875,6 +2454,7 @@ function AppRoutes() {
       <Route path="/pricing" element={<PricingPage />} />
       <Route path="/reviews" element={<ReviewsPage />} />
       <Route path="/about" element={<AboutPage />} />
+      <Route path="/services/photo-editor" element={<PhotoEditorServicePage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/refund-policy" element={<RefundPolicyPage />} />
       <Route path="/ai-notice" element={<AiNoticePage />} />
