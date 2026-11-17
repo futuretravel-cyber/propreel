@@ -460,7 +460,7 @@ function PhotoEditorServicePage() {
     <PublicLayout>
       <section className="py-20">
         <div className="max-w-4xl mx-auto pl-4 pr-24 sm:px-6 lg:px-8">
-          <p className="text-center text-sm font-semibold uppercase tracking-widest text-purple-400">Services</p>
+          <p className="text-center text-sm font-semibold uppercase tracking-widest text-purple-400">Features</p>
           <p className="mt-4 text-center text-ink-400 leading-relaxed">
             See what PropReel does for your listings: AI photo edits like Golden Sunset Sky and Declutter &amp; Clean, virtual staging and furniture removal, twilight conversions, AI property descriptions, social media posts and video tours. Pick a service below to see before-and-after examples.
           </p>
