@@ -2454,7 +2454,8 @@ function AppRoutes() {
       <Route path="/pricing" element={<PricingPage />} />
       <Route path="/reviews" element={<ReviewsPage />} />
       <Route path="/about" element={<AboutPage />} />
-      <Route path="/services/photo-editor" element={<PhotoEditorServicePage />} />
+      <Route path="/features" element={<PhotoEditorServicePage />} />
+      <Route path="/services/photo-editor" element={<Navigate to="/features" replace />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/refund-policy" element={<RefundPolicyPage />} />
       <Route path="/ai-notice" element={<AiNoticePage />} />
