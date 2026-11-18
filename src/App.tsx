@@ -407,14 +407,14 @@ const SOCIAL_MEDIA_POSTS: [string, string][] = [
 
 This stunning home, priced at R 11 800 000,00, offers spacious living and top-tier amenities. Imagine cooking with a Gas Stove, staying connected with Fibre Internet, and enjoying perfect temperatures with Air Conditioning.
 
-In the attached photo, you can see a beautifully styled living area, featuring a large sectional sofa, a rustic coffee table, and two elegant woven chairs. The room opens up completely to an outdoor patio with stunning ocean views, a pool, and loungers – perfect for entertaining or relaxing. The space boasts sleek modern design with stone accents around a fireplace.
+In the attached photo, you can see a beautifully styled living area, featuring a large sectional sofa, a rustic coffee table, and two elegant woven chairs. The room opens up completely to an outdoor patio with a pool and loungers – perfect for entertaining or relaxing. The space boasts sleek modern design with stone accents around a fireplace.
 
 Don't miss out on this prime Sandton property! Contact us today for a viewing.
 
 #SandtonLiving #LuxuryApartment #JohannesburgRealEstate #ForSaleSA #DreamHome #PropertySA #ModernLiving #GautengProperties`],
   ['👥 Facebook', `Dreaming of luxury living in Sandton? Look no further! We're thrilled to present this exquisite 4-bedroom, 4-bathroom apartment, now available for R 11 800 000,00.
 
-This isn't just an apartment; it's a lifestyle. With a Gas Stove for culinary enthusiasts, Fibre Internet to keep you connected, and Air Conditioning for year-round comfort, every detail has been considered. The attached photo perfectly captures the essence of this home: a magnificent open-plan living area flowing seamlessly onto an outdoor space with breathtaking ocean views and a sparkling pool. Imagine hosting unforgettable gatherings or simply unwinding in this serene setting.
+This isn't just an apartment; it's a lifestyle. With a Gas Stove for culinary enthusiasts, Fibre Internet to keep you connected, and Air Conditioning for year-round comfort, every detail has been considered. The attached photo perfectly captures the essence of this home: a magnificent open-plan living area flowing seamlessly onto an outdoor space with a sparkling pool. Imagine hosting unforgettable gatherings or simply unwinding in this serene setting.
 
 Located in the vibrant heart of Sandton, you'll be close to all amenities, while still enjoying the tranquility and privacy this exceptional property offers. It's an opportunity to own a piece of Johannesburg's finest real estate.
 
@@ -425,7 +425,7 @@ Luxury 4-bed, 4-bath apartment in Sandton, Johannesburg for R 11 800 000,00.
 
 Key features:
 🏠 4 Bedrooms, 4 Bathrooms
-🛋️ Open-plan living (as seen in photo) with ocean views and pool access
+🛋️ Open-plan living (as seen in photo) with pool access
 🔥 Gas Stove
 🌐 Fibre Internet
 ❄️ Air Conditioning
@@ -439,13 +439,13 @@ Contact us for more details or to arrange a viewing.`],
 This apartment represents a significant acquisition for discerning investors or those seeking a premium residential asset. Boasting modern amenities such as Fibre Internet and Air Conditioning, alongside a Gas Stove, it caters to the demands of contemporary sophisticated living. The attached image showcases a meticulously designed open-plan living space that extends to an impressive outdoor area with an ocean vista and a private pool, underscoring its high-value appeal.
 
 Positioned in Sandton, Johannesburg, this property offers not only an opulent lifestyle but also strong potential for capital appreciation within one of South Africa's most dynamic real estate markets. We invite interested parties to contact us for further information and to schedule a private viewing.`],
-  ['🐦 X / Twitter', `Luxury 4-bed, 4-bath apartment for sale in Sandton, JHB! R 11 800 000,00. Features Fibre Internet & Air Conditioning. The attached photo shows a stunning living area with direct access to ocean views and a pool. #Sandton #PropertyForSale`],
-  ['🎵 TikTok', `POV: You just found your dream apartment in Sandton! 😍 This 4-bed, 4-bath beauty for R 11 800 000,00 is everything! We're talking Fibre Internet, Air Conditioning, and a Gas Stove for those gourmet nights. The photo shows an epic open living space that flows out to ocean views and a pool - seriously, swipe to see! Who's ready to move in? ✨ #LuxuryLiving #SandtonHomes #DreamApartment #PropertyGoals`],
+  ['🐦 X / Twitter', `Luxury 4-bed, 4-bath apartment for sale in Sandton, JHB! R 11 800 000,00. Features Fibre Internet & Air Conditioning. The attached photo shows a stunning living area with direct access to a pool. #Sandton #PropertyForSale`],
+  ['🎵 TikTok', `POV: You just found your dream apartment in Sandton! 😍 This 4-bed, 4-bath beauty for R 11 800 000,00 is everything! We're talking Fibre Internet, Air Conditioning, and a Gas Stove for those gourmet nights. The photo shows an epic open living space that flows out to a pool - seriously, swipe to see! Who's ready to move in? ✨ #LuxuryLiving #SandtonHomes #DreamApartment #PropertyGoals`],
   ['📧 Newsletter', `Subject: New Listing: Unparalleled Luxury in Sandton - 4 Bed Apartment
 
 Discover the epitome of sophisticated urban living with our latest offering: a magnificent 4-bedroom, 4-bathroom apartment located in the prestigious Sandton, Johannesburg. Priced at R 11 800 000,00, this property sets a new standard for luxury and comfort.
 
-This exquisite apartment is designed for discerning individuals who appreciate fine living and modern convenience. It features state-of-the-art amenities including Fibre Internet, Air Conditioning, and a premium Gas Stove. The attached photo provides a glimpse into the grand open-plan living area, which seamlessly connects to an expansive outdoor space boasting breathtaking ocean views and a private pool – perfect for both relaxation and grand entertaining. With a dedicated garage, this home offers both exclusivity and practicality.
+This exquisite apartment is designed for discerning individuals who appreciate fine living and modern convenience. It features state-of-the-art amenities including Fibre Internet, Air Conditioning, and a premium Gas Stove. The attached photo provides a glimpse into the grand open-plan living area, which seamlessly connects to an expansive outdoor space boasting a private pool – perfect for both relaxation and grand entertaining. With a dedicated garage, this home offers both exclusivity and practicality.
 
 We invite you to experience this exceptional property firsthand. Contact us today to arrange a private viewing and take the first step towards owning your dream Sandton residence.`],
 ];
