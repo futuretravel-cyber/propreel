@@ -124,6 +124,8 @@ export interface User {
   trialLastReminderDate?: string;
   /** Last Paystack checkout start (ISO) — repeat-purchase guard in api/paystack/initialize.ts */
   lastCheckoutInitAt?: string;
+  /** Set when the account's first personal credit purchase is granted (Black Friday first-purchase bonus). */
+  firstPurchaseAt?: string;
   /** Computed by the allocate-monthly-credits cron for the Billing page */
   monthlySummary?: {
     month: string;

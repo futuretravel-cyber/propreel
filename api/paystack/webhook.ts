@@ -402,7 +402,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // GRANT THE CREDIT COUNT, not the paid Rands: initialize stamps
       // metadata.credits (since 2026-10-21 packs charge credits × 1.50). The
       // `amount` fallback keeps pre-ratelimit references (R1/credit) exact.
-      const creditsGranted = Number(data.metadata?.credits) || amount;
+      const creditsGranted =
+        (Number(data.metadata?.credits) || amount) + (Number(data.metadata?.bonus_credits) || 0);
 
       // Add credits — eventId (Paystack's unique data.id) makes the ledger
       // row itself idempotent, so duplicate/re-delivered webhooks (and
@@ -435,6 +436,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (addResult.duplicated) {
         console.log(`Webhook: eventId ${eventId} already credited — balance untouched`);
         return res.status(200).json({ success: true, already_processed: true, reference });
+      }
+
+      // Black Friday bonus gate: remember the first personal credit purchase.
+      if (!isPoolPurchase) {
+        await updateUser(userId, { firstPurchaseAt: new Date().toISOString() });
       }
 
       // Give 5, get 5: first purchase by a referred user pays their referrer +5.

@@ -1,5 +1,5 @@
 import { scanItems, TABLES } from './db';
-import { getUser, addCredits, creditTtlIso } from './userService';
+import { getUser, addCredits, creditTtlIso, updateUser } from './userService';
 import { chargeAuthorization } from './paystack';
 import { CREDIT_PACK_RAND } from './renderPricing';
 
@@ -67,6 +67,8 @@ export async function runAutoTopupSweep(): Promise<AutoTopupOutcome[]> {
         // eventId makes the ledger row idempotent — if Paystack's webhook re-delivers the same charge (same data.id), the ledger ignores it.
         const eventId = charge.paystackId != null ? `ps_${charge.paystackId}` : undefined;
         await addCredits(u.id, cfg.amount, 'purchase', `Auto-recharge: ${cfg.amount} credits`, { paystackReference: charge.reference, auto: true }, creditTtlIso(), eventId);
+        // Black Friday bonus gate: a personal purchase counts as the first purchase.
+        await updateUser(u.id, { firstPurchaseAt: new Date().toISOString() });
         outcomes.push({ userId: u.id, email: u.email, action: 'charged', reference: charge.reference, detail: `R${chargeZar} (${cfg.amount} credits)` });
       } else {
         outcomes.push({ userId: u.id, email: u.email, action: 'failed', detail: `charge status ${charge.status}` });

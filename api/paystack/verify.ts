@@ -1,6 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyPayment } from '../../lib/paystack';
-import { getUser } from '../../lib/userService';
+import { getUser, updateUser } from '../../lib/userService';
 import { sessionUser, requireOwner } from '../../lib/auth';
 import { consumeRateLimit } from '../../lib/rateLimit';
 import { tooMany } from '../../lib/userRoutes/shared';
@@ -240,7 +240,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GRANT THE CREDIT COUNT, not the paid Rands: initialize stamps
     // metadata.credits (since 2026-10-21 packs charge credits × 1.50). The
     // `amount` fallback keeps pre-ratelimit references (R1/credit) exact.
-    const creditsGranted = Number(result.data.metadata?.credits) || amount;
+    const creditsGranted =
+      (Number(result.data.metadata?.credits) || amount) + (Number(result.data.metadata?.bonus_credits) || 0);
     const eventId = result.data.id != null ? `ps_${result.data.id}` : undefined;
     const { addCredits } = await import('../../lib/userService');
     const addResult = await addCredits(
@@ -264,6 +265,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         credits_added: 0,
         new_balance: user?.credits || 0,
       });
+    }
+
+    // Black Friday bonus gate: remember the first personal credit purchase.
+    if (result.data.metadata?.type !== 'agency_pool_purchase') {
+      await updateUser(userId, { firstPurchaseAt: new Date().toISOString() });
     }
 
     // Give 5, get 5: first purchase by a referred user pays their referrer +5.

@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { formatZar, formatDate, creditListZar } from '../lib/utils';
 import { PLANS, TIERS, CREDIT_PACK_RAND, SIGNUP_BONUS } from '../lib/constants';
+import { blackFridayBonusCredits } from '../../lib/renderPricing';
 import { PropReelAPI, CreditReportData, ReferralStats } from '../lib/api';
 import { BackendAPI } from '../lib/backendAPI';
 import { track } from '../lib/analytics';
@@ -18,6 +19,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 const bundles = [
   { credits: 50, price: 50, popular: false },
   { credits: 100, price: 100, popular: true },
+  { credits: 133, price: 133, popular: false },
   { credits: 250, price: 250, popular: false },
   { credits: 500, price: 500, popular: false },
 ];
@@ -701,6 +703,10 @@ export default function EnhancedBilling() {
                   <p className="text-sm text-ink-400">credits</p>
                   <div className="my-4">
                     <p className="text-2xl font-bold text-purple-400">{formatZar(b.price * CREDIT_PACK_RAND)}</p>
+                    {(() => {
+                      const bonus = blackFridayBonusCredits(b.credits, { nowMs: Date.now(), hasPurchased: !!user?.firstPurchaseAt });
+                      return bonus > 0 ? <p className="text-xs text-emerald-400 mt-1">+{bonus} bonus credits (Black Friday, first purchase)</p> : null;
+                    })()}
                   </div>
                   <button onClick={() => buyCredits(b.credits)} disabled={purchasing} className={`btn w-full ${b.popular ? 'btn-primary' : 'btn-secondary'}`}>
                     {purchasing ? 'Redirecting…' : 'Buy Now'}

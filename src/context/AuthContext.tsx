@@ -82,6 +82,8 @@ export interface User {
   avatarUrl: string | null;
   emailVerified: boolean;
   lastLowCreditWarnedAt: string | null;
+  /** Set after the first personal credit purchase (Black Friday first-purchase bonus) */
+  firstPurchaseAt?: string;
   createdAt: string;
   /** Paystack saved-card authorization (captured server-side on charge.success) */
   paystackAuthorizationCode?: string;

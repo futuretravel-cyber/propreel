@@ -2,7 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUser, updateUser } from '../../lib/userService';
 import { initializePayment } from '../../lib/paystack';
 import { requireOwner } from '../../lib/auth';
-import { CREDIT_PACK_RAND } from '../../lib/renderPricing';
+import { CREDIT_PACK_RAND, blackFridayBonusCredits } from '../../lib/renderPricing';
 
 /**
  * Initialize a Paystack credit purchase.
@@ -65,9 +65,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GRANT side (verify/webhook) reads metadata.credits (the count), never
     // this Rand amount, so the two can never drift apart.
     const chargeZar = Math.round(credits * CREDIT_PACK_RAND);
+
+    // Black Friday: 15% bonus credits on the first purchase of the R200 pack,
+    // 27 Nov 2026 – 31 Dec 2026 only. Eligibility is decided here and stamped
+    // into metadata.bonus_credits, so verify/webhook grant exactly this amount.
+    const bonusCredits = blackFridayBonusCredits(credits, {
+      nowMs: Date.now(),
+      pool,
+      hasPurchased: !!user.firstPurchaseAt,
+    });
+
     const paymentData = await initializePayment(email, chargeZar, {
       user_id,
       credits,
+      bonus_credits: bonusCredits,
       // 'agency_pool' purchases land in the shared agency pool on charge.success
       type: pool === 'agency' ? 'agency_pool_purchase' : 'credit_purchase',
       pool: pool === 'agency' ? 'agency' : 'personal',

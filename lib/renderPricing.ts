@@ -46,6 +46,25 @@ import { AVATAR_JOB_SCOPE } from './legacySchema';
  */
 export const CREDIT_PACK_RAND = 1.5;
 
+/**
+ * Black Friday promotion: 15% bonus credits on an account's first purchase of
+ * the R200 pack (133 credits), between these UTC instants.
+ */
+export const BLACK_FRIDAY_PACK_CREDITS = 133;
+export const BLACK_FRIDAY_BONUS_RATE = 0.15;
+export const BLACK_FRIDAY_START_MS = Date.parse('2026-11-27T00:00:00+02:00');
+export const BLACK_FRIDAY_END_MS = Date.parse('2027-01-01T00:00:00+02:00');
+
+/** Bonus credits for a pack purchase at `nowMs`, or 0 when it is not eligible. */
+export function blackFridayBonusCredits(
+  credits: number,
+  opts: { nowMs: number; pool?: string; hasPurchased: boolean },
+): number {
+  const inWindow = opts.nowMs >= BLACK_FRIDAY_START_MS && opts.nowMs < BLACK_FRIDAY_END_MS;
+  const eligible = inWindow && opts.pool !== 'agency' && credits === BLACK_FRIDAY_PACK_CREDITS && !opts.hasPurchased;
+  return eligible ? Math.round(credits * BLACK_FRIDAY_BONUS_RATE) : 0;
+}
+
 /** AI Avatar (FlashHead lip-sync) is billed per 10 seconds of narration —
  *  cost scales linearly with fal + Narakeet per the audio length, so a flat
  *  price bakes in a loss past ~58s. Restored to 2 credits per 10s on
