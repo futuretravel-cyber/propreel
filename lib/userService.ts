@@ -156,10 +156,10 @@ export interface CreditTransaction {
 // `pricing_config` row in the settings table (seeded from these values);
 // getPlans() below reads it so DB edits drive real billing.
 export const PLANS: Record<string, { monthlyZar: number; annualZar: number; monthlyCredits: number }> = {
-  'STARTER': { monthlyZar: 129, annualZar: 110, monthlyCredits: 115 },
-  'PROFESSIONAL': { monthlyZar: 589, annualZar: 560, monthlyCredits: 600 },
-  'PREMIUM': { monthlyZar: 1270, annualZar: 1200, monthlyCredits: 1300 },
-  'AGENCY': { monthlyZar: 5000, annualZar: 5000, monthlyCredits: 5000 },
+  'STARTER': { monthlyZar: 129, annualZar: 110, monthlyCredits: 110 },
+  'PROFESSIONAL': { monthlyZar: 589, annualZar: 560, monthlyCredits: 520 },
+  'PREMIUM': { monthlyZar: 1270, annualZar: 1200, monthlyCredits: 1150 },
+  'AGENCY': { monthlyZar: 5000, annualZar: 5000, monthlyCredits: 4300 },
 };
 
 let plansCache: { at: number; plans: Record<string, typeof PLANS[string]> } | null = null;
